@@ -61,7 +61,7 @@ class BranchSwitcherPanel(private val project: Project) : JPanel(BorderLayout())
         }
 
         val presetsScroll = JBScrollPane(presetsContainer).apply {
-            preferredSize = Dimension(0, 600)
+            preferredSize = Dimension(0, 200)
         }
         val addPanel = JPanel(FlowLayout(FlowLayout.LEFT, 4, 4)).apply {
             add(JButton("新增预设", AllIcons.General.Add).noFocusRing()
@@ -81,7 +81,7 @@ class BranchSwitcherPanel(private val project: Project) : JPanel(BorderLayout())
         north.add(presetsBlock, BorderLayout.CENTER)
 
         val logScroll = JBScrollPane(log).apply {
-            preferredSize = Dimension(0, 110)
+            preferredSize = Dimension(0, 80)
         }
 
         val optsRow1 = JPanel(FlowLayout(FlowLayout.LEFT, 8, 2)).apply {

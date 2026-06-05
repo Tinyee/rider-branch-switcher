@@ -16,7 +16,12 @@ repositories {
 
 dependencies {
     intellijPlatform {
-        local("/Applications/Rider.app")
+        val riderPath = providers.gradleProperty("rider.path").orNull
+        if (!riderPath.isNullOrBlank()) {
+            local(riderPath)
+        } else {
+            rider("2026.1.1")
+        }
         bundledPlugin("Git4Idea")
     }
 }
