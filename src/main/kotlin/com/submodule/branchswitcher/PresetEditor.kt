@@ -395,23 +395,31 @@ class PresetEditor(
     }
 
     fun applyCurrentState(currentBranches: Map<String, String?>) {
+        setHighlighted(matchesState(currentBranches))
+    }
+
+    fun matchesState(currentBranches: Map<String, String?>): Boolean {
         val mainMatches = currentBranches["."] == original.main
         val subsMatch = original.submodules.all { (path, branch) ->
             currentBranches[path] == branch
         }
-        setHighlighted(mainMatches && subsMatch)
+        return mainMatches && subsMatch
     }
 
     private fun setHighlighted(highlighted: Boolean) {
-        if (highlighted == isCurrent) return
+        val changed = highlighted != isCurrent
         isCurrent = highlighted
         currentBadge.isVisible = highlighted
         switchBtn.isEnabled = !highlighted
         switchBtn.text = if (highlighted) "已在此预设" else "切到此预设"
         switchBtn.toolTipText = if (highlighted) "当前主仓与子模块分支已与该预设一致" else null
         border = makeBorder(highlighted)
-        revalidate()
-        repaint()
+        if (changed) {
+            revalidate()
+            repaint()
+            parent?.revalidate()
+            parent?.repaint()
+        }
     }
 
     private fun buildCurrent(): Preset {

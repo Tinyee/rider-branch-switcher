@@ -160,8 +160,15 @@ class BranchSwitcherPanel(private val project: Project) : JPanel(BorderLayout())
             }
             SwingUtilities.invokeLater {
                 pinnedEditors.forEach { it.applyCurrentState(branches) }
+                logDetected(pinnedEditors, branches)
             }
         }.start()
+    }
+
+    private fun logDetected(eds: List<PresetEditor>, branches: Map<String, String?>) {
+        val main = branches["."] ?: "(detached)"
+        val matched = eds.firstOrNull { it.matchesState(branches) }?.currentPreset()?.name
+        append("[detect] main=$main, matched=${matched ?: "<none>"}")
     }
 
     private fun addEditorRow(root: Path, preset: Preset) {
@@ -271,18 +278,28 @@ class BranchSwitcherPanel(private val project: Project) : JPanel(BorderLayout())
     }
 
     private fun refreshVcs(root: Path, preset: Preset) {
-        com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater {
-            val lfs = com.intellij.openapi.vfs.LocalFileSystem.getInstance()
-            val mgr = git4idea.repo.GitRepositoryManager.getInstance(project)
+        val app = com.intellij.openapi.application.ApplicationManager.getApplication()
+        app.executeOnPooledThread {
             val dirs = mutableListOf(root.toFile())
             preset.submodules.keys.forEach { dirs += root.resolve(it).toFile() }
-            for (dir in dirs) {
-                val vf = lfs.refreshAndFindFileByIoFile(dir) ?: continue
-                vf.refresh(true, true)
-                mgr.getRepositoryForRoot(vf)?.update()
+            try {
+                val lfs = com.intellij.openapi.vfs.LocalFileSystem.getInstance()
+                val mgr = git4idea.repo.GitRepositoryManager.getInstance(project)
+                for (dir in dirs) {
+                    val vf = lfs.refreshAndFindFileByIoFile(dir) ?: continue
+                    vf.refresh(false, true)
+                    mgr.getRepositoryForRoot(vf)?.update()
+                }
+                app.invokeLater {
+                    append("[vcs] refreshed ${dirs.size} repo(s)")
+                    detectCurrentState()
+                }
+            } catch (t: Throwable) {
+                app.invokeLater {
+                    append("[error] refreshVcs failed: ${t.javaClass.simpleName}: ${t.message}")
+                    detectCurrentState()
+                }
             }
-            append("[vcs] refreshed ${dirs.size} repo(s)")
-            detectCurrentState()
         }
     }
 
