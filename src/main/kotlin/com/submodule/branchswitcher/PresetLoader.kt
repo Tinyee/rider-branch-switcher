@@ -2,6 +2,7 @@ package com.submodule.branchswitcher
 
 import com.google.gson.Gson
 import com.google.gson.JsonSyntaxException
+import com.submodule.branchswitcher.model.PresetFile
 import java.nio.file.Files
 import java.nio.file.Path
 

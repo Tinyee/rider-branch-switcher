@@ -1,4 +1,4 @@
-package com.submodule.branchswitcher
+package com.submodule.branchswitcher.ui
 
 import java.awt.KeyboardFocusManager
 import java.awt.event.MouseAdapter

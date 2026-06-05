@@ -1,13 +1,24 @@
-package com.submodule.branchswitcher
+package com.submodule.branchswitcher.ui
 
 import com.intellij.icons.AllIcons
 import com.intellij.openapi.progress.ProgressIndicator
+import com.intellij.openapi.progress.ProgressManager
 import com.intellij.openapi.progress.Task
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.InputValidator
 import com.intellij.openapi.ui.Messages
 import com.intellij.ui.JBColor
 import com.intellij.ui.components.JBScrollPane
+import com.submodule.branchswitcher.model.DirtyAction
+import com.submodule.branchswitcher.model.PreflightRow
+import com.submodule.branchswitcher.model.Preset
+import com.submodule.branchswitcher.model.SwitchOptions
+import com.submodule.branchswitcher.model.RepoTarget
+import com.submodule.branchswitcher.Notifier
+import com.submodule.branchswitcher.PresetLoader
+import com.submodule.branchswitcher.service.BranchSwitcherService
+import com.submodule.branchswitcher.switch.SwitchExecutor
+import com.submodule.branchswitcher.switch.SwitchPreflight
 import java.awt.BorderLayout
 import java.awt.Dimension
 import java.awt.FlowLayout
@@ -26,10 +37,10 @@ import javax.swing.JPanel
 import javax.swing.JTextArea
 import javax.swing.SwingUtilities
 
-class BranchSwitcherPanel(private val project: Project) : JPanel(BorderLayout()) {
-
-    private var presetFile: PresetFile = PresetFile()
-    private var savedFilePath: Path? = null
+class BranchSwitcherPanel(
+    private val project: Project,
+    private val service: BranchSwitcherService,
+) : JPanel(BorderLayout()) {
 
     private val editors = mutableListOf<PresetEditor>()
     private val presetsInner = JPanel().apply {
@@ -49,8 +60,6 @@ class BranchSwitcherPanel(private val project: Project) : JPanel(BorderLayout())
         font = Font(Font.MONOSPACED, Font.PLAIN, 12)
         lineWrap = false
     }
-
-    private var detectGen = 0L
 
     init {
         border = BorderFactory.createEmptyBorder(8, 8, 8, 8)
@@ -125,6 +134,25 @@ class BranchSwitcherPanel(private val project: Project) : JPanel(BorderLayout())
 
         reload()
 
+        // Restore persisted switch options
+        dirtyCombo.selectedIndex = when (service.dirtyAction) {
+            DirtyAction.Stash -> 0
+            DirtyAction.Skip -> 1
+            DirtyAction.Force -> 2
+        }
+        pullCheck.isSelected = service.pullAfterSwitch
+        fetchCheck.isSelected = service.fetchFirst
+        // Persist options on change
+        dirtyCombo.addItemListener {
+            service.dirtyAction = when (dirtyCombo.selectedIndex) {
+                1 -> DirtyAction.Skip
+                2 -> DirtyAction.Force
+                else -> DirtyAction.Stash
+            }
+        }
+        pullCheck.addItemListener { service.pullAfterSwitch = pullCheck.isSelected }
+        fetchCheck.addItemListener { service.fetchFirst = fetchCheck.isSelected }
+
         addAncestorListener(object : javax.swing.event.AncestorListener {
             override fun ancestorAdded(event: javax.swing.event.AncestorEvent) {
                 SwingUtilities.invokeLater {
@@ -155,15 +183,8 @@ class BranchSwitcherPanel(private val project: Project) : JPanel(BorderLayout())
     private fun reload() {
         editors.clear()
         presetsInner.removeAll()
-        val base = ideBase() ?: run {
-            append("project base path is null")
-            Notifier.error(project, "Branch Switcher", "无法定位 project base path")
-            return
-        }
-        PresetLoader.load(base)
+        service.loadPresets()
             .onSuccess { (file, parsed) ->
-                savedFilePath = file
-                presetFile = parsed
                 val root = gitRoot()
                 if (root == null) {
                     append("[error] git root not found")
@@ -188,15 +209,15 @@ class BranchSwitcherPanel(private val project: Project) : JPanel(BorderLayout())
         editors.forEach { paths.addAll(it.currentPreset().submodules.keys) }
         val snapshot = paths.toList()
         val pinnedEditors = editors.toList()
-        val gen = ++detectGen
+        val gen = service.nextDetectGen()
         Thread {
             val branches = HashMap<String, String?>(snapshot.size)
             for (p in snapshot) {
                 val dir = if (p == ".") root.toFile() else root.resolve(p).toFile()
-                branches[p] = if (dir.exists()) GitOps.currentBranch(dir) else null
+                branches[p] = if (dir.exists()) service.gitClient.currentBranch(dir) else null
             }
             SwingUtilities.invokeLater {
-                if (gen != detectGen) return@invokeLater
+                if (gen != service.getDetectGen()) return@invokeLater
                 pinnedEditors.forEach { it.applyCurrentState(branches) }
                 logDetected(pinnedEditors, branches)
             }
@@ -218,6 +239,7 @@ class BranchSwitcherPanel(private val project: Project) : JPanel(BorderLayout())
             onSwitch = ::runSwitch,
             onSave = { saveAll() },
             onDelete = { deleteEditor(editor) },
+            gitClient = service.gitClient,
         )
         editors.add(editor)
         presetsInner.add(editor)
@@ -242,11 +264,8 @@ class BranchSwitcherPanel(private val project: Project) : JPanel(BorderLayout())
     }
 
     private fun saveAll() {
-        val file = savedFilePath ?: return
-        val list = editors.map { it.currentPreset() }
-        presetFile = presetFile.copy(presets = list)
-        PresetLoader.save(file, presetFile)
-        append("[saved] -> $file")
+        service.savePresets(editors.map { it.currentPreset() })
+        append("[saved]")
     }
 
     private fun newNameValidator(): InputValidator = object : InputValidator {
@@ -263,7 +282,7 @@ class BranchSwitcherPanel(private val project: Project) : JPanel(BorderLayout())
             "预设名（也作为主仓默认分支名,不可与已有预设重名）:",
             "新增预设", null, "", newNameValidator())?.trim()
         if (name.isNullOrEmpty()) return
-        val template = presetFile.presets.firstOrNull()
+        val template = service.presets.firstOrNull()
         val newPreset = Preset(
             name = name,
             main = name,
@@ -288,15 +307,15 @@ class BranchSwitcherPanel(private val project: Project) : JPanel(BorderLayout())
             override fun run(indicator: ProgressIndicator) {
                 indicator.isIndeterminate = true
                 indicator.text = "main repo"
-                mainBranch = GitOps.currentBranch(rootFile)
-                GitOps.listSubmodulePaths(rootFile).forEach { path ->
+                mainBranch = service.gitClient.currentBranch(rootFile)
+                service.gitClient.listSubmodulePaths(rootFile).forEach { path ->
                     indicator.text = path
                     val dir = root.resolve(path).toFile()
                     if (!dir.exists() || (!dir.resolve(".git").exists() && !File(dir, ".git").isFile)) {
                         skipped += "$path (未 init)"
                         return@forEach
                     }
-                    val br = GitOps.currentBranch(dir)
+                    val br = service.gitClient.currentBranch(dir)
                     if (br.isNullOrEmpty()) {
                         skipped += "$path (detached)"
                         return@forEach
@@ -358,7 +377,7 @@ class BranchSwitcherPanel(private val project: Project) : JPanel(BorderLayout())
             var result: List<PreflightRow> = emptyList()
             override fun run(indicator: ProgressIndicator) {
                 indicator.isIndeterminate = false
-                result = SwitchPreflight.probe(root, preset, indicator)
+                result = SwitchPreflight(service.gitClient).probe(root, preset, indicator)
             }
             override fun onSuccess() {
                 if (!SwitchPreviewDialog.showAndConfirm(project, preset, result)) return
@@ -384,7 +403,7 @@ class BranchSwitcherPanel(private val project: Project) : JPanel(BorderLayout())
             var ok = false
             override fun run(indicator: ProgressIndicator) {
                 indicator.isIndeterminate = true
-                val executor = SwitchExecutor(root) { msg -> append(msg) }
+                val executor = SwitchExecutor(root, ::append, service.gitClient)
                 ok = executor.execute(preset, opts)
             }
             override fun onFinished() {
