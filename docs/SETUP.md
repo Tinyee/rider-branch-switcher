@@ -1,0 +1,137 @@
+# 环境准备 & 适配不同 Rider 版本
+
+记录从零跑起来需要装什么，以及切换 Rider 主版本时要改哪几处。
+
+## 必装依赖
+
+| 依赖 | 怎么装 | 为什么 |
+|---|---|---|
+| **JDK 17 或 21** | macOS：`brew install openjdk@17`（或 21）；Windows：[Adoptium](https://adoptium.net/) | Gradle 工具链 + 编译。Rider 2026 警告需要 21，17 也能跑 |
+| **Rider** | 装到默认路径；`build.gradle.kts` 里写死了 `local("/Applications/Rider.app")` | 用本机 Rider 当 SDK，省 1.5 GB 下载 |
+| **Git CLI** | macOS：`xcode-select --install`；Windows：[git-scm](https://git-scm.com/) | 插件本身就是包 `git` 命令 |
+
+## 镜像/网络（国内无 VPN 也能跑）
+
+| 项 | 当前配置 | 说明 |
+|---|---|---|
+| Maven 镜像 | `build.gradle.kts` + `settings.gradle.kts` 都指了 aliyun | aliyun 是公网公开镜像，无需 VPN，**保持就好** |
+| Gradle 发行版 | `gradle-wrapper.properties` 指官方 `services.gradle.org` | 国内首装可能慢几分钟，装完缓存到 `~/.gradle/wrapper/dists/`，之后不再下载 |
+| IntelliJ Platform 依赖 | `intellijPlatform { defaultRepositories() }` 走 jetbrains 官方 + cache-redirector | 首次跑会下一些 jar，全本地化到 `~/.gradle/caches/`，之后无网也能编译 |
+
+## 完全不需要
+
+- 不需要单独装 Kotlin / Gradle / IntelliJ Platform SDK，全部由 Gradle wrapper 拉
+- 不需要 Android SDK / .NET / Unity
+
+## 第一次跑
+
+```bash
+cd ~/Code/rider-branch-switcher
+./gradlew buildPlugin
+# 产物：build/distributions/rider-branch-switcher-0.1.0.zip
+```
+
+Rider 里 `Settings → Plugins → ⚙ → Install plugin from disk` 选这个 zip。
+
+---
+
+# 适配不同 Rider 版本
+
+三处要对齐：**SDK 来源 / sinceBuild / Kotlin 编译器版本**。
+
+## 1. `build.gradle.kts` 里 SDK 来源
+
+```kotlin
+dependencies {
+    intellijPlatform {
+        local("/Applications/Rider.app")    // ← 改成你的 Rider 路径
+        bundledPlugin("Git4Idea")
+    }
+}
+```
+
+各 OS 的 Rider 安装路径：
+
+| OS | 路径示例 |
+|---|---|
+| macOS（官网/App Store 装） | `/Applications/Rider.app` |
+| macOS（Toolbox 装） | `~/Applications/JetBrains Toolbox/Rider.app` 或 `~/Library/Application Support/JetBrains/Toolbox/apps/Rider/ch-0/<version>/Rider.app` |
+| Windows | `C:\Program Files\JetBrains\JetBrains Rider <ver>` |
+| Linux | `~/.local/share/JetBrains/Toolbox/apps/rider/...` |
+
+不想依赖本机 Rider，可以在线下载：
+
+```kotlin
+intellijPlatform {
+    rider("2026.1.1")           // ← 自动从 cache-redirector 下载，1.5 GB 流量
+    bundledPlugin("Git4Idea")
+}
+```
+
+## 2. `build.gradle.kts` 里 sinceBuild / untilBuild
+
+```kotlin
+intellijPlatform {
+    pluginConfiguration {
+        ideaVersion {
+            sinceBuild = "261"      // ← Rider 主版本对应的 build 前缀
+            untilBuild = "261.*"    // ← 不想锁可改 "999.*"
+        }
+    }
+}
+```
+
+Rider 主版本与 build 前缀对照：
+
+| Rider | build 前缀 |
+|---|---|
+| 2024.1 | 241 |
+| 2024.2 | 242 |
+| 2024.3 | 243 |
+| 2025.1 | 251 |
+| 2025.2 | 252 |
+| 2026.1 | 261 |
+
+想插件跨多 Rider 版本可装：`sinceBuild = "243"`、`untilBuild = "999.*"`。SDK 仍按编译那个版本，运行时偶有 API 不兼容，改完测一遍。
+
+## 3. Kotlin 编译器版本 ≤ Rider 内置 Kotlin
+
+```kotlin
+plugins {
+    id("org.jetbrains.kotlin.jvm") version "2.3.0"     // ← 必须 ≤ Rider 内置
+}
+```
+
+| Rider | 内置 Kotlin | 编译器最高可用 |
+|---|---|---|
+| 2024.1 / 2024.2 | 1.9.x | `kotlin.jvm 1.9.x` |
+| 2024.3 / 2025.1 | 2.0.x / 2.1.x | `kotlin.jvm 2.0.x / 2.1.x` |
+| 2025.2 | 2.2.x | `kotlin.jvm 2.2.x` |
+| 2026.1 | 2.3.x | `kotlin.jvm 2.3.x` ← 当前使用 |
+
+> 编译期 Kotlin 高于 Rider 运行时会报：`incompatible version of Kotlin: binary version 2.3.0, expected 1.9.0`。**降版本兼容低 Rider 时，Kotlin 编译器版本必须同步降**。
+
+## 简化：抽参到 `gradle.properties`（可选改造，未实施）
+
+把上面三个值抽成 `gradle.properties` 条目：
+
+```properties
+rider.path=/Applications/Rider.app
+rider.sinceBuild=261
+rider.untilBuild=261.*
+kotlin.version=2.3.0
+```
+
+`build.gradle.kts` 通过 `providers.gradleProperty("rider.path").get()` 读取。换电脑只需要改 `gradle.properties` 一行，不动 `build.gradle.kts`。如果未来在多机/多 Rider 版本间频繁切换，值得做。
+
+---
+
+# 常见错误速查
+
+| 报错 | 原因 | 对策 |
+|---|---|---|
+| `Could not resolve rider:JetBrains.Rider:<ver>... Connect timed out` | 在线 rider() 配置 + 网络慢 | 改回 `local("/Applications/Rider.app")` |
+| `incompatible version of Kotlin: binary version 2.3.0, expected 1.9.0` | Kotlin 编译器版本高于 Rider 运行时 | 把 `id("org.jetbrains.kotlin.jvm") version "..."` 降到 Rider 内置 Kotlin 的同等或更低版本 |
+| `sourceCompatibility='17' but IntelliJ Platform '2026.1.1' requires sourceCompatibility='21'` | JDK 警告，**不是错误** | 升 `kotlin.jvmToolchain(21)` + 本机装 JDK 21；不升也能跑 |
+| `Plugin 'XXX' is incompatible with this installation` | sinceBuild/untilBuild 没覆盖目标 Rider | 调整 `untilBuild` 或重新编译 |
+| `Could not resolve all artifacts ... Connection refused` 等 maven 拉取失败 | 国内官方源被墙 | 检查 `settings.gradle.kts` / `build.gradle.kts` 顶部的 aliyun 镜像是否还在 |
