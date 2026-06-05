@@ -4,6 +4,7 @@ import com.intellij.icons.AllIcons
 import com.intellij.openapi.progress.ProgressIndicator
 import com.intellij.openapi.progress.Task
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.ui.InputValidator
 import com.intellij.openapi.ui.Messages
 import com.intellij.ui.JBColor
 import com.intellij.ui.components.JBScrollPane
@@ -48,6 +49,8 @@ class BranchSwitcherPanel(private val project: Project) : JPanel(BorderLayout())
         font = Font(Font.MONOSPACED, Font.PLAIN, 12)
         lineWrap = false
     }
+
+    private var detectGen = 0L
 
     init {
         border = BorderFactory.createEmptyBorder(8, 8, 8, 8)
@@ -125,7 +128,11 @@ class BranchSwitcherPanel(private val project: Project) : JPanel(BorderLayout())
         addAncestorListener(object : javax.swing.event.AncestorListener {
             override fun ancestorAdded(event: javax.swing.event.AncestorEvent) {
                 SwingUtilities.invokeLater {
-                    java.awt.KeyboardFocusManager.getCurrentKeyboardFocusManager().clearGlobalFocusOwner()
+                    val kfm = java.awt.KeyboardFocusManager.getCurrentKeyboardFocusManager()
+                    val owner = kfm.focusOwner
+                    if (owner != null && SwingUtilities.isDescendingFrom(owner, this@BranchSwitcherPanel)) {
+                        kfm.clearGlobalFocusOwner()
+                    }
                 }
             }
             override fun ancestorRemoved(event: javax.swing.event.AncestorEvent) {}
@@ -181,6 +188,7 @@ class BranchSwitcherPanel(private val project: Project) : JPanel(BorderLayout())
         editors.forEach { paths.addAll(it.currentPreset().submodules.keys) }
         val snapshot = paths.toList()
         val pinnedEditors = editors.toList()
+        val gen = ++detectGen
         Thread {
             val branches = HashMap<String, String?>(snapshot.size)
             for (p in snapshot) {
@@ -188,6 +196,7 @@ class BranchSwitcherPanel(private val project: Project) : JPanel(BorderLayout())
                 branches[p] = if (dir.exists()) GitOps.currentBranch(dir) else null
             }
             SwingUtilities.invokeLater {
+                if (gen != detectGen) return@invokeLater
                 pinnedEditors.forEach { it.applyCurrentState(branches) }
                 logDetected(pinnedEditors, branches)
             }
@@ -240,9 +249,19 @@ class BranchSwitcherPanel(private val project: Project) : JPanel(BorderLayout())
         append("[saved] -> $file")
     }
 
+    private fun newNameValidator(): InputValidator = object : InputValidator {
+        override fun checkInput(input: String?): Boolean {
+            val n = input?.trim().orEmpty()
+            if (n.isEmpty()) return false
+            return editors.none { it.currentPreset().name == n }
+        }
+        override fun canClose(input: String?): Boolean = checkInput(input)
+    }
+
     private fun addPreset() {
         val name = Messages.showInputDialog(project,
-            "预设名（也作为主仓默认分支名）:", "新增预设", null)?.trim()
+            "预设名（也作为主仓默认分支名,不可与已有预设重名）:",
+            "新增预设", null, "", newNameValidator())?.trim()
         if (name.isNullOrEmpty()) return
         val template = presetFile.presets.firstOrNull()
         val newPreset = Preset(
@@ -294,7 +313,8 @@ class BranchSwitcherPanel(private val project: Project) : JPanel(BorderLayout())
                     return
                 }
                 val name = Messages.showInputDialog(project,
-                    "预设名:", "从当前状态新建预设", null, mb, null)?.trim()
+                    "预设名（不可与已有预设重名）:",
+                    "从当前状态新建预设", null, mb, newNameValidator())?.trim()
                 if (name.isNullOrEmpty()) return
                 val newPreset = Preset(
                     name = name,
