@@ -1,12 +1,13 @@
 plugins {
-    id("org.jetbrains.kotlin.jvm") version "1.9.25"
-    id("org.jetbrains.intellij.platform") version "2.1.0"
+    id("org.jetbrains.kotlin.jvm") version "2.3.0"
+    id("org.jetbrains.intellij.platform") version "2.2.1"
 }
 
-group = "com.hsmahjong"
+group = "com.submodule"
 version = "0.1.0"
 
 repositories {
+    maven("https://maven.aliyun.com/repository/public")
     mavenCentral()
     intellijPlatform {
         defaultRepositories()
@@ -15,8 +16,8 @@ repositories {
 
 dependencies {
     intellijPlatform {
-        rider("2024.2.7")
-        instrumentationTools()
+        local("/Applications/Rider.app")
+        bundledPlugin("Git4Idea")
     }
 }
 
@@ -27,8 +28,8 @@ kotlin {
 intellijPlatform {
     pluginConfiguration {
         ideaVersion {
-            sinceBuild = "242"
-            untilBuild = "252.*"
+            sinceBuild = "261"
+            untilBuild = "261.*"
         }
     }
 }

@@ -1,4 +1,4 @@
-package com.hsmahjong.branchswitcher
+package com.submodule.branchswitcher
 
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.wm.ToolWindow

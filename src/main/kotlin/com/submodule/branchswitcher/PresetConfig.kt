@@ -1,4 +1,4 @@
-package com.hsmahjong.branchswitcher
+package com.submodule.branchswitcher
 
 data class RepoTarget(
     val path: String,
