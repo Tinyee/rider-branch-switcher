@@ -58,7 +58,7 @@ class BranchSwitcherPanel(private val project: Project) : JPanel(BorderLayout())
             preferredSize = Dimension(0, 600)
         }
         val addPanel = JPanel(FlowLayout(FlowLayout.LEFT, 4, 4)).apply {
-            add(JButton("+ 新增预设").also { it.addActionListener { addPreset() } })
+            add(JButton("+ 新增预设").noFocusRing().also { it.addActionListener { addPreset() } })
         }
         val presetsBlock = JPanel(BorderLayout()).apply {
             add(presetsScroll, BorderLayout.CENTER)
@@ -96,10 +96,10 @@ class BranchSwitcherPanel(private val project: Project) : JPanel(BorderLayout())
         val buttons = JPanel(FlowLayout(FlowLayout.LEFT, 4, 0)).apply {
             border = BorderFactory.createEmptyBorder(2, 0, 4, 0)
         }
-        buttons.add(JButton("重载预设").also { it.addActionListener { reload() } })
-        buttons.add(JButton("打开预设文件").also { it.addActionListener { openConfig() } })
+        buttons.add(JButton("重载预设").noFocusRing().also { it.addActionListener { reload() } })
+        buttons.add(JButton("打开预设文件").noFocusRing().also { it.addActionListener { openConfig() } })
         buttons.add(Box.createHorizontalStrut(12))
-        buttons.add(JButton("清空日志").also { it.addActionListener { log.text = "" } })
+        buttons.add(JButton("清空日志").noFocusRing().also { it.addActionListener { log.text = "" } })
 
         val south = JPanel(BorderLayout())
         south.add(opts, BorderLayout.NORTH)
@@ -110,6 +110,10 @@ class BranchSwitcherPanel(private val project: Project) : JPanel(BorderLayout())
         add(south, BorderLayout.SOUTH)
 
         reload()
+
+        SwingUtilities.invokeLater {
+            java.awt.KeyboardFocusManager.getCurrentKeyboardFocusManager().clearGlobalFocusOwner()
+        }
     }
 
     private fun ideBase(): Path? = project.basePath?.let { Paths.get(it) }
