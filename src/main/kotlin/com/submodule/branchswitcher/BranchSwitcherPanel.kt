@@ -4,6 +4,7 @@ import com.intellij.openapi.progress.ProgressIndicator
 import com.intellij.openapi.progress.Task
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.Messages
+import com.intellij.ui.JBColor
 import com.intellij.ui.components.JBScrollPane
 import java.awt.BorderLayout
 import java.awt.Dimension
@@ -84,7 +85,7 @@ class BranchSwitcherPanel(private val project: Project) : JPanel(BorderLayout())
         val opts = JPanel().apply {
             layout = BoxLayout(this, BoxLayout.Y_AXIS)
             border = BorderFactory.createCompoundBorder(
-                BorderFactory.createMatteBorder(1, 0, 0, 0, java.awt.Color(80, 80, 80)),
+                BorderFactory.createMatteBorder(1, 0, 0, 0, JBColor.border()),
                 BorderFactory.createEmptyBorder(4, 0, 4, 0),
             )
             optsRow1.alignmentX = LEFT_ALIGNMENT
