@@ -71,13 +71,17 @@ object GitOps {
     fun submoduleInitPath(gitRoot: File, path: String): GitResult =
         run(gitRoot, "submodule", "update", "--init", "--", path)
 
+    private val PATH_LINE = Regex("""^path\s*=\s*(.+?)\s*$""", RegexOption.IGNORE_CASE)
+
     fun listSubmodulePaths(gitRoot: File): List<String> {
         val file = java.io.File(gitRoot, ".gitmodules")
         if (!file.exists()) return emptyList()
-        return file.readLines()
-            .map { it.trim() }
-            .filter { it.startsWith("path") && it.contains("=") }
-            .map { it.substringAfter("=").trim() }
+        return file.readLines().mapNotNull { raw ->
+            val line = raw.trim()
+            if (line.isEmpty() || line.startsWith("#") || line.startsWith(";")) return@mapNotNull null
+            val v = PATH_LINE.find(line)?.groupValues?.get(1) ?: return@mapNotNull null
+            v.trim().trim('"').takeIf { it.isNotEmpty() }
+        }
     }
 
     fun listAllBranches(workDir: File): List<String> {

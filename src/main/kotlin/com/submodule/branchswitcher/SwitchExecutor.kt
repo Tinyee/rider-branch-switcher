@@ -27,7 +27,7 @@ class SwitchExecutor(
             log("")
             log("--- $label  →  ${target.branch} ---")
 
-            if (!isMain && (!dir.exists() || (!dir.resolve(".git").exists() && !File(dir, ".git").isFile))) {
+            if (!isMain && !isGitRepo(dir)) {
                 if (mainCheckoutOk) {
                     log("dir missing, trying: git submodule update --init -- ${target.path}")
                     val r = GitOps.submoduleInitPath(projectRoot.toFile(), target.path)
@@ -45,7 +45,7 @@ class SwitchExecutor(
                 allOk = false
                 continue
             }
-            if (!dir.resolve(".git").exists() && !File(dir, ".git").isFile) {
+            if (!isGitRepo(dir)) {
                 log("[skip] not a git repo")
                 allOk = false
                 continue
@@ -53,6 +53,7 @@ class SwitchExecutor(
 
             val cur = GitOps.currentBranch(dir)
             log("current: ${cur ?: "(detached)"}")
+            val alreadyOnTarget = cur != null && cur == target.branch
 
             if (GitOps.isDirty(dir)) {
                 when (options.dirty) {
@@ -62,12 +63,16 @@ class SwitchExecutor(
                         continue
                     }
                     DirtyAction.Stash -> {
-                        val r = GitOps.stash(dir, "branch-switcher: before -> ${target.branch}")
-                        log("stash: ${if (r.ok) "ok" else "FAIL"}")
-                        if (r.stderr.isNotBlank()) log(r.stderr)
-                        if (!r.ok) {
-                            allOk = false
-                            continue
+                        if (alreadyOnTarget) {
+                            log("already on '${target.branch}', no stash needed")
+                        } else {
+                            val r = GitOps.stash(dir, "branch-switcher: before -> ${target.branch}")
+                            log("stash: ${if (r.ok) "ok" else "FAIL"}")
+                            if (r.stderr.isNotBlank()) log(r.stderr)
+                            if (!r.ok) {
+                                allOk = false
+                                continue
+                            }
                         }
                     }
                     DirtyAction.Force -> log("[force] proceeding with dirty tree")
@@ -79,22 +84,26 @@ class SwitchExecutor(
                 if (!f.ok) log("fetch warn: ${f.stderr}")
             }
 
-            val checkoutResult = if (GitOps.localBranchExists(dir, target.branch)) {
-                GitOps.checkoutExisting(dir, target.branch)
-            } else if (GitOps.remoteBranchExists(dir, target.branch)) {
-                log("local branch missing, creating from origin/${target.branch}")
-                GitOps.checkoutFromRemote(dir, target.branch)
+            if (alreadyOnTarget) {
+                log("already on '${target.branch}', skipping checkout")
             } else {
-                log("[fail] branch '${target.branch}' not found locally or on origin")
-                allOk = false
-                continue
+                val checkoutResult = if (GitOps.localBranchExists(dir, target.branch)) {
+                    GitOps.checkoutExisting(dir, target.branch)
+                } else if (GitOps.remoteBranchExists(dir, target.branch)) {
+                    log("local branch missing, creating from origin/${target.branch}")
+                    GitOps.checkoutFromRemote(dir, target.branch)
+                } else {
+                    log("[fail] branch '${target.branch}' not found locally or on origin")
+                    allOk = false
+                    continue
+                }
+                if (!checkoutResult.ok) {
+                    log("[fail] checkout: ${checkoutResult.stderr}")
+                    allOk = false
+                    continue
+                }
+                log("checkout ok")
             }
-            if (!checkoutResult.ok) {
-                log("[fail] checkout: ${checkoutResult.stderr}")
-                allOk = false
-                continue
-            }
-            log("checkout ok")
 
             if (options.pull && preset.pull) {
                 val p = GitOps.pullFf(dir, target.branch)
@@ -119,4 +128,6 @@ class SwitchExecutor(
         log(if (allOk) "=== done ===" else "=== done with errors ===")
         return allOk
     }
+
+    private fun isGitRepo(dir: File): Boolean = File(dir, ".git").exists()
 }

@@ -47,46 +47,26 @@ object PresetLoader {
 
     fun save(file: Path, presetFile: PresetFile) {
         val gson = com.google.gson.GsonBuilder().setPrettyPrinting().create()
-        Files.writeString(file, gson.toJson(presetFile) + "\n")
+        val payload = gson.toJson(presetFile) + "\n"
+        val parent = file.parent ?: throw IllegalStateException("preset file has no parent: $file")
+        Files.createDirectories(parent)
+        val tmp = Files.createTempFile(parent, file.fileName.toString() + ".", ".tmp")
+        Files.writeString(tmp, payload)
+        try {
+            Files.move(tmp, file,
+                java.nio.file.StandardCopyOption.ATOMIC_MOVE,
+                java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+        } catch (_: java.nio.file.AtomicMoveNotSupportedException) {
+            Files.move(tmp, file, java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+        } catch (e: Throwable) {
+            try { Files.deleteIfExists(tmp) } catch (_: Throwable) {}
+            throw e
+        }
     }
 
     private val DEFAULT_JSON = """
 {
-  "presets": [
-    {
-      "name": "using/develop",
-      "main": "using/develop",
-      "pull": true,
-      "submodules": {
-        "01_Project/Assets/MahjongGame/GameRes/Config~": "using/develop",
-        "01_Project/Assets/MahjongGame/Script/Level": "level_mahjong_develop",
-        "01_Project/Assets/XingyunFramework": "mahjong2_develop",
-        "01_Project/Assets/ExperimentToolkit": "using/develop"
-      }
-    },
-    {
-      "name": "using/release",
-      "main": "using/release",
-      "pull": true,
-      "submodules": {
-        "01_Project/Assets/MahjongGame/GameRes/Config~": "using/release",
-        "01_Project/Assets/MahjongGame/Script/Level": "level_mahjong_release",
-        "01_Project/Assets/XingyunFramework": "mahjong2_release",
-        "01_Project/Assets/ExperimentToolkit": "using/release"
-      }
-    },
-    {
-      "name": "using/release_week",
-      "main": "using/release_week",
-      "pull": true,
-      "submodules": {
-        "01_Project/Assets/MahjongGame/GameRes/Config~": "using/release_week",
-        "01_Project/Assets/MahjongGame/Script/Level": "level_mahjong_master",
-        "01_Project/Assets/XingyunFramework": "mahjong2_master",
-        "01_Project/Assets/ExperimentToolkit": "using/release_week"
-      }
-    }
-  ]
+  "presets": []
 }
 """.trimIndent()
 }
