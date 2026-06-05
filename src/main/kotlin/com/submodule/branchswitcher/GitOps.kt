@@ -65,6 +65,12 @@ object GitOps {
     fun pullFf(workDir: File, branch: String): GitResult =
         run(workDir, "pull", "--ff-only", "origin", branch)
 
+    fun submoduleSync(gitRoot: File): GitResult =
+        run(gitRoot, "submodule", "sync", "--recursive")
+
+    fun submoduleInitPath(gitRoot: File, path: String): GitResult =
+        run(gitRoot, "submodule", "update", "--init", "--", path)
+
     fun listSubmodulePaths(gitRoot: File): List<String> {
         val file = java.io.File(gitRoot, ".gitmodules")
         if (!file.exists()) return emptyList()
