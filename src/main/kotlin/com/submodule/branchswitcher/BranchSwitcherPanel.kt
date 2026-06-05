@@ -141,8 +141,27 @@ class BranchSwitcherPanel(private val project: Project) : JPanel(BorderLayout())
                 append("loaded ${parsed.presets.size} preset(s) from $file")
                 presetsInner.revalidate()
                 presetsInner.repaint()
+                detectCurrentState()
             }
             .onFailure { append("[error] ${it.message}") }
+    }
+
+    private fun detectCurrentState() {
+        val root = gitRoot() ?: return
+        val paths = LinkedHashSet<String>().apply { add(".") }
+        editors.forEach { paths.addAll(it.currentPreset().submodules.keys) }
+        val snapshot = paths.toList()
+        val pinnedEditors = editors.toList()
+        Thread {
+            val branches = HashMap<String, String?>(snapshot.size)
+            for (p in snapshot) {
+                val dir = if (p == ".") root.toFile() else root.resolve(p).toFile()
+                branches[p] = if (dir.exists()) GitOps.currentBranch(dir) else null
+            }
+            SwingUtilities.invokeLater {
+                pinnedEditors.forEach { it.applyCurrentState(branches) }
+            }
+        }.start()
     }
 
     private fun addEditorRow(root: Path, preset: Preset) {
@@ -263,6 +282,7 @@ class BranchSwitcherPanel(private val project: Project) : JPanel(BorderLayout())
                 mgr.getRepositoryForRoot(vf)?.update()
             }
             append("[vcs] refreshed ${dirs.size} repo(s)")
+            detectCurrentState()
         }
     }
 
