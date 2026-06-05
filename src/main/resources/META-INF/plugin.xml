@@ -1,0 +1,18 @@
+<idea-plugin>
+    <id>com.hsmahjong.branchswitcher</id>
+    <name>HsMahjong Branch Switcher</name>
+    <vendor>internal</vendor>
+    <description><![CDATA[
+        One-click switch main repo + submodules branches by preset.
+        Reads .branch-presets.json at project root.
+    ]]></description>
+
+    <depends>com.intellij.modules.platform</depends>
+
+    <extensions defaultExtensionNs="com.intellij">
+        <toolWindow id="HsBranchSwitcher"
+                    anchor="right"
+                    icon="AllIcons.Vcs.Branch"
+                    factoryClass="com.hsmahjong.branchswitcher.BranchSwitcherToolWindowFactory"/>
+    </extensions>
+</idea-plugin>
