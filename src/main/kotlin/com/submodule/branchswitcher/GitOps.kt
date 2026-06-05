@@ -39,6 +39,12 @@ object GitOps {
         return r.ok && r.stdout.isNotBlank()
     }
 
+    fun dirtyFileCount(workDir: File): Int {
+        val r = run(workDir, "status", "--porcelain")
+        if (!r.ok) return -1
+        return r.stdout.lines().count { it.isNotBlank() }
+    }
+
     fun stash(workDir: File, message: String): GitResult =
         run(workDir, "stash", "push", "-u", "-m", message)
 

@@ -247,14 +247,22 @@ class BranchSwitcherPanel(private val project: Project) : JPanel(BorderLayout())
 
     private fun runSwitch(preset: Preset) {
         val root = gitRoot() ?: return
-        val confirm = Messages.showYesNoDialog(
-            project,
-            "切换到预设：${preset.name}\n主仓 → ${preset.main}\n${preset.submodules.size} 个子模块\n\n确认继续？",
-            "Branch Switcher",
-            Messages.getQuestionIcon(),
-        )
-        if (confirm != Messages.YES) return
 
+        val preflightTask = object : Task.Modal(project, "Inspecting branches", true) {
+            var result: List<PreflightRow> = emptyList()
+            override fun run(indicator: ProgressIndicator) {
+                indicator.isIndeterminate = false
+                result = SwitchPreflight.probe(root, preset, indicator)
+            }
+            override fun onSuccess() {
+                if (!SwitchPreviewDialog.showAndConfirm(project, preset, result)) return
+                executeSwitch(root, preset)
+            }
+        }
+        com.intellij.openapi.progress.ProgressManager.getInstance().run(preflightTask)
+    }
+
+    private fun executeSwitch(root: Path, preset: Preset) {
         val dirty = when (dirtyCombo.selectedIndex) {
             1 -> DirtyAction.Skip
             2 -> DirtyAction.Force
