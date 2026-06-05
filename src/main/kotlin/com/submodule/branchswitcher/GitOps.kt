@@ -1,4 +1,4 @@
-package com.hsmahjong.branchswitcher
+package com.submodule.branchswitcher
 
 import com.intellij.execution.configurations.GeneralCommandLine
 import com.intellij.execution.process.CapturingProcessHandler
@@ -58,4 +58,26 @@ object GitOps {
 
     fun pullFf(workDir: File, branch: String): GitResult =
         run(workDir, "pull", "--ff-only", "origin", branch)
+
+    fun listSubmodulePaths(gitRoot: File): List<String> {
+        val file = java.io.File(gitRoot, ".gitmodules")
+        if (!file.exists()) return emptyList()
+        return file.readLines()
+            .map { it.trim() }
+            .filter { it.startsWith("path") && it.contains("=") }
+            .map { it.substringAfter("=").trim() }
+    }
+
+    fun listAllBranches(workDir: File): List<String> {
+        val r = run(workDir, "for-each-ref",
+            "--format=%(refname:short)",
+            "refs/heads", "refs/remotes/origin")
+        if (!r.ok) return emptyList()
+        return r.stdout.lines()
+            .map { it.trim() }
+            .filter { it.isNotEmpty() && it != "origin/HEAD" && !it.startsWith("origin/HEAD") }
+            .map { if (it.startsWith("origin/")) it.removePrefix("origin/") else it }
+            .distinct()
+            .sorted()
+    }
 }

@@ -1,4 +1,4 @@
-package com.hsmahjong.branchswitcher
+package com.submodule.branchswitcher
 
 import java.io.File
 import java.nio.file.Path
