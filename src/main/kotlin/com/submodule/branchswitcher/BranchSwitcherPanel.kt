@@ -11,6 +11,7 @@ import java.awt.BorderLayout
 import java.awt.Dimension
 import java.awt.FlowLayout
 import java.awt.Font
+import java.io.File
 import java.nio.file.Path
 import java.nio.file.Paths
 import javax.swing.BorderFactory
@@ -62,6 +63,10 @@ class BranchSwitcherPanel(private val project: Project) : JPanel(BorderLayout())
         val addPanel = JPanel(FlowLayout(FlowLayout.LEFT, 4, 4)).apply {
             add(JButton("新增预设", AllIcons.General.Add).noFocusRing()
                 .also { it.addActionListener { addPreset() } })
+            add(JButton("从当前状态", AllIcons.Vcs.Branch).noFocusRing().also {
+                it.toolTipText = "基于主仓和已 init 子模块的当前 HEAD 分支生成预设"
+                it.addActionListener { addPresetFromCurrent() }
+            })
         }
         val presetsBlock = JPanel(BorderLayout()).apply {
             add(presetsScroll, BorderLayout.CENTER)
@@ -252,6 +257,63 @@ class BranchSwitcherPanel(private val project: Project) : JPanel(BorderLayout())
         presetsContainer.repaint()
         saveAll()
         append("[added] $name (展开后可编辑各子模块分支)")
+    }
+
+    private fun addPresetFromCurrent() {
+        val root = gitRoot() ?: return
+        val rootFile = root.toFile()
+        val task = object : Task.Modal(project, "Reading current branches", false) {
+            var mainBranch: String? = null
+            val submodules = LinkedHashMap<String, String>()
+            val skipped = mutableListOf<String>()
+            override fun run(indicator: ProgressIndicator) {
+                indicator.isIndeterminate = true
+                indicator.text = "main repo"
+                mainBranch = GitOps.currentBranch(rootFile)
+                GitOps.listSubmodulePaths(rootFile).forEach { path ->
+                    indicator.text = path
+                    val dir = root.resolve(path).toFile()
+                    if (!dir.exists() || (!dir.resolve(".git").exists() && !File(dir, ".git").isFile)) {
+                        skipped += "$path (未 init)"
+                        return@forEach
+                    }
+                    val br = GitOps.currentBranch(dir)
+                    if (br.isNullOrEmpty()) {
+                        skipped += "$path (detached)"
+                        return@forEach
+                    }
+                    submodules[path] = br
+                }
+            }
+            override fun onSuccess() {
+                val mb = mainBranch
+                if (mb.isNullOrEmpty()) {
+                    Messages.showWarningDialog(project,
+                        "主仓当前是 detached HEAD,先 checkout 一个分支再用此功能",
+                        "Branch Switcher")
+                    return
+                }
+                val name = Messages.showInputDialog(project,
+                    "预设名:", "从当前状态新建预设", null, mb, null)?.trim()
+                if (name.isNullOrEmpty()) return
+                val newPreset = Preset(
+                    name = name,
+                    main = mb,
+                    pull = true,
+                    submodules = submodules,
+                )
+                addEditorRow(root, newPreset)
+                presetsContainer.revalidate()
+                presetsContainer.repaint()
+                saveAll()
+                append("[added from current] $name -> 主仓=$mb, ${submodules.size} 个子模块")
+                if (skipped.isNotEmpty()) {
+                    append("[skipped] ${skipped.joinToString(", ")}")
+                }
+                detectCurrentState()
+            }
+        }
+        com.intellij.openapi.progress.ProgressManager.getInstance().run(task)
     }
 
     private fun openConfig() {
