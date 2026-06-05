@@ -28,7 +28,7 @@
 ```bash
 cd ~/Code/rider-branch-switcher
 ./gradlew buildPlugin
-# 产物：build/distributions/rider-branch-switcher-0.1.0.zip
+# 产物：build/distributions/rider-branch-switcher-0.2.1.zip
 ```
 
 Rider 里 `Settings → Plugins → ⚙ → Install plugin from disk` 选这个 zip。
