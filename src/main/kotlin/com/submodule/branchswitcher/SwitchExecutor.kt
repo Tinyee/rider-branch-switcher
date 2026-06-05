@@ -18,12 +18,28 @@ class SwitchExecutor(
     fun execute(preset: Preset, options: SwitchOptions): Boolean {
         log("=== switching to preset: ${preset.name} ===")
         var allOk = true
+        var mainCheckoutOk = false
         for (target in preset.targets()) {
-            val dir = if (target.path == ".") projectRoot.toFile()
+            val isMain = target.path == "."
+            val dir = if (isMain) projectRoot.toFile()
             else projectRoot.resolve(target.path).toFile()
-            val label = if (target.path == ".") "<main>" else target.path
+            val label = if (isMain) "<main>" else target.path
             log("")
             log("--- $label  →  ${target.branch} ---")
+
+            if (!isMain && (!dir.exists() || (!dir.resolve(".git").exists() && !File(dir, ".git").isFile))) {
+                if (mainCheckoutOk) {
+                    log("dir missing, trying: git submodule update --init -- ${target.path}")
+                    val r = GitOps.submoduleInitPath(projectRoot.toFile(), target.path)
+                    if (!r.ok) {
+                        log("[skip] submodule init failed: ${r.stderr.lines().firstOrNull() ?: ""}")
+                        allOk = false
+                        continue
+                    }
+                    log("submodule init ok")
+                }
+            }
+
             if (!dir.exists()) {
                 log("[skip] dir not found: ${dir.absolutePath}")
                 allOk = false
@@ -86,6 +102,16 @@ class SwitchExecutor(
                     log("pull ok")
                 } else {
                     log("[warn] pull failed (kept local): ${p.stderr.lines().firstOrNull() ?: ""}")
+                }
+            }
+
+            if (isMain) {
+                mainCheckoutOk = true
+                val s = GitOps.submoduleSync(dir)
+                if (s.ok) {
+                    log("submodule sync ok")
+                } else {
+                    log("[warn] submodule sync failed: ${s.stderr.lines().firstOrNull() ?: ""}")
                 }
             }
         }
