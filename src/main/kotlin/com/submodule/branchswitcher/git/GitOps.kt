@@ -1,20 +1,11 @@
-package com.submodule.branchswitcher
+package com.submodule.branchswitcher.git
 
 import com.intellij.execution.configurations.GeneralCommandLine
 import com.intellij.execution.process.CapturingProcessHandler
 import java.io.File
 import java.nio.charset.StandardCharsets
 
-data class GitResult(
-    val cmd: String,
-    val exitCode: Int,
-    val stdout: String,
-    val stderr: String,
-) {
-    val ok: Boolean get() = exitCode == 0
-}
-
-object GitOps {
+class GitOps : GitClient {
     private fun run(workDir: File, vararg args: String): GitResult {
         val cmd = GeneralCommandLine("git", *args)
             .withWorkDirectory(workDir)
@@ -29,52 +20,52 @@ object GitOps {
         )
     }
 
-    fun currentBranch(workDir: File): String? {
+    override fun currentBranch(workDir: File): String? {
         val r = run(workDir, "symbolic-ref", "--short", "-q", "HEAD")
         return if (r.ok) r.stdout.trim().ifEmpty { null } else null
     }
 
-    fun isDirty(workDir: File): Boolean {
+    override fun isDirty(workDir: File): Boolean {
         val r = run(workDir, "status", "--porcelain")
         return r.ok && r.stdout.isNotBlank()
     }
 
-    fun dirtyFileCount(workDir: File): Int {
+    override fun dirtyFileCount(workDir: File): Int {
         val r = run(workDir, "status", "--porcelain")
         if (!r.ok) return -1
         return r.stdout.lines().count { it.isNotBlank() }
     }
 
-    fun stash(workDir: File, message: String): GitResult =
+    override fun stash(workDir: File, message: String): GitResult =
         run(workDir, "stash", "push", "-u", "-m", message)
 
-    fun fetch(workDir: File): GitResult = run(workDir, "fetch", "--prune")
+    override fun fetch(workDir: File): GitResult = run(workDir, "fetch", "--prune")
 
-    fun localBranchExists(workDir: File, branch: String): Boolean =
+    override fun localBranchExists(workDir: File, branch: String): Boolean =
         run(workDir, "show-ref", "--verify", "--quiet", "refs/heads/$branch").ok
 
-    fun remoteBranchExists(workDir: File, branch: String): Boolean =
+    override fun remoteBranchExists(workDir: File, branch: String): Boolean =
         run(workDir, "show-ref", "--verify", "--quiet", "refs/remotes/origin/$branch").ok
 
-    fun checkoutExisting(workDir: File, branch: String): GitResult =
+    override fun checkoutExisting(workDir: File, branch: String): GitResult =
         run(workDir, "checkout", branch)
 
-    fun checkoutFromRemote(workDir: File, branch: String): GitResult =
+    override fun checkoutFromRemote(workDir: File, branch: String): GitResult =
         run(workDir, "checkout", "-b", branch, "origin/$branch")
 
-    fun pullFf(workDir: File, branch: String): GitResult =
+    override fun pullFf(workDir: File, branch: String): GitResult =
         run(workDir, "pull", "--ff-only", "origin", branch)
 
-    fun submoduleSync(gitRoot: File): GitResult =
+    override fun submoduleSync(gitRoot: File): GitResult =
         run(gitRoot, "submodule", "sync", "--recursive")
 
-    fun submoduleInitPath(gitRoot: File, path: String): GitResult =
+    override fun submoduleInitPath(gitRoot: File, path: String): GitResult =
         run(gitRoot, "submodule", "update", "--init", "--", path)
 
     private val PATH_LINE = Regex("""^path\s*=\s*(.+?)\s*$""", RegexOption.IGNORE_CASE)
 
-    fun listSubmodulePaths(gitRoot: File): List<String> {
-        val file = java.io.File(gitRoot, ".gitmodules")
+    override fun listSubmodulePaths(gitRoot: File): List<String> {
+        val file = File(gitRoot, ".gitmodules")
         if (!file.exists()) return emptyList()
         return file.readLines().mapNotNull { raw ->
             val line = raw.trim()
@@ -84,7 +75,7 @@ object GitOps {
         }
     }
 
-    fun listAllBranches(workDir: File): List<String> {
+    override fun listAllBranches(workDir: File): List<String> {
         val r = run(workDir, "for-each-ref",
             "--format=%(refname:short)",
             "refs/heads", "refs/remotes/origin")

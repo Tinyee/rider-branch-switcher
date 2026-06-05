@@ -1,9 +1,11 @@
-package com.submodule.branchswitcher
+package com.submodule.branchswitcher.ui
 
 import com.intellij.icons.AllIcons
 import com.intellij.ui.JBColor
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.NamedColorUtil
+import com.submodule.branchswitcher.git.GitClient
+import com.submodule.branchswitcher.model.Preset
 import java.awt.BorderLayout
 import java.awt.Cursor
 import java.awt.Dimension
@@ -36,6 +38,7 @@ class PresetEditor(
     private val onSwitch: (Preset) -> Unit,
     private val onSave: (Preset) -> Unit,
     private val onDelete: () -> Unit,
+    private val gitClient: com.submodule.branchswitcher.git.GitClient = com.submodule.branchswitcher.git.GitOps(),
 ) : JPanel() {
 
     private class SubRow(
@@ -285,7 +288,7 @@ class PresetEditor(
     }
 
     private fun showAddSubmoduleMenu() {
-        val all = GitOps.listSubmodulePaths(gitRoot.toFile())
+        val all = gitClient.listSubmodulePaths(gitRoot.toFile())
         val current = subRows.values.filter { !it.deleted }.map { it.path }.toSet()
         val available = all.filter { it !in current }
         if (available.isEmpty()) {
@@ -321,7 +324,7 @@ class PresetEditor(
         val actionsIndex = body.componentCount - 1
         body.add(row.panel, actionsIndex)
         val dir = gitRoot.resolve(path).toFile()
-        val seedBranch = if (dir.exists()) GitOps.currentBranch(dir) ?: "" else ""
+        val seedBranch = if (dir.exists()) gitClient.currentBranch(dir) ?: "" else ""
         row.combo.selectedItem = seedBranch
         if (loadedOnce) {
             row.loaded = true
@@ -360,7 +363,7 @@ class PresetEditor(
         combo.isEnabled = false
         loadingCount++
         Thread {
-            val branches = if (dir.exists()) GitOps.listAllBranches(dir) else emptyList()
+            val branches = if (dir.exists()) gitClient.listAllBranches(dir) else emptyList()
             SwingUtilities.invokeLater {
                 val list = if (current.isNotEmpty() && !branches.contains(current))
                     listOf(current) + branches else branches

@@ -1,0 +1,34 @@
+package com.submodule.branchswitcher.switch
+
+import com.intellij.openapi.progress.ProgressIndicator
+import com.submodule.branchswitcher.git.GitClient
+import com.submodule.branchswitcher.model.Preset
+import com.submodule.branchswitcher.model.SwitchOptions
+import java.nio.file.Path
+
+sealed class StepResult {
+    /** Step completed successfully, continue pipeline. */
+    object Success : StepResult()
+    /** Step failed fatally — pipeline must abort. */
+    data class Fatal(val reason: String) : StepResult()
+    /** Step completed with partial failures — continue but mark overall as warning. */
+    data class Partial(val failures: Map<String, String>) : StepResult()
+}
+
+data class SwitchContext(
+    val projectRoot: Path,
+    val preset: Preset,
+    val options: SwitchOptions,
+    val git: GitClient,
+    val log: (String) -> Unit,
+    val indicator: ProgressIndicator? = null,
+    /** Mutable flag checked between/within steps for cancellation. */
+    val cancelled: () -> Boolean = { false },
+)
+
+interface SwitchStep {
+    /** Human-readable name for logging/progress display. */
+    val name: String
+    /** Execute this step. Return the result. */
+    fun execute(context: SwitchContext): StepResult
+}

@@ -1,4 +1,4 @@
-package com.submodule.branchswitcher
+package com.submodule.branchswitcher.ui
 
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.DialogWrapper
@@ -6,6 +6,8 @@ import com.intellij.ui.components.JBScrollPane
 import com.intellij.ui.table.JBTable
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.NamedColorUtil
+import com.submodule.branchswitcher.model.PreflightRow
+import com.submodule.branchswitcher.model.Preset
 import java.awt.BorderLayout
 import java.awt.Component
 import java.awt.Dimension

@@ -1,25 +1,16 @@
-package com.submodule.branchswitcher
+package com.submodule.branchswitcher.switch
 
 import com.intellij.openapi.progress.ProgressIndicator
+import com.submodule.branchswitcher.git.GitClient
+import com.submodule.branchswitcher.model.PreflightRow
+import com.submodule.branchswitcher.model.Preset
+import com.submodule.branchswitcher.model.RepoTarget
 import java.io.File
 import java.nio.file.Path
 
-data class PreflightRow(
-    val label: String,
-    val path: String,
-    val target: String,
-    val exists: Boolean,
-    val current: String?,
-    val dirtyCount: Int,
-    val hasLocal: Boolean,
-    val hasRemote: Boolean,
+class SwitchPreflight(
+    private val git: GitClient = com.submodule.branchswitcher.git.GitOps(),
 ) {
-    val isMain: Boolean get() = path == "."
-    val needsSwitch: Boolean get() = exists && current != target
-    val branchMissing: Boolean get() = exists && !hasLocal && !hasRemote
-}
-
-object SwitchPreflight {
     fun probe(
         projectRoot: Path,
         preset: Preset,
@@ -56,10 +47,10 @@ object SwitchPreflight {
             path = target.path,
             target = target.branch,
             exists = true,
-            current = GitOps.currentBranch(dir),
-            dirtyCount = GitOps.dirtyFileCount(dir),
-            hasLocal = GitOps.localBranchExists(dir, target.branch),
-            hasRemote = GitOps.remoteBranchExists(dir, target.branch),
+            current = git.currentBranch(dir),
+            dirtyCount = git.dirtyFileCount(dir),
+            hasLocal = git.localBranchExists(dir, target.branch),
+            hasRemote = git.remoteBranchExists(dir, target.branch),
         )
     }
 
