@@ -413,6 +413,9 @@ class PresetEditor(
         val changed = highlighted != isCurrent
         isCurrent = highlighted
         currentBadge.isVisible = highlighted
+        if (highlighted && switchBtn.isFocusOwner) {
+            java.awt.KeyboardFocusManager.getCurrentKeyboardFocusManager().clearGlobalFocusOwner()
+        }
         switchBtn.isEnabled = !highlighted
         switchBtn.text = if (highlighted) "已在此预设" else "切到此预设"
         switchBtn.toolTipText = if (highlighted) "当前主仓与子模块分支已与该预设一致" else null
