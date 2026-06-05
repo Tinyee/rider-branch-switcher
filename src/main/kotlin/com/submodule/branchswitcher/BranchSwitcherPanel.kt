@@ -117,9 +117,15 @@ class BranchSwitcherPanel(private val project: Project) : JPanel(BorderLayout())
 
         reload()
 
-        SwingUtilities.invokeLater {
-            java.awt.KeyboardFocusManager.getCurrentKeyboardFocusManager().clearGlobalFocusOwner()
-        }
+        addAncestorListener(object : javax.swing.event.AncestorListener {
+            override fun ancestorAdded(event: javax.swing.event.AncestorEvent) {
+                SwingUtilities.invokeLater {
+                    java.awt.KeyboardFocusManager.getCurrentKeyboardFocusManager().clearGlobalFocusOwner()
+                }
+            }
+            override fun ancestorRemoved(event: javax.swing.event.AncestorEvent) {}
+            override fun ancestorMoved(event: javax.swing.event.AncestorEvent) {}
+        })
     }
 
     private fun ideBase(): Path? = project.basePath?.let { Paths.get(it) }
