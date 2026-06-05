@@ -48,16 +48,16 @@ class PresetEditor(
 
     private val mainCombo = makeCombo()
     private val subRows = LinkedHashMap<String, SubRow>()
-    private val saveBtn = JButton("✓ 保存").apply { isEnabled = false }
-    private val revertBtn = JButton("⟲ 丢弃").apply { isEnabled = false }
-    private val addSubBtn = JButton("+ 添加子模块")
+    private val saveBtn = JButton("✓ 保存").apply { isEnabled = false }.noFocusRing()
+    private val revertBtn = JButton("⟲ 丢弃").apply { isEnabled = false }.noFocusRing()
+    private val addSubBtn = JButton("+ 添加子模块").noFocusRing()
     private val arrow = JLabel("▶")
     private val nameLabel = JLabel(initial.name)
     private val currentBadge = JLabel("· 当前").apply {
         foreground = ACCENT_COLOR
         isVisible = false
     }
-    private val switchBtn = JButton("切到此预设")
+    private val switchBtn = JButton("切到此预设").noFocusRing()
     private var isCurrent = false
 
     private val body = object : JPanel() {
@@ -102,7 +102,7 @@ class PresetEditor(
         val right = JPanel(FlowLayout(FlowLayout.RIGHT, 4, 0)).apply { isOpaque = false }
         switchBtn.addActionListener { onSwitch(buildCurrent()) }
         right.add(switchBtn)
-        right.add(JButton("✕ 删除").also {
+        right.add(JButton("✕ 删除").noFocusRing().also {
             it.foreground = Color(180, 60, 60)
             it.addActionListener { onDelete() }
         })
@@ -247,7 +247,7 @@ class PresetEditor(
                     body.revalidate()
                     body.repaint()
                 }
-            }
+            }.noFocusRing()
             add(delBtn, BorderLayout.EAST)
         }
         val row = SubRow(path, combo, rowPanel)
