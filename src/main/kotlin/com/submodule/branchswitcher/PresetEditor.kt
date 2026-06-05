@@ -1,8 +1,9 @@
 package com.submodule.branchswitcher
 
 import com.intellij.ui.JBColor
+import com.intellij.util.ui.JBUI
+import com.intellij.util.ui.NamedColorUtil
 import java.awt.BorderLayout
-import java.awt.Color
 import java.awt.Cursor
 import java.awt.Dimension
 import java.awt.FlowLayout
@@ -54,7 +55,7 @@ class PresetEditor(
     private val arrow = JLabel("▶")
     private val nameLabel = JLabel(initial.name)
     private val currentBadge = JLabel("· 当前").apply {
-        foreground = ACCENT_COLOR
+        foreground = JBUI.CurrentTheme.Link.Foreground.ENABLED
         isVisible = false
     }
     private val switchBtn = JButton("切到此预设").noFocusRing()
@@ -103,7 +104,7 @@ class PresetEditor(
         switchBtn.addActionListener { onSwitch(buildCurrent()) }
         right.add(switchBtn)
         right.add(JButton("✕ 删除").noFocusRing().also {
-            it.foreground = Color(180, 60, 60)
+            it.foreground = NamedColorUtil.getErrorForeground()
             it.addActionListener { onDelete() }
         })
 
@@ -237,7 +238,7 @@ class PresetEditor(
                 preferredSize = Dimension(32, 24)
                 maximumSize = Dimension(32, 24)
                 minimumSize = Dimension(32, 24)
-                foreground = Color(180, 60, 60)
+                foreground = NamedColorUtil.getErrorForeground()
                 toolTipText = "从此预设移除该子模块（保存后切换将不动它）"
                 addActionListener {
                     val r = subRows[path] ?: return@addActionListener
@@ -373,15 +374,15 @@ class PresetEditor(
 
     companion object {
         private const val KEY_ALL_BRANCHES = "submodule.branchswitcher.allBranches"
-        private val ACCENT_COLOR = JBColor(Color(0x3574F0), Color(0x548AF7))
 
         private fun makeBorder(highlighted: Boolean): Border {
-            val divider = BorderFactory.createMatteBorder(0, 0, 1, 0, Color(80, 80, 80))
+            val divider = BorderFactory.createMatteBorder(0, 0, 1, 0, JBColor.border())
             return if (highlighted) {
                 BorderFactory.createCompoundBorder(
                     BorderFactory.createCompoundBorder(
                         divider,
-                        BorderFactory.createMatteBorder(0, 3, 0, 0, ACCENT_COLOR),
+                        BorderFactory.createMatteBorder(0, 3, 0, 0,
+                            JBUI.CurrentTheme.Link.Foreground.ENABLED),
                     ),
                     BorderFactory.createEmptyBorder(4, 1, 10, 4),
                 )

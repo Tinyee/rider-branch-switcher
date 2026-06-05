@@ -2,11 +2,11 @@ package com.submodule.branchswitcher
 
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.DialogWrapper
-import com.intellij.ui.JBColor
 import com.intellij.ui.components.JBScrollPane
 import com.intellij.ui.table.JBTable
+import com.intellij.util.ui.JBUI
+import com.intellij.util.ui.NamedColorUtil
 import java.awt.BorderLayout
-import java.awt.Color
 import java.awt.Component
 import java.awt.Dimension
 import java.awt.Font
@@ -25,9 +25,9 @@ class SwitchPreviewDialog(
     private val rows: List<PreflightRow>,
 ) : DialogWrapper(project) {
 
-    private val warnColor = JBColor(Color(0xC75450), Color(0xE05A56))
-    private val mutedColor = JBColor(Color(0x808080), Color(0x808080))
-    private val accentColor = JBColor(Color(0x3574F0), Color(0x548AF7))
+    private val warnColor get() = NamedColorUtil.getErrorForeground()
+    private val mutedColor get() = NamedColorUtil.getInactiveTextColor()
+    private val accentColor get() = JBUI.CurrentTheme.Link.Foreground.ENABLED
 
     init {
         title = "切到「${preset.name}」"
