@@ -1,5 +1,6 @@
 package com.submodule.branchswitcher
 
+import com.intellij.icons.AllIcons
 import com.intellij.ui.JBColor
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.NamedColorUtil
@@ -49,16 +50,18 @@ class PresetEditor(
 
     private val mainCombo = makeCombo()
     private val subRows = LinkedHashMap<String, SubRow>()
-    private val saveBtn = JButton("✓ 保存").apply { isEnabled = false }.noFocusRing()
-    private val revertBtn = JButton("⟲ 丢弃").apply { isEnabled = false }.noFocusRing()
-    private val addSubBtn = JButton("+ 添加子模块").noFocusRing()
-    private val arrow = JLabel("▶")
+    private val saveBtn = JButton("保存", AllIcons.Actions.MenuSaveall)
+        .apply { isEnabled = false }.noFocusRing()
+    private val revertBtn = JButton("丢弃", AllIcons.Actions.Rollback)
+        .apply { isEnabled = false }.noFocusRing()
+    private val addSubBtn = JButton("添加子模块", AllIcons.General.Add).noFocusRing()
+    private val arrow = JLabel(AllIcons.General.ArrowRight)
     private val nameLabel = JLabel(initial.name)
     private val currentBadge = JLabel("· 当前").apply {
         foreground = JBUI.CurrentTheme.Link.Foreground.ENABLED
         isVisible = false
     }
-    private val switchBtn = JButton("切到此预设").noFocusRing()
+    private val switchBtn = JButton("切到此预设", AllIcons.Actions.Execute).noFocusRing()
     private var isCurrent = false
 
     private val body = object : JPanel() {
@@ -103,7 +106,7 @@ class PresetEditor(
         val right = JPanel(FlowLayout(FlowLayout.RIGHT, 4, 0)).apply { isOpaque = false }
         switchBtn.addActionListener { onSwitch(buildCurrent()) }
         right.add(switchBtn)
-        right.add(JButton("✕ 删除").noFocusRing().also {
+        right.add(JButton("删除", AllIcons.Actions.Cancel).noFocusRing().also {
             it.foreground = NamedColorUtil.getErrorForeground()
             it.addActionListener { onDelete() }
         })
@@ -233,12 +236,11 @@ class PresetEditor(
             add(l, BorderLayout.WEST)
             add(combo, BorderLayout.CENTER)
 
-            val delBtn = JButton("✕").apply {
+            val delBtn = JButton(AllIcons.General.Remove).apply {
                 margin = Insets(0, 4, 0, 4)
                 preferredSize = Dimension(32, 24)
                 maximumSize = Dimension(32, 24)
                 minimumSize = Dimension(32, 24)
-                foreground = NamedColorUtil.getErrorForeground()
                 toolTipText = "从此预设移除该子模块（保存后切换将不动它）"
                 addActionListener {
                     val r = subRows[path] ?: return@addActionListener
@@ -332,7 +334,7 @@ class PresetEditor(
 
     private fun toggle() {
         body.isVisible = !body.isVisible
-        arrow.text = if (body.isVisible) "▼" else "▶"
+        arrow.icon = if (body.isVisible) AllIcons.General.ArrowDown else AllIcons.General.ArrowRight
         if (body.isVisible && !loadedOnce) {
             loadedOnce = true
             loadBranches()
