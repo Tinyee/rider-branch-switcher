@@ -91,3 +91,65 @@
 3. **GitOps 60s 超时可配置 + 真异步** — `run` 方法接 `ProgressIndicator`，循环 `isCanceled` 检查；切换/preflight/检测全链路过一遍
 
 后续按 P1 / P2 滚动。
+
+## 架构 / 设计债
+
+2026-06-05 代码审查后梳理的结构问题。不在 v0.x 功能线上，但会直接决定 v0.3 候选 P0 能否低成本落地。
+
+### 主要问题
+
+| 优先级 | 问题 | 影响 |
+|---|---|---|
+| P0 | `BranchSwitcherPanel` 是 god class（419 行），`PresetFile` 状态住在 UI 里 | Action / 状态栏 widget 拿不到 preset；ToolWindow 关掉 state 重新 load |
+| P0 | `GitOps` 是 object，不可 mock | ROADMAP P1「单元测试」无法落地 |
+| P0 | `SwitchExecutor` 一个 130 行 `execute` 串了所有步骤 | P0「部分失败回滚」需要 checkpoint，无 step 抽象就没法切入 |
+| P0 | 没有 `BranchSwitcherService`（Project Service） | 状态、CRUD、监听全没地方放 |
+| P1 | `PresetEditor` 是 god view（463 行） | 加拖拽/复制/导出/重命名只能继续塞这个文件 |
+| P1 | 异步 API 四种混用（Thread / pooledThread / Task.Backgroundable / Task.Modal） | cancel/进度/错误处理语义不一致 |
+| P1 | `Preset` 没有稳定 ID | 重命名后历史 / 快捷键绑定 / 颜色标签都断 |
+| P1 | 切换选项（dirty / fetch / pull）不持久化 | IDE 重启重置 |
+| P1 | 没有 EventBus / Listener 模式 | 加任何派生组件都得回头改 Panel |
+| P1 | `GitOps` 用 CLI fork 而非 git4idea API | 慢 + 不响应 cancel + 依赖 PATH |
+| P2 | 包结构扁平（`com.submodule.branchswitcher` 全平铺，11 个文件） | 加新功能继续平铺会变难找 |
+| P2 | 中英文硬编码，无 `BundleMessage` | i18n 时机械迁移 |
+| P2 | `noFocusRing()` 每个按钮手动调，容易漏 | 应该工厂化或全局 LAF |
+
+### 可扩展性现状
+
+| 扩展方向 | 难度 | 卡在哪 |
+|---|---|---|
+| 新切换动作（rebase / tag / commit） | 高 | 改 SwitchExecutor 主循环 |
+| Tools 菜单 / 快捷键 | 高 | PresetFile 状态在 Panel 里 |
+| 状态栏 widget | 高 | 同上 |
+| 单元测试 | 高 | GitOps 不可 mock |
+| 多 VCS（hg / p4） | 高 | GitOps 直接绑 git |
+| Per-preset 选项覆盖 | 中 | 数据模型加字段 + UI 改 |
+| 切换历史 / 撤销 | 中 | 无持久化层 |
+| Preset 拖拽/复制/导入导出 | 中 | PresetEditor 已胖，但加按钮可行 |
+| git worktree | 中 | 假设 `.git` 是 dir/file |
+| i18n | 低 | 机械迁移 |
+
+### 重构路径（按 ROI 排序）
+
+**第一波 — 撬动单测 + 后续重构**：
+
+1. **`GitClient` interface** — `GitOps` 实现它，`SwitchExecutor` / `Preflight` 持有 `GitClient`；一个改动让 P1 单测可做
+2. **包重组** — `ui/` `git/` `model/` `service/` `action/` 子包，先腾空间
+3. **抽 `BranchSwitcherService`（Project Service）** — `PresetFile` + `currentBranches` + CRUD + load/save 从 Panel 移过来，Panel 退化为 view
+
+**第二波 — 让 v0.3 候选 P0 变简单**：
+
+4. **`SwitchStep` 抽象** — 拆 `SwitchExecutor` 主循环；回滚 / cancel 检查 / 进度上报都在 step 接口里统一
+5. **`Preset` 加 `id: String`** — UUID 默认；重命名/历史/Action 绑定靠它
+
+**第三波 — 扩展面**：
+
+6. **PersistentStateComponent** — 选项持久化 + 后续 settings page
+7. **MessageBus topic** — `PresetChanged` / `BranchSwitched` / `CurrentStateDetected`
+8. **plugin.xml 加 Action 框架** — `tools/branch-switcher/switch-X` 动态生成
+
+**第四波 — 投入产出比变低**：
+
+9. git4idea API 迁移
+10. coroutines 替代 Thread/Task 混用
+11. i18n
