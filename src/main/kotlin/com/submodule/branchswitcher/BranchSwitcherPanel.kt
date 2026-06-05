@@ -1,5 +1,6 @@
 package com.submodule.branchswitcher
 
+import com.intellij.icons.AllIcons
 import com.intellij.openapi.progress.ProgressIndicator
 import com.intellij.openapi.progress.Task
 import com.intellij.openapi.project.Project
@@ -59,7 +60,8 @@ class BranchSwitcherPanel(private val project: Project) : JPanel(BorderLayout())
             preferredSize = Dimension(0, 600)
         }
         val addPanel = JPanel(FlowLayout(FlowLayout.LEFT, 4, 4)).apply {
-            add(JButton("+ 新增预设").noFocusRing().also { it.addActionListener { addPreset() } })
+            add(JButton("新增预设", AllIcons.General.Add).noFocusRing()
+                .also { it.addActionListener { addPreset() } })
         }
         val presetsBlock = JPanel(BorderLayout()).apply {
             add(presetsScroll, BorderLayout.CENTER)
@@ -97,10 +99,13 @@ class BranchSwitcherPanel(private val project: Project) : JPanel(BorderLayout())
         val buttons = JPanel(FlowLayout(FlowLayout.LEFT, 4, 0)).apply {
             border = BorderFactory.createEmptyBorder(2, 0, 4, 0)
         }
-        buttons.add(JButton("重载预设").noFocusRing().also { it.addActionListener { reload() } })
-        buttons.add(JButton("打开预设文件").noFocusRing().also { it.addActionListener { openConfig() } })
+        buttons.add(JButton("重载预设", AllIcons.Actions.Refresh).noFocusRing()
+            .also { it.addActionListener { reload() } })
+        buttons.add(JButton("打开预设文件", AllIcons.Actions.EditSource).noFocusRing()
+            .also { it.addActionListener { openConfig() } })
         buttons.add(Box.createHorizontalStrut(12))
-        buttons.add(JButton("清空日志").noFocusRing().also { it.addActionListener { log.text = "" } })
+        buttons.add(JButton("清空日志", AllIcons.Actions.GC).noFocusRing()
+            .also { it.addActionListener { log.text = "" } })
 
         val south = JPanel(BorderLayout())
         south.add(opts, BorderLayout.NORTH)
