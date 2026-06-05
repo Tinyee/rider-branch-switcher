@@ -15,5 +15,8 @@
                     anchor="right"
                     icon="AllIcons.Vcs.Branch"
                     factoryClass="com.submodule.branchswitcher.BranchSwitcherToolWindowFactory"/>
+        <notificationGroup id="Submodule Branch Switcher"
+                           displayType="BALLOON"
+                           toolWindowId="SubmoduleBranches"/>
     </extensions>
 </idea-plugin>

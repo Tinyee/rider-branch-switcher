@@ -137,7 +137,11 @@ class BranchSwitcherPanel(private val project: Project) : JPanel(BorderLayout())
     private fun reload() {
         editors.clear()
         presetsInner.removeAll()
-        val base = ideBase() ?: run { append("project base path is null"); return }
+        val base = ideBase() ?: run {
+            append("project base path is null")
+            Notifier.error(project, "Branch Switcher", "无法定位 project base path")
+            return
+        }
         PresetLoader.load(base)
             .onSuccess { (file, parsed) ->
                 savedFilePath = file
@@ -145,6 +149,7 @@ class BranchSwitcherPanel(private val project: Project) : JPanel(BorderLayout())
                 val root = gitRoot()
                 if (root == null) {
                     append("[error] git root not found")
+                    Notifier.error(project, "Branch Switcher", "未找到 git 根目录")
                     return@onSuccess
                 }
                 parsed.presets.forEach { addEditorRow(root, it) }
@@ -153,7 +158,10 @@ class BranchSwitcherPanel(private val project: Project) : JPanel(BorderLayout())
                 presetsInner.repaint()
                 detectCurrentState()
             }
-            .onFailure { append("[error] ${it.message}") }
+            .onFailure {
+                append("[error] ${it.message}")
+                Notifier.error(project, "预设加载失败", it.message ?: "unknown error")
+            }
     }
 
     private fun detectCurrentState() {
@@ -285,12 +293,21 @@ class BranchSwitcherPanel(private val project: Project) : JPanel(BorderLayout())
         )
 
         val task = object : Task.Backgroundable(project, "Switching branches", true) {
+            var ok = false
             override fun run(indicator: ProgressIndicator) {
                 indicator.isIndeterminate = true
                 val executor = SwitchExecutor(root) { msg -> append(msg) }
-                executor.execute(preset, opts)
+                ok = executor.execute(preset, opts)
             }
-            override fun onFinished() { refreshVcs(root, preset) }
+            override fun onFinished() {
+                if (ok) {
+                    Notifier.info(project, "切换完成", "已切到「${preset.name}」")
+                } else {
+                    Notifier.error(project, "切换有失败项",
+                        "「${preset.name}」部分仓未成功，详见 ToolWindow 日志")
+                }
+                refreshVcs(root, preset)
+            }
         }
         com.intellij.openapi.progress.ProgressManager.getInstance().run(task)
     }
@@ -315,6 +332,8 @@ class BranchSwitcherPanel(private val project: Project) : JPanel(BorderLayout())
             } catch (t: Throwable) {
                 app.invokeLater {
                     append("[error] refreshVcs failed: ${t.javaClass.simpleName}: ${t.message}")
+                    Notifier.warn(project, "VCS 刷新失败",
+                        "${t.javaClass.simpleName}: ${t.message}")
                     detectCurrentState()
                 }
             }
