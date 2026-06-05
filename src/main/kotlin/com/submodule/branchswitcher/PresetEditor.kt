@@ -1,5 +1,6 @@
 package com.submodule.branchswitcher
 
+import com.intellij.ui.JBColor
 import java.awt.BorderLayout
 import java.awt.Color
 import java.awt.Cursor
@@ -22,6 +23,7 @@ import javax.swing.JLabel
 import javax.swing.JPanel
 import javax.swing.JTextField
 import javax.swing.SwingUtilities
+import javax.swing.border.Border
 import javax.swing.event.DocumentEvent
 import javax.swing.event.DocumentListener
 
@@ -51,6 +53,12 @@ class PresetEditor(
     private val addSubBtn = JButton("+ 添加子模块")
     private val arrow = JLabel("▶")
     private val nameLabel = JLabel(initial.name)
+    private val currentBadge = JLabel("· 当前").apply {
+        foreground = ACCENT_COLOR
+        isVisible = false
+    }
+    private val switchBtn = JButton("切到此预设")
+    private var isCurrent = false
 
     private val body = object : JPanel() {
         override fun getMaximumSize(): Dimension =
@@ -67,10 +75,7 @@ class PresetEditor(
     init {
         layout = BoxLayout(this, BoxLayout.Y_AXIS)
         alignmentX = LEFT_ALIGNMENT
-        border = BorderFactory.createCompoundBorder(
-            BorderFactory.createMatteBorder(0, 0, 1, 0, Color(80, 80, 80)),
-            BorderFactory.createEmptyBorder(4, 4, 10, 4),
-        )
+        border = makeBorder(highlighted = false)
 
         val header = object : JPanel(BorderLayout()) {
             override fun getMaximumSize(): Dimension =
@@ -88,13 +93,15 @@ class PresetEditor(
             isOpaque = false
             add(arrow)
             add(nameLabel.apply { font = font.deriveFont(Font.BOLD) })
+            add(currentBadge)
             cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
             addMouseListener(object : MouseAdapter() {
                 override fun mouseClicked(e: MouseEvent) { toggle() }
             })
         }
         val right = JPanel(FlowLayout(FlowLayout.RIGHT, 4, 0)).apply { isOpaque = false }
-        right.add(JButton("切到此预设").also { it.addActionListener { onSwitch(buildCurrent()) } })
+        switchBtn.addActionListener { onSwitch(buildCurrent()) }
+        right.add(switchBtn)
         right.add(JButton("✕ 删除").also {
             it.foreground = Color(180, 60, 60)
             it.addActionListener { onDelete() }
@@ -366,6 +373,45 @@ class PresetEditor(
 
     companion object {
         private const val KEY_ALL_BRANCHES = "submodule.branchswitcher.allBranches"
+        private val ACCENT_COLOR = JBColor(Color(0x3574F0), Color(0x548AF7))
+
+        private fun makeBorder(highlighted: Boolean): Border {
+            val divider = BorderFactory.createMatteBorder(0, 0, 1, 0, Color(80, 80, 80))
+            return if (highlighted) {
+                BorderFactory.createCompoundBorder(
+                    BorderFactory.createCompoundBorder(
+                        divider,
+                        BorderFactory.createMatteBorder(0, 3, 0, 0, ACCENT_COLOR),
+                    ),
+                    BorderFactory.createEmptyBorder(4, 1, 10, 4),
+                )
+            } else {
+                BorderFactory.createCompoundBorder(
+                    divider,
+                    BorderFactory.createEmptyBorder(4, 4, 10, 4),
+                )
+            }
+        }
+    }
+
+    fun applyCurrentState(currentBranches: Map<String, String?>) {
+        val mainMatches = currentBranches["."] == original.main
+        val subsMatch = original.submodules.all { (path, branch) ->
+            currentBranches[path] == branch
+        }
+        setHighlighted(mainMatches && subsMatch)
+    }
+
+    private fun setHighlighted(highlighted: Boolean) {
+        if (highlighted == isCurrent) return
+        isCurrent = highlighted
+        currentBadge.isVisible = highlighted
+        switchBtn.isEnabled = !highlighted
+        switchBtn.text = if (highlighted) "已在此预设" else "切到此预设"
+        switchBtn.toolTipText = if (highlighted) "当前主仓与子模块分支已与该预设一致" else null
+        border = makeBorder(highlighted)
+        revalidate()
+        repaint()
     }
 
     private fun buildCurrent(): Preset {
