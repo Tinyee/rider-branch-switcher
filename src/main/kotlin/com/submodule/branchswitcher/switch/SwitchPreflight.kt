@@ -62,8 +62,4 @@ class SwitchPreflight(
         )
     }
 
-    private fun shortLabel(path: String): String {
-        if (!path.contains("/")) return path
-        return path.substringAfterLast('/').removeSuffix("~")
-    }
 }

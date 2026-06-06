@@ -79,4 +79,12 @@ object Strings {
 
     const val initConfirmTitle = "初始化子模块"
     const val initConfirmMsg = "目录缺失，是否执行 git submodule update --init？"
+
+    const val dirtyWorkingTree = "脏工作区:"
+    const val deletePresetMsg = "删除预设「%s」?\n该操作会立即写入 JSON 文件。"
+    const val detachedHeadWarn = "主仓当前是 detached HEAD,先 checkout 一个分支再用此功能"
+    const val noPresetFile = "preset file 不存在。建议位置:"
+    const val importFailed = "导入失败"
+    const val switchPartialMsg = "「%s」部分仓未成功，详见 ToolWindow 日志"
+    const val switchCompleteMsg = "已切到「%s」"
 }

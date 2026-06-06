@@ -11,6 +11,7 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.Messages
 import com.submodule.branchswitcher.BranchSwitchListener
 import com.submodule.branchswitcher.Notifier
+import com.submodule.branchswitcher.Strings
 import com.submodule.branchswitcher.model.DirtyAction
 import com.submodule.branchswitcher.model.Preset
 import com.submodule.branchswitcher.model.SwitchOptions
@@ -26,7 +27,7 @@ class SwitchPresetAction : AnAction() {
         service.loadPresets()
         val presets = service.presets
         if (presets.isEmpty()) {
-            Messages.showInfoMessage(project, "暂无预设，请先在 Branch Switcher 工具窗口创建", "Branch Switcher")
+            Messages.showInfoMessage(project, "暂无预设，请先在 Branch Switcher 工具窗口创建", Strings.pluginTitle)
             return
         }
         val names = presets.map { it.name }.toTypedArray()
@@ -69,18 +70,18 @@ class SwitchPresetAction : AnAction() {
             }
             override fun onFinished() {
                 if (ok) {
-                    Notifier.info(project, "切换完成", "已切到「${preset.name}」")
+                    Notifier.info(project, Strings.switchComplete, Strings.switchCompleteMsg.format(preset.name))
                 } else {
                     val detail = logLines.filter { it.contains("[fail]") || it.contains("[fatal]") || it.contains("[warn]") }
                         .take(3).joinToString("\n")
-                    Notifier.error(project, "切换有失败项",
-                        if (detail.isNotEmpty()) "「${preset.name}」部分仓未成功:\n$detail"
-                        else "「${preset.name}」部分仓未成功")
+                    Notifier.error(project, Strings.switchFailed,
+                        if (detail.isNotEmpty()) "${Strings.switchPartialMsg.format(preset.name)}:\n$detail"
+                        else Strings.switchPartialMsg.format(preset.name))
                 }
                 project.messageBus.syncPublisher(BranchSwitchListener.TOPIC).onBranchSwitched()
                 // Refresh VCS
                 ApplicationManager.getApplication().executeOnPooledThread {
-                    val dirs = mutableListOf(java.io.File(root.toUri()))
+                    val dirs = mutableListOf(root.toFile())
                     preset.submodules.keys.forEach { dirs += root.resolve(it).toFile() }
                     val lfs = com.intellij.openapi.vfs.LocalFileSystem.getInstance()
                     val mgr = git4idea.repo.GitRepositoryManager.getInstance(project)

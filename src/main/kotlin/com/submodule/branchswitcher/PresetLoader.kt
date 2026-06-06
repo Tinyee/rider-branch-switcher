@@ -68,13 +68,15 @@ object PresetLoader {
         val parent = file.parent ?: throw IllegalStateException("preset file has no parent: $file")
         Files.createDirectories(parent)
         val tmp = Files.createTempFile(parent, file.fileName.toString() + ".", ".tmp")
-        Files.writeString(tmp, payload)
         try {
-            Files.move(tmp, file,
-                java.nio.file.StandardCopyOption.ATOMIC_MOVE,
-                java.nio.file.StandardCopyOption.REPLACE_EXISTING)
-        } catch (_: java.nio.file.AtomicMoveNotSupportedException) {
-            Files.move(tmp, file, java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+            Files.writeString(tmp, payload)
+            try {
+                Files.move(tmp, file,
+                    java.nio.file.StandardCopyOption.ATOMIC_MOVE,
+                    java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+            } catch (_: java.nio.file.AtomicMoveNotSupportedException) {
+                Files.move(tmp, file, java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+            }
         } catch (e: Throwable) {
             try { Files.deleteIfExists(tmp) } catch (_: Throwable) {}
             throw e

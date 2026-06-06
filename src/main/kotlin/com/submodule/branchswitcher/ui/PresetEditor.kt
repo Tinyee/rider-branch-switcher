@@ -7,6 +7,7 @@ import com.intellij.util.ui.NamedColorUtil
 import com.submodule.branchswitcher.Strings
 import com.submodule.branchswitcher.git.GitClient
 import com.submodule.branchswitcher.model.Preset
+import com.submodule.branchswitcher.switch.shortLabel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import java.awt.BorderLayout
@@ -268,11 +269,6 @@ class PresetEditor(
         return row
     }
 
-    private fun shortLabel(path: String): String {
-        if (!path.contains("/")) return path
-        return path.substringAfterLast('/').removeSuffix("~")
-    }
-
     private fun applyOriginalToUI() {
         mainCombo.selectedItem = original.main
         val orphan = mutableListOf<String>()
@@ -388,7 +384,12 @@ class PresetEditor(
         combo.isEnabled = false
         loadingCount++
         scope.launch {
-            val branches = if (dir.exists()) gitClient.listAllBranches(dir) else emptyList()
+            val branches = try {
+                if (dir.exists()) gitClient.listAllBranches(dir) else emptyList()
+            } catch (e: Exception) {
+                log("loadBranches failed for ${dir.name}: ${e.message}")
+                emptyList()
+            }
             SwingUtilities.invokeLater {
                 val list = if (current.isNotEmpty() && !branches.contains(current))
                     listOf(current) + branches else branches
@@ -403,8 +404,6 @@ class PresetEditor(
     }
 
     companion object {
-        private const val KEY_ALL_BRANCHES = "submodule.branchswitcher.allBranches"
-
         private fun makeBorder(highlighted: Boolean): Border {
             val divider = BorderFactory.createMatteBorder(0, 0, 1, 0, JBColor.border())
             return if (highlighted) {
