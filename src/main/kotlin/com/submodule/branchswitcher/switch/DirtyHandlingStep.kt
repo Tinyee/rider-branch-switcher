@@ -16,7 +16,7 @@ class DirtyHandlingStep : SwitchStep {
         for ((idx, target) in targets.withIndex()) {
             context.indicator?.apply {
                 fraction = idx.toDouble() / total
-                text2 = if (target.path == ".") "<main>" else target.path
+                text2 = if (target.path == ".") context.projectRoot.fileName.toString() else target.path
                 checkCanceled()
             }
             val dir = resolveDir(context, target.path)
