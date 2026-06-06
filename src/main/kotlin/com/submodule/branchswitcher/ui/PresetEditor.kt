@@ -87,7 +87,7 @@ class PresetEditor(
         border = JBUI.Borders.empty(1, 0, 0, 0)
     }
     private val switchBtn = JButton("切换", AllIcons.Actions.Execute).noFocusRing().apply {
-        preferredSize = Dimension(JBUI.scale(56), preferredSize.height)
+        preferredSize = Dimension(JBUI.scale(50), 26)
     }
     private var isCurrent = false
 
@@ -138,12 +138,12 @@ class PresetEditor(
             })
         }
         val right = JPanel(FlowLayout(FlowLayout.RIGHT, 2, 0)).apply { isOpaque = false }
-        // Small icon-only header buttons
+        // Small icon-only header buttons, uniform height
         fun smallBtn(icon: javax.swing.Icon, tip: String, action: () -> Unit): JButton =
             JButton(icon).noFocusRing().apply {
                 toolTipText = tip
                 addActionListener { action() }
-                preferredSize = Dimension(24, 24)
+                preferredSize = Dimension(26, 26)
             }
         right.add(smallBtn(AllIcons.Actions.MoveUp, "上移此预设") { onMoveUp() })
         right.add(smallBtn(AllIcons.Actions.MoveDown, "下移此预设") { onMoveDown() })
