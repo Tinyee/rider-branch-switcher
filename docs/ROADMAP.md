@@ -162,23 +162,16 @@ com.submodule.branchswitcher/
 
 ### 待重构路径（剩余）
 
-1. **`GitClient` interface** — `GitOps` 实现它，`SwitchExecutor` / `Preflight` 持有 `GitClient`；一个改动让 P1 单测可做
-2. **包重组** — `ui/` `git/` `model/` `service/` `action/` 子包，先腾空间
-3. **抽 `BranchSwitcherService`（Project Service）** — `PresetFile` + `currentBranches` + CRUD + load/save 从 Panel 移过来，Panel 退化为 view
+**必要重构（已实施）**：Wave 1—3 核心项全部完成。
 
-**第二波 — 让 v0.3 候选 P0 变简单**：
+**第四波 — 投入产出比变低，等待有需求再做**：
 
-4. **`SwitchStep` 抽象** — 拆 `SwitchExecutor` 主循环；回滚 / cancel 检查 / 进度上报都在 step 接口里统一
-5. **`Preset` 加 `id: String`** — UUID 默认；重命名/历史/Action 绑定靠它
+9. git4idea API 迁移 — 替代 CLI fork，原生 cancel + 更快
+10. coroutines 替代 Thread/Task 混用 — 统一异步模型
+11. i18n — 全英或 `Bundle.message()`
 
-**第三波 — 扩展面**：
+**未列入计划的低优先级**：
 
-6. **PersistentStateComponent** — 选项持久化 + 后续 settings page
-7. **MessageBus topic** — `PresetChanged` / `BranchSwitched` / `CurrentStateDetected`
-8. **plugin.xml 加 Action 框架** — `tools/branch-switcher/switch-X` 动态生成
-
-**第四波 — 投入产出比变低**：
-
-9. git4idea API 迁移
-10. coroutines 替代 Thread/Task 混用
-11. i18n
+12. `PresetEditor` 拆分（463 行）
+13. `EventBus` / Listener 模式
+14. `noFocusRing()` 工厂化 / 全局 LAF
