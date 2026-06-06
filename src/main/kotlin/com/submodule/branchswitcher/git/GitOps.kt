@@ -77,6 +77,12 @@ class GitOps(
         }
     }
 
+    override fun stashPop(workDir: File): GitResult =
+        run(workDir, "stash", "pop")
+
+    override fun checkoutNewBranch(workDir: File, branch: String): GitResult =
+        run(workDir, "checkout", "-b", branch)
+
     override fun revParseHead(workDir: File): String? {
         val r = run(workDir, "rev-parse", "HEAD")
         return if (r.ok) r.stdout.trim().ifEmpty { null } else null

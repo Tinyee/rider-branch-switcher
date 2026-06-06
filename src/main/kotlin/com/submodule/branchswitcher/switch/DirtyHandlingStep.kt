@@ -36,6 +36,7 @@ class DirtyHandlingStep : SwitchStep {
                                 failures[target.path] = "stash failed"
                                 continue
                             }
+                            context.stashedPaths[target.path] = "before -> ${target.branch}"
                         }
                     }
                     DirtyAction.Force -> context.log("[force] proceeding with dirty tree — ${target.path}")

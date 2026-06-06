@@ -1,5 +1,6 @@
 package com.submodule.branchswitcher.service
 
+import com.intellij.openapi.Disposable
 import com.intellij.openapi.components.PersistentStateComponent
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.State
@@ -10,6 +11,10 @@ import com.submodule.branchswitcher.PresetLoader
 import com.submodule.branchswitcher.git.GitClient
 import com.submodule.branchswitcher.git.GitOps
 import com.submodule.branchswitcher.model.DirtyAction
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import com.submodule.branchswitcher.model.Preset
 import com.submodule.branchswitcher.model.PresetFile
 import java.nio.file.Path
@@ -20,7 +25,13 @@ import java.nio.file.Path
     storages = [Storage("branch-switcher.xml")]
 )
 class BranchSwitcherService(private val project: Project)
-    : PersistentStateComponent<BranchSwitcherService.OptionsState> {
+    : PersistentStateComponent<BranchSwitcherService.OptionsState>, Disposable {
+
+    val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
+    override fun dispose() {
+        scope.cancel()
+    }
 
     data class OptionsState(
         var dirtyAction: String = "Stash",

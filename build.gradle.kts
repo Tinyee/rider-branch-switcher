@@ -4,7 +4,7 @@ plugins {
 }
 
 group = "com.submodule"
-version = "0.3.0"
+version = "0.4.0"
 
 repositories {
     maven("https://maven.aliyun.com/repository/public")
@@ -24,6 +24,9 @@ dependencies {
         }
         bundledPlugin("Git4Idea")
     }
+    // Add test dependencies here when test framework is configured:
+    // testImplementation("org.jetbrains.kotlin:kotlin-test")
+    // testImplementation("junit:junit:4.13.2")
 }
 
 kotlin {

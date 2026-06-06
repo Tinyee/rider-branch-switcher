@@ -18,6 +18,7 @@ import com.submodule.branchswitcher.PresetLoader
 import com.submodule.branchswitcher.service.BranchSwitcherService
 import com.submodule.branchswitcher.switch.SwitchExecutor
 import com.submodule.branchswitcher.switch.SwitchPreflight
+import kotlinx.coroutines.launch
 import java.awt.BorderLayout
 import java.awt.Dimension
 import java.awt.FlowLayout
@@ -237,18 +238,18 @@ class BranchSwitcherPanel(
         val snapshot = paths.toList()
         val pinnedEditors = editors.toList()
         val gen = service.nextDetectGen()
-        Thread {
+        service.scope.launch {
             val branches = HashMap<String, String?>(snapshot.size)
             for (p in snapshot) {
                 val dir = if (p == ".") root.toFile() else root.resolve(p).toFile()
                 branches[p] = if (dir.exists()) service.gitClient.currentBranch(dir) else null
             }
-            SwingUtilities.invokeLater {
+            com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater {
                 if (gen != service.getDetectGen()) return@invokeLater
                 pinnedEditors.forEach { it.applyCurrentState(branches) }
                 logDetected(pinnedEditors, branches)
             }
-        }.start()
+        }
     }
 
     private fun logDetected(eds: List<PresetEditor>, branches: Map<String, String?>) {
@@ -266,6 +267,7 @@ class BranchSwitcherPanel(
             onSwitch = ::runSwitch,
             onSave = { saveAll() },
             onDelete = { deleteEditor(editor) },
+            onDerive = { branchName -> derivePresetBranch(root, preset, branchName) },
             gitClient = service.gitClient,
         )
         editors.add(editor)
@@ -454,6 +456,36 @@ class BranchSwitcherPanel(
             }
         }
         com.intellij.openapi.progress.ProgressManager.getInstance().run(task)
+    }
+
+    private fun derivePresetBranch(root: Path, preset: Preset, branchName: String) {
+        val task = object : Task.Backgroundable(project, "Creating branch $branchName", true) {
+            override fun run(indicator: ProgressIndicator) {
+                indicator.isIndeterminate = true
+                indicator.text = "Creating branch on all repos..."
+                val targets = preset.targets()
+                for ((idx, target) in targets.withIndex()) {
+                    indicator.fraction = idx.toDouble() / targets.size
+                    indicator.text2 = if (target.path == ".") "<main>" else target.path
+                    val dir = if (target.path == ".") root.toFile() else root.resolve(target.path).toFile()
+                    if (!dir.exists() || !java.io.File(dir, ".git").exists()) {
+                        append("[derive] skip ${target.path} — not a git repo")
+                        continue
+                    }
+                    val r = service.gitClient.checkoutNewBranch(dir, branchName)
+                    if (r.ok) {
+                        append("[derive] ${target.path}: created branch $branchName")
+                    } else {
+                        append("[derive] ${target.path}: FAILED — ${r.stderr.lines().firstOrNull() ?: ""}")
+                    }
+                }
+            }
+            override fun onFinished() {
+                detectCurrentState()
+                Notifier.info(project, "派生完成", "分支 $branchName 已创建，共 ${preset.targets().size} 个仓库")
+            }
+        }
+        ProgressManager.getInstance().run(task)
     }
 
     private fun rollbackSwitch(executor: SwitchExecutor) {
