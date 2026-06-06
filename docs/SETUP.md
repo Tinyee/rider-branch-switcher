@@ -37,34 +37,36 @@ Rider 里 `Settings → Plugins → ⚙ → Install plugin from disk` 选这个 
 
 # 适配不同 Rider 版本
 
-三处要对齐：**SDK 来源 / sinceBuild / Kotlin 编译器版本**。
+所有版本相关配置集中在 **`gradle.properties`**，不动 `build.gradle.kts`。
 
-## 1. `build.gradle.kts` 里 SDK 来源
+## 只需要改 `gradle.properties`
 
-```kotlin
-dependencies {
-    intellijPlatform {
-        local("/Applications/Rider.app")    // ← 改成你的 Rider 路径
-        bundledPlugin("Git4Idea")
-    }
-}
+```properties
+# Rider SDK 版本（在线下载时使用，或设 rider.path 指向本机安装）
+rider.version=2026.1.1
+# 插件兼容的 IDE build 号
+plugin.sinceBuild=261
+plugin.untilBuild=261.*
+# 指向本机 Rider 安装（设了就跳过 1.5GB 下载）
+rider.path=
 ```
 
-各 OS 的 Rider 安装路径：
+各 OS 的 `rider.path` 示例：
 
 | OS | 路径示例 |
 |---|---|
-| macOS（官网/App Store 装） | `/Applications/Rider.app` |
-| macOS（Toolbox 装） | `~/Applications/JetBrains Toolbox/Rider.app` 或 `~/Library/Application Support/JetBrains/Toolbox/apps/Rider/ch-0/<version>/Rider.app` |
-| Windows | `C:\Program Files\JetBrains\JetBrains Rider <ver>` |
+| macOS | `/Applications/Rider.app` |
+| Windows | `C:/Program Files/JetBrains/JetBrains Rider 2026.1` |
 | Linux | `~/.local/share/JetBrains/Toolbox/apps/rider/...` |
 
-不想依赖本机 Rider，可以在线下载：
+切换 Rider 版本只需改 `rider.version` 和 `plugin.sinceBuild`，对应关系：
 
-```kotlin
-intellijPlatform {
-    rider("2026.1.1")           // ← 自动从 cache-redirector 下载，1.5 GB 流量
-    bundledPlugin("Git4Idea")
+| Rider | build 前缀 |
+|---|---|
+| 2024.3 | 243 |
+| 2025.1 | 251 |
+| 2025.2 | 252 |
+| 2026.1 | 261 |
 }
 ```
 
@@ -96,33 +98,22 @@ Rider 主版本与 build 前缀对照：
 
 ## 3. Kotlin 编译器版本 ≤ Rider 内置 Kotlin
 
+在 `build.gradle.kts` 的 `plugins` 块中（Gradle `plugins` 块不支持属性懒加载，需直接改版本号）：
+
 ```kotlin
 plugins {
-    id("org.jetbrains.kotlin.jvm") version "2.3.0"     // ← 必须 ≤ Rider 内置
+    id("org.jetbrains.kotlin.jvm") version "2.3.0"     // ← 改这里
 }
 ```
 
-| Rider | 内置 Kotlin | 编译器最高可用 |
+| Rider | 内置 Kotlin | 编译器版本 |
 |---|---|---|
-| 2024.1 / 2024.2 | 1.9.x | `kotlin.jvm 1.9.x` |
-| 2024.3 / 2025.1 | 2.0.x / 2.1.x | `kotlin.jvm 2.0.x / 2.1.x` |
-| 2025.2 | 2.2.x | `kotlin.jvm 2.2.x` |
-| 2026.1 | 2.3.x | `kotlin.jvm 2.3.x` ← 当前使用 |
+| 2024.1 / 2024.2 | 1.9.x | `1.9.x` |
+| 2024.3 / 2025.1 | 2.0.x / 2.1.x | `2.0.x / 2.1.x` |
+| 2025.2 | 2.2.x | `2.2.x` |
+| 2026.1 | 2.3.x | `2.3.x` ← 当前 |
 
-> 编译期 Kotlin 高于 Rider 运行时会报：`incompatible version of Kotlin: binary version 2.3.0, expected 1.9.0`。**降版本兼容低 Rider 时，Kotlin 编译器版本必须同步降**。
-
-## 简化：抽参到 `gradle.properties`（可选改造，未实施）
-
-把上面三个值抽成 `gradle.properties` 条目：
-
-```properties
-rider.path=/Applications/Rider.app
-rider.sinceBuild=261
-rider.untilBuild=261.*
-kotlin.version=2.3.0
-```
-
-`build.gradle.kts` 通过 `providers.gradleProperty("rider.path").get()` 读取。换电脑只需要改 `gradle.properties` 一行，不动 `build.gradle.kts`。如果未来在多机/多 Rider 版本间频繁切换，值得做。
+> 编译期 Kotlin 高于 Rider 运行时会报：`incompatible version of Kotlin`。
 
 ---
 
