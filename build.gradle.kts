@@ -24,9 +24,8 @@ dependencies {
         }
         bundledPlugin("Git4Idea")
     }
-    // Add test dependencies here when test framework is configured:
-    // testImplementation("org.jetbrains.kotlin:kotlin-test")
-    // testImplementation("junit:junit:4.13.2")
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("org.jetbrains.kotlin:kotlin-test")
 }
 
 kotlin {
