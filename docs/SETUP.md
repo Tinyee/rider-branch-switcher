@@ -146,3 +146,62 @@ plugins {
 | `sourceCompatibility='17' but IntelliJ Platform '2026.1.1' requires sourceCompatibility='21'` | JDK 警告，**不是错误** | 升 `kotlin.jvmToolchain(21)` + 本机装 JDK 21；不升也能跑 |
 | `Plugin 'XXX' is incompatible with this installation` | sinceBuild/untilBuild 没覆盖目标 Rider | 调整 `untilBuild` 或重新编译 |
 | `Could not resolve all artifacts ... Connection refused` 等 maven 拉取失败 | 国内官方源被墙 | 检查 `settings.gradle.kts` / `build.gradle.kts` 顶部的 aliyun 镜像是否还在 |
+
+---
+
+# 发布到 JetBrains Marketplace
+
+## 编译产物
+
+```bash
+./gradlew buildPlugin
+# 产出: build/distributions/rider-branch-switcher-0.4.0.zip
+```
+
+## 首次上传
+
+1. 注册账号：https://plugins.jetbrains.com/
+2. 点右上角 **Upload plugin** → 拖上面的 `.zip`
+3. 填写信息：
+   - License：推荐 `MIT` 或 `Apache-2.0`
+   - Category：`VCS Integration`
+   - Tags：`git`, `submodule`, `branch`
+4. 提交审核（通常 2-3 个工作日）
+
+## 后续更新（命令行一键发布）
+
+1. 到 https://plugins.jetbrains.com/authorize 生成 Personal Access Token
+2. 把 token 写入 `gradle.properties`：
+   ```properties
+   publishToken=perm:...
+   ```
+   或者设环境变量 `export PUBLISH_TOKEN=perm:...`
+3. 更新 `build.gradle.kts` 顶部的版本号：
+   ```kotlin
+   version = "0.4.1"
+   ```
+4. 发布：
+   ```bash
+   ./gradlew publishPlugin
+   ```
+
+## 兼容多 Rider 版本
+
+改 `gradle.properties` 三行，然后 `./gradlew buildPlugin` 重新编译：
+
+```properties
+rider.version=2025.2       # 编译用的 SDK 版本
+plugin.sinceBuild=243      # 最低兼容 IDE build
+plugin.untilBuild=999.*    # 最高兼容（999.* 表示不封顶）
+```
+
+| Rider 版本 | build 前缀 |
+|---|---|
+| 2024.1 | 241 |
+| 2024.2 | 242 |
+| 2024.3 | 243 |
+| 2025.1 | 251 |
+| 2025.2 | 252 |
+| 2026.1 | 261 |
+
+> ⚠️ `sinceBuild` 降到低于 261 时，Kotlin 编译器版本（`build.gradle.kts` 的 `plugins` 块）也要同步降，否则运行时报 incompatible Kotlin version。
