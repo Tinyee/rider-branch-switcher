@@ -515,8 +515,8 @@ class BranchSwitcherPanel(
             }
             override fun onFinished() {
                 setSwitchInProgress(false)
+                service.addHistory(preset.name)
                 if (ok) {
-                    service.addHistory(preset.name)
                     Notifier.info(project, "切换完成", "已切到「${preset.name}」")
                 } else {
                     val executor = rollbackExecutor
