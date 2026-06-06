@@ -47,18 +47,35 @@ class SwitchPresetAction : AnAction() {
         val root = project.basePath?.let { Paths.get(it) } ?: return
         val task = object : Task.Backgroundable(project, "Switching to ${preset.name}", true) {
             var ok = false
+            private val logLines = mutableListOf<String>()
             override fun run(indicator: ProgressIndicator) {
                 indicator.isIndeterminate = true
+                // Run preflight and check for blockers
                 val preflight = SwitchPreflight(service.gitClient)
-                preflight.probe(root, preset, indicator)
-                val executor = SwitchExecutor(root, { }, service.gitClient, indicator)
+                val probeResult = preflight.probe(root, preset, indicator)
+                val missingDirs = probeResult.filter { !it.exists }
+                val missingBranches = probeResult.filter { it.branchMissing }
+                if (missingDirs.isNotEmpty()) {
+                    val names = missingDirs.joinToString(", ") { it.label }
+                    logLines += "[warn] 目录缺失: $names"
+                }
+                if (missingBranches.isNotEmpty()) {
+                    val names = missingBranches.joinToString(", ") { it.label }
+                    logLines += "[warn] 分支不存在 (本地/远端): $names"
+                }
+                // Execute switch with log capture
+                val executor = SwitchExecutor(root, { logLines += it }, service.gitClient, indicator)
                 ok = executor.execute(preset, SwitchOptions(DirtyAction.Stash, fetchFirst = service.fetchFirst, pull = service.pullAfterSwitch))
             }
             override fun onFinished() {
                 if (ok) {
                     Notifier.info(project, "切换完成", "已切到「${preset.name}」")
                 } else {
-                    Notifier.error(project, "切换有失败项", "「${preset.name}」部分仓未成功")
+                    val detail = logLines.filter { it.contains("[fail]") || it.contains("[fatal]") || it.contains("[warn]") }
+                        .take(3).joinToString("\n")
+                    Notifier.error(project, "切换有失败项",
+                        if (detail.isNotEmpty()) "「${preset.name}」部分仓未成功:\n$detail"
+                        else "「${preset.name}」部分仓未成功")
                 }
                 project.messageBus.syncPublisher(BranchSwitchListener.TOPIC).onBranchSwitched()
                 // Refresh VCS

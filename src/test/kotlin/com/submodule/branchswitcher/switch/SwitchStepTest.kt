@@ -186,14 +186,14 @@ class SwitchStepTest {
     }
 
     @Test
-    fun `submodule sync step non-fatal on error`() {
+    fun `submodule sync step returns Partial on error`() {
         val failGit = object : GitClient by fakeGit {
             override fun submoduleSync(gitRoot: File): GitResult = GitResult("sync", 1, "", "error")
         }
         val c = context().copy(git = failGit)
         val step = SubmoduleSyncStep()
-        // SubmoduleSyncStep always returns Success, warnings are logged
-        assertEquals(StepResult.Success, step.execute(c))
+        // SubmoduleSyncStep now returns Partial on failure, consistent with FetchStep/PullStep
+        assertTrue(step.execute(c) is StepResult.Partial)
     }
 
     // ---- StepResult pipeline behavior ----

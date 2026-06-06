@@ -9,7 +9,7 @@ import java.io.File
 import java.nio.file.Path
 
 class SwitchPreflight(
-    private val git: GitClient = com.submodule.branchswitcher.git.GitOps(),
+    private val git: GitClient,
 ) {
     fun probe(
         projectRoot: Path,
@@ -52,11 +52,6 @@ class SwitchPreflight(
             hasLocal = git.localBranchExists(dir, target.branch),
             hasRemote = git.remoteBranchExists(dir, target.branch),
         )
-    }
-
-    private fun isGitRepo(dir: File): Boolean {
-        val dot = File(dir, ".git")
-        return dot.exists()
     }
 
     private fun shortLabel(path: String): String {

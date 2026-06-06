@@ -15,16 +15,16 @@ data class CheckpointEntry(
 class SwitchExecutor(
     private val projectRoot: Path,
     private val log: (String) -> Unit,
-    private val git: GitClient = com.submodule.branchswitcher.git.GitOps(),
+    private val git: GitClient,
     private val indicator: com.intellij.openapi.progress.ProgressIndicator? = null,
-) {
     private val steps: List<SwitchStep> = listOf(
         DirtyHandlingStep(),
         FetchStep(),
         CheckoutStep(),
         PullStep(),
         SubmoduleSyncStep(),
-    )
+    ),
+) {
 
     private var lastCheckpoint: Map<String, CheckpointEntry>? = null
 
@@ -87,7 +87,7 @@ class SwitchExecutor(
         log("=== rolling back to pre-switch state ===")
         var allOk = true
         for ((path, entry) in checkpoint) {
-            val dir = resolveDir(projectRoot, path)
+            val dir = resolveGitDir(projectRoot, path)
             val label = if (path == ".") projectRoot.fileName.toString() else path
             if (!dir.exists() || !isGitRepo(dir)) {
                 log("[rollback] skip $label — dir missing or not a repo")
@@ -130,7 +130,7 @@ class SwitchExecutor(
     private fun recordCheckpoint(preset: Preset): Map<String, CheckpointEntry> {
         val map = LinkedHashMap<String, CheckpointEntry>()
         for (target in preset.targets()) {
-            val dir = resolveDir(projectRoot, target.path)
+            val dir = resolveGitDir(projectRoot, target.path)
             if (!dir.exists() || !isGitRepo(dir)) continue
             val sha = git.revParseHead(dir) ?: continue
             val branch = git.currentBranch(dir)
@@ -138,9 +138,4 @@ class SwitchExecutor(
         }
         return map
     }
-
-    private fun resolveDir(root: Path, path: String): File =
-        if (path == ".") root.toFile() else root.resolve(path).toFile()
-
-    private fun isGitRepo(dir: File): Boolean = File(dir, ".git").exists()
 }

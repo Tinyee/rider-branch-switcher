@@ -4,8 +4,11 @@ import com.intellij.icons.AllIcons
 import com.intellij.ui.JBColor
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.NamedColorUtil
+import com.submodule.branchswitcher.Strings
 import com.submodule.branchswitcher.git.GitClient
 import com.submodule.branchswitcher.model.Preset
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.launch
 import java.awt.BorderLayout
 import java.awt.Cursor
 import java.awt.Dimension
@@ -35,7 +38,8 @@ class PresetEditor(
     private val onSave: (Preset) -> Unit,
     private val onDelete: () -> Unit,
     private val onDerive: (branchName: String) -> Unit = {},
-    private val gitClient: com.submodule.branchswitcher.git.GitClient = com.submodule.branchswitcher.git.GitOps(),
+    private val gitClient: GitClient,
+    private val scope: CoroutineScope,
 ) : JPanel() {
 
     private class SubRow(
@@ -54,14 +58,14 @@ class PresetEditor(
 
     private val mainCombo = makeBranchCombo(::updateDirty)
     private val subRows = LinkedHashMap<String, SubRow>()
-    private val saveBtn = JButton("保存", AllIcons.Actions.MenuSaveall)
+    private val saveBtn = JButton(Strings.save, AllIcons.Actions.MenuSaveall)
         .apply { isEnabled = false }.noFocusRing()
-    private val revertBtn = JButton("丢弃", AllIcons.Actions.Rollback)
+    private val revertBtn = JButton(Strings.discard, AllIcons.Actions.Rollback)
         .apply { isEnabled = false }.noFocusRing()
-    private val addSubBtn = JButton("添加子模块", AllIcons.General.Add).noFocusRing()
+    private val addSubBtn = JButton(Strings.addSubmodule, AllIcons.General.Add).noFocusRing()
     private val arrow = JLabel(AllIcons.General.ArrowRight)
     private val nameLabel = JLabel(initial.name).apply {
-        toolTipText = "双击重命名"
+        toolTipText = Strings.renameTip
         cursor = Cursor.getPredefinedCursor(Cursor.TEXT_CURSOR)
         addMouseListener(object : MouseAdapter() {
             override fun mouseClicked(e: MouseEvent) {
@@ -80,7 +84,7 @@ class PresetEditor(
         isVisible = false
         border = BorderFactory.createEmptyBorder(1, 0, 0, 0)
     }
-    private val switchBtn = JButton("切到此预设", AllIcons.Actions.Execute).noFocusRing()
+    private val switchBtn = JButton(Strings.switchToPreset, AllIcons.Actions.Execute).noFocusRing()
     private var isCurrent = false
 
     private val body = object : JPanel() {
@@ -131,12 +135,12 @@ class PresetEditor(
         }
         val right = JPanel(FlowLayout(FlowLayout.RIGHT, 4, 0)).apply { isOpaque = false }
         switchBtn.addActionListener { onSwitch(buildCurrent()) }
-        right.add(JButton("派生分支", AllIcons.Vcs.Branch).noFocusRing().also {
-            it.toolTipText = "基于此预设创建新分支，主仓+所有子模块同时 checkout -b"
+        right.add(JButton(Strings.deriveBranch, AllIcons.Vcs.Branch).noFocusRing().also {
+            it.toolTipText = Strings.deriveTip
             it.addActionListener { deriveBranch() }
         })
         right.add(switchBtn)
-        right.add(JButton("删除", AllIcons.Actions.Cancel).noFocusRing().also {
+        right.add(JButton(Strings.deletePreset, AllIcons.Actions.Cancel).noFocusRing().also {
             it.foreground = NamedColorUtil.getErrorForeground()
             it.addActionListener { onDelete() }
         })
@@ -191,7 +195,7 @@ class PresetEditor(
         }.apply {
             border = BorderFactory.createEmptyBorder(2, 12, 2, 4)
             alignmentX = LEFT_ALIGNMENT
-            val l = JLabel("主仓").apply {
+            val l = JLabel(Strings.mainRepo).apply {
                 preferredSize = Dimension(140, preferredSize.height)
             }
             add(l, BorderLayout.WEST)
@@ -323,7 +327,7 @@ class PresetEditor(
             row.combo.selectedItem = "loading..."
             row.combo.isEnabled = false
             loadingCount++
-            Thread {
+            scope.launch {
                 val seedBranch = gitClient.currentBranch(dir) ?: ""
                 SwingUtilities.invokeLater {
                     row.combo.selectedItem = seedBranch
@@ -335,7 +339,7 @@ class PresetEditor(
                     }
                     updateDirty()
                 }
-            }.start()
+            }
         }
         body.revalidate()
         body.repaint()
@@ -368,7 +372,7 @@ class PresetEditor(
         combo.selectedItem = "loading..."
         combo.isEnabled = false
         loadingCount++
-        Thread {
+        scope.launch {
             val branches = if (dir.exists()) gitClient.listAllBranches(dir) else emptyList()
             SwingUtilities.invokeLater {
                 val list = if (current.isNotEmpty() && !branches.contains(current))
@@ -380,7 +384,7 @@ class PresetEditor(
                 loadingCount--
                 updateDirty()
             }
-        }.start()
+        }
     }
 
     companion object {
@@ -450,8 +454,8 @@ class PresetEditor(
             java.awt.KeyboardFocusManager.getCurrentKeyboardFocusManager().clearGlobalFocusOwner()
         }
         switchBtn.isEnabled = !highlighted
-        switchBtn.text = if (highlighted) "已在此预设" else "切到此预设"
-        switchBtn.toolTipText = if (highlighted) "当前主仓与子模块分支已与该预设一致" else null
+        switchBtn.text = if (highlighted) Strings.alreadyOnPreset else Strings.switchToPreset
+        switchBtn.toolTipText = if (highlighted) Strings.alreadyOnPresetTip else null
         border = makeBorder(highlighted)
         if (changed) {
             repaint()
@@ -490,18 +494,18 @@ class PresetEditor(
 
     private fun showContextMenu(e: MouseEvent, path: String) {
         val popup = javax.swing.JPopupMenu()
-        popup.add("仅切此一仓 ($path)").addActionListener {
+        popup.add("${Strings.switchOnlyThis} ($path)").addActionListener {
             val dir = gitRoot.resolve(path).toFile()
             if (dir.exists() && java.io.File(dir, ".git").exists()) {
-                Thread {
+                scope.launch {
                     val cur = gitClient.currentBranch(dir)
-                    val target = original.submodules[path] ?: (cur ?: return@Thread)
+                    val target = original.submodules[path] ?: (cur ?: return@launch)
                     val result = gitClient.checkoutExisting(dir, target)
                     SwingUtilities.invokeLater { log(if (result.ok) "[switch] $path -> $target ok" else "[switch] $path fail") }
-                }.start()
+                }
             }
         }
-        popup.add("在资源管理器打开").addActionListener {
+        popup.add(Strings.openInExplorer).addActionListener {
             val dir = gitRoot.resolve(path).toFile()
             if (dir.exists()) java.awt.Desktop.getDesktop().open(dir)
         }
@@ -515,8 +519,8 @@ class PresetEditor(
 
     private fun rename() {
         val result = com.intellij.openapi.ui.Messages.showInputDialog(
-            "重命名预设:",
-            "重命名",
+            Strings.rename + ":",
+            Strings.rename,
             null, original.name, null,
         )
         if (result.isNullOrBlank()) return
@@ -531,7 +535,7 @@ class PresetEditor(
         val preset = buildCurrent()
         val result = com.intellij.openapi.ui.Messages.showInputDialog(
             "基于「${preset.name}」创建新分支，主仓+所有子模块将同时 checkout -b\n\n输入新分支名:",
-            "派生功能分支",
+            Strings.deriveDialog,
             null, "${preset.name}/feature/",
             null,
         )

@@ -19,7 +19,7 @@ class DirtyHandlingStep : SwitchStep {
                 text2 = if (target.path == ".") context.projectRoot.fileName.toString() else target.path
                 checkCanceled()
             }
-            val dir = resolveDir(context, target.path)
+            val dir = resolveGitDir(context.projectRoot, target.path)
             if (!dir.exists()) continue
             if (!isGitRepo(dir)) continue
 
@@ -51,10 +51,4 @@ class DirtyHandlingStep : SwitchStep {
         }
         return if (failures.isEmpty()) StepResult.Success else StepResult.Partial(failures)
     }
-
-    private fun resolveDir(context: SwitchContext, path: String): File =
-        if (path == ".") context.projectRoot.toFile()
-        else context.projectRoot.resolve(path).toFile()
-
-    private fun isGitRepo(dir: File): Boolean = File(dir, ".git").exists()
 }
