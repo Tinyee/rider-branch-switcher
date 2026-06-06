@@ -24,6 +24,8 @@ data class SwitchContext(
     val indicator: ProgressIndicator? = null,
     /** Mutable flag checked between/within steps for cancellation. */
     val cancelled: () -> Boolean = { false },
+    /** Tracks stashed repos: path -> stash message. CheckoutStep auto-pops on return. */
+    val stashedPaths: MutableMap<String, String> = mutableMapOf(),
 )
 
 interface SwitchStep {

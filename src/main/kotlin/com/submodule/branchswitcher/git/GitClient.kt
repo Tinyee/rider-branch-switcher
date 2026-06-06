@@ -27,4 +27,6 @@ interface GitClient {
     fun listSubmodulePaths(gitRoot: File): List<String>
     fun listAllBranches(workDir: File): List<String>
     fun revParseHead(workDir: File): String?
+    fun stashPop(workDir: File): GitResult
+    fun checkoutNewBranch(workDir: File, branch: String): GitResult
 }

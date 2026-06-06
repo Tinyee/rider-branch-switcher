@@ -10,6 +10,16 @@
     <depends>com.intellij.modules.platform</depends>
     <depends>Git4Idea</depends>
 
+    <actions>
+        <action id="SubmoduleBranchSwitcher.SwitchPreset"
+                class="com.submodule.branchswitcher.action.SwitchPresetAction"
+                text="切到 Preset..."
+                description="快速切换到已配置的 Preset">
+            <add-to-group group-id="ToolsMenu" anchor="last"/>
+            <keyboard-shortcut keymap="$default" first-keystroke="ctrl alt B"/>
+        </action>
+    </actions>
+
     <extensions defaultExtensionNs="com.intellij">
         <projectService serviceImplementation="com.submodule.branchswitcher.service.BranchSwitcherService"/>
         <toolWindow id="SubmoduleBranches"

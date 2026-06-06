@@ -38,6 +38,7 @@ class PresetEditor(
     private val onSwitch: (Preset) -> Unit,
     private val onSave: (Preset) -> Unit,
     private val onDelete: () -> Unit,
+    private val onDerive: (branchName: String) -> Unit = {},
     private val gitClient: com.submodule.branchswitcher.git.GitClient = com.submodule.branchswitcher.git.GitOps(),
 ) : JPanel() {
 
@@ -120,6 +121,10 @@ class PresetEditor(
         }
         val right = JPanel(FlowLayout(FlowLayout.RIGHT, 4, 0)).apply { isOpaque = false }
         switchBtn.addActionListener { onSwitch(buildCurrent()) }
+        right.add(JButton("派生分支", AllIcons.Vcs.Branch).noFocusRing().also {
+            it.toolTipText = "基于此预设创建新分支，主仓+所有子模块同时 checkout -b"
+            it.addActionListener { deriveBranch() }
+        })
         right.add(switchBtn)
         right.add(JButton("删除", AllIcons.Actions.Cancel).noFocusRing().also {
             it.foreground = NamedColorUtil.getErrorForeground()
@@ -495,6 +500,18 @@ class PresetEditor(
     }
 
     fun currentPreset(): Preset = original
+
+    private fun deriveBranch() {
+        val preset = buildCurrent()
+        val result = com.intellij.openapi.ui.Messages.showInputDialog(
+            "基于「${preset.name}」创建新分支，主仓+所有子模块将同时 checkout -b\n\n输入新分支名:",
+            "派生功能分支",
+            null, "${preset.name}/feature/",
+            null,
+        )
+        if (result.isNullOrBlank()) return
+        onDerive(result.trim())
+    }
 
     override fun getMaximumSize(): Dimension =
         Dimension(Short.MAX_VALUE.toInt(), preferredSize.height)

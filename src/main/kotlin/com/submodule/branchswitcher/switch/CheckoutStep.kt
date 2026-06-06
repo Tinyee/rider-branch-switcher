@@ -13,9 +13,15 @@ class CheckoutStep : SwitchStep {
     override fun execute(context: SwitchContext): StepResult {
         val failures = LinkedHashMap<String, String>()
         var mainCheckoutOk = false
+        val targets = context.preset.targets()
+        val total = targets.size
 
-        for (target in context.preset.targets()) {
-            context.indicator?.checkCanceled()
+        for ((idx, target) in targets.withIndex()) {
+            context.indicator?.apply {
+                fraction = idx.toDouble() / total
+                text2 = if (target.path == ".") "<main>" else target.path
+                checkCanceled()
+            }
             val isMain = target.path == "."
             val dir = resolveDir(context, target.path)
             val label = if (isMain) "<main>" else target.path
@@ -74,6 +80,15 @@ class CheckoutStep : SwitchStep {
             }
             context.log("checkout ok")
             if (isMain) mainCheckoutOk = true
+            // Auto-pop stash if this path was stashed before switching
+            context.stashedPaths.remove(target.path)?.let { msg ->
+                val popResult = context.git.stashPop(dir)
+                if (popResult.ok) {
+                    context.log("stash pop ok ($msg)")
+                } else {
+                    context.log("[warn] stash pop failed: ${popResult.stderr.lines().firstOrNull() ?: ""}")
+                }
+            }
         }
         return if (failures.isEmpty()) StepResult.Success else StepResult.Partial(failures)
     }
