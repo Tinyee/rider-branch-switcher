@@ -33,7 +33,7 @@ object Notifier {
         NotificationGroupManager.getInstance()
             .getNotificationGroup(GROUP_ID)
             .createNotification(title, content, NotificationType.ERROR)
-            .addAction(com.intellij.notification.NotificationAction.createSimple("回滚到切换前") {
+            .addAction(com.intellij.notification.NotificationAction.createSimple(Strings.rollbackAction) {
                 onRollback()
             })
             .notify(project)

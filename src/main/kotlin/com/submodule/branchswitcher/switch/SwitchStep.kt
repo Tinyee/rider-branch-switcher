@@ -43,3 +43,9 @@ fun resolveGitDir(root: java.nio.file.Path, path: String): java.io.File =
 
 /** Check whether [dir] is a git repository. */
 fun isGitRepo(dir: java.io.File): Boolean = java.io.File(dir, ".git").exists()
+
+/** Returns the last path segment, stripping trailing `~`. Used for display labels. */
+fun shortLabel(path: String): String {
+    if (!path.contains("/")) return path
+    return path.substringAfterLast('/').removeSuffix("~")
+}

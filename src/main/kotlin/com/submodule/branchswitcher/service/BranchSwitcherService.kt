@@ -105,7 +105,13 @@ class BranchSwitcherService(private val project: Project)
     }
 
     fun savePresets(presets: List<Preset>) {
-        val file = savedFilePath ?: return
+        val file = savedFilePath ?: run {
+            val base = project.basePath?.let { java.nio.file.Paths.get(it) }
+                ?: throw IllegalStateException("project base path is null — cannot save presets")
+            val resolved = PresetLoader.ensureFile(base)
+            savedFilePath = resolved
+            resolved
+        }
         presetFile = presetFile.copy(presets = presets)
         PresetLoader.save(file, presetFile)
     }

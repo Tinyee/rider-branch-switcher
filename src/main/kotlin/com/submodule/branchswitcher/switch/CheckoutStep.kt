@@ -102,7 +102,8 @@ class CheckoutStep : SwitchStep {
                 if (popResult.ok) {
                     context.log("stash pop ok ($msg)")
                 } else {
-                    context.log("[warn] stash pop failed: ${popResult.stderr.lines().firstOrNull() ?: ""}")
+                    context.log("[fail] stash pop failed: ${popResult.stderr.lines().firstOrNull() ?: ""}")
+                    failures[target.path] = "stash pop failed"
                 }
             }
         }

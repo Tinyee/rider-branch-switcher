@@ -127,7 +127,7 @@ class BranchSwitcherPanel(
         }
 
         val optsRow1 = JPanel(FlowLayout(FlowLayout.LEFT, 8, 2)).apply {
-            add(JLabel("脏工作区:"))
+            add(JLabel(Strings.dirtyWorkingTree))
             add(dirtyCombo)
             add(JLabel(Strings.timeoutSeconds))
             add(timeoutCombo)
@@ -266,7 +266,8 @@ class BranchSwitcherPanel(
         while (cur != null) {
             val dotGit = cur.resolve(".git")
             if (java.nio.file.Files.exists(dotGit)) {
-                if (!java.nio.file.Files.isDirectory(dotGit)) {
+                if (!java.nio.file.Files.isDirectory(dotGit) && !worktreeInfoLogged) {
+                    worktreeInfoLogged = true
                     append("[info] detected git worktree — .git is a file, not a directory")
                 }
                 return cur
@@ -337,6 +338,7 @@ class BranchSwitcherPanel(
     }
 
     private var lastMatchedPreset: Preset? = null
+    private var worktreeInfoLogged = false
 
     private fun undoLastSwitch() {
         val allPresets = editors.map { it.currentPreset() }
@@ -385,8 +387,8 @@ class BranchSwitcherPanel(
         val name = editor.currentPreset().name
         val confirm = Messages.showYesNoDialog(
             project,
-            "删除预设「$name」?\n该操作会立即写入 JSON 文件。",
-            "删除预设",
+            Strings.deletePresetMsg.format(name),
+            Strings.deleteConfirm,
             Messages.getWarningIcon(),
         )
         if (confirm != Messages.YES) return
@@ -420,8 +422,8 @@ class BranchSwitcherPanel(
 
     private fun addPreset() {
         val name = Messages.showInputDialog(project,
-            "预设名（也作为主仓默认分支名,不可与已有预设重名）:",
-            "新增预设", null, "", newNameValidator())?.trim()
+            Strings.presetNameRule,
+            Strings.addPresetDialog, null, "", newNameValidator())?.trim()
         if (name.isNullOrEmpty()) return
         val template = service.presets.firstOrNull()
         val newPreset = Preset(
@@ -468,13 +470,13 @@ class BranchSwitcherPanel(
                 val mb = mainBranch
                 if (mb.isNullOrEmpty()) {
                     Messages.showWarningDialog(project,
-                        "主仓当前是 detached HEAD,先 checkout 一个分支再用此功能",
-                        "Branch Switcher")
+                        Strings.detachedHeadWarn,
+                        Strings.pluginTitle)
                     return
                 }
                 val name = Messages.showInputDialog(project,
-                    "预设名（不可与已有预设重名）:",
-                    "从当前状态新建预设", null, mb, newNameValidator())?.trim()
+                    Strings.presetNameRule,
+                    Strings.fromCurrentDialog, null, mb, newNameValidator())?.trim()
                 if (name.isNullOrEmpty()) return
                 val newPreset = Preset(
                     name = name,
@@ -501,8 +503,8 @@ class BranchSwitcherPanel(
         val file = PresetLoader.resolveFile(base)
         if (file == null) {
             Messages.showWarningDialog(project,
-                "preset file 不存在。建议位置:\n$base/.idea/${PresetLoader.IDEA_FILE_NAME}",
-                "Branch Switcher")
+                "${Strings.noPresetFile}\n$base/.idea/${PresetLoader.IDEA_FILE_NAME}",
+                Strings.pluginTitle)
             return
         }
         val vf = com.intellij.openapi.vfs.LocalFileSystem.getInstance().refreshAndFindFileByPath(file.toString())
@@ -573,17 +575,17 @@ class BranchSwitcherPanel(
                 setSwitchInProgress(false)
                 service.addHistory(preset.name)
                 if (ok) {
-                    Notifier.info(project, "切换完成", "已切到「${preset.name}」")
+                    Notifier.info(project, Strings.switchComplete, Strings.switchCompleteMsg.format(preset.name))
                 } else {
                     val executor = rollbackExecutor
                     if (executor?.getCheckpoint() != null) {
-                        Notifier.rollbackAction(project, "切换有失败项",
-                            "「${preset.name}」部分仓未成功。可回滚到切换前的 HEAD。") {
+                        Notifier.rollbackAction(project, Strings.switchFailed,
+                            Strings.switchPartialMsg.format(preset.name) + "。可回滚到切换前的 HEAD。") {
                             rollbackSwitch(executor)
                         }
                     } else {
-                        Notifier.error(project, "切换有失败项",
-                            "「${preset.name}」部分仓未成功，详见 ToolWindow 日志")
+                        Notifier.error(project, Strings.switchFailed,
+                            Strings.switchPartialMsg.format(preset.name))
                     }
                 }
                 refreshVcs(root, preset)
@@ -616,7 +618,7 @@ class BranchSwitcherPanel(
             }
             override fun onFinished() {
                 detectCurrentState()
-                Notifier.info(project, "派生完成", "分支 $branchName 已创建，共 ${preset.targets().size} 个仓库")
+                Notifier.info(project, Strings.deriveComplete, "分支 $branchName 已创建，共 ${preset.targets().size} 个仓库")
             }
         }
         ProgressManager.getInstance().run(task)
@@ -635,8 +637,8 @@ class BranchSwitcherPanel(
                 refreshVcs(root, com.submodule.branchswitcher.model.Preset("_rollback", "", submodulePaths.associateWith { "" }))
                 detectCurrentState()
                 if (!rollbackOk) {
-                    Notifier.warn(project, "回滚部分失败",
-                        "部分仓库未能恢复到切换前状态，详见 ToolWindow 日志")
+                    Notifier.warn(project, Strings.rollbackPartial,
+                        Strings.rollbackPartialMsg)
                 }
             }
         }
@@ -677,7 +679,7 @@ class BranchSwitcherPanel(
         val clipboard = java.awt.Toolkit.getDefaultToolkit().systemClipboard
         clipboard.setContents(java.awt.datatransfer.StringSelection(json), null)
         append("[exported] ${editors.size} preset(s) 已复制到剪贴板")
-        Notifier.info(project, "导出完成", "${editors.size} 个预设已复制到剪贴板")
+        Notifier.info(project, Strings.exportComplete, "${editors.size} 个预设已复制到剪贴板")
     }
 
     private fun importPresets() {
@@ -685,7 +687,7 @@ class BranchSwitcherPanel(
             val clipboard = java.awt.Toolkit.getDefaultToolkit().systemClipboard
             val text = clipboard.getData(java.awt.datatransfer.DataFlavor.stringFlavor) as? String
             if (text.isNullOrBlank()) {
-                Messages.showInfoMessage(project, "剪贴板为空", "导入预设")
+                Messages.showInfoMessage(project, Strings.importEmpty, Strings.importDialog)
                 return
             }
             val trimmed = text.trim()
@@ -698,7 +700,7 @@ class BranchSwitcherPanel(
                 gson.fromJson(trimmed, com.submodule.branchswitcher.model.PresetFile::class.java)
             }
             if (imported == null || imported.presets.isEmpty()) {
-                Messages.showWarningDialog(project, "剪贴板内容不是有效的预设 JSON", "导入预设")
+                Messages.showWarningDialog(project, Strings.importInvalid, Strings.importDialog)
                 return
             }
             val root = gitRoot() ?: return
@@ -714,10 +716,10 @@ class BranchSwitcherPanel(
             presetsContainer.repaint()
             saveAll()
             append("[imported] ${imported.presets.size} preset(s) from clipboard")
-            Notifier.info(project, "导入完成", "从剪贴板导入了 ${imported.presets.size} 个预设")
+            Notifier.info(project, Strings.importComplete, "从剪贴板导入了 ${imported.presets.size} 个预设")
         } catch (e: Exception) {
             append("[import] error: ${e.message}")
-            Messages.showWarningDialog(project, "导入失败: ${e.message}", "导入预设")
+            Messages.showWarningDialog(project, "${Strings.importFailed}: ${e.message}", Strings.importDialog)
         }
     }
 

@@ -287,9 +287,12 @@ class SwitchIntegrationTest {
     fun `switch proceeds even when fetch has no remote`() {
         val root = createRepo(tmpDir, "project")
         createBranch(root, "dev")
+        // git 2.54+ returns exit 0 for fetch --prune even without a remote configured;
+        // the switch proceeds normally since FetchStep succeeds.
         val (ok, _) = runSwitch(root, Preset("test", "dev"),
             SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = true))
-        assertTrue("Switch should proceed even if fetch warns", ok)
+        assertTrue("Switch should succeed even with fetchFirst on a repo without remote", ok)
+        assertEquals("dev", git.currentBranch(root))
     }
 
     // ---- Cancel ----
