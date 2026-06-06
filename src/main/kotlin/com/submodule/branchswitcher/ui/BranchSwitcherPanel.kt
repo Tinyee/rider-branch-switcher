@@ -256,6 +256,8 @@ class BranchSwitcherPanel(
             com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater {
                 if (gen != service.getDetectGen()) return@invokeLater
                 pinnedEditors.forEach { it.applyCurrentState(branches) }
+                presetsInner.revalidate()
+                presetsInner.repaint()
                 logDetected(pinnedEditors, branches)
             }
         }
