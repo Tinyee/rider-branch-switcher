@@ -4,7 +4,7 @@ plugins {
 }
 
 group = "com.submodule"
-version = "0.4.0"
+version = "0.5.0"
 
 repositories {
     maven("https://maven.aliyun.com/repository/public")
