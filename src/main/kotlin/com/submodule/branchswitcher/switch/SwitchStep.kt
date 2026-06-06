@@ -36,3 +36,10 @@ interface SwitchStep {
     /** Execute this step. Return the result. */
     fun execute(context: SwitchContext): StepResult
 }
+
+/** Resolve a target path to a [java.io.File] relative to the project root. */
+fun resolveGitDir(root: java.nio.file.Path, path: String): java.io.File =
+    if (path == ".") root.toFile() else root.resolve(path).toFile()
+
+/** Check whether [dir] is a git repository. */
+fun isGitRepo(dir: java.io.File): Boolean = java.io.File(dir, ".git").exists()

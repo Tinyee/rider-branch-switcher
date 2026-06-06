@@ -9,9 +9,10 @@ class SubmoduleSyncStep : SwitchStep {
         val s = context.git.submoduleSync(dir)
         if (s.ok) {
             context.log("submodule sync ok")
+            return StepResult.Success
         } else {
             context.log("[warn] submodule sync failed: ${s.stderr.lines().firstOrNull() ?: ""}")
+            return StepResult.Partial(mapOf("." to "submodule sync failed"))
         }
-        return StepResult.Success
     }
 }

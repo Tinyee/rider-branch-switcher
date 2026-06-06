@@ -11,6 +11,7 @@ import com.intellij.ui.JBColor
 import com.intellij.ui.components.JBScrollPane
 import com.intellij.util.ui.JBUI
 import com.submodule.branchswitcher.BranchSwitchListener
+import com.submodule.branchswitcher.Strings
 import com.submodule.branchswitcher.model.DirtyAction
 import com.submodule.branchswitcher.model.PreflightRow
 import com.submodule.branchswitcher.model.Preset
@@ -59,10 +60,10 @@ class BranchSwitcherPanel(
         add(presetsInner, BorderLayout.NORTH)
     }
 
-    private val dirtyCombo = JComboBox(arrayOf("Stash 脏改动", "脏则跳过", "强制(危险)"))
+    private val dirtyCombo = JComboBox(arrayOf(Strings.dirtyStash, Strings.dirtySkip, Strings.dirtyForce))
     private val timeoutCombo = JComboBox(arrayOf("30s", "60s", "120s", "300s"))
-    private val pullCheck = JCheckBox("切换后 pull --ff-only", true)
-    private val fetchCheck = JCheckBox("切换前 fetch", true)
+    private val pullCheck = JCheckBox(Strings.pullAfter, true)
+    private val fetchCheck = JCheckBox(Strings.fetchBefore, true)
 
     private val log = javax.swing.JTextPane().apply {
         isEditable = false
@@ -73,7 +74,7 @@ class BranchSwitcherPanel(
     init {
         border = BorderFactory.createEmptyBorder(8, 8, 8, 8)
 
-        val title = JLabel("Submodule Branch Switcher").apply {
+        val title = JLabel(Strings.pluginTitle).apply {
             font = font.deriveFont(Font.BOLD, 13f)
             border = BorderFactory.createEmptyBorder(0, 0, 6, 0)
         }
@@ -82,10 +83,10 @@ class BranchSwitcherPanel(
             preferredSize = Dimension(0, 300)
         }
         val addPanel = JPanel(FlowLayout(FlowLayout.LEFT, 4, 4)).apply {
-            add(JButton("新增预设", AllIcons.General.Add).noFocusRing()
+            add(JButton(Strings.addPreset, AllIcons.General.Add).noFocusRing()
                 .also { it.addActionListener { addPreset() } })
-            add(JButton("从当前状态", AllIcons.Vcs.Branch).noFocusRing().also {
-                it.toolTipText = "基于主仓和已 init 子模块的当前 HEAD 分支生成预设"
+            add(JButton(Strings.fromCurrent, AllIcons.Vcs.Branch).noFocusRing().also {
+                it.toolTipText = Strings.fromCurrentTip
                 it.addActionListener { addPresetFromCurrent() }
             })
         }
@@ -106,13 +107,13 @@ class BranchSwitcherPanel(
         val optsRow1 = JPanel(FlowLayout(FlowLayout.LEFT, 8, 2)).apply {
             add(JLabel("脏工作区:"))
             add(dirtyCombo)
-            add(JLabel("超时:"))
+            add(JLabel(Strings.timeoutSeconds))
             add(timeoutCombo)
         }
         val optsRow2 = JPanel(FlowLayout(FlowLayout.LEFT, 8, 2)).apply {
             add(fetchCheck)
             add(pullCheck)
-            add(JCheckBox("init 前确认").apply {
+            add(JCheckBox(Strings.confirmInit).apply {
                 isSelected = service.confirmBeforeInit
                 addItemListener { service.confirmBeforeInit = isSelected }
             })
@@ -136,25 +137,25 @@ class BranchSwitcherPanel(
         val btnRow1 = JPanel(FlowLayout(FlowLayout.LEFT, 4, 0)).apply {
             alignmentX = LEFT_ALIGNMENT
         }
-        btnRow1.add(JButton("重载预设", AllIcons.Actions.Refresh).noFocusRing()
+        btnRow1.add(JButton(Strings.reloadPresets, AllIcons.Actions.Refresh).noFocusRing()
             .also { it.addActionListener { reload() } })
-        btnRow1.add(JButton("打开预设文件", AllIcons.Actions.EditSource).noFocusRing()
+        btnRow1.add(JButton(Strings.openPresetFile, AllIcons.Actions.EditSource).noFocusRing()
             .also { it.addActionListener { openConfig() } })
         btnRow1.add(Box.createHorizontalStrut(12))
-        btnRow1.add(JButton("清空日志", AllIcons.Actions.GC).noFocusRing()
+        btnRow1.add(JButton(Strings.clearLog, AllIcons.Actions.GC).noFocusRing()
             .also { it.addActionListener { log.text = "" } })
         buttons.add(btnRow1)
         val btnRow2 = JPanel(FlowLayout(FlowLayout.LEFT, 4, 0)).apply {
             alignmentX = LEFT_ALIGNMENT
         }
-        btnRow2.add(JButton("撤销切换", AllIcons.Actions.Rollback).noFocusRing().also {
-            it.toolTipText = "撤销最近一次切换，回到切换前的分支状态"
+        btnRow2.add(JButton(Strings.undoSwitch, AllIcons.Actions.Rollback).noFocusRing().also {
+            it.toolTipText = Strings.undoTip
             it.addActionListener { undoLastSwitch() }
         })
         btnRow2.add(Box.createHorizontalStrut(12))
-        btnRow2.add(JButton("导出预设", AllIcons.Actions.MenuSaveall).noFocusRing()
+        btnRow2.add(JButton(Strings.exportPresets, AllIcons.Actions.MenuSaveall).noFocusRing()
             .also { it.addActionListener { exportPresets() } })
-        btnRow2.add(JButton("导入预设", AllIcons.Actions.MenuSaveall).noFocusRing()
+        btnRow2.add(JButton(Strings.importPresets, AllIcons.Actions.MenuSaveall).noFocusRing()
             .also { it.addActionListener { importPresets() } })
         buttons.add(btnRow2)
 
@@ -292,10 +293,12 @@ class BranchSwitcherPanel(
             }
             com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater {
                 if (gen != service.getDetectGen()) return@invokeLater
-                pinnedEditors.forEach { it.applyCurrentState(branches) }
+                pinnedEditors.forEach { editor ->
+                    if (editor in editors) editor.applyCurrentState(branches)
+                }
                 presetsInner.revalidate()
                 presetsInner.repaint()
-                logDetected(pinnedEditors, branches)
+                logDetected(editors.toList(), branches)
             }
         }
     }
@@ -306,14 +309,14 @@ class BranchSwitcherPanel(
         val allPresets = editors.map { it.currentPreset() }
         val history = service.getHistory()
         if (history.size < 2) {
-            Messages.showInfoMessage(project, "没有可撤销的切换记录", "撤销切换")
+            Messages.showInfoMessage(project, Strings.noUndoHistory, Strings.undoDialog)
             return
         }
         // Find the preset that was active before the last switch
         val previousName = history[1].presetName
         val preset = allPresets.find { it.name == previousName }
         if (preset == null) {
-            Messages.showInfoMessage(project, "找不到之前的预设「$previousName」", "撤销切换")
+            Messages.showInfoMessage(project, "${Strings.undoNotFound}「$previousName」", Strings.undoDialog)
             return
         }
         runSwitch(preset)
@@ -322,7 +325,7 @@ class BranchSwitcherPanel(
     private fun logDetected(eds: List<PresetEditor>, branches: Map<String, String?>) {
         val main = branches["."] ?: "(detached)"
         val matched = eds.firstOrNull { it.matchesState(branches) }?.currentPreset()?.name
-        currentBranchLabel.text = "主仓: $main"
+        currentBranchLabel.text = "${Strings.mainLabel} $main"
         append("[detect] main=$main, matched=${matched ?: "<none>"}")
     }
 
@@ -338,6 +341,7 @@ class BranchSwitcherPanel(
             onDelete = { deleteEditor(editor) },
             onDerive = { branchName -> derivePresetBranch(root, preset, branchName) },
             gitClient = service.gitClient,
+            scope = service.scope,
         )
         editors.add(editor)
         presetsInner.add(editor)
@@ -680,12 +684,12 @@ class BranchSwitcherPanel(
             layout = BoxLayout(this, BoxLayout.Y_AXIS)
             border = BorderFactory.createEmptyBorder(40, 16, 40, 16)
             alignmentX = CENTER_ALIGNMENT
-            val hint = JLabel("还没有预设").apply {
+            val hint = JLabel(Strings.noPresets).apply {
                 font = font.deriveFont(Font.BOLD, 15f)
                 foreground = JBColor.GRAY
                 alignmentX = CENTER_ALIGNMENT
             }
-            val subHint = JLabel("预设是一组分支组合，可以一键切换主仓和所有子模块").apply {
+            val subHint = JLabel(Strings.noPresetsHint).apply {
                 font = font.deriveFont(Font.PLAIN, 12f)
                 foreground = JBColor.GRAY
                 alignmentX = CENTER_ALIGNMENT
@@ -696,10 +700,10 @@ class BranchSwitcherPanel(
             add(Box.createVerticalStrut(20))
             val cta = JPanel(FlowLayout(FlowLayout.CENTER, 8, 0))
             cta.alignmentX = CENTER_ALIGNMENT
-            cta.add(JButton("从当前状态创建", AllIcons.Vcs.Branch).noFocusRing().also {
+            cta.add(JButton(Strings.fromCurrentCreate, AllIcons.Vcs.Branch).noFocusRing().also {
                 it.addActionListener { addPresetFromCurrent() }
             })
-            cta.add(JButton("手动新增", AllIcons.General.Add).noFocusRing().also {
+            cta.add(JButton(Strings.manualCreate, AllIcons.General.Add).noFocusRing().also {
                 it.addActionListener { addPreset() }
             })
             add(cta)

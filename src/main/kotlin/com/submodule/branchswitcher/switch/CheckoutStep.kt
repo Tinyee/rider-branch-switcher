@@ -23,7 +23,7 @@ class CheckoutStep : SwitchStep {
                 checkCanceled()
             }
             val isMain = target.path == "."
-            val dir = resolveDir(context, target.path)
+            val dir = resolveGitDir(context.projectRoot, target.path)
             val label = if (isMain) context.projectRoot.fileName.toString() else target.path
             context.log("")
             context.log("--- $label  →  ${target.branch} ---")
@@ -108,10 +108,4 @@ class CheckoutStep : SwitchStep {
         }
         return if (failures.isEmpty()) StepResult.Success else StepResult.Partial(failures)
     }
-
-    private fun resolveDir(context: SwitchContext, path: String): File =
-        if (path == ".") context.projectRoot.toFile()
-        else context.projectRoot.resolve(path).toFile()
-
-    private fun isGitRepo(dir: File): Boolean = File(dir, ".git").exists()
 }
