@@ -72,7 +72,7 @@ class BranchSwitcherPanel(
         }
 
         val presetsScroll = JBScrollPane(presetsContainer).apply {
-            preferredSize = Dimension(0, 200)
+            preferredSize = Dimension(0, 150)
         }
         val addPanel = JPanel(FlowLayout(FlowLayout.LEFT, 4, 4)).apply {
             add(JButton("新增预设", AllIcons.General.Add).noFocusRing()
@@ -92,7 +92,7 @@ class BranchSwitcherPanel(
         north.add(presetsBlock, BorderLayout.CENTER)
 
         val logScroll = JBScrollPane(log).apply {
-            preferredSize = Dimension(0, 50)
+            preferredSize = Dimension(0, 40)
         }
 
         val optsRow1 = JPanel(FlowLayout(FlowLayout.LEFT, 8, 2)).apply {
@@ -117,21 +117,29 @@ class BranchSwitcherPanel(
             add(optsRow2)
         }
 
-        val buttons = JPanel(FlowLayout(FlowLayout.LEFT, 4, 0)).apply {
+        val buttons = JPanel().apply {
+            layout = BoxLayout(this, BoxLayout.Y_AXIS)
             border = BorderFactory.createEmptyBorder(2, 0, 4, 0)
         }
-        buttons.add(JButton("重载预设", AllIcons.Actions.Refresh).noFocusRing()
+        val btnRow1 = JPanel(FlowLayout(FlowLayout.LEFT, 4, 0)).apply {
+            alignmentX = LEFT_ALIGNMENT
+        }
+        btnRow1.add(JButton("重载预设", AllIcons.Actions.Refresh).noFocusRing()
             .also { it.addActionListener { reload() } })
-        buttons.add(JButton("打开预设文件", AllIcons.Actions.EditSource).noFocusRing()
+        btnRow1.add(JButton("打开预设文件", AllIcons.Actions.EditSource).noFocusRing()
             .also { it.addActionListener { openConfig() } })
-        buttons.add(Box.createHorizontalStrut(12))
-        buttons.add(JButton("清空日志", AllIcons.Actions.GC).noFocusRing()
+        btnRow1.add(Box.createHorizontalStrut(12))
+        btnRow1.add(JButton("清空日志", AllIcons.Actions.GC).noFocusRing()
             .also { it.addActionListener { log.text = "" } })
-        buttons.add(Box.createHorizontalStrut(12))
-        buttons.add(JButton("导出预设", AllIcons.Actions.MenuSaveall).noFocusRing()
+        buttons.add(btnRow1)
+        val btnRow2 = JPanel(FlowLayout(FlowLayout.LEFT, 4, 0)).apply {
+            alignmentX = LEFT_ALIGNMENT
+        }
+        btnRow2.add(JButton("导出预设", AllIcons.Actions.MenuSaveall).noFocusRing()
             .also { it.addActionListener { exportPresets() } })
-        buttons.add(JButton("导入预设", AllIcons.Actions.MenuSaveall).noFocusRing()
+        btnRow2.add(JButton("导入预设", AllIcons.Actions.MenuSaveall).noFocusRing()
             .also { it.addActionListener { importPresets() } })
+        buttons.add(btnRow2)
 
         val south = JPanel(BorderLayout())
         south.add(opts, BorderLayout.NORTH)
