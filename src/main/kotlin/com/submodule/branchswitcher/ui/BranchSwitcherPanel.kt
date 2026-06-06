@@ -51,6 +51,7 @@ class BranchSwitcherPanel(
     }
 
     private val dirtyCombo = JComboBox(arrayOf("Stash 脏改动", "脏则跳过", "强制(危险)"))
+    private val timeoutCombo = JComboBox(arrayOf("30s", "60s", "120s", "300s"))
     private val pullCheck = JCheckBox("切换后 pull --ff-only", true)
     private val fetchCheck = JCheckBox("切换前 fetch", true)
 
@@ -95,6 +96,8 @@ class BranchSwitcherPanel(
         val optsRow1 = JPanel(FlowLayout(FlowLayout.LEFT, 8, 2)).apply {
             add(JLabel("脏工作区:"))
             add(dirtyCombo)
+            add(JLabel("超时:"))
+            add(timeoutCombo)
         }
         val optsRow2 = JPanel(FlowLayout(FlowLayout.LEFT, 8, 2)).apply {
             add(fetchCheck)
@@ -151,6 +154,21 @@ class BranchSwitcherPanel(
         }
         pullCheck.addItemListener { service.pullAfterSwitch = pullCheck.isSelected }
         fetchCheck.addItemListener { service.fetchFirst = fetchCheck.isSelected }
+        // Restore timeout
+        timeoutCombo.selectedIndex = when (service.timeoutSeconds) {
+            30 -> 0
+            120 -> 2
+            300 -> 3
+            else -> 1
+        }
+        timeoutCombo.addItemListener {
+            service.timeoutSeconds = when (timeoutCombo.selectedIndex) {
+                0 -> 30
+                2 -> 120
+                3 -> 300
+                else -> 60
+            }
+        }
 
         addAncestorListener(object : javax.swing.event.AncestorListener {
             override fun ancestorAdded(event: javax.swing.event.AncestorEvent) {
@@ -400,19 +418,45 @@ class BranchSwitcherPanel(
 
         val task = object : Task.Backgroundable(project, "Switching branches", true) {
             var ok = false
+            private var rollbackExecutor: SwitchExecutor? = null
             override fun run(indicator: ProgressIndicator) {
                 indicator.isIndeterminate = true
-                val executor = SwitchExecutor(root, ::append, service.gitClient)
+                val executor = SwitchExecutor(root, ::append, service.gitClient, indicator)
+                rollbackExecutor = executor
                 ok = executor.execute(preset, opts)
             }
             override fun onFinished() {
                 if (ok) {
                     Notifier.info(project, "切换完成", "已切到「${preset.name}」")
                 } else {
-                    Notifier.error(project, "切换有失败项",
-                        "「${preset.name}」部分仓未成功，详见 ToolWindow 日志")
+                    val executor = rollbackExecutor
+                    if (executor?.getCheckpoint() != null) {
+                        Notifier.rollbackAction(project, "切换有失败项",
+                            "「${preset.name}」部分仓未成功。可回滚到切换前的 HEAD。") {
+                            rollbackSwitch(executor)
+                        }
+                    } else {
+                        Notifier.error(project, "切换有失败项",
+                            "「${preset.name}」部分仓未成功，详见 ToolWindow 日志")
+                    }
                 }
                 refreshVcs(root, preset)
+            }
+        }
+        com.intellij.openapi.progress.ProgressManager.getInstance().run(task)
+    }
+
+    private fun rollbackSwitch(executor: SwitchExecutor) {
+        val task = object : Task.Backgroundable(project, "Rolling back", true) {
+            override fun run(indicator: ProgressIndicator) {
+                indicator.isIndeterminate = true
+                executor.rollback()
+            }
+            override fun onFinished() {
+                val root = gitRoot() ?: return
+                val submodulePaths = executor.getCheckpoint()?.keys?.filter { it != "." } ?: emptyList()
+                refreshVcs(root, com.submodule.branchswitcher.model.Preset("_rollback", ".", submodulePaths.associateWith { "" }))
+                detectCurrentState()
             }
         }
         com.intellij.openapi.progress.ProgressManager.getInstance().run(task)

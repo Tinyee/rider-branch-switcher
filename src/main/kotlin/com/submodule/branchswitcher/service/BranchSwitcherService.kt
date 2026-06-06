@@ -26,6 +26,7 @@ class BranchSwitcherService(private val project: Project)
         var dirtyAction: String = "Stash",
         var fetchFirst: Boolean = true,
         var pullAfterSwitch: Boolean = true,
+        var timeoutSeconds: Int = 60,
     )
 
     private var options = OptionsState()
@@ -49,7 +50,15 @@ class BranchSwitcherService(private val project: Project)
         get() = options.pullAfterSwitch
         set(value) { options.pullAfterSwitch = value }
 
-    val gitClient: GitClient = GitOps()
+    var timeoutSeconds: Int
+        get() = options.timeoutSeconds
+        set(value) {
+            options.timeoutSeconds = value
+            gitClient = GitOps(value)
+        }
+
+    var gitClient: GitClient = GitOps(options.timeoutSeconds)
+        private set
 
     private var presetFile: PresetFile = PresetFile()
     private var savedFilePath: Path? = null
