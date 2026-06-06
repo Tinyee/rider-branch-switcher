@@ -183,9 +183,9 @@ class BranchSwitcherPanel(
             }
         })
 
-        // Re-detect current state when tool window becomes visible
-        addHierarchyListener {
-            if (isShowing) {
+        // Re-detect current state only when tool window transitions from hidden→visible
+        addHierarchyListener { e ->
+            if ((e.changeFlags and java.awt.event.HierarchyEvent.SHOWING_CHANGED.toLong()) != 0L && isShowing) {
                 SwingUtilities.invokeLater { detectCurrentState() }
             }
         }
