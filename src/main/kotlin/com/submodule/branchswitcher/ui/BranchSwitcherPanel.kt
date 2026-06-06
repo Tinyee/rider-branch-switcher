@@ -333,6 +333,7 @@ class BranchSwitcherPanel(
     private fun saveAll() {
         service.savePresets(editors.map { it.currentPreset() })
         append("[saved]")
+        detectCurrentState()
     }
 
     private fun newNameValidator(): InputValidator = object : InputValidator {
