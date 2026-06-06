@@ -171,8 +171,6 @@ class BranchSwitcherPanel(
                 3 -> 300
                 else -> 60
             }
-            // Recreate editors so they capture the new gitClient with updated timeout
-            reload()
         }
 
         // Re-detect current state when tool window becomes visible
