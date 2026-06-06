@@ -28,6 +28,7 @@ data class SwitchOptions(
     val dirty: DirtyAction = DirtyAction.Stash,
     val pull: Boolean = true,
     val fetchFirst: Boolean = true,
+    val confirmBeforeInit: Boolean = false,
 )
 
 data class PreflightRow(

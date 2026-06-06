@@ -31,6 +31,18 @@ class CheckoutStep : SwitchStep {
             // Submodule init for missing directories (after main checkout only)
             if (!isMain && !isGitRepo(dir)) {
                 if (mainCheckoutOk) {
+                    if (context.confirmBeforeInit) {
+                        val confirmed = com.intellij.openapi.ui.Messages.showYesNoDialog(
+                            "子模块「${target.path}」目录缺失，是否执行 git submodule update --init？",
+                            "初始化子模块",
+                            com.intellij.openapi.ui.Messages.getQuestionIcon(),
+                        )
+                        if (confirmed != com.intellij.openapi.ui.Messages.YES) {
+                            context.log("[skip] init declined for ${target.path}")
+                            failures[target.path] = "init declined"
+                            continue
+                        }
+                    }
                     context.log("dir missing, trying: git submodule update --init -- ${target.path}")
                     val r = context.git.submoduleInitPath(context.projectRoot.toFile(), target.path)
                     if (!r.ok) {

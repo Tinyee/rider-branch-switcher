@@ -38,6 +38,7 @@ class SwitchExecutor(
             log = log,
             indicator = indicator,
             cancelled = { indicator?.isCanceled ?: false },
+            confirmBeforeInit = options.confirmBeforeInit,
         )
 
         // Record checkpoint before switching
