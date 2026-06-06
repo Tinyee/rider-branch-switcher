@@ -324,15 +324,30 @@ class PresetEditor(
         val actionsIndex = body.componentCount - 1
         body.add(row.panel, actionsIndex)
         val dir = gitRoot.resolve(path).toFile()
-        val seedBranch = if (dir.exists()) gitClient.currentBranch(dir) ?: "" else ""
-        row.combo.selectedItem = seedBranch
-        if (loadedOnce) {
-            row.loaded = true
-            loadComboBranches(row.combo, dir, seedBranch)
+        if (!dir.exists()) {
+            row.combo.selectedItem = ""
+            if (loadedOnce) { row.loaded = true; loadComboBranches(row.combo, dir, "") }
+            updateDirty()
+        } else {
+            row.combo.selectedItem = "loading..."
+            row.combo.isEnabled = false
+            loadingCount++
+            Thread {
+                val seedBranch = gitClient.currentBranch(dir) ?: ""
+                SwingUtilities.invokeLater {
+                    row.combo.selectedItem = seedBranch
+                    row.combo.isEnabled = true
+                    loadingCount--
+                    if (loadedOnce) {
+                        row.loaded = true
+                        loadComboBranches(row.combo, dir, seedBranch)
+                    }
+                    updateDirty()
+                }
+            }.start()
         }
         body.revalidate()
         body.repaint()
-        updateDirty()
     }
 
     private fun toggle() {
