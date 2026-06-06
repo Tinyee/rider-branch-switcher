@@ -65,7 +65,6 @@ class PresetEditor(
         isVisible = false
     }
     private val mainDiffLabel = JLabel().apply {
-        foreground = JBUI.CurrentTheme.Link.Foreground.ENABLED
         font = font.deriveFont(Font.PLAIN, 11f)
         isVisible = false
         border = BorderFactory.createEmptyBorder(1, 0, 0, 0)
@@ -434,7 +433,7 @@ class PresetEditor(
         if (currentMain != original.main) {
             mainDiffLabel.text = "主仓: $currentMain → ${original.main}"
             mainDiffLabel.isVisible = true
-            mainDiffLabel.foreground = JBUI.CurrentTheme.Link.Foreground.ENABLED
+            mainDiffLabel.foreground = JBColor(0xE07B00, 0xFFA726)
         } else {
             mainDiffLabel.isVisible = false
         }
