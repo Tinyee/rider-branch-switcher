@@ -19,6 +19,20 @@ import com.submodule.branchswitcher.model.Preset
 import com.submodule.branchswitcher.model.PresetFile
 import java.nio.file.Path
 
+/**
+ * Central project-level service for the Branch Switcher plugin.
+ *
+ * Responsibilities:
+ * - Persist switch options to [branch-switcher.xml] via [PersistentStateComponent]
+ * - Manage preset loading/saving via [PresetLoader]
+ * - Provide a [CoroutineScope] for async operations (background branch detection, combo loading)
+ * - Track switch history for undo support (max 5 entries)
+ * - Cache current branch state ([currentBranches]) with stale-detection via [detectGen]
+ *
+ * The [detectGen] counter is incremented on each [detectCurrentState] call.
+ * Async branch probes capture the current generation; when results arrive,
+ * they are discarded if a newer detection has started, preventing stale UI updates.
+ */
 @Service(Service.Level.PROJECT)
 @State(
     name = "BranchSwitcherOptions",
@@ -27,6 +41,7 @@ import java.nio.file.Path
 class BranchSwitcherService(private val project: Project)
     : PersistentStateComponent<BranchSwitcherService.OptionsState>, Disposable {
 
+    /** [SupervisorJob] isolates child coroutine failures so one failed probe doesn't cancel sibling probes. */
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     override fun dispose() {
@@ -95,8 +110,11 @@ class BranchSwitcherService(private val project: Project)
         PresetLoader.save(file, presetFile)
     }
 
+    // -- Switch history for undo support (max 5 entries) --
+
     private var history = mutableListOf<SwitchHistoryEntry>()
     private val maxHistory = 5
+    /** Records a completed switch: preset name + timestamp. */
     data class SwitchHistoryEntry(val presetName: String, val timestamp: Long)
 
     fun addHistory(name: String) {
@@ -107,6 +125,14 @@ class BranchSwitcherService(private val project: Project)
     fun getHistory(): List<SwitchHistoryEntry> = history.toList()
     fun getLastHistory(): SwitchHistoryEntry? = history.firstOrNull()
 
+    // -- Stale-detection for async branch probes --
+
+    /**
+     * Monotonically increasing generation counter.
+     * Each [detectCurrentState] call increments it via [nextDetectGen].
+     * Async probe callbacks check [getDetectGen] — if a newer probe started,
+     * the old result is discarded to avoid updating the UI with stale data.
+     */
     private var currentBranches: Map<String, String?> = emptyMap()
     private var detectGen: Long = 0
 

@@ -41,6 +41,17 @@ import javax.swing.JPanel
 import javax.swing.JTextArea
 import javax.swing.SwingUtilities
 
+/**
+ * Main tool window panel: preset list, switch controls, options, and log.
+ *
+ * Layout (BorderLayout):
+ * - NORTH: title + current branch label + progress bar + scrollable preset list
+ * - CENTER: colored log (JTextPane with [append])
+ * - SOUTH: switch options (dirty/fetch/pull/timeout) + action buttons
+ *
+ * Thread safety: uses [service.scope] for background git probes;
+ * [detectCurrentState] uses generation-based stale detection.
+ */
 class BranchSwitcherPanel(
     private val project: Project,
     private val service: BranchSwitcherService,
@@ -295,6 +306,11 @@ class BranchSwitcherPanel(
             }
     }
 
+    /**
+     * Probes all editor paths (main + submodules) in the background, then updates UI.
+     * Uses generation-based stale detection: if a newer [detectCurrentState] call starts
+     * before this one finishes, the stale result is discarded via [service.getDetectGen].
+     */
     private fun detectCurrentState() {
         val root = gitRoot() ?: return
         val paths = LinkedHashSet<String>().apply { add(".") }
@@ -512,6 +528,11 @@ class BranchSwitcherPanel(
         com.intellij.openapi.progress.ProgressManager.getInstance().run(preflightTask)
     }
 
+    /**
+     * Runs the full switch pipeline in a [Task.Backgroundable].
+     * Wraps the [ProgressIndicator] to sync fraction/text to the panel [progressBar].
+     * On failure, shows a rollback-action notification if a checkpoint was recorded.
+     */
     private fun executeSwitch(root: Path, preset: Preset) {
         val dirty = when (dirtyCombo.selectedIndex) {
             1 -> DirtyAction.Skip
@@ -744,6 +765,14 @@ class BranchSwitcherPanel(
         }
     }
 
+    /**
+     * Appends a line to the log with color coding:
+     * - ERROR/FAIL/FATAL → red
+     * - WARN → orange
+     * - DETECT/SAVED/ADDED/EXPORTED/IMPORTED → gray
+     * - DERIVE/ROLLBACK → blue
+     * - default → theme foreground
+     */
     private fun append(line: String) {
         SwingUtilities.invokeLater {
             val doc = log.styledDocument

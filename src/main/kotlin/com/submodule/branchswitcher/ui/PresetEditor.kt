@@ -30,6 +30,17 @@ import javax.swing.JPanel
 import javax.swing.SwingUtilities
 import javax.swing.border.Border
 
+/**
+ * Expandable panel for a single preset. Shows the preset name, main repo combo,
+ * and one [SubRow] per submodule. Branch lists are loaded lazily on first expand
+ * via [scope] coroutines.
+ *
+ * State tracking:
+ * - [loadedOnce]: whether the branch combo lists have been loaded (lazy, on first expand)
+ * - [loadingCount]: number of in-flight async branch loads; [updateDirty] suppresses
+ *   the dirty check while any load is pending
+ * - [initializing]: true during constructor; prevents false dirty flags during setup
+ */
 class PresetEditor(
     private val gitRoot: Path,
     initial: Preset,
@@ -42,6 +53,7 @@ class PresetEditor(
     private val scope: CoroutineScope,
 ) : JPanel() {
 
+    /** One submodule row: path, branch combo, panel, and tracking state. */
     private class SubRow(
         val path: String,
         val combo: JComboBox<String>,
@@ -345,6 +357,7 @@ class PresetEditor(
         body.repaint()
     }
 
+    /** Expands/collapses the preset detail panel. Loads branch lists lazily on first expand. */
     private fun toggle() {
         body.isVisible = !body.isVisible
         arrow.icon = if (body.isVisible) AllIcons.General.ArrowDown else AllIcons.General.ArrowRight
@@ -356,6 +369,7 @@ class PresetEditor(
         repaint()
     }
 
+    /** Lazy-loads branch lists for all combos on first expand. Must be guarded by [loadedOnce]. */
     private fun loadBranches() {
         loadComboBranches(mainCombo, gitRoot.toFile(), original.main)
         subRows.values.forEach { row ->
@@ -367,6 +381,7 @@ class PresetEditor(
         }
     }
 
+    /** Asynchronously loads branch names into [combo] via [scope], preserving [current] as selected item. */
     private fun loadComboBranches(combo: JComboBox<String>, dir: File, current: String) {
         combo.model = DefaultComboBoxModel(arrayOf("loading..."))
         combo.selectedItem = "loading..."
@@ -410,6 +425,10 @@ class PresetEditor(
         }
     }
 
+    /**
+     * Updates the preset header diff label and submodule status dots.
+     * Dot colors: gray = not initialized, green = branch matched, red = mismatch.
+     */
     fun applyCurrentState(currentBranches: Map<String, String?>) {
         setHighlighted(matchesState(currentBranches))
         val currentMain = currentBranches["."] ?: "(detached)"

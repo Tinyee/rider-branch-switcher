@@ -5,9 +5,14 @@ import com.intellij.execution.process.CapturingProcessHandler
 import java.io.File
 import java.nio.charset.StandardCharsets
 
+/**
+ * CLI-based [GitClient] implementation using IntelliJ's [GeneralCommandLine] + [CapturingProcessHandler].
+ * All git commands inherit [timeoutSeconds] (default 60s).
+ */
 class GitOps(
     private val timeoutSeconds: Int = 60,
 ) : GitClient {
+    /** Executes `git [args]` in [workDir] with a configurable timeout. */
     private fun run(workDir: File, vararg args: String): GitResult {
         val cmd = GeneralCommandLine("git", *args)
             .withWorkDirectory(workDir)
@@ -38,14 +43,18 @@ class GitOps(
         return r.stdout.lines().count { it.isNotBlank() }
     }
 
+    /** Stashes all changes including untracked files (-u). */
     override fun stash(workDir: File, message: String): GitResult =
         run(workDir, "stash", "push", "-u", "-m", message)
 
+    /** Fetches and prunes stale remote-tracking refs. */
     override fun fetch(workDir: File): GitResult = run(workDir, "fetch", "--prune")
 
+    /** Uses plumbing command `show-ref --verify` for fast existence check. */
     override fun localBranchExists(workDir: File, branch: String): Boolean =
         run(workDir, "show-ref", "--verify", "--quiet", "refs/heads/$branch").ok
 
+    /** Uses plumbing command `show-ref --verify` for fast existence check. */
     override fun remoteBranchExists(workDir: File, branch: String): Boolean =
         run(workDir, "show-ref", "--verify", "--quiet", "refs/remotes/origin/$branch").ok
 
@@ -64,8 +73,10 @@ class GitOps(
     override fun submoduleInitPath(gitRoot: File, path: String): GitResult =
         run(gitRoot, "submodule", "update", "--init", "--", path)
 
+    /** Matches `path = <value>` lines in .gitmodules, skipping comments and blank lines. */
     private val PATH_LINE = Regex("""^path\s*=\s*(.+?)\s*$""", RegexOption.IGNORE_CASE)
 
+    /** Parses .gitmodules to list submodule paths. Skips lines starting with # or ;. */
     override fun listSubmodulePaths(gitRoot: File): List<String> {
         val file = File(gitRoot, ".gitmodules")
         if (!file.exists()) return emptyList()
@@ -88,6 +99,10 @@ class GitOps(
         return if (r.ok) r.stdout.trim().ifEmpty { null } else null
     }
 
+    /**
+     * Lists all branches (local + remote) from `git for-each-ref`,
+     * strips `origin/` prefix, filters `origin/HEAD`, dedupes, and sorts.
+     */
     override fun listAllBranches(workDir: File): List<String> {
         val r = run(workDir, "for-each-ref",
             "--format=%(refname:short)",

@@ -6,10 +6,25 @@ import com.submodule.branchswitcher.model.PresetFile
 import java.nio.file.Files
 import java.nio.file.Path
 
+/**
+ * Reads and writes preset JSON files.
+ *
+ * Search order for [resolveFile]:
+ * 1. `.idea/branch-presets.json` (IDE project config directory)
+ * 2. `.branch-presets.json` (project root)
+ * 3. Walk up parent directories until a `.git` dir or another `.branch-presets.json` is found
+ *
+ * Writes use an atomic pattern: write to a temp file, then rename (ATOMIC_MOVE)
+ * with a non-atomic fallback when the filesystem doesn't support atomic moves.
+ */
 object PresetLoader {
     const val FILE_NAME = ".branch-presets.json"
     const val IDEA_FILE_NAME = "branch-presets.json"
 
+    /**
+     * Locates an existing preset file. Returns null if none found.
+     * Starts at [ideBase], then walks upward until `.git` boundary.
+     */
     fun resolveFile(ideBase: Path): Path? {
         val direct = listOf(
             ideBase.resolve(".idea").resolve(IDEA_FILE_NAME),
@@ -46,6 +61,7 @@ object PresetLoader {
         }
     }
 
+    /** Writes [presetFile] to [file] atomically (temp file + rename). */
     fun save(file: Path, presetFile: PresetFile) {
         val gson = com.google.gson.GsonBuilder().setPrettyPrinting().create()
         val payload = gson.toJson(presetFile) + "\n"
