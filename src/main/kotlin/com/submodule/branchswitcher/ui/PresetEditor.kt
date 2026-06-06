@@ -298,6 +298,12 @@ class PresetEditor(
             }.noFocusRing()
             add(delBtn, BorderLayout.EAST)
         }
+        // Right-click context menu
+        rowPanel.addMouseListener(object : MouseAdapter() {
+            override fun mousePressed(e: MouseEvent) { if (e.isPopupTrigger) showContextMenu(e, path) }
+            override fun mouseReleased(e: MouseEvent) { if (e.isPopupTrigger) showContextMenu(e, path) }
+            override fun mouseClicked(e: MouseEvent) {}
+        })
         row.panel = rowPanel
         subRows[path] = row
         return row
@@ -538,6 +544,26 @@ class PresetEditor(
     }
 
     fun currentPreset(): Preset = original
+
+    private fun showContextMenu(e: MouseEvent, path: String) {
+        val popup = javax.swing.JPopupMenu()
+        popup.add("仅切此一仓 ($path)").addActionListener {
+            val dir = gitRoot.resolve(path).toFile()
+            if (dir.exists() && java.io.File(dir, ".git").exists()) {
+                Thread {
+                    val cur = gitClient.currentBranch(dir)
+                    val target = original.submodules[path] ?: (cur ?: return@Thread)
+                    val result = gitClient.checkoutExisting(dir, target)
+                    SwingUtilities.invokeLater { log(if (result.ok) "[switch] $path -> $target ok" else "[switch] $path fail") }
+                }.start()
+            }
+        }
+        popup.add("在资源管理器打开").addActionListener {
+            val dir = gitRoot.resolve(path).toFile()
+            if (dir.exists()) java.awt.Desktop.getDesktop().open(dir)
+        }
+        popup.show(e.component, e.x, e.y)
+    }
 
     fun updatePresetName(newName: String) {
         original = original.copy(name = newName)

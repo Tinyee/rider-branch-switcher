@@ -45,6 +45,11 @@ class BranchSwitcherPanel(
 
     private val editors = mutableListOf<PresetEditor>()
     private var emptyStatePanel: JPanel? = null
+    private val currentBranchLabel = JLabel(" ").apply {
+        font = font.deriveFont(Font.PLAIN, 11f)
+        foreground = JBColor.GRAY
+        border = BorderFactory.createEmptyBorder(0, 0, 4, 0)
+    }
     private val presetsInner = JPanel().apply {
         layout = BoxLayout(this, BoxLayout.Y_AXIS)
         alignmentX = LEFT_ALIGNMENT
@@ -90,6 +95,7 @@ class BranchSwitcherPanel(
 
         val north = JPanel(BorderLayout())
         north.add(title, BorderLayout.NORTH)
+        north.add(currentBranchLabel, BorderLayout.SOUTH)
         north.add(presetsBlock, BorderLayout.CENTER)
 
         val logScroll = JBScrollPane(log).apply {
@@ -105,6 +111,10 @@ class BranchSwitcherPanel(
         val optsRow2 = JPanel(FlowLayout(FlowLayout.LEFT, 8, 2)).apply {
             add(fetchCheck)
             add(pullCheck)
+            add(JCheckBox("init 前确认").apply {
+                isSelected = service.confirmBeforeInit
+                addItemListener { service.confirmBeforeInit = isSelected }
+            })
         }
         val opts = JPanel().apply {
             layout = BoxLayout(this, BoxLayout.Y_AXIS)
@@ -287,6 +297,7 @@ class BranchSwitcherPanel(
     private fun logDetected(eds: List<PresetEditor>, branches: Map<String, String?>) {
         val main = branches["."] ?: "(detached)"
         val matched = eds.firstOrNull { it.matchesState(branches) }?.currentPreset()?.name
+        currentBranchLabel.text = "主仓: $main"
         append("[detect] main=$main, matched=${matched ?: "<none>"}")
     }
 

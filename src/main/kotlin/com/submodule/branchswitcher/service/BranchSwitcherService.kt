@@ -38,6 +38,7 @@ class BranchSwitcherService(private val project: Project)
         var fetchFirst: Boolean = true,
         var pullAfterSwitch: Boolean = true,
         var timeoutSeconds: Int = 60,
+        var confirmBeforeInit: Boolean = false,
     )
 
     private var options = OptionsState()
@@ -67,6 +68,10 @@ class BranchSwitcherService(private val project: Project)
             options.timeoutSeconds = value
             gitClient = GitOps(value)
         }
+
+    var confirmBeforeInit: Boolean
+        get() = options.confirmBeforeInit
+        set(value) { options.confirmBeforeInit = value }
 
     var gitClient: GitClient = GitOps(options.timeoutSeconds)
         private set
