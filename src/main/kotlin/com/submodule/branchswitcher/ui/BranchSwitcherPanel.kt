@@ -501,6 +501,7 @@ class BranchSwitcherPanel(
             dirty = dirty,
             pull = pullCheck.isSelected,
             fetchFirst = fetchCheck.isSelected,
+            confirmBeforeInit = service.confirmBeforeInit,
         )
 
         setSwitchInProgress(true)

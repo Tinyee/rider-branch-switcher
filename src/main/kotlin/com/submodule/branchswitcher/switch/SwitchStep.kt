@@ -26,6 +26,8 @@ data class SwitchContext(
     val cancelled: () -> Boolean = { false },
     /** Tracks stashed repos: path -> stash message. CheckoutStep auto-pops on return. */
     val stashedPaths: MutableMap<String, String> = mutableMapOf(),
+    /** If true, show confirmation dialog before auto-init of missing submodules. */
+    val confirmBeforeInit: Boolean = false,
 )
 
 interface SwitchStep {
