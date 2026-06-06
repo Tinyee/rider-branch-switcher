@@ -57,10 +57,10 @@ class BranchSwitcherPanel(
     private val pullCheck = JCheckBox("切换后 pull --ff-only", true)
     private val fetchCheck = JCheckBox("切换前 fetch", true)
 
-    private val log = JTextArea().apply {
+    private val log = javax.swing.JTextPane().apply {
         isEditable = false
         font = Font(Font.MONOSPACED, Font.PLAIN, 12)
-        lineWrap = false
+        contentType = "text/plain"
     }
 
     init {
@@ -127,6 +127,11 @@ class BranchSwitcherPanel(
         buttons.add(Box.createHorizontalStrut(12))
         buttons.add(JButton("清空日志", AllIcons.Actions.GC).noFocusRing()
             .also { it.addActionListener { log.text = "" } })
+        buttons.add(Box.createHorizontalStrut(12))
+        buttons.add(JButton("导出预设", AllIcons.Actions.MenuSaveall).noFocusRing()
+            .also { it.addActionListener { exportPresets() } })
+        buttons.add(JButton("导入预设", AllIcons.Actions.MenuSaveall).noFocusRing()
+            .also { it.addActionListener { importPresets() } })
 
         val south = JPanel(BorderLayout())
         south.add(opts, BorderLayout.NORTH)
@@ -228,7 +233,11 @@ class BranchSwitcherPanel(
                     Notifier.error(project, "Branch Switcher", "未找到 git 根目录")
                     return@onSuccess
                 }
-                parsed.presets.forEach { addEditorRow(root, it) }
+                if (parsed.presets.isEmpty()) {
+                    presetsInner.add(createEmptyState())
+                } else {
+                    parsed.presets.forEach { addEditorRow(root, it) }
+                }
                 append("loaded ${parsed.presets.size} preset(s) from $file")
                 presetsInner.revalidate()
                 presetsInner.repaint()
@@ -548,11 +557,94 @@ class BranchSwitcherPanel(
         }
     }
 
+    private fun exportPresets() {
+        val gson = com.google.gson.GsonBuilder().setPrettyPrinting().create()
+        val json = gson.toJson(com.submodule.branchswitcher.model.PresetFile(editors.map { it.currentPreset() }))
+        val clipboard = java.awt.Toolkit.getDefaultToolkit().systemClipboard
+        clipboard.setContents(java.awt.datatransfer.StringSelection(json), null)
+        append("[exported] ${editors.size} preset(s) 已复制到剪贴板")
+        Notifier.info(project, "导出完成", "${editors.size} 个预设已复制到剪贴板")
+    }
+
+    private fun importPresets() {
+        try {
+            val clipboard = java.awt.Toolkit.getDefaultToolkit().systemClipboard
+            val text = clipboard.getData(java.awt.datatransfer.DataFlavor.stringFlavor) as? String
+            if (text.isNullOrBlank()) {
+                Messages.showInfoMessage(project, "剪贴板为空", "导入预设")
+                return
+            }
+            val gson = com.google.gson.Gson()
+            val imported = gson.fromJson(text, com.submodule.branchswitcher.model.PresetFile::class.java)
+            if (imported == null || imported.presets.isEmpty()) {
+                Messages.showWarningDialog(project, "剪贴板内容不是有效的预设 JSON", "导入预设")
+                return
+            }
+            val root = gitRoot() ?: return
+            imported.presets.forEach { preset ->
+                // Check for name conflict
+                if (editors.any { it.currentPreset().name == preset.name }) {
+                    append("[import] skip ${preset.name} — 名字冲突")
+                    return@forEach
+                }
+                addEditorRow(root, preset)
+            }
+            presetsContainer.revalidate()
+            presetsContainer.repaint()
+            saveAll()
+            append("[imported] ${imported.presets.size} preset(s) from clipboard")
+            Notifier.info(project, "导入完成", "从剪贴板导入了 ${imported.presets.size} 个预设")
+        } catch (e: Exception) {
+            append("[import] error: ${e.message}")
+            Messages.showWarningDialog(project, "导入失败: ${e.message}", "导入预设")
+        }
+    }
+
+    private fun createEmptyState(): JPanel {
+        return JPanel().apply {
+            layout = BoxLayout(this, BoxLayout.Y_AXIS)
+            border = BorderFactory.createEmptyBorder(40, 16, 40, 16)
+            alignmentX = CENTER_ALIGNMENT
+            val hint = JLabel("还没有预设").apply {
+                font = font.deriveFont(Font.BOLD, 15f)
+                foreground = JBColor.GRAY
+                alignmentX = CENTER_ALIGNMENT
+            }
+            val subHint = JLabel("预设是一组分支组合，可以一键切换主仓和所有子模块").apply {
+                font = font.deriveFont(Font.PLAIN, 12f)
+                foreground = JBColor.GRAY
+                alignmentX = CENTER_ALIGNMENT
+            }
+            add(hint)
+            add(Box.createVerticalStrut(12))
+            add(subHint)
+            add(Box.createVerticalStrut(20))
+            val cta = JPanel(FlowLayout(FlowLayout.CENTER, 8, 0))
+            cta.alignmentX = CENTER_ALIGNMENT
+            cta.add(JButton("从当前状态创建", AllIcons.Vcs.Branch).noFocusRing().also {
+                it.addActionListener { addPresetFromCurrent() }
+            })
+            cta.add(JButton("手动新增", AllIcons.General.Add).noFocusRing().also {
+                it.addActionListener { addPreset() }
+            })
+            add(cta)
+        }
+    }
+
     private fun append(line: String) {
         SwingUtilities.invokeLater {
-            log.append(line)
-            log.append("\n")
-            log.caretPosition = log.document.length
+            val doc = log.styledDocument
+            val color = when {
+                line.contains("[error]") || line.contains("[fail]") || line.contains("[fatal]") || line.startsWith("ERROR") -> JBColor.RED
+                line.contains("[warn]") || line.startsWith("WARN") -> JBColor(0xE07B00, 0xFFA726)
+                line.contains("[detect]") || line.contains("[saved]") || line.contains("[added]") || line.contains("[exported]") || line.contains("[imported]") -> JBColor.GRAY
+                line.contains("[derive]") || line.contains("[rollback]") -> JBColor(0x1565C0, 0x42A5F5)
+                else -> log.foreground
+            }
+            val attrs = javax.swing.text.SimpleAttributeSet()
+            javax.swing.text.StyleConstants.setForeground(attrs, color)
+            try { doc.insertString(doc.length, line + "\n", attrs) } catch (_: Exception) {}
+            log.caretPosition = doc.length
         }
     }
 }
