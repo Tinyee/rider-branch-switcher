@@ -464,10 +464,7 @@ class PresetEditor(
         switchBtn.toolTipText = if (highlighted) "当前主仓与子模块分支已与该预设一致" else null
         border = makeBorder(highlighted)
         if (changed) {
-            revalidate()
             repaint()
-            parent?.revalidate()
-            parent?.repaint()
         }
     }
 
