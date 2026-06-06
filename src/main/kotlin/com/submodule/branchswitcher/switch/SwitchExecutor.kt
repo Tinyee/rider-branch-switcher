@@ -43,6 +43,8 @@ class SwitchExecutor(
         // Record checkpoint before switching
         lastCheckpoint = recordCheckpoint(preset)
 
+        context.indicator?.isIndeterminate = false
+
         var overallSuccess = true
         for (step in steps) {
             context.indicator?.text = step.name
