@@ -1,6 +1,6 @@
 # Submodule Branch Switcher — 需求 / 路线图
 
-**当前版本 0.3.0**，已具备：
+**当前版本 0.4.0**，已具备：
 
 - 多 preset 持久化（JSON），UI 内增删 preset 与子模块行（基于 `.gitmodules`）
 - 一键切换主仓 + 子模块；脏工作区三策略（stash / skip / force）；切换前 fetch；切换后 pull --ff-only；切换后 VCS 自动刷新
@@ -15,6 +15,10 @@
 - **GitOps 超时可配置 + 取消检查**：面板 30/60/120/300s 选项，Step 内 checkCanceled（v0.3）
 - **切换选项持久化**：dirty/fetch/pull/timeout 存 branch-switcher.xml，IDE 重启保留（v0.3）
 - **自动检测外部分支变更**：切回插件窗口时自动刷新 preset 匹配状态（v0.3）
+- **stash 自动 pop**：切回原分支时自动 git stash pop（v0.4）
+- **进度可视化**：进度条显示步骤名 + 仓名 + 分数（v0.4）
+- **快捷键 Action**：Ctrl+Alt+B 弹出 preset 列表快速切换（v0.4）
+- **派生功能分支**：基于 preset 一键 checkout -b 到所有仓库（v0.4）
 - IntelliJ 原生图标（AllIcons），主题感知色，按钮焦点 ring 行为已修
 
 下面按「切换体验 / 状态可视化 / UI / 工作流 / 质量」五块梳理后续要做的功能点，优先级 **P0(致命) / P1(高价值) / P2(锦上添花)**；状态列标记 v0.x 已落地或下阶段候选。
@@ -97,6 +101,19 @@
 
 后续按 P1 / P2 滚动。
 
+## v0.4 已交付
+
+2026-06-06 P1 + 架构改进：
+
+1. ✅ **stash 自动 pop** — DirtyHandlingStep 记录，CheckoutStep checkout 后自动 git stash pop
+2. ✅ **进度可视化** — indicator.isIndeterminate=false，各 Step 更新 fraction + text2
+3. ✅ **快捷键 Action** — Ctrl+Alt+B / Tools → 切到 Preset，MessageBus 通知面板刷新
+4. ✅ **派生功能分支** — PresetEditor「派生分支」按钮，所有仓库同时 checkout -b
+5. ✅ **coroutines 异步** — detectCurrentState 用 service.scope.launch 替代 Thread，Service 实现 Disposable
+6. ✅ **单元测试文件** — SwitchExecutorTest (mock GitClient)，待配 testFramework 后可在 Rider 运行
+7. ✅ **显示真实项目名** — 进度条和日志用实际目录名替代硬编码 `<main>`
+8. ✅ **消除刷新闪烁** — setHighlighted 只 repaint，revalidate 统一批处理
+
 ## 架构 / 设计债
 
 2026-06-05 代码审查后梳理的结构问题, 2026-06-06 完成三波重构。
@@ -113,7 +130,7 @@
 | P1 | 异步 API 四种混用（Thread / pooledThread / Task.Backgroundable / Task.Modal） | cancel/进度/错误处理语义不一致 | ⚡ detectCurrentState→coroutines |
 | P1 | `Preset` 没有稳定 ID | 重命名后历史 / 快捷键绑定 / 颜色标签都断 | — |
 | P1 | 切换选项（dirty / fetch / pull）不持久化 | IDE 重启重置 | ✅ v0.2.2 |
-| P1 | 没有 EventBus / Listener 模式 | 加任何派生组件都得回头改 Panel | — |
+| P1 | 没有 EventBus / Listener 模式 | 加任何派生组件都得回头改 Panel | ✅ v0.4 (BranchSwitchListener) |
 | P1 | `GitOps` 用 CLI fork 而非 git4idea API | 慢 + 不响应 cancel + 依赖 PATH | — |
 | P2 | 包结构扁平（`com.submodule.branchswitcher` 全平铺，11 个文件） | 加新功能继续平铺会变难找 | ✅ v0.2.2 |
 | P2 | 中英文硬编码，无 `BundleMessage` | i18n 时机械迁移 | — |
@@ -124,7 +141,7 @@
 | 扩展方向 | 难度 | 卡在哪 |
 |---|---|---|
 | 新切换动作（rebase / tag / commit） | **低** | 新增 SwitchStep 子类 + 注册到 pipeline |
-| Tools 菜单 / 快捷键 | **中** | Service 已提供项目级状态访问 |
+| Tools 菜单 / 快捷键 | **低** | v0.4 已实现 Ctrl+Alt+B + MessageBus |
 | 状态栏 widget | **中** | 同上 |
 | 单元测试 | **中** | GitClient 可 mock, 但无测试框架配置 |
 | 多 VCS（hg / p4） | 高 | GitOps 直接绑 git |
