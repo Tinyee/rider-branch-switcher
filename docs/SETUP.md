@@ -126,6 +126,26 @@ kotlin.version=2.3.0
 
 ---
 
+# 开发加速：Sandbox Rider
+
+不用每次改完手动装插件，一行命令启动预装插件的 Rider 实例：
+
+```bash
+./gradlew runIde
+```
+
+- 自动打开一个沙盒 Rider，插件已预装
+- 改代码后关掉重跑 `runIde` 即可
+- 沙盒不会影响你正常装的 Rider 和配置
+
+---
+
+# 运行测试
+
+```bash
+./gradlew test          # 60+ 用例，mock GitClient，不依赖 Rider
+```
+
 # 常见错误速查
 
 | 报错 | 原因 | 对策 |

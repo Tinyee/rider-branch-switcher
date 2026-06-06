@@ -12,8 +12,6 @@ import java.awt.Dimension
 import java.awt.FlowLayout
 import java.awt.Font
 import java.awt.Insets
-import java.awt.event.KeyAdapter
-import java.awt.event.KeyEvent
 import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
 import java.io.File
@@ -26,11 +24,8 @@ import javax.swing.JButton
 import javax.swing.JComboBox
 import javax.swing.JLabel
 import javax.swing.JPanel
-import javax.swing.JTextField
 import javax.swing.SwingUtilities
 import javax.swing.border.Border
-import javax.swing.event.DocumentEvent
-import javax.swing.event.DocumentListener
 
 class PresetEditor(
     private val gitRoot: Path,
@@ -57,7 +52,7 @@ class PresetEditor(
 
     private var original: Preset = initial
 
-    private val mainCombo = makeCombo()
+    private val mainCombo = makeBranchCombo(::updateDirty)
     private val subRows = LinkedHashMap<String, SubRow>()
     private val saveBtn = JButton("保存", AllIcons.Actions.MenuSaveall)
         .apply { isEnabled = false }.noFocusRing()
@@ -189,58 +184,6 @@ class PresetEditor(
         initializing = false
     }
 
-    private fun makeCombo(): JComboBox<String> {
-        val combo = JComboBox<String>()
-        combo.isEditable = true
-        combo.prototypeDisplayValue = "x".repeat(28)
-        combo.addItemListener { updateDirty() }
-        val editor = combo.editor.editorComponent as? JTextField
-        editor?.document?.addDocumentListener(
-            object : DocumentListener {
-                override fun insertUpdate(e: DocumentEvent) = updateDirty()
-                override fun removeUpdate(e: DocumentEvent) = updateDirty()
-                override fun changedUpdate(e: DocumentEvent) = updateDirty()
-            }
-        )
-        editor?.addKeyListener(object : KeyAdapter() {
-            override fun keyReleased(e: KeyEvent) {
-                when (e.keyCode) {
-                    KeyEvent.VK_UP, KeyEvent.VK_DOWN, KeyEvent.VK_ENTER,
-                    KeyEvent.VK_ESCAPE, KeyEvent.VK_LEFT, KeyEvent.VK_RIGHT,
-                    KeyEvent.VK_TAB, KeyEvent.VK_SHIFT, KeyEvent.VK_CONTROL,
-                    KeyEvent.VK_ALT, KeyEvent.VK_META -> return
-                }
-                filterPopup(combo, editor)
-            }
-        })
-        return combo
-    }
-
-    private fun filterPopup(combo: JComboBox<String>, editor: JTextField) {
-        @Suppress("UNCHECKED_CAST")
-        val all = combo.getClientProperty(KEY_ALL_BRANCHES) as? List<String> ?: return
-        val text = editor.text ?: ""
-        val caret = editor.caretPosition
-        val filtered = if (text.isBlank()) all
-                       else all.filter { it.contains(text, ignoreCase = true) }
-        if (filtered.isEmpty()) {
-            combo.isPopupVisible = false
-            return
-        }
-        val same = combo.itemCount == filtered.size &&
-            (0 until combo.itemCount).all { combo.getItemAt(it) == filtered[it] }
-        if (!same) {
-            val model = DefaultComboBoxModel(filtered.toTypedArray())
-            model.selectedItem = text
-            combo.model = model
-            editor.text = text
-            editor.caretPosition = minOf(caret, text.length)
-        }
-        if (combo.isShowing && editor.isFocusOwner) {
-            combo.isPopupVisible = true
-        }
-    }
-
     private fun makeMainRow(): JPanel {
         return object : JPanel(BorderLayout()) {
             override fun getMaximumSize(): Dimension =
@@ -257,7 +200,7 @@ class PresetEditor(
     }
 
     private fun buildSubRow(path: String): SubRow {
-        val combo = makeCombo()
+        val combo = makeBranchCombo(::updateDirty)
         val dot = JLabel("●").apply {
             font = font.deriveFont(8f)
             foreground = JBColor(0x9E9E9E, 0x757575)
