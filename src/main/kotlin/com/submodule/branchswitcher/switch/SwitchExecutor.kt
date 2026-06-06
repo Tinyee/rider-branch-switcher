@@ -91,8 +91,13 @@ class SwitchExecutor(
                 continue
             }
             val cur = git.currentBranch(dir)
-            // Restore branch first if we had one, otherwise fall back to SHA
-            if (entry.branch != null && entry.branch != cur) {
+            // Already on the same branch as checkpoint — nothing to roll back
+            if (entry.branch != null && entry.branch == cur) {
+                log("$label: still on ${entry.branch}, skip")
+                continue
+            }
+            // Try to restore the original branch
+            if (entry.branch != null) {
                 log("$label: checking out branch ${entry.branch} (was ${cur ?: "(detached)"})")
                 val br = git.checkoutExisting(dir, entry.branch)
                 if (!br.ok) {
@@ -101,15 +106,17 @@ class SwitchExecutor(
                     if (!shaR.ok) {
                         log("[rollback] $label SHA checkout also failed: ${shaR.stderr}")
                         allOk = false
-                        continue
                     }
                 }
-            } else if (cur != entry.sha) {
-                log("$label: resetting to ${entry.sha} (was on ${cur ?: "(detached)"})")
-                val r = git.checkoutExisting(dir, entry.sha)
-                if (!r.ok) {
-                    log("[rollback] $label checkout failed: ${r.stderr}")
-                    allOk = false
+            } else {
+                // Was detached HEAD originally — restore to SHA only if different
+                if (cur != entry.sha) {
+                    log("$label: resetting to ${entry.sha} (was on ${cur ?: "(detached)"})")
+                    val r = git.checkoutExisting(dir, entry.sha)
+                    if (!r.ok) {
+                        log("[rollback] $label checkout failed: ${r.stderr}")
+                        allOk = false
+                    }
                 }
             }
         }
