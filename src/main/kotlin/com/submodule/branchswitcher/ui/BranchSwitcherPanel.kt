@@ -159,7 +159,10 @@ class BranchSwitcherPanel(
             30 -> 0
             120 -> 2
             300 -> 3
-            else -> 1
+            else -> {
+                service.timeoutSeconds = 60
+                1
+            }
         }
         timeoutCombo.addItemListener {
             service.timeoutSeconds = when (timeoutCombo.selectedIndex) {
@@ -168,6 +171,8 @@ class BranchSwitcherPanel(
                 3 -> 300
                 else -> 60
             }
+            // Recreate editors so they capture the new gitClient with updated timeout
+            reload()
         }
 
         addAncestorListener(object : javax.swing.event.AncestorListener {
@@ -448,15 +453,20 @@ class BranchSwitcherPanel(
 
     private fun rollbackSwitch(executor: SwitchExecutor) {
         val task = object : Task.Backgroundable(project, "Rolling back", true) {
+            var rollbackOk = false
             override fun run(indicator: ProgressIndicator) {
                 indicator.isIndeterminate = true
-                executor.rollback()
+                rollbackOk = executor.rollback()
             }
             override fun onFinished() {
                 val root = gitRoot() ?: return
                 val submodulePaths = executor.getCheckpoint()?.keys?.filter { it != "." } ?: emptyList()
-                refreshVcs(root, com.submodule.branchswitcher.model.Preset("_rollback", ".", submodulePaths.associateWith { "" }))
+                refreshVcs(root, com.submodule.branchswitcher.model.Preset("_rollback", "", submodulePaths.associateWith { "" }))
                 detectCurrentState()
+                if (!rollbackOk) {
+                    Notifier.warn(project, "回滚部分失败",
+                        "部分仓库未能恢复到切换前状态，详见 ToolWindow 日志")
+                }
             }
         }
         com.intellij.openapi.progress.ProgressManager.getInstance().run(task)
