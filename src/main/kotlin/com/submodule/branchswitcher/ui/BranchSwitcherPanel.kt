@@ -44,6 +44,7 @@ class BranchSwitcherPanel(
 ) : JPanel(BorderLayout()) {
 
     private val editors = mutableListOf<PresetEditor>()
+    private var emptyStatePanel: JPanel? = null
     private val presetsInner = JPanel().apply {
         layout = BoxLayout(this, BoxLayout.Y_AXIS)
         alignmentX = LEFT_ALIGNMENT
@@ -241,8 +242,11 @@ class BranchSwitcherPanel(
                     Notifier.error(project, "Branch Switcher", "未找到 git 根目录")
                     return@onSuccess
                 }
+                emptyStatePanel = null
                 if (parsed.presets.isEmpty()) {
-                    presetsInner.add(createEmptyState())
+                    val panel = createEmptyState()
+                    emptyStatePanel = panel
+                    presetsInner.add(panel)
                 } else {
                     parsed.presets.forEach { addEditorRow(root, it) }
                 }
@@ -287,6 +291,7 @@ class BranchSwitcherPanel(
     }
 
     private fun addEditorRow(root: Path, preset: Preset) {
+        emptyStatePanel?.let { presetsInner.remove(it); emptyStatePanel = null }
         lateinit var editor: PresetEditor
         editor = PresetEditor(
             gitRoot = root,
@@ -316,7 +321,9 @@ class BranchSwitcherPanel(
         presetsInner.remove(editor)
         saveAll()
         if (editors.isEmpty()) {
-            presetsInner.add(createEmptyState())
+            val panel = createEmptyState()
+            emptyStatePanel = panel
+            presetsInner.add(panel)
         }
         presetsInner.revalidate()
         presetsInner.repaint()
