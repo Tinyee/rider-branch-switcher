@@ -357,34 +357,12 @@ class BranchSwitcherPanel(
             onSave = { saveAll() },
             onDelete = { deleteEditor(editor) },
             onDerive = { branchName -> derivePresetBranch(root, preset, branchName) },
-            onMoveUp = { movePreset(editor, -1) },
-            onMoveDown = { movePreset(editor, 1) },
             gitClient = service.gitClient,
             scope = service.scope,
         )
         editors.add(editor)
         presetsInner.add(editor)
         presetsInner.add(Box.createVerticalStrut(4))
-    }
-
-    private fun movePreset(editor: PresetEditor, delta: Int) {
-        val idx = editors.indexOf(editor)
-        if (idx < 0) return
-        val target = idx + delta
-        if (target < 0 || target >= editors.size) return
-        // Swap in list
-        editors[idx] = editors[target]
-        editors[target] = editor
-        // Rebuild UI to reflect new order
-        presetsInner.removeAll()
-        editors.forEachIndexed { i, ed ->
-            presetsInner.add(ed)
-            if (i < editors.size - 1) presetsInner.add(Box.createVerticalStrut(4))
-        }
-        presetsInner.revalidate()
-        presetsInner.repaint()
-        saveAll()
-        append("[reordered] ${editor.currentPreset().name} moved ${if (delta < 0) "up" else "down"}")
     }
 
     private fun deleteEditor(editor: PresetEditor) {
