@@ -9,6 +9,7 @@ import com.intellij.openapi.ui.InputValidator
 import com.intellij.openapi.ui.Messages
 import com.intellij.ui.JBColor
 import com.intellij.ui.components.JBScrollPane
+import com.submodule.branchswitcher.BranchSwitchListener
 import com.submodule.branchswitcher.model.DirtyAction
 import com.submodule.branchswitcher.model.PreflightRow
 import com.submodule.branchswitcher.model.Preset
@@ -173,6 +174,14 @@ class BranchSwitcherPanel(
                 else -> 60
             }
         }
+
+        // Subscribe to switch events (e.g., from shortcut action)
+        val connection = project.messageBus.connect(service)
+        connection.subscribe(BranchSwitchListener.TOPIC, object : BranchSwitchListener {
+            override fun onBranchSwitched() {
+                SwingUtilities.invokeLater { detectCurrentState() }
+            }
+        })
 
         // Re-detect current state when tool window becomes visible
         addHierarchyListener {

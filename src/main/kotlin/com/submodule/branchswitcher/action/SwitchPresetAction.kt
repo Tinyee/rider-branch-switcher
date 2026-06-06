@@ -9,6 +9,7 @@ import com.intellij.openapi.progress.ProgressManager
 import com.intellij.openapi.progress.Task
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.Messages
+import com.submodule.branchswitcher.BranchSwitchListener
 import com.submodule.branchswitcher.Notifier
 import com.submodule.branchswitcher.model.DirtyAction
 import com.submodule.branchswitcher.model.Preset
@@ -59,6 +60,7 @@ class SwitchPresetAction : AnAction() {
                 } else {
                     Notifier.error(project, "切换有失败项", "「${preset.name}」部分仓未成功")
                 }
+                project.messageBus.syncPublisher(BranchSwitchListener.TOPIC).onBranchSwitched()
                 // Refresh VCS
                 ApplicationManager.getApplication().executeOnPooledThread {
                     val dirs = mutableListOf(java.io.File(root.toUri()))
