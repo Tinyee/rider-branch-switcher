@@ -71,9 +71,7 @@ class BranchSwitcherPanel(
             border = BorderFactory.createEmptyBorder(0, 0, 6, 0)
         }
 
-        val presetsScroll = JBScrollPane(presetsContainer).apply {
-            preferredSize = Dimension(0, 200)
-        }
+        val presetsScroll = JBScrollPane(presetsContainer)
         val addPanel = JPanel(FlowLayout(FlowLayout.LEFT, 4, 4)).apply {
             add(JButton("新增预设", AllIcons.General.Add).noFocusRing()
                 .also { it.addActionListener { addPreset() } })
@@ -91,9 +89,7 @@ class BranchSwitcherPanel(
         north.add(title, BorderLayout.NORTH)
         north.add(presetsBlock, BorderLayout.CENTER)
 
-        val logScroll = JBScrollPane(log).apply {
-            preferredSize = Dimension(0, 50)
-        }
+        val logScroll = JBScrollPane(log)
 
         val optsRow1 = JPanel(FlowLayout(FlowLayout.LEFT, 8, 2)).apply {
             add(JLabel("脏工作区:"))
@@ -137,8 +133,12 @@ class BranchSwitcherPanel(
         south.add(opts, BorderLayout.NORTH)
         south.add(buttons, BorderLayout.SOUTH)
 
+        val splitter = com.intellij.ui.JBSplitter(true, 0.65f).apply {
+            firstComponent = presetsScroll
+            secondComponent = logScroll
+        }
         add(north, BorderLayout.NORTH)
-        add(logScroll, BorderLayout.CENTER)
+        add(splitter, BorderLayout.CENTER)
         add(south, BorderLayout.SOUTH)
 
         reload()
