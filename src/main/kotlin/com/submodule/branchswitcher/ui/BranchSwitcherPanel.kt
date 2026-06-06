@@ -93,7 +93,7 @@ class BranchSwitcherPanel(
         north.add(presetsBlock, BorderLayout.CENTER)
 
         val logScroll = JBScrollPane(log).apply {
-            preferredSize = Dimension(0, 50)
+            preferredSize = Dimension(0, 30)
         }
 
         val optsRow1 = JPanel(FlowLayout(FlowLayout.LEFT, 8, 2)).apply {
