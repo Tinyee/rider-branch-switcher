@@ -5,13 +5,15 @@ import com.intellij.execution.process.CapturingProcessHandler
 import java.io.File
 import java.nio.charset.StandardCharsets
 
-class GitOps : GitClient {
+class GitOps(
+    private val timeoutSeconds: Int = 60,
+) : GitClient {
     private fun run(workDir: File, vararg args: String): GitResult {
         val cmd = GeneralCommandLine("git", *args)
             .withWorkDirectory(workDir)
             .withCharset(StandardCharsets.UTF_8)
         val handler = CapturingProcessHandler(cmd)
-        val out = handler.runProcess(60_000)
+        val out = handler.runProcess(timeoutSeconds * 1000)
         return GitResult(
             cmd = "git ${args.joinToString(" ")}",
             exitCode = out.exitCode,
@@ -73,6 +75,11 @@ class GitOps : GitClient {
             val v = PATH_LINE.find(line)?.groupValues?.get(1) ?: return@mapNotNull null
             v.trim().trim('"').takeIf { it.isNotEmpty() }
         }
+    }
+
+    override fun revParseHead(workDir: File): String? {
+        val r = run(workDir, "rev-parse", "HEAD")
+        return if (r.ok) r.stdout.trim().ifEmpty { null } else null
     }
 
     override fun listAllBranches(workDir: File): List<String> {

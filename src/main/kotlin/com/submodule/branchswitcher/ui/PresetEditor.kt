@@ -64,6 +64,12 @@ class PresetEditor(
         foreground = JBUI.CurrentTheme.Link.Foreground.ENABLED
         isVisible = false
     }
+    private val mainDiffLabel = JLabel().apply {
+        foreground = JBUI.CurrentTheme.Link.Foreground.ENABLED
+        font = font.deriveFont(Font.PLAIN, 11f)
+        isVisible = false
+        border = BorderFactory.createEmptyBorder(1, 0, 0, 0)
+    }
     private val switchBtn = JButton("切到此预设", AllIcons.Actions.Execute).noFocusRing()
     private var isCurrent = false
 
@@ -96,11 +102,18 @@ class PresetEditor(
                 }
             })
         }
-        val left = JPanel(FlowLayout(FlowLayout.LEFT, 4, 0)).apply {
+        val nameRow = JPanel(FlowLayout(FlowLayout.LEFT, 4, 0)).apply {
             isOpaque = false
             add(arrow)
             add(nameLabel.apply { font = font.deriveFont(Font.BOLD) })
             add(currentBadge)
+        }
+        val left = JPanel().apply {
+            layout = BoxLayout(this, BoxLayout.Y_AXIS)
+            isOpaque = false
+            alignmentX = LEFT_ALIGNMENT
+            add(nameRow)
+            add(mainDiffLabel)
             cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
             addMouseListener(object : MouseAdapter() {
                 override fun mouseClicked(e: MouseEvent) { toggle() }
@@ -417,6 +430,14 @@ class PresetEditor(
 
     fun applyCurrentState(currentBranches: Map<String, String?>) {
         setHighlighted(matchesState(currentBranches))
+        val currentMain = currentBranches["."] ?: "(detached)"
+        if (currentMain != original.main) {
+            mainDiffLabel.text = "主仓: $currentMain → ${original.main}"
+            mainDiffLabel.isVisible = true
+            mainDiffLabel.foreground = JBUI.CurrentTheme.Link.Foreground.ENABLED
+        } else {
+            mainDiffLabel.isVisible = false
+        }
     }
 
     fun matchesState(currentBranches: Map<String, String?>): Boolean {

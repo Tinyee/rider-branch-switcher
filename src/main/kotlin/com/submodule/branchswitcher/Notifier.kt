@@ -16,6 +16,21 @@ object Notifier {
     fun error(project: Project?, title: String, content: String) =
         notify(project, title, content, NotificationType.ERROR)
 
+    fun rollbackAction(
+        project: Project?,
+        title: String,
+        content: String,
+        onRollback: () -> Unit,
+    ) {
+        NotificationGroupManager.getInstance()
+            .getNotificationGroup(GROUP_ID)
+            .createNotification(title, content, NotificationType.ERROR)
+            .addAction(com.intellij.notification.NotificationAction.createSimple("回滚到切换前") {
+                onRollback()
+            })
+            .notify(project)
+    }
+
     private fun notify(project: Project?, title: String, content: String, type: NotificationType) {
         NotificationGroupManager.getInstance()
             .getNotificationGroup(GROUP_ID)

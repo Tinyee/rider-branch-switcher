@@ -12,6 +12,7 @@ class DirtyHandlingStep : SwitchStep {
     override fun execute(context: SwitchContext): StepResult {
         val failures = LinkedHashMap<String, String>()
         for (target in context.preset.targets()) {
+            context.indicator?.checkCanceled()
             val dir = resolveDir(context, target.path)
             if (!dir.exists()) continue
             if (!isGitRepo(dir)) continue

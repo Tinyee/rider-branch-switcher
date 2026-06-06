@@ -15,6 +15,7 @@ class CheckoutStep : SwitchStep {
         var mainCheckoutOk = false
 
         for (target in context.preset.targets()) {
+            context.indicator?.checkCanceled()
             val isMain = target.path == "."
             val dir = resolveDir(context, target.path)
             val label = if (isMain) "<main>" else target.path

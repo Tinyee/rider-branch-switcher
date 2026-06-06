@@ -26,4 +26,5 @@ interface GitClient {
     fun submoduleInitPath(gitRoot: File, path: String): GitResult
     fun listSubmodulePaths(gitRoot: File): List<String>
     fun listAllBranches(workDir: File): List<String>
+    fun revParseHead(workDir: File): String?
 }
