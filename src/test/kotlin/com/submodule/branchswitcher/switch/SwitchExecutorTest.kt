@@ -36,12 +36,15 @@ class SwitchExecutorTest {
         override fun checkoutNewBranch(workDir: File, branch: String): GitResult = GitResult("checkout", 0, "", "")
     }
 
-    private val projectRoot = Path.of("C:/fake/project")
+    private val projectRoot = java.nio.file.Files.createTempDirectory("test-project")
     private val preset = Preset("test", "dev", emptyMap(), pull = false)
 
     @Before
     fun setup() {
         log.clear()
+        // Create project dir so CheckoutStep doesn't skip it
+        projectRoot.toFile().mkdirs()
+        java.io.File(projectRoot.toFile(), ".git").mkdirs()
     }
 
     @Test
@@ -49,8 +52,7 @@ class SwitchExecutorTest {
         val executor = SwitchExecutor(projectRoot, { log += it }, fakeGit)
         val result = executor.execute(preset, SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false))
         assertTrue("Switch should succeed", result)
-        assertTrue("Checkpoint must be recorded in non-empty project without existing dirs",
-            executor.getCheckpoint()?.isEmpty() != false || true) // checkpoint may be empty since dirs don't exist
+        assertTrue("Checkpoint should be recorded", executor.getCheckpoint()?.isNotEmpty() ?: false)
     }
 
     @Test
