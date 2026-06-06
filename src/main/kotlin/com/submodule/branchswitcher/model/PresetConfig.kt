@@ -6,7 +6,6 @@ data class RepoTarget(
 )
 
 data class Preset(
-    val id: String = java.util.UUID.randomUUID().toString(),
     val name: String,
     val main: String,
     val submodules: Map<String, String> = emptyMap(),

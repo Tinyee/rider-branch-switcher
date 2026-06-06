@@ -94,34 +94,34 @@
 
 ## 架构 / 设计债
 
-2026-06-05 代码审查后梳理的结构问题。不在 v0.x 功能线上，但会直接决定 v0.3 候选 P0 能否低成本落地。
+2026-06-05 代码审查后梳理的结构问题, 2026-06-06 完成三波重构。
 
 ### 主要问题
 
-| 优先级 | 问题 | 影响 |
-|---|---|---|
-| P0 | `BranchSwitcherPanel` 是 god class（419 行），`PresetFile` 状态住在 UI 里 | Action / 状态栏 widget 拿不到 preset；ToolWindow 关掉 state 重新 load |
-| P0 | `GitOps` 是 object，不可 mock | ROADMAP P1「单元测试」无法落地 |
-| P0 | `SwitchExecutor` 一个 130 行 `execute` 串了所有步骤 | P0「部分失败回滚」需要 checkpoint，无 step 抽象就没法切入 |
-| P0 | 没有 `BranchSwitcherService`（Project Service） | 状态、CRUD、监听全没地方放 |
-| P1 | `PresetEditor` 是 god view（463 行） | 加拖拽/复制/导出/重命名只能继续塞这个文件 |
-| P1 | 异步 API 四种混用（Thread / pooledThread / Task.Backgroundable / Task.Modal） | cancel/进度/错误处理语义不一致 |
-| P1 | `Preset` 没有稳定 ID | 重命名后历史 / 快捷键绑定 / 颜色标签都断 |
-| P1 | 切换选项（dirty / fetch / pull）不持久化 | IDE 重启重置 |
-| P1 | 没有 EventBus / Listener 模式 | 加任何派生组件都得回头改 Panel |
-| P1 | `GitOps` 用 CLI fork 而非 git4idea API | 慢 + 不响应 cancel + 依赖 PATH |
-| P2 | 包结构扁平（`com.submodule.branchswitcher` 全平铺，11 个文件） | 加新功能继续平铺会变难找 |
-| P2 | 中英文硬编码，无 `BundleMessage` | i18n 时机械迁移 |
-| P2 | `noFocusRing()` 每个按钮手动调，容易漏 | 应该工厂化或全局 LAF |
+| 优先级 | 问题 | 影响 | 状态 |
+|---|---|---|---|
+| P0 | `BranchSwitcherPanel` 是 god class（419 行），`PresetFile` 状态住在 UI 里 | Action / 状态栏 widget 拿不到 preset；ToolWindow 关掉 state 重新 load | ✅ v0.2.2 |
+| P0 | `GitOps` 是 object，不可 mock | ROADMAP P1「单元测试」无法落地 | ✅ v0.2.2 |
+| P0 | `SwitchExecutor` 一个 130 行 `execute` 串了所有步骤 | P0「部分失败回滚」需要 checkpoint，无 step 抽象就没法切入 | ✅ v0.2.2 |
+| P0 | 没有 `BranchSwitcherService`（Project Service） | 状态、CRUD、监听全没地方放 | ✅ v0.2.2 |
+| P1 | `PresetEditor` 是 god view（463 行） | 加拖拽/复制/导出/重命名只能继续塞这个文件 | — |
+| P1 | 异步 API 四种混用（Thread / pooledThread / Task.Backgroundable / Task.Modal） | cancel/进度/错误处理语义不一致 | — |
+| P1 | `Preset` 没有稳定 ID | 重命名后历史 / 快捷键绑定 / 颜色标签都断 | — |
+| P1 | 切换选项（dirty / fetch / pull）不持久化 | IDE 重启重置 | ✅ v0.2.2 |
+| P1 | 没有 EventBus / Listener 模式 | 加任何派生组件都得回头改 Panel | — |
+| P1 | `GitOps` 用 CLI fork 而非 git4idea API | 慢 + 不响应 cancel + 依赖 PATH | — |
+| P2 | 包结构扁平（`com.submodule.branchswitcher` 全平铺，11 个文件） | 加新功能继续平铺会变难找 | ✅ v0.2.2 |
+| P2 | 中英文硬编码，无 `BundleMessage` | i18n 时机械迁移 | — |
+| P2 | `noFocusRing()` 每个按钮手动调，容易漏 | 应该工厂化或全局 LAF | — |
 
 ### 可扩展性现状
 
 | 扩展方向 | 难度 | 卡在哪 |
 |---|---|---|
-| 新切换动作（rebase / tag / commit） | 高 | 改 SwitchExecutor 主循环 |
-| Tools 菜单 / 快捷键 | 高 | PresetFile 状态在 Panel 里 |
-| 状态栏 widget | 高 | 同上 |
-| 单元测试 | 高 | GitOps 不可 mock |
+| 新切换动作（rebase / tag / commit） | **低** | 新增 SwitchStep 子类 + 注册到 pipeline |
+| Tools 菜单 / 快捷键 | **中** | Service 已提供项目级状态访问 |
+| 状态栏 widget | **中** | 同上 |
+| 单元测试 | **中** | GitClient 可 mock, 但无测试框架配置 |
 | 多 VCS（hg / p4） | 高 | GitOps 直接绑 git |
 | Per-preset 选项覆盖 | 中 | 数据模型加字段 + UI 改 |
 | 切换历史 / 撤销 | 中 | 无持久化层 |
@@ -129,9 +129,38 @@
 | git worktree | 中 | 假设 `.git` 是 dir/file |
 | i18n | 低 | 机械迁移 |
 
-### 重构路径（按 ROI 排序）
+### v0.2.2 已交付 — 架构重构
 
-**第一波 — 撬动单测 + 后续重构**：
+2026-06-06 按以下顺序完成：
+
+**Wave 1: 打通单测 + 重构基础**
+1. ✅ `GitClient` 接口 — `GitOps` 实现, 4 个消费者构造注入
+2. ✅ 包重组 — `git/` `model/` `ui/` `service/` `switch/` 五个子包
+3. ✅ `BranchSwitcherService` — Project Service, 状态从 Panel 移入, 选项持久化到 `branch-switcher.xml`
+
+**Wave 2: 为 v0.3 P0 铺路**
+4. ✅ `SwitchStep` 管道 — 5 个 Step 类 (Dirty/Fetch/Checkout/Pull/Sync), SwitchExecutor 130 行缩为 30 行编排
+5. ~~`Preset.id`~~ — 已移除; Gson 绕过 Kotlin 默认参数导致 null, 待有实际使用场景时配合迁移策略重新加入
+
+**Wave 3: 扩展面（预留接口）**
+6. ✅ PersistentStateComponent — 切换选项持久化
+7. — MessageBus topic（未实施, 等有派生组件时再加）
+8. — plugin.xml Action 框架（未实施）
+
+**包结构 (19 文件)**
+
+```
+com.submodule.branchswitcher/
+├── git/          GitClient (接口) + GitOps (实现)
+├── model/        Preset/PresetFile/DirtyAction/SwitchOptions/PreflightRow
+├── service/      BranchSwitcherService (Project Service)
+├── switch/       SwitchStep + 5个Step + SwitchExecutor + SwitchPreflight
+├── ui/           Panel/Editor/Dialog/Factory/UiUtil
+├── Notifier.kt
+└── PresetLoader.kt
+```
+
+### 待重构路径（剩余）
 
 1. **`GitClient` interface** — `GitOps` 实现它，`SwitchExecutor` / `Preflight` 持有 `GitClient`；一个改动让 P1 单测可做
 2. **包重组** — `ui/` `git/` `model/` `service/` `action/` 子包，先腾空间

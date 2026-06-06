@@ -1,10 +1,8 @@
 package com.submodule.branchswitcher.switch
 
 import com.submodule.branchswitcher.git.GitClient
-import com.submodule.branchswitcher.model.DirtyAction
 import com.submodule.branchswitcher.model.Preset
 import com.submodule.branchswitcher.model.SwitchOptions
-import java.io.File
 import java.nio.file.Path
 
 class SwitchExecutor(
