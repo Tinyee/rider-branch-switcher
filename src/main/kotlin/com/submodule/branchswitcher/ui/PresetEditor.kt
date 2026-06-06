@@ -19,6 +19,7 @@ import java.awt.event.MouseEvent
 import java.io.File
 import java.nio.file.Path
 import javax.swing.BorderFactory
+import javax.swing.Box
 import javax.swing.BoxLayout
 import javax.swing.DefaultComboBoxModel
 import javax.swing.JButton
@@ -45,9 +46,13 @@ class PresetEditor(
     private class SubRow(
         val path: String,
         val combo: JComboBox<String>,
-        val panel: JPanel,
+        var panel: JPanel,
         var deleted: Boolean = false,
         var loaded: Boolean = false,
+        val statusDot: JLabel = JLabel("●").apply {
+            font = font.deriveFont(8f)
+            foreground = JBColor(0x9E9E9E, 0x757575)
+        },
     )
 
     private var original: Preset = initial
@@ -60,7 +65,17 @@ class PresetEditor(
         .apply { isEnabled = false }.noFocusRing()
     private val addSubBtn = JButton("添加子模块", AllIcons.General.Add).noFocusRing()
     private val arrow = JLabel(AllIcons.General.ArrowRight)
-    private val nameLabel = JLabel(initial.name)
+    private val nameLabel = JLabel(initial.name).apply {
+        toolTipText = "双击重命名"
+        cursor = Cursor.getPredefinedCursor(Cursor.TEXT_CURSOR)
+        addMouseListener(object : MouseAdapter() {
+            override fun mouseClicked(e: MouseEvent) {
+                if (e.clickCount == 2) {
+                    rename()
+                }
+            }
+        })
+    }
     private val currentBadge = JLabel("· 当前").apply {
         foreground = JBUI.CurrentTheme.Link.Foreground.ENABLED
         isVisible = false
@@ -243,17 +258,27 @@ class PresetEditor(
 
     private fun buildSubRow(path: String): SubRow {
         val combo = makeCombo()
+        val dot = JLabel("●").apply {
+            font = font.deriveFont(8f)
+            foreground = JBColor(0x9E9E9E, 0x757575)
+        }
+        val row = SubRow(path, combo, JPanel(), statusDot = dot)
         val rowPanel = object : JPanel(BorderLayout()) {
             override fun getMaximumSize(): Dimension =
                 Dimension(Short.MAX_VALUE.toInt(), preferredSize.height)
         }.apply {
             border = BorderFactory.createEmptyBorder(2, 12, 2, 4)
             alignmentX = LEFT_ALIGNMENT
-            val l = JLabel(shortLabel(path)).apply {
-                preferredSize = Dimension(140, preferredSize.height)
-                toolTipText = path
+            val labelPanel = JPanel(FlowLayout(FlowLayout.LEFT, 0, 0)).apply {
+                isOpaque = false
+                add(dot)
+                add(Box.createHorizontalStrut(4))
+                add(JLabel(shortLabel(path)).apply {
+                    preferredSize = Dimension(120, preferredSize.height)
+                    toolTipText = path
+                })
             }
-            add(l, BorderLayout.WEST)
+            add(labelPanel, BorderLayout.WEST)
             add(combo, BorderLayout.CENTER)
 
             val delBtn = JButton(AllIcons.General.Remove).apply {
@@ -273,7 +298,7 @@ class PresetEditor(
             }.noFocusRing()
             add(delBtn, BorderLayout.EAST)
         }
-        val row = SubRow(path, combo, rowPanel)
+        row.panel = rowPanel
         subRows[path] = row
         return row
     }
@@ -442,6 +467,22 @@ class PresetEditor(
         } else {
             mainDiffLabel.isVisible = false
         }
+        // Update submodule status dots
+        original.submodules.forEach { (path, targetBranch) ->
+            val row = subRows[path] ?: return@forEach
+            if (row.deleted) return@forEach
+            val cur = currentBranches[path]
+            row.statusDot.foreground = when {
+                cur == null -> JBColor(0x9E9E9E, 0x757575) // gray: not initialized
+                cur == targetBranch -> JBColor(0x4CAF50, 0x66BB6A) // green: matched
+                else -> JBColor(0xF44336, 0xEF5350) // red: mismatch
+            }
+            row.statusDot.toolTipText = when {
+                cur == null -> "$path: 未初始化"
+                cur == targetBranch -> "$path: $cur ✓"
+                else -> "$path: $cur → $targetBranch"
+            }
+        }
     }
 
     fun matchesState(currentBranches: Map<String, String?>): Boolean {
@@ -497,6 +538,25 @@ class PresetEditor(
     }
 
     fun currentPreset(): Preset = original
+
+    fun updatePresetName(newName: String) {
+        original = original.copy(name = newName)
+        nameLabel.text = newName
+    }
+
+    private fun rename() {
+        val result = com.intellij.openapi.ui.Messages.showInputDialog(
+            "重命名预设:",
+            "重命名",
+            null, original.name, null,
+        )
+        if (result.isNullOrBlank()) return
+        val newName = result.trim()
+        if (newName != original.name) {
+            updatePresetName(newName)
+            onSave(original)
+        }
+    }
 
     private fun deriveBranch() {
         val preset = buildCurrent()
