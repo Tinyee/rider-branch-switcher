@@ -38,8 +38,6 @@ class PresetEditor(
     private val onSave: (Preset) -> Unit,
     private val onDelete: () -> Unit,
     private val onDerive: (branchName: String) -> Unit = {},
-    private val onMoveUp: () -> Unit = {},
-    private val onMoveDown: () -> Unit = {},
     private val gitClient: GitClient,
     private val scope: CoroutineScope,
 ) : JPanel() {
@@ -86,9 +84,7 @@ class PresetEditor(
         isVisible = false
         border = JBUI.Borders.empty(1, 0, 0, 0)
     }
-    private val switchBtn = JButton("切换", AllIcons.Actions.Execute).noFocusRing().apply {
-        preferredSize = Dimension(JBUI.scale(50), 26)
-    }
+    private val switchBtn = JButton(Strings.switchToPreset, AllIcons.Actions.Execute).noFocusRing()
     private var isCurrent = false
 
     private val body = object : JPanel() {
@@ -137,21 +133,16 @@ class PresetEditor(
                 override fun mouseClicked(e: MouseEvent) { toggle() }
             })
         }
-        val right = JPanel(FlowLayout(FlowLayout.RIGHT, 2, 0)).apply { isOpaque = false }
-        // Small icon-only header buttons, uniform height
-        fun smallBtn(icon: javax.swing.Icon, tip: String, action: () -> Unit): JButton =
-            JButton(icon).noFocusRing().apply {
-                toolTipText = tip
-                addActionListener { action() }
-                preferredSize = Dimension(26, 26)
-            }
-        right.add(smallBtn(AllIcons.Actions.MoveUp, "上移此预设") { onMoveUp() })
-        right.add(smallBtn(AllIcons.Actions.MoveDown, "下移此预设") { onMoveDown() })
+        val right = JPanel(FlowLayout(FlowLayout.RIGHT, 4, 0)).apply { isOpaque = false }
         switchBtn.addActionListener { onSwitch(buildCurrent()) }
-        right.add(smallBtn(AllIcons.Vcs.Branch, Strings.deriveTip) { deriveBranch() })
+        right.add(JButton(Strings.deriveBranch, AllIcons.Vcs.Branch).noFocusRing().also {
+            it.toolTipText = Strings.deriveTip
+            it.addActionListener { deriveBranch() }
+        })
         right.add(switchBtn)
-        right.add(smallBtn(AllIcons.Actions.Cancel, "删除") { onDelete() }.also {
+        right.add(JButton(Strings.deletePreset, AllIcons.Actions.Cancel).noFocusRing().also {
             it.foreground = NamedColorUtil.getErrorForeground()
+            it.addActionListener { onDelete() }
         })
 
         header.add(left, BorderLayout.WEST)
@@ -463,8 +454,8 @@ class PresetEditor(
             java.awt.KeyboardFocusManager.getCurrentKeyboardFocusManager().clearGlobalFocusOwner()
         }
         switchBtn.isEnabled = !highlighted
-        switchBtn.text = if (highlighted) "✓" else "切换"
-        switchBtn.toolTipText = if (highlighted) Strings.alreadyOnPresetTip else "切到此预设"
+        switchBtn.text = if (highlighted) Strings.alreadyOnPreset else Strings.switchToPreset
+        switchBtn.toolTipText = if (highlighted) Strings.alreadyOnPresetTip else null
         border = makeBorder(highlighted)
         if (changed) {
             repaint()
