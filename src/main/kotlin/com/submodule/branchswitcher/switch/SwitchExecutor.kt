@@ -12,6 +12,18 @@ data class CheckpointEntry(
     val branch: String?,
 )
 
+/**
+ * Orchestrates a branch switch by running a pipeline of [SwitchStep]s.
+ *
+ * Pipeline order (intentional):
+ * 1. [DirtyHandlingStep] — stash/skip/force dirty repos first, before any branch changes
+ * 2. [FetchStep] — ensure remote refs are current
+ * 3. [CheckoutStep] — switch branches (main first, then submodules)
+ * 4. [PullStep] — fast-forward after checkout
+ * 5. [SubmoduleSyncStep] — align .gitmodules URLs
+ *
+ * Records a [CheckpointEntry] before switching for rollback support.
+ */
 class SwitchExecutor(
     private val projectRoot: Path,
     private val log: (String) -> Unit,

@@ -8,8 +8,14 @@ import javax.swing.JTextField
 import javax.swing.event.DocumentEvent
 import javax.swing.event.DocumentListener
 
+/** JComboBox client-property key storing the unfiltered branch list for popup filtering. */
 const val KEY_ALL_BRANCHES = "submodule.branchswitcher.allBranches"
 
+/**
+ * Creates an editable branch-name combo with real-time filtering.
+ * The full branch list is stored as a client property ([KEY_ALL_BRANCHES]);
+ * typing filters the popup case-insensitively while preserving caret position.
+ */
 fun makeBranchCombo(onDirty: () -> Unit): JComboBox<String> {
     val combo = JComboBox<String>()
     combo.isEditable = true
@@ -37,6 +43,11 @@ fun makeBranchCombo(onDirty: () -> Unit): JComboBox<String> {
     return combo
 }
 
+/**
+ * Filters the combo popup to branches containing [editor.text] (case-insensitive).
+ * Skips rebuild if the filtered list is identical to the current model.
+ * Restores caret position after model swap.
+ */
 fun filterBranchPopup(combo: JComboBox<String>, editor: JTextField) {
     @Suppress("UNCHECKED_CAST")
     val all = combo.getClientProperty(KEY_ALL_BRANCHES) as? List<String> ?: return

@@ -8,9 +8,17 @@ import com.submodule.branchswitcher.model.RepoTarget
 import java.io.File
 import java.nio.file.Path
 
+/**
+ * Pre-switch inspection: probes all repos in a preset and returns a [PreflightRow] per target.
+ * Used by [SwitchPreviewDialog] to show what will change before executing the switch.
+ */
 class SwitchPreflight(
     private val git: GitClient,
 ) {
+    /**
+     * Iterates all targets in [preset], probing each for current branch, dirty status,
+     * and whether the target branch exists locally or on origin.
+     */
     fun probe(
         projectRoot: Path,
         preset: Preset,
