@@ -9,6 +9,7 @@ import com.intellij.openapi.ui.InputValidator
 import com.intellij.openapi.ui.Messages
 import com.intellij.ui.JBColor
 import com.intellij.ui.components.JBScrollPane
+import com.intellij.util.ui.JBUI
 import com.submodule.branchswitcher.BranchSwitchListener
 import com.submodule.branchswitcher.model.DirtyAction
 import com.submodule.branchswitcher.model.PreflightRow
@@ -46,9 +47,9 @@ class BranchSwitcherPanel(
     private val editors = mutableListOf<PresetEditor>()
     private var emptyStatePanel: JPanel? = null
     private val currentBranchLabel = JLabel(" ").apply {
-        font = font.deriveFont(Font.PLAIN, 11f)
-        foreground = JBColor.GRAY
-        border = BorderFactory.createEmptyBorder(0, 0, 4, 0)
+        font = font.deriveFont(Font.BOLD, 12f)
+        foreground = JBUI.CurrentTheme.Link.Foreground.ENABLED
+        border = BorderFactory.createEmptyBorder(0, 0, 2, 0)
     }
     private val presetsInner = JPanel().apply {
         layout = BoxLayout(this, BoxLayout.Y_AXIS)
