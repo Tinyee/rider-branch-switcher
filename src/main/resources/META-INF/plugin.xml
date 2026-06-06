@@ -2,6 +2,7 @@
     <id>com.submodule.branchswitcher</id>
     <name>Submodule Branch Switcher</name>
     <vendor>internal</vendor>
+    <resource-bundle>messages.BranchSwitcherBundle</resource-bundle>
     <description><![CDATA[
         One-click switch the main repo and all its submodules to a preset branch combo.
         Reads branch presets from .idea/branch-presets.json (auto-created on first run).

@@ -57,11 +57,11 @@ class SwitchPreviewDialog(
         table.columnModel.getColumn(4).cellRenderer = SourceRenderer()
 
         val scroll = JBScrollPane(table).apply {
-            preferredSize = Dimension(720, (rows.size.coerceAtMost(8) * table.rowHeight) + 56)
+            preferredSize = Dimension(JBUI.scale(720), (rows.size.coerceAtMost(8) * table.rowHeight) + JBUI.scale(56))
         }
 
         val panel = JPanel(BorderLayout(0, 8)).apply {
-            border = BorderFactory.createEmptyBorder(4, 4, 4, 4)
+            border = JBUI.Borders.empty(4, 4, 4, 4)
         }
         panel.add(buildSummary(), BorderLayout.NORTH)
         panel.add(scroll, BorderLayout.CENTER)
@@ -85,7 +85,7 @@ class SwitchPreviewDialog(
         if (missingDir > 0) parts += "$missingDir 目录缺失"
 
         val label = JLabel(parts.joinToString("  ·  ")).apply {
-            border = BorderFactory.createEmptyBorder(2, 4, 6, 4)
+            border = JBUI.Borders.empty(2, 4, 6, 4)
             if (missingBranch > 0 || missingDir > 0) foreground = warnColor
         }
         return label

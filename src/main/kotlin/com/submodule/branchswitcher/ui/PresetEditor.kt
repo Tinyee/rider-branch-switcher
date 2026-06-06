@@ -38,6 +38,8 @@ class PresetEditor(
     private val onSave: (Preset) -> Unit,
     private val onDelete: () -> Unit,
     private val onDerive: (branchName: String) -> Unit = {},
+    private val onMoveUp: () -> Unit = {},
+    private val onMoveDown: () -> Unit = {},
     private val gitClient: GitClient,
     private val scope: CoroutineScope,
 ) : JPanel() {
@@ -82,7 +84,7 @@ class PresetEditor(
     private val mainDiffLabel = JLabel().apply {
         font = font.deriveFont(Font.PLAIN, 11f)
         isVisible = false
-        border = BorderFactory.createEmptyBorder(1, 0, 0, 0)
+        border = JBUI.Borders.empty(1, 0, 0, 0)
     }
     private val switchBtn = JButton(Strings.switchToPreset, AllIcons.Actions.Execute).noFocusRing()
     private var isCurrent = false
@@ -133,7 +135,16 @@ class PresetEditor(
                 override fun mouseClicked(e: MouseEvent) { toggle() }
             })
         }
-        val right = JPanel(FlowLayout(FlowLayout.RIGHT, 4, 0)).apply { isOpaque = false }
+        val right = JPanel(FlowLayout(FlowLayout.RIGHT, 2, 0)).apply { isOpaque = false }
+        // Reorder buttons
+        right.add(JButton(AllIcons.Actions.MoveUp).noFocusRing().also {
+            it.toolTipText = "上移此预设"
+            it.addActionListener { onMoveUp() }
+        })
+        right.add(JButton(AllIcons.Actions.MoveDown).noFocusRing().also {
+            it.toolTipText = "下移此预设"
+            it.addActionListener { onMoveDown() }
+        })
         switchBtn.addActionListener { onSwitch(buildCurrent()) }
         right.add(JButton(Strings.deriveBranch, AllIcons.Vcs.Branch).noFocusRing().also {
             it.toolTipText = Strings.deriveTip
@@ -157,7 +168,7 @@ class PresetEditor(
                 Dimension(Short.MAX_VALUE.toInt(), preferredSize.height)
         }.apply {
             alignmentX = LEFT_ALIGNMENT
-            border = BorderFactory.createEmptyBorder(8, 8, 4, 4)
+            border = JBUI.Borders.empty(8, 8, 4, 4)
         }
         addSubBtn.addActionListener { showAddSubmoduleMenu() }
         revertBtn.addActionListener { revert() }
@@ -193,10 +204,10 @@ class PresetEditor(
             override fun getMaximumSize(): Dimension =
                 Dimension(Short.MAX_VALUE.toInt(), preferredSize.height)
         }.apply {
-            border = BorderFactory.createEmptyBorder(2, 12, 2, 4)
+            border = JBUI.Borders.empty(2, 12, 2, 4)
             alignmentX = LEFT_ALIGNMENT
             val l = JLabel(Strings.mainRepo).apply {
-                preferredSize = Dimension(140, preferredSize.height)
+                preferredSize = Dimension(JBUI.scale(140), preferredSize.height)
             }
             add(l, BorderLayout.WEST)
             add(mainCombo, BorderLayout.CENTER)
@@ -214,14 +225,14 @@ class PresetEditor(
             override fun getMaximumSize(): Dimension =
                 Dimension(Short.MAX_VALUE.toInt(), preferredSize.height)
         }.apply {
-            border = BorderFactory.createEmptyBorder(2, 12, 2, 4)
+            border = JBUI.Borders.empty(2, 12, 2, 4)
             alignmentX = LEFT_ALIGNMENT
             val labelPanel = JPanel(FlowLayout(FlowLayout.LEFT, 0, 0)).apply {
                 isOpaque = false
                 add(dot)
                 add(Box.createHorizontalStrut(4))
                 add(JLabel(shortLabel(path)).apply {
-                    preferredSize = Dimension(120, preferredSize.height)
+                    preferredSize = Dimension(JBUI.scale(120), preferredSize.height)
                     toolTipText = path
                 })
             }
@@ -229,10 +240,10 @@ class PresetEditor(
             add(combo, BorderLayout.CENTER)
 
             val delBtn = JButton(AllIcons.General.Remove).apply {
-                margin = Insets(0, 4, 0, 4)
-                preferredSize = Dimension(32, 24)
-                maximumSize = Dimension(32, 24)
-                minimumSize = Dimension(32, 24)
+                margin = JBUI.insets(0, 4, 0, 4)
+                preferredSize = Dimension(JBUI.scale(32), JBUI.scale(24))
+                maximumSize = Dimension(JBUI.scale(32), JBUI.scale(24))
+                minimumSize = Dimension(JBUI.scale(32), JBUI.scale(24))
                 toolTipText = "从此预设移除该子模块（保存后切换将不动它）"
                 addActionListener {
                     val r = subRows[path] ?: return@addActionListener
@@ -399,12 +410,12 @@ class PresetEditor(
                         BorderFactory.createMatteBorder(0, 3, 0, 0,
                             JBUI.CurrentTheme.Link.Foreground.ENABLED),
                     ),
-                    BorderFactory.createEmptyBorder(4, 1, 10, 4),
+                    JBUI.Borders.empty(4, 1, 10, 4),
                 )
             } else {
                 BorderFactory.createCompoundBorder(
                     divider,
-                    BorderFactory.createEmptyBorder(4, 4, 10, 4),
+                    JBUI.Borders.empty(4, 4, 10, 4),
                 )
             }
         }

@@ -29,6 +29,7 @@ import java.awt.Font
 import java.io.File
 import java.nio.file.Path
 import java.nio.file.Paths
+import javax.swing.JProgressBar
 import javax.swing.BorderFactory
 import javax.swing.Box
 import javax.swing.BoxLayout
@@ -50,7 +51,7 @@ class BranchSwitcherPanel(
     private val currentBranchLabel = JLabel(" ").apply {
         font = font.deriveFont(Font.BOLD, 12f)
         foreground = JBUI.CurrentTheme.Link.Foreground.ENABLED
-        border = BorderFactory.createEmptyBorder(0, 0, 2, 0)
+        border = JBUI.Borders.empty(0, 0, 2, 0)
     }
     private val presetsInner = JPanel().apply {
         layout = BoxLayout(this, BoxLayout.Y_AXIS)
@@ -65,6 +66,11 @@ class BranchSwitcherPanel(
     private val pullCheck = JCheckBox(Strings.pullAfter, true)
     private val fetchCheck = JCheckBox(Strings.fetchBefore, true)
 
+    private val progressBar = JProgressBar().apply {
+        isStringPainted = true
+        isVisible = false
+    }
+
     private val log = javax.swing.JTextPane().apply {
         isEditable = false
         font = Font(Font.MONOSPACED, Font.PLAIN, 12)
@@ -72,15 +78,16 @@ class BranchSwitcherPanel(
     }
 
     init {
-        border = BorderFactory.createEmptyBorder(8, 8, 8, 8)
+        border = JBUI.Borders.empty(8, 8, 8, 8)
+        minimumSize = Dimension(JBUI.scale(280), minimumSize.height)
 
         val title = JLabel(Strings.pluginTitle).apply {
             font = font.deriveFont(Font.BOLD, 13f)
-            border = BorderFactory.createEmptyBorder(0, 0, 6, 0)
+            border = JBUI.Borders.empty(0, 0, 6, 0)
         }
 
         val presetsScroll = JBScrollPane(presetsContainer).apply {
-            preferredSize = Dimension(0, 300)
+            preferredSize = Dimension(0, JBUI.scale(300))
         }
         val addPanel = JPanel(FlowLayout(FlowLayout.LEFT, 4, 4)).apply {
             add(JButton(Strings.addPreset, AllIcons.General.Add).noFocusRing()
@@ -95,13 +102,17 @@ class BranchSwitcherPanel(
             add(addPanel, BorderLayout.SOUTH)
         }
 
+        val statusRow = JPanel(BorderLayout()).apply {
+            add(currentBranchLabel, BorderLayout.NORTH)
+            add(progressBar, BorderLayout.SOUTH)
+        }
         val north = JPanel(BorderLayout())
         north.add(title, BorderLayout.NORTH)
-        north.add(currentBranchLabel, BorderLayout.SOUTH)
+        north.add(statusRow, BorderLayout.SOUTH)
         north.add(presetsBlock, BorderLayout.CENTER)
 
         val logScroll = JBScrollPane(log).apply {
-            preferredSize = Dimension(0, 30)
+            preferredSize = Dimension(0, JBUI.scale(30))
         }
 
         val optsRow1 = JPanel(FlowLayout(FlowLayout.LEFT, 8, 2)).apply {
@@ -122,7 +133,7 @@ class BranchSwitcherPanel(
             layout = BoxLayout(this, BoxLayout.Y_AXIS)
             border = BorderFactory.createCompoundBorder(
                 BorderFactory.createMatteBorder(1, 0, 0, 0, JBColor.border()),
-                BorderFactory.createEmptyBorder(4, 0, 4, 0),
+                JBUI.Borders.empty(4, 0, 4, 0),
             )
             optsRow1.alignmentX = LEFT_ALIGNMENT
             optsRow2.alignmentX = LEFT_ALIGNMENT
@@ -132,7 +143,7 @@ class BranchSwitcherPanel(
 
         val buttons = JPanel().apply {
             layout = BoxLayout(this, BoxLayout.Y_AXIS)
-            border = BorderFactory.createEmptyBorder(2, 0, 4, 0)
+            border = JBUI.Borders.empty(2, 0, 4, 0)
         }
         val btnRow1 = JPanel(FlowLayout(FlowLayout.LEFT, 4, 0)).apply {
             alignmentX = LEFT_ALIGNMENT
@@ -242,7 +253,13 @@ class BranchSwitcherPanel(
         val base = ideBase() ?: return null
         var cur: Path? = base
         while (cur != null) {
-            if (java.nio.file.Files.exists(cur.resolve(".git"))) return cur
+            val dotGit = cur.resolve(".git")
+            if (java.nio.file.Files.exists(dotGit)) {
+                if (!java.nio.file.Files.isDirectory(dotGit)) {
+                    append("[info] detected git worktree — .git is a file, not a directory")
+                }
+                return cur
+            }
             cur = cur.parent
         }
         return base
@@ -340,12 +357,34 @@ class BranchSwitcherPanel(
             onSave = { saveAll() },
             onDelete = { deleteEditor(editor) },
             onDerive = { branchName -> derivePresetBranch(root, preset, branchName) },
+            onMoveUp = { movePreset(editor, -1) },
+            onMoveDown = { movePreset(editor, 1) },
             gitClient = service.gitClient,
             scope = service.scope,
         )
         editors.add(editor)
         presetsInner.add(editor)
         presetsInner.add(Box.createVerticalStrut(4))
+    }
+
+    private fun movePreset(editor: PresetEditor, delta: Int) {
+        val idx = editors.indexOf(editor)
+        if (idx < 0) return
+        val target = idx + delta
+        if (target < 0 || target >= editors.size) return
+        // Swap in list
+        editors[idx] = editors[target]
+        editors[target] = editor
+        // Rebuild UI to reflect new order
+        presetsInner.removeAll()
+        editors.forEachIndexed { i, ed ->
+            presetsInner.add(ed)
+            if (i < editors.size - 1) presetsInner.add(Box.createVerticalStrut(4))
+        }
+        presetsInner.revalidate()
+        presetsInner.repaint()
+        saveAll()
+        append("[reordered] ${editor.currentPreset().name} moved ${if (delta < 0) "up" else "down"}")
     }
 
     private fun deleteEditor(editor: PresetEditor) {
@@ -514,7 +553,20 @@ class BranchSwitcherPanel(
             private var rollbackExecutor: SwitchExecutor? = null
             override fun run(indicator: ProgressIndicator) {
                 indicator.isIndeterminate = true
-                val executor = SwitchExecutor(root, ::append, service.gitClient, indicator)
+                val wrapped = object : ProgressIndicator by indicator {
+                    override fun setFraction(fraction: Double) {
+                        indicator.fraction = fraction
+                        SwingUtilities.invokeLater {
+                            progressBar.isIndeterminate = false
+                            progressBar.value = (fraction * 100).toInt()
+                        }
+                    }
+                    override fun setText2(text: String?) {
+                        indicator.text2 = text
+                        SwingUtilities.invokeLater { progressBar.string = text ?: "Switching..." }
+                    }
+                }
+                val executor = SwitchExecutor(root, ::append, service.gitClient, wrapped)
                 rollbackExecutor = executor
                 ok = executor.execute(preset, opts)
             }
@@ -674,15 +726,19 @@ class BranchSwitcherPanel(
         val tw = com.intellij.openapi.wm.ToolWindowManager.getInstance(project).getToolWindow("SubmoduleBranches") ?: return
         if (inProgress) {
             tw.setIcon(AllIcons.Process.Step_4)
+            progressBar.isVisible = true
+            progressBar.isIndeterminate = true
+            progressBar.string = "Switching..."
         } else {
             tw.setIcon(AllIcons.Vcs.Branch)
+            progressBar.isVisible = false
         }
     }
 
     private fun createEmptyState(): JPanel {
         return JPanel().apply {
             layout = BoxLayout(this, BoxLayout.Y_AXIS)
-            border = BorderFactory.createEmptyBorder(40, 16, 40, 16)
+            border = JBUI.Borders.empty(40, 16, 40, 16)
             alignmentX = CENTER_ALIGNMENT
             val hint = JLabel(Strings.noPresets).apply {
                 font = font.deriveFont(Font.BOLD, 15f)
