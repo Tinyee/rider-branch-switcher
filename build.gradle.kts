@@ -14,13 +14,15 @@ repositories {
     }
 }
 
+val riderVersion = providers.gradleProperty("rider.version").get()
+val riderPath = providers.gradleProperty("rider.path").orNull
+
 dependencies {
     intellijPlatform {
-        val riderPath = providers.gradleProperty("rider.path").orNull
         if (!riderPath.isNullOrBlank()) {
             local(riderPath)
         } else {
-            rider("2026.1.1")
+            rider(riderVersion)
         }
         bundledPlugin("Git4Idea")
     }
@@ -35,8 +37,8 @@ kotlin {
 intellijPlatform {
     pluginConfiguration {
         ideaVersion {
-            sinceBuild = "261"
-            untilBuild = "261.*"
+            sinceBuild = providers.gradleProperty("plugin.sinceBuild").get()
+            untilBuild = providers.gradleProperty("plugin.untilBuild").get()
         }
     }
 }
