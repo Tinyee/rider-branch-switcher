@@ -56,7 +56,9 @@ class SwitchIntegrationTest {
     /** Create a repo with an initial commit on [branch]. Returns the repo dir. */
     private fun createRepo(parent: Path, name: String, branch: String = "main"): File {
         val dir = parent.resolve(name).toFile().also { it.mkdirs() }
-        gitOk(dir, "init", "-b", branch)
+        // Use two-step init for compatibility with older git (no -b flag)
+        gitOk(dir, "init")
+        gitOk(dir, "checkout", "-b", branch)
         gitOk(dir, "config", "user.email", "test@test.com")
         gitOk(dir, "config", "user.name", "Test")
         // Disable CRLF conversion so line endings are predictable in tests
