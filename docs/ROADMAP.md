@@ -42,7 +42,7 @@
 | P0 | **「我现在在哪个 preset」高亮** | 命中的 preset 左侧加色条 + 「当前」副标题 + 切换按钮禁用 | ✅ v0.2 |
 | P0 | **每个 preset 头部显示主仓 diff** | 头部应并排显示 `当前分支 → preset.main`，不一致时染色，而不是必须展开才看得到 | ✅ v0.3 |
 | P1 | **行级状态点** | 每个子模块行左侧一个圆点：绿=已匹配 / 黄=分支对但有 dirty / 红=不匹配 / 灰=未 init | ✅ v0.4 |
-| P1 | **切换中状态贴在 ToolWindow tab 上** | 切换时 stripe icon 加 spinner、迷你状态条。现在切换时面板有 icon 变化 | ⚡ icon 切换 (AllIcons.Process.Step_4), 非进度条 |
+| P1 | **切换中状态贴在 ToolWindow tab 上** | 切换时 stripe icon 加 spinner、迷你状态条。现在切换时面板有 icon 变化 | ✅ v0.5 面板内 JProgressBar 实时显示 |
 | P2 | **顶部「当前主仓分支」常驻显示** | 不用展开任何东西就能看到主仓在哪 | ✅ v0.4 |
 
 ## UI
@@ -53,10 +53,10 @@
 | P0 | **替换 ▶/▼/✕/✓ 字符为 IntelliJ Icons** | `AllIcons.General.ArrowRight/ArrowDown/Add/Remove`、`AllIcons.Actions.MenuSaveall/Rollback/Cancel/Execute/Refresh/EditSource/GC` | ✅ v0.2 |
 | P1 | **错误用 Notification 弹** | 切换失败 / 预设解析失败 / VCS 刷新失败,使用 `NotificationGroupManager` 在 IDE 右下角弹气泡 | ✅ v0.2 |
 | P1 | **空状态占位** | 第一次打开/找不到 git root/没有 preset 时，中央应该有大字提示 + CTA 按钮，不是只在日志输出 | ✅ v0.4 |
-| P1 | **日志区染色 + 折叠** | 改用 IntelliJ `ConsoleView` 替代 `JTextArea`，INFO/WARN/ERROR 自动染色，带搜索 | ⚡ JTextPane + 颜色匹配 |
-| P1 | **行布局对齐** | 主仓/子模块 combo 和右侧 ✕ 按钮在不同字号下对不齐。统一用 `GridBag` 或 `MigLayout`，140px 硬编码改成 `JBUI.scale` | — |
-| P2 | **预设拖拽排序** | 多 preset 时只能按 JSON 顺序，加 drag handle | — |
-| P2 | **窄宽自适应** | tool window 拖窄时按钮换行/截断。响应式收起次要按钮到 ⋯ 菜单 | — |
+| P1 | **日志区染色 + 折叠** | 改用 IntelliJ `ConsoleView` 替代 `JTextArea`，INFO/WARN/ERROR 自动染色，带搜索 | ⚡ JTextPane+颜色匹配 (ConsoleView 需 execution 模块, Rider SDK 不含) |
+| P1 | **行布局对齐** | 主仓/子模块 combo 和右侧 ✕ 按钮在不同字号下对不齐。统一用 `GridBag` 或 `MigLayout`，140px 硬编码改成 `JBUI.scale` | ✅ v0.5 JBUI.scale + JBUI.Borders |
+| P2 | **预设拖拽排序** | 多 preset 时只能按 JSON 顺序，加 drag handle | ✅ v0.5 ↑↓ 按钮 |
+| P2 | **窄宽自适应** | tool window 拖窄时按钮换行/截断。响应式收起次要按钮到 ⋯ 菜单 | ✅ v0.5 minimumSize 防截断 |
 
 ## 工作流
 
@@ -77,7 +77,7 @@
 | P0 | GitOps 60s 超时:子模块多/网络慢会卡 UI。需要可配置 + 真异步(目前 Thread + invokeLater,够用但不可中断) | ✅ v0.3 |
 | P1 | **单元测试**:GitOps / SwitchExecutor 都没有。mock GitOps 跑 SwitchExecutor 至少覆盖「主仓成功子模块失败」的 case | ✅ 61 用例, mock GitClient, cmd 可跑 |
 | P2 | **i18n**:目前中英混杂,要么全中要么走 `Bundle.message()` | ⚡ Strings.kt 68 常量, UI 按钮/标签已接入 |
-| P2 | **git worktree 兼容**:副工作树会失败,需要友好提示 | — |
+| P2 | **git worktree 兼容**:副工作树会失败,需要友好提示 | ✅ v0.5 检测 .git 文件并输出提示 |
 
 ## v0.2 已交付（按合入顺序）
 
@@ -134,7 +134,7 @@
 | P1 | 没有 EventBus / Listener 模式 | 加任何派生组件都得回头改 Panel | ✅ v0.4 (BranchSwitchListener) |
 | P1 | `GitOps` 用 CLI fork 而非 git4idea API | 慢 + 不响应 cancel + 依赖 PATH | — |
 | P2 | 包结构扁平（`com.submodule.branchswitcher` 全平铺，11 个文件） | 加新功能继续平铺会变难找 | ✅ v0.2.2 |
-| P2 | 中英文硬编码，无 `BundleMessage` | i18n 时机械迁移 | ⚡ Strings.kt 常量化, 主要 UI 已接入 |
+| P2 | 中英文硬编码，无 `BundleMessage` | i18n 时机械迁移 | ✅ v0.5 ResourceBundle(en/zh) + Bundle.kt |
 | P2 | `noFocusRing()` 每个按钮手动调，容易漏 | 应该工厂化或全局 LAF | — |
 
 ### 可扩展性现状
