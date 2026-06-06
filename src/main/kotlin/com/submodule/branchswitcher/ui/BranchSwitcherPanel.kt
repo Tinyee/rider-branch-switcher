@@ -92,7 +92,7 @@ class BranchSwitcherPanel(
         north.add(presetsBlock, BorderLayout.CENTER)
 
         val logScroll = JBScrollPane(log).apply {
-            preferredSize = Dimension(0, 80)
+            preferredSize = Dimension(0, 50)
         }
 
         val optsRow1 = JPanel(FlowLayout(FlowLayout.LEFT, 8, 2)).apply {
@@ -307,6 +307,9 @@ class BranchSwitcherPanel(
         editors.remove(editor)
         presetsInner.remove(editor)
         saveAll()
+        if (editors.isEmpty()) {
+            presetsInner.add(createEmptyState())
+        }
         presetsInner.revalidate()
         presetsInner.repaint()
         append("[deleted] $name")
@@ -574,8 +577,15 @@ class BranchSwitcherPanel(
                 Messages.showInfoMessage(project, "剪贴板为空", "导入预设")
                 return
             }
+            val trimmed = text.trim()
             val gson = com.google.gson.Gson()
-            val imported = gson.fromJson(text, com.submodule.branchswitcher.model.PresetFile::class.java)
+            // Accept both {"presets":[...]} and plain [...]
+            val imported = if (trimmed.startsWith("[")) {
+                val presets = gson.fromJson(trimmed, Array<com.submodule.branchswitcher.model.Preset>::class.java)
+                com.submodule.branchswitcher.model.PresetFile(presets.toList())
+            } else {
+                gson.fromJson(trimmed, com.submodule.branchswitcher.model.PresetFile::class.java)
+            }
             if (imported == null || imported.presets.isEmpty()) {
                 Messages.showWarningDialog(project, "剪贴板内容不是有效的预设 JSON", "导入预设")
                 return
