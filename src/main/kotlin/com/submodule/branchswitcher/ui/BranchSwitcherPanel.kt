@@ -175,6 +175,13 @@ class BranchSwitcherPanel(
             reload()
         }
 
+        // Re-detect current state when tool window becomes visible
+        addHierarchyListener {
+            if (isShowing) {
+                SwingUtilities.invokeLater { detectCurrentState() }
+            }
+        }
+
         addAncestorListener(object : javax.swing.event.AncestorListener {
             override fun ancestorAdded(event: javax.swing.event.AncestorEvent) {
                 SwingUtilities.invokeLater {
