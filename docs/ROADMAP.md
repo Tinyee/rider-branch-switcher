@@ -42,8 +42,8 @@
 | P0 | **「我现在在哪个 preset」高亮** | 命中的 preset 左侧加色条 + 「当前」副标题 + 切换按钮禁用 | ✅ v0.2 |
 | P0 | **每个 preset 头部显示主仓 diff** | 头部应并排显示 `当前分支 → preset.main`，不一致时染色，而不是必须展开才看得到 | ✅ v0.3 |
 | P1 | **行级状态点** | 每个子模块行左侧一个圆点：绿=已匹配 / 黄=分支对但有 dirty / 红=不匹配 / 灰=未 init | ✅ v0.4 |
-| P1 | **切换中状态贴在 ToolWindow tab 上** | 切换时 stripe icon 加 spinner、迷你状态条。现在切换时面板没有视觉信号 | — |
-| P2 | **顶部「当前主仓分支」常驻显示** | 不用展开任何东西就能看到主仓在哪 | — |
+| P1 | **切换中状态贴在 ToolWindow tab 上** | 切换时 stripe icon 加 spinner、迷你状态条。现在切换时面板有 icon 变化 | ⚡ icon 切换 (AllIcons.Process.Step_4), 非进度条 |
+| P2 | **顶部「当前主仓分支」常驻显示** | 不用展开任何东西就能看到主仓在哪 | ✅ v0.4 |
 
 ## UI
 
@@ -67,16 +67,16 @@
 | P1 | **预设重命名** | 现在改名要手工编辑 JSON | ✅ v0.4 |
 | P1 | **快捷键** | `Tools → Branch Switcher → 切到 X` 注册成 Action，可绑快捷键 (Ctrl+Alt+B) | ✅ v0.4 |
 | P1 | **导入/导出** | 团队成员手工拷贝 JSON。给「导出到剪贴板/导入」按钮 | ✅ v0.4 |
-| P2 | **右键菜单** | preset / 子模块行没 context menu。子模块行右键应有「在 Finder 打开」「跳转到 Git tool window」「仅切此一个」 | — |
-| P2 | **历史记录** | 最近 5 次切换记录，可「撤销到上一次切换之前」 | — |
+| P2 | **右键菜单** | preset / 子模块行没 context menu。子模块行右键应有「在 Finder 打开」「跳转到 Git tool window」「仅切此一个」 | ✅ v0.4 |
+| P2 | **历史记录** | 最近 5 次切换记录，可「撤销到上一次切换之前」 | ✅ v0.4 |
 
 ## 质量
 
 | 优先级 | 需求 | 状态 |
 |---|---|---|
 | P0 | GitOps 60s 超时:子模块多/网络慢会卡 UI。需要可配置 + 真异步(目前 Thread + invokeLater,够用但不可中断) | ✅ v0.3 |
-| P1 | **单元测试**:GitOps / SwitchExecutor 都没有。mock GitOps 跑 SwitchExecutor 至少覆盖「主仓成功子模块失败」的 case | ⚡ 已写测试文件, 待配 testFramework |
-| P2 | **i18n**:目前中英混杂,要么全中要么走 `Bundle.message()` | — |
+| P1 | **单元测试**:GitOps / SwitchExecutor 都没有。mock GitOps 跑 SwitchExecutor 至少覆盖「主仓成功子模块失败」的 case | ✅ 61 用例, mock GitClient, cmd 可跑 |
+| P2 | **i18n**:目前中英混杂,要么全中要么走 `Bundle.message()` | ⚡ Strings.kt 68 常量, UI 按钮/标签已接入 |
 | P2 | **git worktree 兼容**:副工作树会失败,需要友好提示 | — |
 
 ## v0.2 已交付（按合入顺序）
@@ -113,6 +113,7 @@
 6. ✅ **单元测试文件** — SwitchExecutorTest (mock GitClient)，待配 testFramework 后可在 Rider 运行
 7. ✅ **显示真实项目名** — 进度条和日志用实际目录名替代硬编码 `<main>`
 8. ✅ **消除刷新闪烁** — setHighlighted 只 repaint，revalidate 统一批处理
+9. ✅ **代码审查修复** (2026-06-07, 8 项) — preflight 不丢弃, sync 失败上报, Thread→coroutines, resolveDir 去重, Strings.kt 接入, 依赖注入, pipeline 可配置
 
 ## 架构 / 设计债
 
@@ -126,30 +127,30 @@
 | P0 | `GitOps` 是 object，不可 mock | ROADMAP P1「单元测试」无法落地 | ✅ v0.2.2 |
 | P0 | `SwitchExecutor` 一个 130 行 `execute` 串了所有步骤 | P0「部分失败回滚」需要 checkpoint，无 step 抽象就没法切入 | ✅ v0.2.2 |
 | P0 | 没有 `BranchSwitcherService`（Project Service） | 状态、CRUD、监听全没地方放 | ✅ v0.2.2 |
-| P1 | `PresetEditor` 是 god view（463 行） | 加拖拽/复制/导出/重命名只能继续塞这个文件 | — |
-| P1 | 异步 API 四种混用（Thread / pooledThread / Task.Backgroundable / Task.Modal） | cancel/进度/错误处理语义不一致 | ⚡ detectCurrentState→coroutines |
+| P1 | `PresetEditor` 是 god view（约 500 行） | 加拖拽/复制/导出/重命名只能继续塞这个文件 | ⚡ BranchComboUtil 抽出, Thread→coroutines |
+| P1 | 异步 API 四种混用（Thread / pooledThread / Task.Backgroundable / Task.Modal） | cancel/进度/错误处理语义不一致 | ⚡ Thread 全改 coroutines, Task 保留(进度对话框) |
 | P1 | `Preset` 没有稳定 ID | 重命名后历史 / 快捷键绑定 / 颜色标签都断 | — |
 | P1 | 切换选项（dirty / fetch / pull）不持久化 | IDE 重启重置 | ✅ v0.2.2 |
 | P1 | 没有 EventBus / Listener 模式 | 加任何派生组件都得回头改 Panel | ✅ v0.4 (BranchSwitchListener) |
 | P1 | `GitOps` 用 CLI fork 而非 git4idea API | 慢 + 不响应 cancel + 依赖 PATH | — |
 | P2 | 包结构扁平（`com.submodule.branchswitcher` 全平铺，11 个文件） | 加新功能继续平铺会变难找 | ✅ v0.2.2 |
-| P2 | 中英文硬编码，无 `BundleMessage` | i18n 时机械迁移 | — |
+| P2 | 中英文硬编码，无 `BundleMessage` | i18n 时机械迁移 | ⚡ Strings.kt 常量化, 主要 UI 已接入 |
 | P2 | `noFocusRing()` 每个按钮手动调，容易漏 | 应该工厂化或全局 LAF | — |
 
 ### 可扩展性现状
 
 | 扩展方向 | 难度 | 卡在哪 |
 |---|---|---|
-| 新切换动作（rebase / tag / commit） | **低** | 新增 SwitchStep 子类 + 注册到 pipeline |
+| 新切换动作（rebase / tag / commit） | **低** | SwitchExecutor 构造函数接受 steps 列表 |
 | Tools 菜单 / 快捷键 | **低** | v0.4 已实现 Ctrl+Alt+B + MessageBus |
 | 状态栏 widget | **中** | 同上 |
-| 单元测试 | **中** | GitClient 可 mock, 但无测试框架配置 |
+| 单元测试 | **低** | 61 用例已配通, `./gradlew test` |
 | 多 VCS（hg / p4） | 高 | GitOps 直接绑 git |
 | Per-preset 选项覆盖 | 中 | 数据模型加字段 + UI 改 |
-| 切换历史 / 撤销 | 中 | 无持久化层 |
+| 切换历史 / 撤销 | 低 | v0.4 已实现 |
 | Preset 拖拽/复制/导入导出 | 中 | PresetEditor 已胖，但加按钮可行 |
 | git worktree | 中 | 假设 `.git` 是 dir/file |
-| i18n | 低 | 机械迁移 |
+| i18n | 低 | Strings.kt 常量化, 替换硬编码即可 |
 
 ### v0.2.2 已交付 — 架构重构
 
@@ -186,14 +187,22 @@ com.submodule.branchswitcher/
 
 **必要重构（已实施）**：Wave 1—3 核心项全部完成。
 
-**第四波 — 投入产出比变低，等待有需求再做**：
+**第四波 — 2026-06-07 代码审查修复 (8 项)**：
 
-9. git4idea API 迁移 — 替代 CLI fork，原生 cancel + 更快
-10. coroutines 替代 Thread/Task 混用 — 统一异步模型
-11. i18n — 全英或 `Bundle.message()`
+9. ✅ **SwitchPresetAction** — preflight 结果不再丢弃, log 回调捕获错误附到通知
+10. ✅ **SubmoduleSyncStep** — 失败时返回 Partial（与 Fetch/Pull 一致）
+11. ✅ **PresetEditor Thread→coroutines** — 3 处 `Thread{}.start()` 替换为 `scope.launch`, 注入 CoroutineScope
+12. ✅ **detectCurrentState 防过期** — invokeLater 回调校验 `editor in editors`
+13. ✅ **resolveGitDir/isGitRepo 去重** — 提取到 SwitchStep.kt 顶层, 删除 6 处重复
+14. ✅ **Strings.kt 接入 UI** — 按钮/标签/提示替换为常量, 68→20+ 引用
+15. ✅ **移除默认 GitOps()** — PresetEditor/SwitchExecutor/SwitchPreflight 强制注入
+16. ✅ **SwitchExecutor pipeline 可配置** — steps 改为构造函数参数
+
+**第五波 — 投入产出比变低，等待有需求再做**：
+
+17. git4idea API 迁移 — 替代 CLI fork，原生 cancel + 更快
+18. i18n `Bundle.message()` — 当前 Strings.kt 常量化已足够
 
 **未列入计划的低优先级**：
 
-12. `PresetEditor` 拆分（463 行）
-13. `EventBus` / Listener 模式
-14. `noFocusRing()` 工厂化 / 全局 LAF
+19. `noFocusRing()` 工厂化 / 全局 LAF
