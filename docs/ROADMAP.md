@@ -19,7 +19,7 @@
 | 优先级 | 需求 | 现状缺什么 | 状态 |
 |---|---|---|---|
 | P0 | **Dry-run 预览** | 每仓 `当前分支 → 目标分支`、是否 dirty、stash 会动多少文件、远端有/无目标分支 | ✅ v0.2 |
-| P0 | **部分失败回滚** | 主仓切完后某个子模块挂掉，状态不一致没法一键回去。需要事务式 checkpoint（切前记下每个仓的 HEAD，失败时给「回滚到切换前」按钮） | v0.3 候选 |
+| P0 | **部分失败回滚** | 主仓切完后某个子模块挂掉，状态不一致没法一键回去。需要事务式 checkpoint（切前记下每个仓的 HEAD，失败时给「回滚到切换前」按钮） | ✅ v0.3 |
 | P0 | **submodule 处理** | 主仓切完跑 `git submodule sync`,缺失子模块跑 `git submodule update --init -- <path>` | ✅ v0.2 |
 | P1 | **stash 自动 pop** | Stash 模式只 push 不 pop。切回原分支时要手工 `git stash list/pop`。可加「记住 stash → 切回时自动 pop」 | — |
 | P1 | **进度可视化** | `Task.Backgroundable` 用 indeterminate，看不到「5 个仓的第 3 个」。改 `indicator.fraction + text2` | — |
@@ -31,7 +31,7 @@
 | 优先级 | 需求 | 现状 | 状态 |
 |---|---|---|---|
 | P0 | **「我现在在哪个 preset」高亮** | 命中的 preset 左侧加色条 + 「当前」副标题 + 切换按钮禁用 | ✅ v0.2 |
-| P0 | **每个 preset 头部显示主仓 diff** | 头部应并排显示 `当前分支 → preset.main`，不一致时染色，而不是必须展开才看得到 | v0.3 候选 |
+| P0 | **每个 preset 头部显示主仓 diff** | 头部应并排显示 `当前分支 → preset.main`，不一致时染色，而不是必须展开才看得到 | ✅ v0.3 |
 | P1 | **行级状态点** | 每个子模块行左侧一个圆点：绿=已匹配 / 黄=分支对但有 dirty / 红=不匹配 / 灰=未 init | — |
 | P1 | **切换中状态贴在 ToolWindow tab 上** | 切换时 stripe icon 加 spinner、迷你状态条。现在切换时面板没有视觉信号 | — |
 | P2 | **顶部「当前主仓分支」常驻显示** | 不用展开任何东西就能看到主仓在哪 | — |
@@ -65,7 +65,7 @@
 
 | 优先级 | 需求 | 状态 |
 |---|---|---|
-| P0 | GitOps 60s 超时:子模块多/网络慢会卡 UI。需要可配置 + 真异步(目前 Thread + invokeLater,够用但不可中断) | v0.3 候选 |
+| P0 | GitOps 60s 超时:子模块多/网络慢会卡 UI。需要可配置 + 真异步(目前 Thread + invokeLater,够用但不可中断) | ✅ v0.3 |
 | P1 | **单元测试**:GitOps / SwitchExecutor 都没有。mock GitOps 跑 SwitchExecutor 至少覆盖「主仓成功子模块失败」的 case | — |
 | P2 | **i18n**:目前中英混杂,要么全中要么走 `Bundle.message()` | — |
 | P2 | **git worktree 兼容**:副工作树会失败,需要友好提示 | — |
@@ -82,13 +82,13 @@
 8. 关键失败走 IDE Notification
 9. 「从当前状态」一键新建 preset
 
-## v0.3 候选（剩余 P0）
+## v0.3 已交付
 
-按价值/工作量排序：
+2026-06-06 三项 P0 全部完成：
 
-1. **每个 preset 头部显示主仓 diff** — 改 `PresetEditor` 头部布局，加一行 `当前 → 目标` 染色标签；状态可视化的最后一块短板
-2. **部分失败回滚** — `SwitchExecutor` 切前记 checkpoint（每仓 HEAD），失败时通知 + 回滚按钮；事务化但单仓回滚也可能 dirty，需要小心
-3. **GitOps 60s 超时可配置 + 真异步** — `run` 方法接 `ProgressIndicator`，循环 `isCanceled` 检查；切换/preflight/检测全链路过一遍
+1. ✅ **每个 preset 头部显示主仓 diff** — PresetEditor header 加 `当前分支 → preset.main` 橙色染色标签
+2. ✅ **部分失败回滚** — SwitchExecutor 切前 checkpoint + Notifier 带「回滚到切换前」action
+3. ✅ **GitOps 60s 超时可配置 + 真异步** — 面板超时选项 (30/60/120/300s), indicator 传入 SwitchContext, 各 Step 循环内 checkCanceled
 
 后续按 P1 / P2 滚动。
 
