@@ -43,6 +43,11 @@ intellijPlatform {
             untilBuild = providers.gradleProperty("plugin.untilBuild").get()
         }
     }
+    publishing {
+        token = providers.environmentVariable("PUBLISH_TOKEN")
+            .orElse(providers.gradleProperty("publishToken"))
+            .orElse("")
+    }
 }
 
 tasks {
