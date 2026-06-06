@@ -143,7 +143,7 @@ kotlin.version=2.3.0
 # 运行测试
 
 ```bash
-./gradlew test          # 61 用例，mock GitClient，`./gradlew test` 即可运行，不依赖 Rider
+./gradlew test          # 79 用例（61 单测 + 18 集成测试），mock GitClient / 真实 git 仓库，`./gradlew test` 即可运行
 ```
 
 # 常见错误速查
