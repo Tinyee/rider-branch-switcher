@@ -8,6 +8,8 @@ version = "0.4.0"
 
 repositories {
     maven("https://maven.aliyun.com/repository/public")
+    maven("https://mirrors.cloud.tencent.com/nexus/repository/maven-public/")
+    maven("https://repo.huaweicloud.com/repository/maven/")
     mavenCentral()
     intellijPlatform {
         defaultRepositories()
