@@ -87,7 +87,7 @@ class SwitchExecutor(
         var allOk = true
         for ((path, entry) in checkpoint) {
             val dir = resolveDir(projectRoot, path)
-            val label = if (path == ".") "<main>" else path
+            val label = if (path == ".") projectRoot.fileName.toString() else path
             if (!dir.exists() || !isGitRepo(dir)) {
                 log("[rollback] skip $label — dir missing or not a repo")
                 continue

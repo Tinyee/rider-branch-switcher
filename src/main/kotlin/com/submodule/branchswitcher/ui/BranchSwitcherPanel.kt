@@ -475,7 +475,7 @@ class BranchSwitcherPanel(
                 val targets = preset.targets()
                 for ((idx, target) in targets.withIndex()) {
                     indicator.fraction = idx.toDouble() / targets.size
-                    indicator.text2 = if (target.path == ".") "<main>" else target.path
+                    indicator.text2 = if (target.path == ".") root.fileName.toString() else target.path
                     val dir = if (target.path == ".") root.toFile() else root.resolve(target.path).toFile()
                     if (!dir.exists() || !java.io.File(dir, ".git").exists()) {
                         append("[derive] skip ${target.path} — not a git repo")

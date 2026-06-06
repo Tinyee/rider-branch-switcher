@@ -21,7 +21,7 @@ class SwitchPreflight(
         return targets.mapIndexed { idx, t ->
             indicator?.checkCanceled()
             indicator?.fraction = idx.toDouble() / total
-            indicator?.text2 = if (t.path == ".") "<main>" else t.path
+            indicator?.text2 = if (t.path == ".") projectRoot.fileName.toString() else t.path
             probeOne(projectRoot, t)
         }
     }
@@ -29,7 +29,7 @@ class SwitchPreflight(
     private fun probeOne(projectRoot: Path, target: RepoTarget): PreflightRow {
         val dir = if (target.path == ".") projectRoot.toFile()
                   else projectRoot.resolve(target.path).toFile()
-        val label = if (target.path == ".") "<main>" else shortLabel(target.path)
+        val label = if (target.path == ".") projectRoot.fileName.toString() else shortLabel(target.path)
         if (!dir.exists() || !isGitRepo(dir)) {
             return PreflightRow(
                 label = label,
