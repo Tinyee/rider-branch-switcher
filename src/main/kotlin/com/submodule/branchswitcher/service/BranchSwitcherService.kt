@@ -95,6 +95,18 @@ class BranchSwitcherService(private val project: Project)
         PresetLoader.save(file, presetFile)
     }
 
+    private var history = mutableListOf<SwitchHistoryEntry>()
+    private val maxHistory = 5
+    data class SwitchHistoryEntry(val presetName: String, val timestamp: Long)
+
+    fun addHistory(name: String) {
+        history.add(0, SwitchHistoryEntry(name, System.currentTimeMillis()))
+        if (history.size > maxHistory) history = history.take(maxHistory).toMutableList()
+    }
+
+    fun getHistory(): List<SwitchHistoryEntry> = history.toList()
+    fun getLastHistory(): SwitchHistoryEntry? = history.firstOrNull()
+
     private var currentBranches: Map<String, String?> = emptyMap()
     private var detectGen: Long = 0
 
