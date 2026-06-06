@@ -1,6 +1,6 @@
 # Submodule Branch Switcher — 需求 / 路线图
 
-**当前版本 0.2.1**，已具备：
+**当前版本 0.3.0**，已具备：
 
 - 多 preset 持久化（JSON），UI 内增删 preset 与子模块行（基于 `.gitmodules`）
 - 一键切换主仓 + 子模块；脏工作区三策略（stash / skip / force）；切换前 fetch；切换后 pull --ff-only；切换后 VCS 自动刷新
@@ -10,6 +10,11 @@
 - **主仓切完自动 `submodule sync`，缺失子模块自动 `submodule update --init`**（v0.2）
 - **「从当前状态新建 preset」一键录入**：基于主仓与各子模块 HEAD 直接生成预设（v0.2）
 - **关键失败走 IDE Notification**（预设解析失败 / 切换有失败项 / VCS 刷新失败，v0.2）
+- **每个 preset 头部显示主仓 diff 标签**（v0.3）
+- **部分失败回滚**：切前 checkpoint，失败通知带「回滚到切换前」按钮（v0.3）
+- **GitOps 超时可配置 + 取消检查**：面板 30/60/120/300s 选项，Step 内 checkCanceled（v0.3）
+- **切换选项持久化**：dirty/fetch/pull/timeout 存 branch-switcher.xml，IDE 重启保留（v0.3）
+- **自动检测外部分支变更**：切回插件窗口时自动刷新 preset 匹配状态（v0.3）
 - IntelliJ 原生图标（AllIcons），主题感知色，按钮焦点 ring 行为已修
 
 下面按「切换体验 / 状态可视化 / UI / 工作流 / 质量」五块梳理后续要做的功能点，优先级 **P0(致命) / P1(高价值) / P2(锦上添花)**；状态列标记 v0.x 已落地或下阶段候选。
@@ -19,11 +24,11 @@
 | 优先级 | 需求 | 现状缺什么 | 状态 |
 |---|---|---|---|
 | P0 | **Dry-run 预览** | 每仓 `当前分支 → 目标分支`、是否 dirty、stash 会动多少文件、远端有/无目标分支 | ✅ v0.2 |
-| P0 | **部分失败回滚** | 主仓切完后某个子模块挂掉，状态不一致没法一键回去。需要事务式 checkpoint（切前记下每个仓的 HEAD，失败时给「回滚到切换前」按钮） | ✅ v0.3 |
+| P0 | **部分失败回滚** | 切前 checkpoint 记录 branch+SHA, 失败通知带回滚 action, 回滚优先恢复分支 | ✅ v0.3 |
 | P0 | **submodule 处理** | 主仓切完跑 `git submodule sync`,缺失子模块跑 `git submodule update --init -- <path>` | ✅ v0.2 |
 | P1 | **stash 自动 pop** | Stash 模式只 push 不 pop。切回原分支时要手工 `git stash list/pop`。可加「记住 stash → 切回时自动 pop」 | — |
 | P1 | **进度可视化** | `Task.Backgroundable` 用 indeterminate，看不到「5 个仓的第 3 个」。改 `indicator.fraction + text2` | — |
-| P1 | **可取消** | 进度条有取消按钮但 `SwitchExecutor` 循环里不查 `indicator.isCanceled`，点了没用 | — |
+| P1 | **可取消** | 进度条有取消按钮但 `SwitchExecutor` 循环里不查 `indicator.isCanceled`，点了没用 | ✅ v0.3 |
 | P2 | **未 init 子模块识别** | v0.2 已能自动 init,但仍可加「init 前先确认」开关而非默默 init | 部分 v0.2 |
 
 ## 状态可视化
