@@ -146,6 +146,11 @@ class BranchSwitcherPanel(
         val btnRow2 = JPanel(FlowLayout(FlowLayout.LEFT, 4, 0)).apply {
             alignmentX = LEFT_ALIGNMENT
         }
+        btnRow2.add(JButton("撤销切换", AllIcons.Actions.Rollback).noFocusRing().also {
+            it.toolTipText = "撤销最近一次切换，回到切换前的分支状态"
+            it.addActionListener { undoLastSwitch() }
+        })
+        btnRow2.add(Box.createHorizontalStrut(12))
         btnRow2.add(JButton("导出预设", AllIcons.Actions.MenuSaveall).noFocusRing()
             .also { it.addActionListener { exportPresets() } })
         btnRow2.add(JButton("导入预设", AllIcons.Actions.MenuSaveall).noFocusRing()
@@ -292,6 +297,25 @@ class BranchSwitcherPanel(
                 logDetected(pinnedEditors, branches)
             }
         }
+    }
+
+    private var lastMatchedPreset: Preset? = null
+
+    private fun undoLastSwitch() {
+        val allPresets = editors.map { it.currentPreset() }
+        val history = service.getHistory()
+        if (history.size < 2) {
+            Messages.showInfoMessage(project, "没有可撤销的切换记录", "撤销切换")
+            return
+        }
+        // Find the preset that was active before the last switch
+        val previousName = history[1].presetName
+        val preset = allPresets.find { it.name == previousName }
+        if (preset == null) {
+            Messages.showInfoMessage(project, "找不到之前的预设「$previousName」", "撤销切换")
+            return
+        }
+        runSwitch(preset)
     }
 
     private fun logDetected(eds: List<PresetEditor>, branches: Map<String, String?>) {
@@ -478,6 +502,7 @@ class BranchSwitcherPanel(
             fetchFirst = fetchCheck.isSelected,
         )
 
+        setSwitchInProgress(true)
         val task = object : Task.Backgroundable(project, "Switching branches", true) {
             var ok = false
             private var rollbackExecutor: SwitchExecutor? = null
@@ -488,7 +513,9 @@ class BranchSwitcherPanel(
                 ok = executor.execute(preset, opts)
             }
             override fun onFinished() {
+                setSwitchInProgress(false)
                 if (ok) {
+                    service.addHistory(preset.name)
                     Notifier.info(project, "切换完成", "已切到「${preset.name}」")
                 } else {
                     val executor = rollbackExecutor
@@ -634,6 +661,15 @@ class BranchSwitcherPanel(
         } catch (e: Exception) {
             append("[import] error: ${e.message}")
             Messages.showWarningDialog(project, "导入失败: ${e.message}", "导入预设")
+        }
+    }
+
+    private fun setSwitchInProgress(inProgress: Boolean) {
+        val tw = com.intellij.openapi.wm.ToolWindowManager.getInstance(project).getToolWindow("SubmoduleBranches") ?: return
+        if (inProgress) {
+            tw.setIcon(AllIcons.Process.Step_4)
+        } else {
+            tw.setIcon(AllIcons.Vcs.Branch)
         }
     }
 
