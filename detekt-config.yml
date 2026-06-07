@@ -1,0 +1,53 @@
+# detekt static analysis — minimal config for solo plugin dev
+# Full rules: https://detekt.dev/docs/rules/overview
+
+style:
+  MagicNumber:
+    active: false
+  WildcardImport:
+    active: false
+  ForbiddenComment:
+    active: false
+  MaxLineLength:
+    maxLineLength: 200
+  ReturnCount:
+    active: false
+  LoopWithTooManyJumpStatements:
+    active: false
+  UseCheckOrError:
+    active: false
+
+complexity:
+  CyclomaticComplexMethod:
+    active: false
+  NestedBlockDepth:
+    active: false
+  LongParameterList:
+    functionThreshold: 12
+    constructorThreshold: 12
+  TooManyFunctions:
+    active: false
+  LongMethod:
+    active: false
+
+naming:
+  VariableNaming:
+    ignoreAnnotated: ['org.jetbrains.annotations.Nls']
+  MemberNameEqualsClassName:
+    active: false
+
+exceptions:
+  TooGenericExceptionCaught:
+    active: false
+  SwallowedException:
+    active: false
+
+empty-blocks:
+  EmptyFunctionBlock:
+    active: false
+
+performance:
+  active: true
+
+potential-bugs:
+  active: true

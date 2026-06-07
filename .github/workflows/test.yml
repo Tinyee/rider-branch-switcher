@@ -36,6 +36,9 @@ jobs:
       - name: Build plugin
         run: ./gradlew buildPlugin
 
+      - name: Static analysis (detekt)
+        run: ./gradlew detekt || true
+
       - name: Verify plugin compatibility
         run: ./gradlew verifyPlugin || true
 

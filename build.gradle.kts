@@ -1,6 +1,7 @@
 plugins {
     id("org.jetbrains.kotlin.jvm") version "2.3.0"
     id("org.jetbrains.intellij.platform") version "2.2.1"
+    id("io.gitlab.arturbosch.detekt") version "1.23.7"
 }
 
 group = "com.submodule"
@@ -50,6 +51,11 @@ intellijPlatform {
             .orElse(providers.gradleProperty("publishToken"))
             .orElse("")
     }
+}
+
+detekt {
+    buildUponDefaultConfig = true
+    config.setFrom(file("detekt-config.yml"))
 }
 
 tasks {
