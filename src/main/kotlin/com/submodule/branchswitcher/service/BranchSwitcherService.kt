@@ -12,9 +12,6 @@ import com.submodule.branchswitcher.git.GitClient
 import com.submodule.branchswitcher.git.GitOps
 import com.submodule.branchswitcher.model.DirtyAction
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
 import com.submodule.branchswitcher.model.Preset
 import com.submodule.branchswitcher.model.PresetFile
 import java.nio.file.Path
@@ -38,14 +35,16 @@ import java.nio.file.Path
     name = "BranchSwitcherOptions",
     storages = [Storage("branch-switcher.xml")]
 )
-class BranchSwitcherService(private val project: Project)
-    : PersistentStateComponent<BranchSwitcherService.OptionsState>, Disposable {
+class BranchSwitcherService(
+    private val project: Project,
+    cs: CoroutineScope,
+) : PersistentStateComponent<BranchSwitcherService.OptionsState>, Disposable {
 
-    /** [SupervisorJob] isolates child coroutine failures so one failed probe doesn't cancel sibling probes. */
-    val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    /** Platform-injected [CoroutineScope] with [SupervisorJob] semantics. */
+    val scope = cs
 
     override fun dispose() {
-        scope.cancel()
+        // Platform manages injected [cs] lifecycle; nothing else to clean up.
     }
 
     data class OptionsState(

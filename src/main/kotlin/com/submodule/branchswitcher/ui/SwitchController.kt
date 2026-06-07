@@ -67,14 +67,14 @@ class SwitchController(
                     val wrapped = object : ProgressIndicator by indicator {
                         override fun setFraction(fraction: Double) {
                             indicator.fraction = fraction
-                            SwingUtilities.invokeLater {
+                            com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater {
                                 progressBar.isIndeterminate = false
                                 progressBar.value = (fraction * 100).toInt()
                             }
                         }
                         override fun setText2(text: String?) {
                             indicator.text2 = text
-                            SwingUtilities.invokeLater { progressBar.string = text ?: Bundle.msg("tooltip.progress.switching") }
+                            com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater { progressBar.string = text ?: Bundle.msg("tooltip.progress.switching") }
                         }
                     }
                     val executor = SwitchExecutor(root, log, service.gitClient, wrapped)

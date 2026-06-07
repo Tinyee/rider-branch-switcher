@@ -14,15 +14,14 @@
     <actions>
         <action id="SubmoduleBranchSwitcher.SwitchPreset"
                 class="com.submodule.branchswitcher.action.SwitchPresetAction"
-                text="切到 Preset..."
-                description="快速切换到已配置的 Preset">
+                text="action.switch.preset.action"
+                description="action.switch.preset.action.desc">
             <add-to-group group-id="ToolsMenu" anchor="last"/>
             <keyboard-shortcut keymap="$default" first-keystroke="ctrl alt B"/>
         </action>
     </actions>
 
     <extensions defaultExtensionNs="com.intellij">
-        <projectService serviceImplementation="com.submodule.branchswitcher.service.BranchSwitcherService"/>
         <toolWindow id="SubmoduleBranches"
                     anchor="right"
                     icon="AllIcons.Vcs.Branch"
