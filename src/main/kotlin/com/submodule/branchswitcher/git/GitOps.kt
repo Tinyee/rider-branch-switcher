@@ -88,7 +88,7 @@ class GitOps(
         run(gitRoot, "submodule", "update", "--init", "--", path)
 
     /** Matches `path = <value>` lines in .gitmodules, skipping comments and blank lines. */
-    private val PATH_LINE = Regex("""^path\s*=\s*(.+?)\s*$""", RegexOption.IGNORE_CASE)
+    private val pathLineRegex = Regex("""^path\s*=\s*(.+?)\s*$""", RegexOption.IGNORE_CASE)
 
     /** Parses .gitmodules to list submodule paths. Skips lines starting with # or ;. */
     override fun listSubmodulePaths(gitRoot: File): List<String> {
@@ -97,7 +97,7 @@ class GitOps(
         return file.readLines().mapNotNull { raw ->
             val line = raw.trim()
             if (line.isEmpty() || line.startsWith("#") || line.startsWith(";")) return@mapNotNull null
-            val v = PATH_LINE.find(line)?.groupValues?.get(1) ?: return@mapNotNull null
+            val v = pathLineRegex.find(line)?.groupValues?.get(1) ?: return@mapNotNull null
             v.trim().trim('"').takeIf { it.isNotEmpty() }
         }
     }
