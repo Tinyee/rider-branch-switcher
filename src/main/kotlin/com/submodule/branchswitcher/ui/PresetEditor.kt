@@ -56,14 +56,14 @@ class PresetEditor(
     private var original: Preset = initial
 
     private val mainCombo = makeBranchCombo(::updateDirty)
-    private val saveBtn = JButton(Bundle.message("action.save"), AllIcons.Actions.MenuSaveall)
+    private val saveBtn = JButton(Bundle.msg("action.save"), AllIcons.Actions.MenuSaveall)
         .apply { isEnabled = false }.noFocusRing()
-    private val revertBtn = JButton(Bundle.message("action.discard"), AllIcons.Actions.Rollback)
+    private val revertBtn = JButton(Bundle.msg("action.discard"), AllIcons.Actions.Rollback)
         .apply { isEnabled = false }.noFocusRing()
-    private val addSubBtn = JButton(Bundle.message("action.add.submodule"), AllIcons.General.Add).noFocusRing()
+    private val addSubBtn = JButton(Bundle.msg("action.add.submodule"), AllIcons.General.Add).noFocusRing()
     private val arrow = JLabel(AllIcons.General.ArrowRight)
     private val nameLabel = JLabel(initial.name).apply {
-        toolTipText = Bundle.message("label.rename.tip")
+        toolTipText = Bundle.msg("label.rename.tip")
         cursor = Cursor.getPredefinedCursor(Cursor.TEXT_CURSOR)
         addMouseListener(object : MouseAdapter() {
             override fun mouseClicked(e: MouseEvent) {
@@ -73,7 +73,7 @@ class PresetEditor(
             }
         })
     }
-    private val currentBadge = JLabel(Bundle.message("label.current.badge")).apply {
+    private val currentBadge = JLabel(Bundle.msg("label.current.badge")).apply {
         foreground = JBUI.CurrentTheme.Link.Foreground.ENABLED
         isVisible = false
     }
@@ -82,7 +82,7 @@ class PresetEditor(
         isVisible = false
         border = JBUI.Borders.empty(1, 0, 0, 0)
     }
-    private val switchBtn = JButton(Bundle.message("action.switch"), AllIcons.Actions.Execute).noFocusRing()
+    private val switchBtn = JButton(Bundle.msg("action.switch"), AllIcons.Actions.Execute).noFocusRing()
     private var isCurrent = false
 
     private val body = object : JPanel() {
@@ -137,12 +137,12 @@ class PresetEditor(
         }
         val right = JPanel(FlowLayout(FlowLayout.RIGHT, 4, 0)).apply { isOpaque = false }
         switchBtn.addActionListener { onSwitch(buildCurrent()) }
-        right.add(JButton(Bundle.message("action.derive"), AllIcons.Vcs.Branch).noFocusRing().also {
-            it.toolTipText = Bundle.message("action.derive.tip")
+        right.add(JButton(Bundle.msg("action.derive"), AllIcons.Vcs.Branch).noFocusRing().also {
+            it.toolTipText = Bundle.msg("action.derive.tip")
             it.addActionListener { deriveBranch() }
         })
         right.add(switchBtn)
-        right.add(JButton(Bundle.message("action.delete"), AllIcons.Actions.Cancel).noFocusRing().also {
+        right.add(JButton(Bundle.msg("action.delete"), AllIcons.Actions.Cancel).noFocusRing().also {
             it.foreground = NamedColorUtil.getErrorForeground()
             it.addActionListener { onDelete() }
         })
@@ -195,7 +195,7 @@ class PresetEditor(
         }.apply {
             border = JBUI.Borders.empty(2, 12, 2, 4)
             alignmentX = LEFT_ALIGNMENT
-            val l = JLabel(Bundle.message("label.main.repo")).apply {
+            val l = JLabel(Bundle.msg("label.main.repo")).apply {
                 preferredSize = Dimension(JBUI.scale(140), preferredSize.height)
             }
             add(l, BorderLayout.WEST)
@@ -283,7 +283,7 @@ class PresetEditor(
         setHighlighted(matchesState(currentBranches))
         val currentMain = currentBranches["."] ?: "(detached)"
         if (currentMain != original.main) {
-            mainDiffLabel.text = Bundle.message("preset.main.diff", currentMain, original.main)
+            mainDiffLabel.text = Bundle.msg("preset.main.diff", currentMain, original.main)
             mainDiffLabel.isVisible = true
             mainDiffLabel.foreground = JBColor(0xE07B00, 0xFFA726)
         } else {
@@ -323,8 +323,8 @@ class PresetEditor(
             java.awt.KeyboardFocusManager.getCurrentKeyboardFocusManager().clearGlobalFocusOwner()
         }
         switchBtn.isEnabled = !highlighted
-        switchBtn.text = if (highlighted) Bundle.message("action.already.on") else Bundle.message("action.switch")
-        switchBtn.toolTipText = if (highlighted) Bundle.message("action.already.on.tip") else null
+        switchBtn.text = if (highlighted) Bundle.msg("action.already.on") else Bundle.msg("action.switch")
+        switchBtn.toolTipText = if (highlighted) Bundle.msg("action.already.on.tip") else null
         border = makeBorder(highlighted)
         if (changed) {
             repaint()
@@ -368,8 +368,8 @@ class PresetEditor(
 
     private fun rename() {
         val result = com.intellij.openapi.ui.Messages.showInputDialog(
-            Bundle.message("dialog.rename") + ":",
-            Bundle.message("dialog.rename"),
+            Bundle.msg("dialog.rename") + ":",
+            Bundle.msg("dialog.rename"),
             null, original.name, null,
         )
         if (result.isNullOrBlank()) return
@@ -383,8 +383,8 @@ class PresetEditor(
     private fun deriveBranch() {
         val preset = buildCurrent()
         val result = com.intellij.openapi.ui.Messages.showInputDialog(
-            Bundle.message("dialog.derive.message", preset.name),
-            Bundle.message("dialog.derive"),
+            Bundle.msg("dialog.derive.message", preset.name),
+            Bundle.msg("dialog.derive"),
             null, "${preset.name}/feature/",
             null,
         )

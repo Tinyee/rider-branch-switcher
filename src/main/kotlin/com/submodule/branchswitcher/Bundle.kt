@@ -1,37 +1,29 @@
 package com.submodule.branchswitcher
 
-import java.util.Locale
-import java.util.MissingResourceException
-import java.util.ResourceBundle
+import com.intellij.DynamicBundle
+import java.text.MessageFormat
 
 /**
- * I18n resource bundle accessor.
- * Uses standard Java ResourceBundle — IntelliJ discovers locale-specific
- * .properties files automatically via the <resource-bundle> in plugin.xml.
+ * I18n accessor using [DynamicBundle.getResourceBundle] and
+ * [DynamicBundle.getLocale] — the public API that follows the IDE language.
  *
- * Usage: Bundle.message("action.switch")  →  "切到此预设" (zh) or "Switch to this Preset" (en)
- *
- * Properties files: src/main/resources/messages/BranchSwitcherBundle*.properties
+ * Usage: Bundle.msg("action.switch")  →  locale-dependent message
  */
 object Bundle {
-    private const val BASE_NAME = "messages.BranchSwitcherBundle"
 
-    private val bundle: ResourceBundle by lazy {
-        val locale = Locale.getDefault()
-        try {
-            ResourceBundle.getBundle(BASE_NAME, locale)
-        } catch (_: MissingResourceException) {
-            ResourceBundle.getBundle(BASE_NAME, Locale.ENGLISH)
-        }
+    private const val PATH = "messages.BranchSwitcherBundle"
+
+    private val bundle by lazy {
+        DynamicBundle.getResourceBundle(javaClass.classLoader, PATH)
     }
 
-    fun message(key: String, vararg params: Any): String {
+    fun msg(key: String, vararg params: Any): String {
         val template = try {
             bundle.getString(key)
-        } catch (_: MissingResourceException) {
+        } catch (_: Exception) {
             key
         }
         return if (params.isEmpty()) template
-        else String.format(template, *params)
+        else MessageFormat.format(template, *params)
     }
 }

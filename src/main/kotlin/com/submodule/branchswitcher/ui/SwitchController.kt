@@ -74,7 +74,7 @@ class SwitchController(
                         }
                         override fun setText2(text: String?) {
                             indicator.text2 = text
-                            SwingUtilities.invokeLater { progressBar.string = text ?: Bundle.message("tooltip.progress.switching") }
+                            SwingUtilities.invokeLater { progressBar.string = text ?: Bundle.msg("tooltip.progress.switching") }
                         }
                     }
                     val executor = SwitchExecutor(root, log, service.gitClient, wrapped)
@@ -88,17 +88,17 @@ class SwitchController(
             setSwitchInProgress(false)
             service.addHistory(preset.name)
             if (ok) {
-                Notifier.info(project, Bundle.message("switch.complete"), Bundle.message("notify.switch.complete.msg").format(preset.name))
+                Notifier.info(project, Bundle.msg("switch.complete"), Bundle.msg("notify.switch.complete.msg", preset.name))
             } else {
                 val executor = rollbackExecutor
                 if (executor?.getCheckpoint() != null) {
-                    Notifier.rollbackAction(project, Bundle.message("switch.failed"),
-                        Bundle.message("notify.switch.partial.msg").format(preset.name) + "。可回滚到切换前的 HEAD。") {
+                    Notifier.rollbackAction(project, Bundle.msg("switch.failed"),
+                        Bundle.msg("notify.switch.partial.msg", preset.name) + "。可回滚到切换前的 HEAD。") {
                         rollbackSwitch(executor)
                     }
                 } else {
-                    Notifier.error(project, Bundle.message("switch.failed"),
-                        Bundle.message("notify.switch.partial.msg").format(preset.name))
+                    Notifier.error(project, Bundle.msg("switch.failed"),
+                        Bundle.msg("notify.switch.partial.msg", preset.name))
                 }
             }
             refreshVcs(root, preset)
@@ -122,7 +122,7 @@ class SwitchController(
             refreshVcs(root, Preset("_rollback", "", submodulePaths.associateWith { "" }))
             onStateChanged()
             if (!rollbackOk) {
-                Notifier.warn(project, Bundle.message("rollback.partial"), Bundle.message("rollback.partial.msg"))
+                Notifier.warn(project, Bundle.msg("rollback.partial"), Bundle.msg("rollback.partial.msg"))
             }
         }
     }
@@ -153,7 +153,7 @@ class SwitchController(
             } catch (_: Exception) { /* logged in task */ }
             // Resumed on EDT
             onStateChanged()
-            Notifier.info(project, Bundle.message("notify.derive.complete"), Bundle.message("notify.derive.created", branchName, preset.targets().size))
+            Notifier.info(project, Bundle.msg("notify.derive.complete"), Bundle.msg("notify.derive.created", branchName, preset.targets().size))
         }
     }
 
@@ -161,13 +161,13 @@ class SwitchController(
         val allPresets = editors().map { it.currentPreset() }
         val history = service.getHistory()
         if (history.size < 2) {
-            Messages.showInfoMessage(project, Bundle.message("no.undo.history"), Bundle.message("dialog.undo"))
+            Messages.showInfoMessage(project, Bundle.msg("no.undo.history"), Bundle.msg("dialog.undo"))
             return
         }
         val previousName = history[1].presetName
         val preset = allPresets.find { it.name == previousName }
         if (preset == null) {
-            Messages.showInfoMessage(project, "${Bundle.message("undo.not.found")}「$previousName」", Bundle.message("dialog.undo"))
+            Messages.showInfoMessage(project, "${Bundle.msg("undo.not.found")}「$previousName」", Bundle.msg("dialog.undo"))
             return
         }
         runSwitch(preset)
@@ -193,7 +193,7 @@ class SwitchController(
             } catch (t: Throwable) {
                 app.invokeLater {
                     log("[error] refreshVcs failed: ${t.javaClass.simpleName}: ${t.message}")
-                    Notifier.warn(project, Bundle.message("rollback.partial"),
+                    Notifier.warn(project, Bundle.msg("rollback.partial"),
                         "${t.javaClass.simpleName}: ${t.message}")
                     onStateChanged()
                 }
@@ -202,12 +202,13 @@ class SwitchController(
     }
 
     private fun setSwitchInProgress(inProgress: Boolean) {
-        val tw = com.intellij.openapi.wm.ToolWindowManager.getInstance(project).getToolWindow("SubmoduleBranches") ?: return
+        val tw = com.intellij.openapi.wm.ToolWindowManager.getInstance(project)
+            .getToolWindow(com.submodule.branchswitcher.Bundle.msg("plugin.toolWindow.id")) ?: return
         if (inProgress) {
             tw.setIcon(AllIcons.Process.Step_4)
             progressBar.isVisible = true
             progressBar.isIndeterminate = true
-            progressBar.string = Bundle.message("tooltip.progress.switching")
+            progressBar.string = Bundle.msg("tooltip.progress.switching")
         } else {
             tw.setIcon(AllIcons.Vcs.Branch)
             progressBar.isVisible = false

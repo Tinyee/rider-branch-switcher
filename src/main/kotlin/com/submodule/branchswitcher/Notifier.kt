@@ -33,7 +33,7 @@ object Notifier {
         NotificationGroupManager.getInstance()
             .getNotificationGroup(GROUP_ID)
             .createNotification(title, content, NotificationType.ERROR)
-            .addAction(com.intellij.notification.NotificationAction.createSimple(Bundle.message("rollback.action")) {
+            .addAction(com.intellij.notification.NotificationAction.createSimple(Bundle.msg("rollback.action")) {
                 onRollback()
             })
             .notify(project)

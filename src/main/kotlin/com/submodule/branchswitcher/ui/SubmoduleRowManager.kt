@@ -89,7 +89,7 @@ class SubmoduleRowManager(
                 preferredSize = Dimension(JBUI.scale(32), JBUI.scale(24))
                 maximumSize = Dimension(JBUI.scale(32), JBUI.scale(24))
                 minimumSize = Dimension(JBUI.scale(32), JBUI.scale(24))
-                toolTipText = Bundle.message("tooltip.remove.submodule")
+                toolTipText = Bundle.msg("tooltip.remove.submodule")
                 addActionListener {
                     val r = subRows[path] ?: return@addActionListener
                     r.deleted = true
@@ -118,7 +118,7 @@ class SubmoduleRowManager(
         val current = subRows.values.filter { !it.deleted }.map { it.path }.toSet()
         val available = all.filter { it !in current }
         if (available.isEmpty()) {
-            log(Bundle.message("log.no.submodules.available", currentPreset.name))
+            log(Bundle.msg("log.no.submodules.available", currentPreset.name))
             return
         }
         val popup = javax.swing.JPopupMenu()
@@ -248,7 +248,7 @@ class SubmoduleRowManager(
     private fun showContextMenu(e: MouseEvent, path: String) {
         val row = subRows[path] ?: return
         val popup = javax.swing.JPopupMenu()
-        popup.add("${Bundle.message("menu.switch.only")} ($path)").addActionListener {
+        popup.add("${Bundle.msg("menu.switch.only")} ($path)").addActionListener {
             val dir = gitRoot.resolve(path).toFile()
             if (dir.exists() && File(dir, ".git").exists()) {
                 scope.launch {
@@ -263,7 +263,7 @@ class SubmoduleRowManager(
                 }
             }
         }
-        popup.add(Bundle.message("menu.open.explorer")).addActionListener {
+        popup.add(Bundle.msg("menu.open.explorer")).addActionListener {
             val dir = gitRoot.resolve(path).toFile()
             if (dir.exists()) java.awt.Desktop.getDesktop().open(dir)
         }
