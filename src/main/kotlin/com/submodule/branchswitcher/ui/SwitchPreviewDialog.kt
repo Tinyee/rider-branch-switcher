@@ -6,6 +6,7 @@ import com.intellij.ui.components.JBScrollPane
 import com.intellij.ui.table.JBTable
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.NamedColorUtil
+import com.submodule.branchswitcher.Bundle
 import com.submodule.branchswitcher.model.PreflightRow
 import com.submodule.branchswitcher.model.Preset
 import java.awt.BorderLayout
@@ -32,9 +33,9 @@ class SwitchPreviewDialog(
     private val accentColor get() = JBUI.CurrentTheme.Link.Foreground.ENABLED
 
     init {
-        title = "切到「${preset.name}」"
-        setOKButtonText("切换")
-        setCancelButtonText("取消")
+        title = "${Bundle.message("dialog.switch.title")}「${preset.name}」"
+        setOKButtonText(Bundle.message("dialog.switch.title"))
+        setCancelButtonText(Bundle.message("dialog.cancel"))
         init()
     }
 
@@ -77,12 +78,12 @@ class SwitchPreviewDialog(
         val dirty = rows.count { it.dirtyCount > 0 }
 
         val parts = mutableListOf<String>()
-        parts += "$total 个仓"
-        parts += "$toSwitch 待切换"
-        if (noChange > 0) parts += "$noChange 已就位"
-        if (dirty > 0) parts += "$dirty 有脏改动"
-        if (missingBranch > 0) parts += "$missingBranch 分支缺失"
-        if (missingDir > 0) parts += "$missingDir 目录缺失"
+        parts += Bundle.message("summary.repos", total)
+        parts += Bundle.message("summary.to.switch", toSwitch)
+        if (noChange > 0) parts += Bundle.message("summary.already", noChange)
+        if (dirty > 0) parts += Bundle.message("summary.dirty", dirty)
+        if (missingBranch > 0) parts += Bundle.message("summary.missing.branch", missingBranch)
+        if (missingDir > 0) parts += Bundle.message("summary.missing.dir", missingDir)
 
         val label = JLabel(parts.joinToString("  ·  ")).apply {
             border = JBUI.Borders.empty(2, 4, 6, 4)
@@ -92,7 +93,13 @@ class SwitchPreviewDialog(
     }
 
     private inner class PreviewTableModel(val rows: List<PreflightRow>) : AbstractTableModel() {
-        private val cols = arrayOf("仓", "当前", "目标", "脏改动", "分支位置")
+        private val cols = arrayOf(
+            Bundle.message("column.repo"),
+            Bundle.message("column.current"),
+            Bundle.message("column.target"),
+            Bundle.message("column.dirty"),
+            Bundle.message("column.source"),
+        )
         override fun getRowCount(): Int = rows.size
         override fun getColumnCount(): Int = cols.size
         override fun getColumnName(column: Int): String = cols[column]
@@ -108,7 +115,7 @@ class SwitchPreviewDialog(
             val r = value as PreflightRow
             val text = when (column) {
                 0 -> r.label
-                1 -> if (!r.exists) "(目录缺失)" else r.current ?: "(detached)"
+                1 -> if (!r.exists) Bundle.message("status.missing.dir") else r.current ?: Bundle.message("status.detached")
                 else -> ""
             }
             super.getTableCellRendererComponent(table, text, isSelected, hasFocus, row, column)
@@ -156,8 +163,8 @@ class SwitchPreviewDialog(
             val text = when {
                 !r.exists -> "—"
                 r.dirtyCount < 0 -> "?"
-                r.dirtyCount == 0 -> "干净"
-                else -> "${r.dirtyCount} 个文件"
+                r.dirtyCount == 0 -> Bundle.message("status.clean")
+                else -> Bundle.message("status.file.count", r.dirtyCount)
             }
             super.getTableCellRendererComponent(table, text, isSelected, hasFocus, row, column)
             if (!isSelected) {
@@ -179,10 +186,10 @@ class SwitchPreviewDialog(
             val r = value as PreflightRow
             val text = when {
                 !r.exists -> "—"
-                r.hasLocal && r.hasRemote -> "本地 + 远端"
-                r.hasLocal -> "仅本地"
-                r.hasRemote -> "仅远端"
-                else -> "❌ 不存在"
+                r.hasLocal && r.hasRemote -> Bundle.message("status.both")
+                r.hasLocal -> Bundle.message("status.local.only")
+                r.hasRemote -> Bundle.message("status.remote.only")
+                else -> Bundle.message("status.none")
             }
             super.getTableCellRendererComponent(table, text, isSelected, hasFocus, row, column)
             if (!isSelected) {

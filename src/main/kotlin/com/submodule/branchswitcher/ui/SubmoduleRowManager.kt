@@ -1,9 +1,9 @@
-package com.submodule.branchswitcher.ui
+﻿package com.submodule.branchswitcher.ui
 
 import com.intellij.icons.AllIcons
 import com.intellij.ui.JBColor
 import com.intellij.util.ui.JBUI
-import com.submodule.branchswitcher.Strings
+import com.submodule.branchswitcher.Bundle
 import com.submodule.branchswitcher.git.GitClient
 import com.submodule.branchswitcher.model.Preset
 import com.submodule.branchswitcher.switch.shortLabel
@@ -44,6 +44,8 @@ class SubmoduleRowManager(
         var panel: JPanel,
         var deleted: Boolean = false,
         var loaded: Boolean = false,
+        /** The preset's target branch for this submodule. Used by context menu "switch only this". */
+        var targetBranch: String = "",
         val statusDot: JLabel = JLabel("●").apply {
             font = font.deriveFont(8f)
             foreground = JBColor(0x9E9E9E, 0x757575)
@@ -63,7 +65,7 @@ class SubmoduleRowManager(
             font = font.deriveFont(8f)
             foreground = JBColor(0x9E9E9E, 0x757575)
         }
-        val row = SubRow(path, combo, JPanel(), statusDot = dot)
+        val row = SubRow(path, combo, JPanel(), targetBranch = initialBranch, statusDot = dot)
         val rowPanel = object : JPanel(BorderLayout()) {
             override fun getMaximumSize(): Dimension =
                 Dimension(Short.MAX_VALUE.toInt(), preferredSize.height)
@@ -87,7 +89,7 @@ class SubmoduleRowManager(
                 preferredSize = Dimension(JBUI.scale(32), JBUI.scale(24))
                 maximumSize = Dimension(JBUI.scale(32), JBUI.scale(24))
                 minimumSize = Dimension(JBUI.scale(32), JBUI.scale(24))
-                toolTipText = "从此预设移除该子模块（保存后切换将不动它）"
+                toolTipText = Bundle.message("tooltip.remove.submodule")
                 addActionListener {
                     val r = subRows[path] ?: return@addActionListener
                     r.deleted = true
@@ -116,7 +118,7 @@ class SubmoduleRowManager(
         val current = subRows.values.filter { !it.deleted }.map { it.path }.toSet()
         val available = all.filter { it !in current }
         if (available.isEmpty()) {
-            log("所有 .gitmodules 中的子模块均已在「${currentPreset.name}」中配置")
+            log(Bundle.message("log.no.submodules.available", currentPreset.name))
             return
         }
         val popup = javax.swing.JPopupMenu()
@@ -183,6 +185,7 @@ class SubmoduleRowManager(
                 row.deleted = false
                 row.panel.isVisible = true
                 row.combo.selectedItem = preset.submodules[row.path]
+                row.targetBranch = preset.submodules[row.path] ?: ""
             } else {
                 orphan += row.path
             }
@@ -243,20 +246,24 @@ class SubmoduleRowManager(
     }
 
     private fun showContextMenu(e: MouseEvent, path: String) {
+        val row = subRows[path] ?: return
         val popup = javax.swing.JPopupMenu()
-        popup.add("${Strings.switchOnlyThis} ($path)").addActionListener {
+        popup.add("${Bundle.message("menu.switch.only")} ($path)").addActionListener {
             val dir = gitRoot.resolve(path).toFile()
             if (dir.exists() && File(dir, ".git").exists()) {
                 scope.launch {
-                    val cur = gitClient.currentBranch(dir)
-                    val target = gitClient.currentBranch(dir) // use current as target for single-switch
-                        ?: return@launch
-                    val result = gitClient.checkoutExisting(dir, target)
+                    val target = row.targetBranch.ifEmpty { row.combo.selectedItem as? String ?: "" }
+                    if (target.isEmpty()) return@launch
+                    val result = if (gitClient.localBranchExists(dir, target) || gitClient.remoteBranchExists(dir, target)) {
+                        gitClient.checkoutExisting(dir, target)
+                    } else {
+                        com.submodule.branchswitcher.git.GitResult("checkout", 1, "", "branch $target not found")
+                    }
                     SwingUtilities.invokeLater { log(if (result.ok) "[switch] $path -> $target ok" else "[switch] $path fail") }
                 }
             }
         }
-        popup.add(Strings.openInExplorer).addActionListener {
+        popup.add(Bundle.message("menu.open.explorer")).addActionListener {
             val dir = gitRoot.resolve(path).toFile()
             if (dir.exists()) java.awt.Desktop.getDesktop().open(dir)
         }
