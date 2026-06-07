@@ -7,9 +7,9 @@ import com.intellij.util.ui.NamedColorUtil
 import com.submodule.branchswitcher.Strings
 import com.submodule.branchswitcher.git.GitClient
 import com.submodule.branchswitcher.model.Preset
-import com.submodule.branchswitcher.switch.shortLabel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
+import javax.swing.SwingUtilities
 import java.awt.BorderLayout
 import java.awt.Cursor
 import java.awt.Dimension
@@ -28,7 +28,6 @@ import javax.swing.JButton
 import javax.swing.JComboBox
 import javax.swing.JLabel
 import javax.swing.JPanel
-import javax.swing.SwingUtilities
 import javax.swing.border.Border
 
 /**
@@ -54,23 +53,9 @@ class PresetEditor(
     private val scope: CoroutineScope,
 ) : JPanel() {
 
-    /** One submodule row: path, branch combo, panel, and tracking state. */
-    private class SubRow(
-        val path: String,
-        val combo: JComboBox<String>,
-        var panel: JPanel,
-        var deleted: Boolean = false,
-        var loaded: Boolean = false,
-        val statusDot: JLabel = JLabel("●").apply {
-            font = font.deriveFont(8f)
-            foreground = JBColor(0x9E9E9E, 0x757575)
-        },
-    )
-
     private var original: Preset = initial
 
     private val mainCombo = makeBranchCombo(::updateDirty)
-    private val subRows = LinkedHashMap<String, SubRow>()
     private val saveBtn = JButton(Strings.save, AllIcons.Actions.MenuSaveall)
         .apply { isEnabled = false }.noFocusRing()
     private val revertBtn = JButton(Strings.discard, AllIcons.Actions.Rollback)
@@ -109,8 +94,12 @@ class PresetEditor(
         isVisible = false
     }
     private var loadedOnce = false
-    private var loadingCount = 0
     private var initializing = true
+
+    // ── Submodule manager ──────────────────────────────────────
+    private val subManager = SubmoduleRowManager(gitRoot, gitClient, scope, body, log, ::updateDirty)
+    private val subRows get() = subManager.subRows
+    val loadingCount get() = subManager.loadingCount
 
     init {
         layout = BoxLayout(this, BoxLayout.Y_AXIS)
@@ -162,8 +151,8 @@ class PresetEditor(
         header.add(right, BorderLayout.EAST)
 
         body.add(makeMainRow())
-        initial.submodules.keys.forEach { path ->
-            body.add(buildSubRow(path).panel)
+        initial.submodules.forEach { (path, branch) ->
+            body.add(subManager.buildSubRow(path, branch).panel)
         }
         val actions = object : JPanel(BorderLayout()) {
             override fun getMaximumSize(): Dimension =
@@ -172,15 +161,13 @@ class PresetEditor(
             alignmentX = LEFT_ALIGNMENT
             border = JBUI.Borders.empty(8, 8, 4, 4)
         }
-        addSubBtn.addActionListener { showAddSubmoduleMenu() }
+        addSubBtn.addActionListener { subManager.showAddSubmoduleMenu(addSubBtn, original) }
         revertBtn.addActionListener { revert() }
         saveBtn.addActionListener {
             val cur = buildCurrent()
             original = cur
             onSave(cur)
-            subRows.entries.removeAll { (_, row) ->
-                if (row.deleted) { body.remove(row.panel); true } else false
-            }
+            subManager.removeDeletedRows()
             body.revalidate()
             body.repaint()
             updateDirty()
@@ -216,141 +203,10 @@ class PresetEditor(
         }
     }
 
-    private fun buildSubRow(path: String): SubRow {
-        val combo = makeBranchCombo(::updateDirty)
-        val dot = JLabel("●").apply {
-            font = font.deriveFont(8f)
-            foreground = JBColor(0x9E9E9E, 0x757575)
-        }
-        val row = SubRow(path, combo, JPanel(), statusDot = dot)
-        val rowPanel = object : JPanel(BorderLayout()) {
-            override fun getMaximumSize(): Dimension =
-                Dimension(Short.MAX_VALUE.toInt(), preferredSize.height)
-        }.apply {
-            border = JBUI.Borders.empty(2, 12, 2, 4)
-            alignmentX = LEFT_ALIGNMENT
-            val labelPanel = JPanel(FlowLayout(FlowLayout.LEFT, 0, 0)).apply {
-                isOpaque = false
-                add(dot)
-                add(Box.createHorizontalStrut(4))
-                add(JLabel(shortLabel(path)).apply {
-                    preferredSize = Dimension(JBUI.scale(120), preferredSize.height)
-                    toolTipText = path
-                })
-            }
-            add(labelPanel, BorderLayout.WEST)
-            add(combo, BorderLayout.CENTER)
-
-            val delBtn = JButton(AllIcons.General.Remove).apply {
-                margin = JBUI.insets(0, 4, 0, 4)
-                preferredSize = Dimension(JBUI.scale(32), JBUI.scale(24))
-                maximumSize = Dimension(JBUI.scale(32), JBUI.scale(24))
-                minimumSize = Dimension(JBUI.scale(32), JBUI.scale(24))
-                toolTipText = "从此预设移除该子模块（保存后切换将不动它）"
-                addActionListener {
-                    val r = subRows[path] ?: return@addActionListener
-                    r.deleted = true
-                    r.panel.isVisible = false
-                    updateDirty()
-                    body.revalidate()
-                    body.repaint()
-                }
-            }.noFocusRing()
-            add(delBtn, BorderLayout.EAST)
-        }
-        // Right-click context menu
-        rowPanel.addMouseListener(object : MouseAdapter() {
-            override fun mousePressed(e: MouseEvent) { if (e.isPopupTrigger) showContextMenu(e, path) }
-            override fun mouseReleased(e: MouseEvent) { if (e.isPopupTrigger) showContextMenu(e, path) }
-            override fun mouseClicked(e: MouseEvent) {}
-        })
-        row.panel = rowPanel
-        subRows[path] = row
-        return row
-    }
-
     private fun applyOriginalToUI() {
         mainCombo.selectedItem = original.main
-        val orphan = mutableListOf<String>()
-        subRows.values.forEach { row ->
-            if (original.submodules.containsKey(row.path)) {
-                row.deleted = false
-                row.panel.isVisible = true
-                row.combo.selectedItem = original.submodules[row.path]
-            } else {
-                orphan += row.path
-            }
-        }
-        orphan.forEach { path ->
-            val row = subRows.remove(path) ?: return@forEach
-            body.remove(row.panel)
-        }
-        body.revalidate()
-        body.repaint()
+        subManager.applyPresetToUI(original)
         updateDirty()
-    }
-
-    private fun showAddSubmoduleMenu() {
-        val all = gitClient.listSubmodulePaths(gitRoot.toFile())
-        val current = subRows.values.filter { !it.deleted }.map { it.path }.toSet()
-        val available = all.filter { it !in current }
-        if (available.isEmpty()) {
-            log("所有 .gitmodules 中的子模块均已在「${original.name}」中配置")
-            return
-        }
-        val popup = javax.swing.JPopupMenu()
-        available.forEach { path ->
-            popup.add(javax.swing.JMenuItem(shortLabel(path)).apply {
-                toolTipText = path
-                addActionListener { addSubmoduleFromMenu(path) }
-            })
-        }
-        popup.show(addSubBtn, 0, addSubBtn.height)
-    }
-
-    private fun addSubmoduleFromMenu(path: String) {
-        val existing = subRows[path]
-        if (existing != null && existing.deleted) {
-            existing.deleted = false
-            existing.panel.isVisible = true
-            if (loadedOnce && !existing.loaded) {
-                existing.loaded = true
-                loadComboBranches(existing.combo, gitRoot.resolve(path).toFile(),
-                    existing.combo.selectedItem as? String ?: "")
-            }
-            updateDirty()
-            body.revalidate()
-            body.repaint()
-            return
-        }
-        val row = buildSubRow(path)
-        val actionsIndex = body.componentCount - 1
-        body.add(row.panel, actionsIndex)
-        val dir = gitRoot.resolve(path).toFile()
-        if (!dir.exists()) {
-            row.combo.selectedItem = ""
-            if (loadedOnce) { row.loaded = true; loadComboBranches(row.combo, dir, "") }
-            updateDirty()
-        } else {
-            row.combo.selectedItem = "loading..."
-            row.combo.isEnabled = false
-            loadingCount++
-            scope.launch {
-                val seedBranch = gitClient.currentBranch(dir) ?: ""
-                SwingUtilities.invokeLater {
-                    row.combo.selectedItem = seedBranch
-                    row.combo.isEnabled = true
-                    loadingCount--
-                    if (loadedOnce) {
-                        row.loaded = true
-                        loadComboBranches(row.combo, dir, seedBranch)
-                    }
-                    updateDirty()
-                }
-            }
-        }
-        body.revalidate()
-        body.repaint()
     }
 
     /** Expands/collapses the preset detail panel. Loads branch lists lazily on first expand. */
@@ -359,6 +215,7 @@ class PresetEditor(
         arrow.icon = if (body.isVisible) AllIcons.General.ArrowDown else AllIcons.General.ArrowRight
         if (body.isVisible && !loadedOnce) {
             loadedOnce = true
+            subManager.onFirstExpand()
             loadBranches()
         }
         revalidate()
@@ -368,13 +225,7 @@ class PresetEditor(
     /** Lazy-loads branch lists for all combos on first expand. Must be guarded by [loadedOnce]. */
     private fun loadBranches() {
         loadComboBranches(mainCombo, gitRoot.toFile(), original.main)
-        subRows.values.forEach { row ->
-            if (row.deleted || row.loaded) return@forEach
-            row.loaded = true
-            val dir = gitRoot.resolve(row.path).toFile()
-            val branch = original.submodules[row.path] ?: ""
-            loadComboBranches(row.combo, dir, branch)
-        }
+        subManager.loadAllBranches(original)
     }
 
     /** Asynchronously loads branch names into [combo] via [scope], preserving [current] as selected item. */
@@ -382,7 +233,7 @@ class PresetEditor(
         combo.model = DefaultComboBoxModel(arrayOf("loading..."))
         combo.selectedItem = "loading..."
         combo.isEnabled = false
-        loadingCount++
+        subManager.loadingCount++
         scope.launch {
             val branches = try {
                 if (dir.exists()) gitClient.listAllBranches(dir) else emptyList()
@@ -397,7 +248,7 @@ class PresetEditor(
                 combo.selectedItem = current
                 combo.putClientProperty(KEY_ALL_BRANCHES, list)
                 combo.isEnabled = true
-                loadingCount--
+                subManager.loadingCount--
                 updateDirty()
             }
         }
@@ -509,26 +360,6 @@ class PresetEditor(
     }
 
     fun currentPreset(): Preset = original
-
-    private fun showContextMenu(e: MouseEvent, path: String) {
-        val popup = javax.swing.JPopupMenu()
-        popup.add("${Strings.switchOnlyThis} ($path)").addActionListener {
-            val dir = gitRoot.resolve(path).toFile()
-            if (dir.exists() && java.io.File(dir, ".git").exists()) {
-                scope.launch {
-                    val cur = gitClient.currentBranch(dir)
-                    val target = original.submodules[path] ?: (cur ?: return@launch)
-                    val result = gitClient.checkoutExisting(dir, target)
-                    SwingUtilities.invokeLater { log(if (result.ok) "[switch] $path -> $target ok" else "[switch] $path fail") }
-                }
-            }
-        }
-        popup.add(Strings.openInExplorer).addActionListener {
-            val dir = gitRoot.resolve(path).toFile()
-            if (dir.exists()) java.awt.Desktop.getDesktop().open(dir)
-        }
-        popup.show(e.component, e.x, e.y)
-    }
 
     fun updatePresetName(newName: String) {
         original = original.copy(name = newName)
