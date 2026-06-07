@@ -2,7 +2,6 @@ package com.submodule.branchswitcher.action
 
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
-import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.service
 import com.intellij.openapi.progress.ProgressIndicator
 import com.intellij.openapi.progress.ProgressManager
@@ -18,6 +17,8 @@ import com.submodule.branchswitcher.model.SwitchOptions
 import com.submodule.branchswitcher.service.BranchSwitcherService
 import com.submodule.branchswitcher.switch.SwitchExecutor
 import com.submodule.branchswitcher.switch.SwitchPreflight
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import java.nio.file.Paths
 
 class SwitchPresetAction : AnAction() {
@@ -80,7 +81,7 @@ class SwitchPresetAction : AnAction() {
                 }
                 project.messageBus.syncPublisher(BranchSwitchListener.TOPIC).onBranchSwitched()
                 // Refresh VCS
-                ApplicationManager.getApplication().executeOnPooledThread {
+                service.scope.launch(Dispatchers.IO) {
                     val dirs = mutableListOf(root.toFile())
                     preset.submodules.keys.forEach { dirs += root.resolve(it).toFile() }
                     val lfs = com.intellij.openapi.vfs.LocalFileSystem.getInstance()

@@ -21,6 +21,7 @@ import com.submodule.branchswitcher.PresetLoader
 import com.submodule.branchswitcher.service.BranchSwitcherService
 import com.submodule.branchswitcher.switch.SwitchExecutor
 import com.submodule.branchswitcher.switch.SwitchPreflight
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import java.awt.BorderLayout
 import java.awt.Dimension
@@ -57,8 +58,7 @@ class BranchSwitcherPanel(
     private val service: BranchSwitcherService,
 ) : JPanel(BorderLayout()) {
 
-    private val editors = mutableListOf<PresetEditor>()
-    private var emptyStatePanel: JPanel? = null
+    // ── UI state ───────────────────────────────────────────────
     private val currentBranchLabel = JLabel(" ").apply {
         font = font.deriveFont(Font.BOLD, 12f)
         foreground = JBUI.CurrentTheme.Link.Foreground.ENABLED
@@ -88,7 +88,23 @@ class BranchSwitcherPanel(
         contentType = "text/plain"
     }
 
+    // ── Delegates (after UI fields to resolve init order) ──────
+    private val presetManager = PresetListManager(
+        project, service, ::gitRoot, ::append,
+        onSwitch = { preset -> switchController.runSwitch(preset) },
+        onDerive = { root, preset, name -> switchController.derivePresetBranch(root, preset, name) },
+    )
+    private lateinit var switchController: SwitchController
+    private var worktreeInfoLogged = false
+
     init {
+        switchController = SwitchController(
+            project, service, ::gitRoot, ::append,
+            editors = { presetManager.editors },
+            onStateChanged = ::detectCurrentState,
+            progressBar = progressBar,
+        )
+        presetManager.onStateChanged = ::detectCurrentState
         border = JBUI.Borders.empty(8, 8, 8, 8)
         minimumSize = Dimension(JBUI.scale(280), minimumSize.height)
 
@@ -102,10 +118,10 @@ class BranchSwitcherPanel(
         }
         val addPanel = JPanel(FlowLayout(FlowLayout.LEFT, 4, 4)).apply {
             add(JButton(Strings.addPreset, AllIcons.General.Add).noFocusRing()
-                .also { it.addActionListener { addPreset() } })
+                .also { it.addActionListener { presetManager.addPreset(presetsInner) } })
             add(JButton(Strings.fromCurrent, AllIcons.Vcs.Branch).noFocusRing().also {
                 it.toolTipText = Strings.fromCurrentTip
-                it.addActionListener { addPresetFromCurrent() }
+                it.addActionListener { presetManager.addPresetFromCurrent(presetsInner) }
             })
         }
         val presetsBlock = JPanel(BorderLayout()).apply {
@@ -160,9 +176,9 @@ class BranchSwitcherPanel(
             alignmentX = LEFT_ALIGNMENT
         }
         btnRow1.add(JButton(Strings.reloadPresets, AllIcons.Actions.Refresh).noFocusRing()
-            .also { it.addActionListener { reload() } })
+            .also { it.addActionListener { presetManager.reload(presetsInner); detectCurrentState() } })
         btnRow1.add(JButton(Strings.openPresetFile, AllIcons.Actions.EditSource).noFocusRing()
-            .also { it.addActionListener { openConfig() } })
+            .also { it.addActionListener { presetManager.openConfig() } })
         btnRow1.add(Box.createHorizontalStrut(12))
         btnRow1.add(JButton(Strings.clearLog, AllIcons.Actions.GC).noFocusRing()
             .also { it.addActionListener { log.text = "" } })
@@ -172,13 +188,13 @@ class BranchSwitcherPanel(
         }
         btnRow2.add(JButton(Strings.undoSwitch, AllIcons.Actions.Rollback).noFocusRing().also {
             it.toolTipText = Strings.undoTip
-            it.addActionListener { undoLastSwitch() }
+            it.addActionListener { switchController.undoLastSwitch() }
         })
         btnRow2.add(Box.createHorizontalStrut(12))
         btnRow2.add(JButton(Strings.exportPresets, AllIcons.Actions.MenuSaveall).noFocusRing()
-            .also { it.addActionListener { exportPresets() } })
+            .also { it.addActionListener { presetManager.exportPresets() } })
         btnRow2.add(JButton(Strings.importPresets, AllIcons.Actions.MenuSaveall).noFocusRing()
-            .also { it.addActionListener { importPresets() } })
+            .also { it.addActionListener { presetManager.importPresets(presetsContainer) } })
         buttons.add(btnRow2)
 
         val south = JPanel(BorderLayout())
@@ -189,7 +205,8 @@ class BranchSwitcherPanel(
         add(logScroll, BorderLayout.CENTER)
         add(south, BorderLayout.SOUTH)
 
-        reload()
+        presetManager.reload(presetsInner)
+        detectCurrentState()
 
         // Restore persisted switch options
         dirtyCombo.selectedIndex = when (service.dirtyAction) {
@@ -277,36 +294,6 @@ class BranchSwitcherPanel(
         return base
     }
 
-    private fun reload() {
-        editors.clear()
-        presetsInner.removeAll()
-        service.loadPresets()
-            .onSuccess { (file, parsed) ->
-                val root = gitRoot()
-                if (root == null) {
-                    append("[error] git root not found")
-                    Notifier.error(project, "Branch Switcher", "未找到 git 根目录")
-                    return@onSuccess
-                }
-                emptyStatePanel = null
-                if (parsed.presets.isEmpty()) {
-                    val panel = createEmptyState()
-                    emptyStatePanel = panel
-                    presetsInner.add(panel)
-                } else {
-                    parsed.presets.forEach { addEditorRow(root, it) }
-                }
-                append("loaded ${parsed.presets.size} preset(s) from $file")
-                presetsInner.revalidate()
-                presetsInner.repaint()
-                detectCurrentState()
-            }
-            .onFailure {
-                append("[error] ${it.message}")
-                Notifier.error(project, "预设加载失败", it.message ?: "unknown error")
-            }
-    }
-
     /**
      * Probes all editor paths (main + submodules) in the background, then updates UI.
      * Uses generation-based stale detection: if a newer [detectCurrentState] call starts
@@ -314,10 +301,11 @@ class BranchSwitcherPanel(
      */
     private fun detectCurrentState() {
         val root = gitRoot() ?: return
+        val eds = presetManager.editors
         val paths = LinkedHashSet<String>().apply { add(".") }
-        editors.forEach { paths.addAll(it.currentPreset().submodules.keys) }
+        eds.forEach { paths.addAll(it.currentPreset().submodules.keys) }
         val snapshot = paths.toList()
-        val pinnedEditors = editors.toList()
+        val pinnedEditors = eds.toList()
         val gen = service.nextDetectGen()
         service.scope.launch {
             val branches = HashMap<String, String?>(snapshot.size)
@@ -328,33 +316,13 @@ class BranchSwitcherPanel(
             com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater {
                 if (gen != service.getDetectGen()) return@invokeLater
                 pinnedEditors.forEach { editor ->
-                    if (editor in editors) editor.applyCurrentState(branches)
+                    if (editor in eds) editor.applyCurrentState(branches)
                 }
                 presetsInner.revalidate()
                 presetsInner.repaint()
-                logDetected(editors.toList(), branches)
+                logDetected(eds.toList(), branches)
             }
         }
-    }
-
-    private var lastMatchedPreset: Preset? = null
-    private var worktreeInfoLogged = false
-
-    private fun undoLastSwitch() {
-        val allPresets = editors.map { it.currentPreset() }
-        val history = service.getHistory()
-        if (history.size < 2) {
-            Messages.showInfoMessage(project, Strings.noUndoHistory, Strings.undoDialog)
-            return
-        }
-        // Find the preset that was active before the last switch
-        val previousName = history[1].presetName
-        val preset = allPresets.find { it.name == previousName }
-        if (preset == null) {
-            Messages.showInfoMessage(project, "${Strings.undoNotFound}「$previousName」", Strings.undoDialog)
-            return
-        }
-        runSwitch(preset)
     }
 
     private fun logDetected(eds: List<PresetEditor>, branches: Map<String, String?>) {
@@ -364,408 +332,8 @@ class BranchSwitcherPanel(
         append("[detect] main=$main, matched=${matched ?: "<none>"}")
     }
 
-    private fun addEditorRow(root: Path, preset: Preset) {
-        emptyStatePanel?.let { presetsInner.remove(it); emptyStatePanel = null }
-        lateinit var editor: PresetEditor
-        editor = PresetEditor(
-            gitRoot = root,
-            initial = preset,
-            log = ::append,
-            onSwitch = ::runSwitch,
-            onSave = { saveAll() },
-            onDelete = { deleteEditor(editor) },
-            onDerive = { branchName -> derivePresetBranch(root, preset, branchName) },
-            gitClient = service.gitClient,
-            scope = service.scope,
-        )
-        editors.add(editor)
-        presetsInner.add(editor)
-        presetsInner.add(Box.createVerticalStrut(4))
-    }
-
-    private fun deleteEditor(editor: PresetEditor) {
-        val name = editor.currentPreset().name
-        val confirm = Messages.showYesNoDialog(
-            project,
-            Strings.deletePresetMsg.format(name),
-            Strings.deleteConfirm,
-            Messages.getWarningIcon(),
-        )
-        if (confirm != Messages.YES) return
-        editors.remove(editor)
-        presetsInner.remove(editor)
-        saveAll()
-        if (editors.isEmpty()) {
-            val panel = createEmptyState()
-            emptyStatePanel = panel
-            presetsInner.add(panel)
-        }
-        presetsInner.revalidate()
-        presetsInner.repaint()
-        append("[deleted] $name")
-    }
-
-    private fun saveAll() {
-        service.savePresets(editors.map { it.currentPreset() })
-        append("[saved]")
-        detectCurrentState()
-    }
-
-    private fun newNameValidator(): InputValidator = object : InputValidator {
-        override fun checkInput(input: String?): Boolean {
-            val n = input?.trim().orEmpty()
-            if (n.isEmpty()) return false
-            return editors.none { it.currentPreset().name == n }
-        }
-        override fun canClose(input: String?): Boolean = checkInput(input)
-    }
-
-    private fun addPreset() {
-        val name = Messages.showInputDialog(project,
-            Strings.presetNameRule,
-            Strings.addPresetDialog, null, "", newNameValidator())?.trim()
-        if (name.isNullOrEmpty()) return
-        val template = service.presets.firstOrNull()
-        val newPreset = Preset(
-            name = name,
-            main = name,
-            pull = true,
-            submodules = template?.submodules ?: emptyMap(),
-        )
-        val root = gitRoot() ?: return
-        addEditorRow(root, newPreset)
-        presetsContainer.revalidate()
-        presetsContainer.repaint()
-        saveAll()
-        append("[added] $name (展开后可编辑各子模块分支)")
-    }
-
-    private fun addPresetFromCurrent() {
-        val root = gitRoot() ?: return
-        val rootFile = root.toFile()
-        val task = object : Task.Modal(project, "Reading current branches", false) {
-            var mainBranch: String? = null
-            val submodules = LinkedHashMap<String, String>()
-            val skipped = mutableListOf<String>()
-            override fun run(indicator: ProgressIndicator) {
-                indicator.isIndeterminate = true
-                indicator.text = "main repo"
-                mainBranch = service.gitClient.currentBranch(rootFile)
-                service.gitClient.listSubmodulePaths(rootFile).forEach { path ->
-                    indicator.text = path
-                    val dir = root.resolve(path).toFile()
-                    if (!dir.exists() || (!dir.resolve(".git").exists() && !File(dir, ".git").isFile)) {
-                        skipped += "$path (未 init)"
-                        return@forEach
-                    }
-                    val br = service.gitClient.currentBranch(dir)
-                    if (br.isNullOrEmpty()) {
-                        skipped += "$path (detached)"
-                        return@forEach
-                    }
-                    submodules[path] = br
-                }
-            }
-            override fun onSuccess() {
-                val mb = mainBranch
-                if (mb.isNullOrEmpty()) {
-                    Messages.showWarningDialog(project,
-                        Strings.detachedHeadWarn,
-                        Strings.pluginTitle)
-                    return
-                }
-                val name = Messages.showInputDialog(project,
-                    Strings.presetNameRule,
-                    Strings.fromCurrentDialog, null, mb, newNameValidator())?.trim()
-                if (name.isNullOrEmpty()) return
-                val newPreset = Preset(
-                    name = name,
-                    main = mb,
-                    pull = true,
-                    submodules = submodules,
-                )
-                addEditorRow(root, newPreset)
-                presetsContainer.revalidate()
-                presetsContainer.repaint()
-                saveAll()
-                append("[added from current] $name -> 主仓=$mb, ${submodules.size} 个子模块")
-                if (skipped.isNotEmpty()) {
-                    append("[skipped] ${skipped.joinToString(", ")}")
-                }
-                detectCurrentState()
-            }
-        }
-        com.intellij.openapi.progress.ProgressManager.getInstance().run(task)
-    }
-
-    private fun openConfig() {
-        val base = ideBase() ?: return
-        val file = PresetLoader.resolveFile(base)
-        if (file == null) {
-            Messages.showWarningDialog(project,
-                "${Strings.noPresetFile}\n$base/.idea/${PresetLoader.IDEA_FILE_NAME}",
-                Strings.pluginTitle)
-            return
-        }
-        val vf = com.intellij.openapi.vfs.LocalFileSystem.getInstance().refreshAndFindFileByPath(file.toString())
-        if (vf != null) {
-            com.intellij.openapi.fileEditor.FileEditorManager.getInstance(project).openFile(vf, true)
-        }
-    }
-
-    private fun runSwitch(preset: Preset) {
-        val root = gitRoot() ?: return
-
-        val preflightTask = object : Task.Modal(project, "Inspecting branches", true) {
-            var result: List<PreflightRow> = emptyList()
-            override fun run(indicator: ProgressIndicator) {
-                indicator.isIndeterminate = false
-                result = SwitchPreflight(service.gitClient).probe(root, preset, indicator)
-            }
-            override fun onSuccess() {
-                if (!SwitchPreviewDialog.showAndConfirm(project, preset, result)) return
-                executeSwitch(root, preset)
-            }
-        }
-        com.intellij.openapi.progress.ProgressManager.getInstance().run(preflightTask)
-    }
-
-    /**
-     * Runs the full switch pipeline in a [Task.Backgroundable].
-     * Wraps the [ProgressIndicator] to sync fraction/text to the panel [progressBar].
-     * On failure, shows a rollback-action notification if a checkpoint was recorded.
-     */
-    private fun executeSwitch(root: Path, preset: Preset) {
-        val dirty = when (dirtyCombo.selectedIndex) {
-            1 -> DirtyAction.Skip
-            2 -> DirtyAction.Force
-            else -> DirtyAction.Stash
-        }
-        val opts = SwitchOptions(
-            dirty = dirty,
-            pull = pullCheck.isSelected,
-            fetchFirst = fetchCheck.isSelected,
-            confirmBeforeInit = service.confirmBeforeInit,
-        )
-
-        setSwitchInProgress(true)
-        val task = object : Task.Backgroundable(project, "Switching branches", true) {
-            var ok = false
-            private var rollbackExecutor: SwitchExecutor? = null
-            override fun run(indicator: ProgressIndicator) {
-                indicator.isIndeterminate = true
-                val wrapped = object : ProgressIndicator by indicator {
-                    override fun setFraction(fraction: Double) {
-                        indicator.fraction = fraction
-                        SwingUtilities.invokeLater {
-                            progressBar.isIndeterminate = false
-                            progressBar.value = (fraction * 100).toInt()
-                        }
-                    }
-                    override fun setText2(text: String?) {
-                        indicator.text2 = text
-                        SwingUtilities.invokeLater { progressBar.string = text ?: "Switching..." }
-                    }
-                }
-                val executor = SwitchExecutor(root, ::append, service.gitClient, wrapped)
-                rollbackExecutor = executor
-                ok = executor.execute(preset, opts)
-            }
-            override fun onFinished() {
-                setSwitchInProgress(false)
-                service.addHistory(preset.name)
-                if (ok) {
-                    Notifier.info(project, Strings.switchComplete, Strings.switchCompleteMsg.format(preset.name))
-                } else {
-                    val executor = rollbackExecutor
-                    if (executor?.getCheckpoint() != null) {
-                        Notifier.rollbackAction(project, Strings.switchFailed,
-                            Strings.switchPartialMsg.format(preset.name) + "。可回滚到切换前的 HEAD。") {
-                            rollbackSwitch(executor)
-                        }
-                    } else {
-                        Notifier.error(project, Strings.switchFailed,
-                            Strings.switchPartialMsg.format(preset.name))
-                    }
-                }
-                refreshVcs(root, preset)
-            }
-        }
-        com.intellij.openapi.progress.ProgressManager.getInstance().run(task)
-    }
-
-    private fun derivePresetBranch(root: Path, preset: Preset, branchName: String) {
-        val task = object : Task.Backgroundable(project, "Creating branch $branchName", true) {
-            override fun run(indicator: ProgressIndicator) {
-                indicator.isIndeterminate = true
-                indicator.text = "Creating branch on all repos..."
-                val targets = preset.targets()
-                for ((idx, target) in targets.withIndex()) {
-                    indicator.fraction = idx.toDouble() / targets.size
-                    indicator.text2 = if (target.path == ".") root.fileName.toString() else target.path
-                    val dir = if (target.path == ".") root.toFile() else root.resolve(target.path).toFile()
-                    if (!dir.exists() || !java.io.File(dir, ".git").exists()) {
-                        append("[derive] skip ${target.path} — not a git repo")
-                        continue
-                    }
-                    val r = service.gitClient.checkoutNewBranch(dir, branchName)
-                    if (r.ok) {
-                        append("[derive] ${target.path}: created branch $branchName")
-                    } else {
-                        append("[derive] ${target.path}: FAILED — ${r.stderr.lines().firstOrNull() ?: ""}")
-                    }
-                }
-            }
-            override fun onFinished() {
-                detectCurrentState()
-                Notifier.info(project, Strings.deriveComplete, "分支 $branchName 已创建，共 ${preset.targets().size} 个仓库")
-            }
-        }
-        ProgressManager.getInstance().run(task)
-    }
-
-    private fun rollbackSwitch(executor: SwitchExecutor) {
-        val task = object : Task.Backgroundable(project, "Rolling back", true) {
-            var rollbackOk = false
-            override fun run(indicator: ProgressIndicator) {
-                indicator.isIndeterminate = true
-                rollbackOk = executor.rollback()
-            }
-            override fun onFinished() {
-                val root = gitRoot() ?: return
-                val submodulePaths = executor.getCheckpoint()?.keys?.filter { it != "." } ?: emptyList()
-                refreshVcs(root, com.submodule.branchswitcher.model.Preset("_rollback", "", submodulePaths.associateWith { "" }))
-                detectCurrentState()
-                if (!rollbackOk) {
-                    Notifier.warn(project, Strings.rollbackPartial,
-                        Strings.rollbackPartialMsg)
-                }
-            }
-        }
-        com.intellij.openapi.progress.ProgressManager.getInstance().run(task)
-    }
-
-    private fun refreshVcs(root: Path, preset: Preset) {
-        val app = com.intellij.openapi.application.ApplicationManager.getApplication()
-        app.executeOnPooledThread {
-            val dirs = mutableListOf(root.toFile())
-            preset.submodules.keys.forEach { dirs += root.resolve(it).toFile() }
-            try {
-                val lfs = com.intellij.openapi.vfs.LocalFileSystem.getInstance()
-                val mgr = git4idea.repo.GitRepositoryManager.getInstance(project)
-                for (dir in dirs) {
-                    val vf = lfs.refreshAndFindFileByIoFile(dir) ?: continue
-                    vf.refresh(false, true)
-                    mgr.getRepositoryForRoot(vf)?.update()
-                }
-                app.invokeLater {
-                    append("[vcs] refreshed ${dirs.size} repo(s)")
-                    detectCurrentState()
-                }
-            } catch (t: Throwable) {
-                app.invokeLater {
-                    append("[error] refreshVcs failed: ${t.javaClass.simpleName}: ${t.message}")
-                    Notifier.warn(project, "VCS 刷新失败",
-                        "${t.javaClass.simpleName}: ${t.message}")
-                    detectCurrentState()
-                }
-            }
-        }
-    }
-
-    private fun exportPresets() {
-        val gson = com.google.gson.GsonBuilder().setPrettyPrinting().create()
-        val json = gson.toJson(com.submodule.branchswitcher.model.PresetFile(editors.map { it.currentPreset() }))
-        val clipboard = java.awt.Toolkit.getDefaultToolkit().systemClipboard
-        clipboard.setContents(java.awt.datatransfer.StringSelection(json), null)
-        append("[exported] ${editors.size} preset(s) 已复制到剪贴板")
-        Notifier.info(project, Strings.exportComplete, "${editors.size} 个预设已复制到剪贴板")
-    }
-
-    private fun importPresets() {
-        try {
-            val clipboard = java.awt.Toolkit.getDefaultToolkit().systemClipboard
-            val text = clipboard.getData(java.awt.datatransfer.DataFlavor.stringFlavor) as? String
-            if (text.isNullOrBlank()) {
-                Messages.showInfoMessage(project, Strings.importEmpty, Strings.importDialog)
-                return
-            }
-            val trimmed = text.trim()
-            val gson = com.google.gson.Gson()
-            // Accept both {"presets":[...]} and plain [...]
-            val imported = if (trimmed.startsWith("[")) {
-                val presets = gson.fromJson(trimmed, Array<com.submodule.branchswitcher.model.Preset>::class.java)
-                com.submodule.branchswitcher.model.PresetFile(presets.toList())
-            } else {
-                gson.fromJson(trimmed, com.submodule.branchswitcher.model.PresetFile::class.java)
-            }
-            if (imported == null || imported.presets.isEmpty()) {
-                Messages.showWarningDialog(project, Strings.importInvalid, Strings.importDialog)
-                return
-            }
-            val root = gitRoot() ?: return
-            imported.presets.forEach { preset ->
-                // Check for name conflict
-                if (editors.any { it.currentPreset().name == preset.name }) {
-                    append("[import] skip ${preset.name} — 名字冲突")
-                    return@forEach
-                }
-                addEditorRow(root, preset)
-            }
-            presetsContainer.revalidate()
-            presetsContainer.repaint()
-            saveAll()
-            append("[imported] ${imported.presets.size} preset(s) from clipboard")
-            Notifier.info(project, Strings.importComplete, "从剪贴板导入了 ${imported.presets.size} 个预设")
-        } catch (e: Exception) {
-            append("[import] error: ${e.message}")
-            Messages.showWarningDialog(project, "${Strings.importFailed}: ${e.message}", Strings.importDialog)
-        }
-    }
-
-    private fun setSwitchInProgress(inProgress: Boolean) {
-        val tw = com.intellij.openapi.wm.ToolWindowManager.getInstance(project).getToolWindow("SubmoduleBranches") ?: return
-        if (inProgress) {
-            tw.setIcon(AllIcons.Process.Step_4)
-            progressBar.isVisible = true
-            progressBar.isIndeterminate = true
-            progressBar.string = "Switching..."
-        } else {
-            tw.setIcon(AllIcons.Vcs.Branch)
-            progressBar.isVisible = false
-        }
-    }
-
-    private fun createEmptyState(): JPanel {
-        return JPanel().apply {
-            layout = BoxLayout(this, BoxLayout.Y_AXIS)
-            border = JBUI.Borders.empty(40, 16, 40, 16)
-            alignmentX = CENTER_ALIGNMENT
-            val hint = JLabel(Strings.noPresets).apply {
-                font = font.deriveFont(Font.BOLD, 15f)
-                foreground = JBColor.GRAY
-                alignmentX = CENTER_ALIGNMENT
-            }
-            val subHint = JLabel(Strings.noPresetsHint).apply {
-                font = font.deriveFont(Font.PLAIN, 12f)
-                foreground = JBColor.GRAY
-                alignmentX = CENTER_ALIGNMENT
-            }
-            add(hint)
-            add(Box.createVerticalStrut(12))
-            add(subHint)
-            add(Box.createVerticalStrut(20))
-            val cta = JPanel(FlowLayout(FlowLayout.CENTER, 8, 0))
-            cta.alignmentX = CENTER_ALIGNMENT
-            cta.add(JButton(Strings.fromCurrentCreate, AllIcons.Vcs.Branch).noFocusRing().also {
-                it.addActionListener { addPresetFromCurrent() }
-            })
-            cta.add(JButton(Strings.manualCreate, AllIcons.General.Add).noFocusRing().also {
-                it.addActionListener { addPreset() }
-            })
-            add(cta)
-        }
-    }
+    // ── Delegating methods ─────────────────────────────────────
+    private fun runSwitch(preset: Preset) = switchController.runSwitch(preset)
 
     /**
      * Appends a line to the log with color coding:
