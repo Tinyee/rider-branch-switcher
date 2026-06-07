@@ -127,46 +127,45 @@ class BranchSwitcherPanel(
             layout = BoxLayout(this, BoxLayout.Y_AXIS)
             alignmentX = LEFT_ALIGNMENT
 
-            // Row 1: action buttons (left) + new preset buttons (right)
-            val row1 = JPanel(BorderLayout())
-            val actions = JPanel(FlowLayout(FlowLayout.LEFT, 4, 0))
-            actions.add(iconButton(Bundle.msg("action.reload"), AllIcons.Actions.Refresh,
+            // Row 1: action icon buttons
+            val row1 = JPanel(FlowLayout(FlowLayout.LEFT, 4, 0))
+            row1.add(iconButton(Bundle.msg("action.reload"), AllIcons.Actions.Refresh,
                 Bundle.msg("action.reload")) { presetManager.reload(presetsInner); detectCurrentState() })
-            actions.add(iconButton(Bundle.msg("action.open.config"), AllIcons.Actions.EditSource,
+            row1.add(iconButton(Bundle.msg("action.open.config"), AllIcons.Actions.EditSource,
                 Bundle.msg("action.open.config")) { presetManager.openConfig() })
-            actions.add(Box.createHorizontalStrut(8))
-            actions.add(iconButton(Bundle.msg("action.export"), AllIcons.Actions.MenuSaveall,
+            row1.add(Box.createHorizontalStrut(8))
+            row1.add(iconButton(Bundle.msg("action.export"), AllIcons.Actions.MenuSaveall,
                 Bundle.msg("action.export")) { presetManager.exportPresets() })
-            actions.add(iconButton(Bundle.msg("action.import"), AllIcons.Actions.MenuSaveall,
+            row1.add(iconButton(Bundle.msg("action.import"), AllIcons.Actions.MenuSaveall,
                 Bundle.msg("action.import")) { presetManager.importPresets(presetsContainer) })
-            actions.add(Box.createHorizontalStrut(8))
-            actions.add(iconButton(Bundle.msg("action.undo"), AllIcons.Actions.Rollback,
+            row1.add(Box.createHorizontalStrut(8))
+            row1.add(iconButton(Bundle.msg("action.undo"), AllIcons.Actions.Rollback,
                 Bundle.msg("action.undo.tip")) { switchController.undoLastSwitch() })
-            row1.add(actions, BorderLayout.WEST)
+            add(row1)
 
-            val newBtns = JPanel(FlowLayout(FlowLayout.RIGHT, 4, 0))
-            newBtns.add(JButton(Bundle.msg("action.add.preset"), AllIcons.General.Add).noFocusRing()
+            // Row 2: new preset buttons
+            val row2 = JPanel(FlowLayout(FlowLayout.LEFT, 4, 0))
+            row2.add(JButton(Bundle.msg("action.add.preset"), AllIcons.General.Add).noFocusRing()
                 .also { it.addActionListener { presetManager.addPreset(presetsInner) } })
-            newBtns.add(JButton(Bundle.msg("action.from.current"), AllIcons.Vcs.Branch).noFocusRing().also {
+            row2.add(JButton(Bundle.msg("action.from.current"), AllIcons.Vcs.Branch).noFocusRing().also {
                 it.toolTipText = Bundle.msg("action.from.current.tip")
                 it.addActionListener { presetManager.addPresetFromCurrent(presetsInner) }
             })
-            row1.add(newBtns, BorderLayout.EAST)
-            add(row1)
+            add(row2)
 
-            // Row 2: options
-            val row2 = JPanel(FlowLayout(FlowLayout.LEFT, 8, 2))
-            row2.add(JLabel(Bundle.msg("label.dirty.working.tree")))
-            row2.add(dirtyCombo)
-            row2.add(JLabel(Bundle.msg("option.timeout")))
-            row2.add(timeoutCombo)
-            row2.add(fetchCheck)
-            row2.add(pullCheck)
-            row2.add(JCheckBox(Bundle.msg("option.confirm.init")).apply {
+            // Row 3: options
+            val row3 = JPanel(FlowLayout(FlowLayout.LEFT, 8, 2))
+            row3.add(JLabel(Bundle.msg("label.dirty.working.tree")))
+            row3.add(dirtyCombo)
+            row3.add(JLabel(Bundle.msg("option.timeout")))
+            row3.add(timeoutCombo)
+            row3.add(fetchCheck)
+            row3.add(pullCheck)
+            row3.add(JCheckBox(Bundle.msg("option.confirm.init")).apply {
                 isSelected = service.confirmBeforeInit
                 addItemListener { service.confirmBeforeInit = isSelected }
             })
-            add(row2)
+            add(row3)
         }
     }
 
