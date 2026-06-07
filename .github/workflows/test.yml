@@ -8,24 +8,15 @@ on:
 
 jobs:
   test:
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-24.04, macos-14, windows-2025]
-        java: [17]
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
 
-      - name: Set up JDK ${{ matrix.java }}
+      - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
-          java-version: ${{ matrix.java }}
+          java-version: 17
           distribution: temurin
-
-      - name: Ensure gradlew is executable (non-Windows)
-        if: runner.os != 'Windows'
-        run: chmod +x gradlew
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
@@ -46,12 +37,12 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: test-results-${{ matrix.os }}
+          name: test-results
           path: build/reports/tests/
 
       - name: Upload plugin artifact
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: plugin-${{ matrix.os }}
+          name: plugin
           path: build/distributions/*.zip
