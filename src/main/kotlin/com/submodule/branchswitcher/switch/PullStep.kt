@@ -2,12 +2,12 @@ package com.submodule.branchswitcher.switch
 
 import java.io.File
 
-/** If options.pull and preset.pull are both enabled, pull --ff-only for each target. */
+/** If global [SwitchOptions.pull] and per-preset [Preset.pullEnabled] are both enabled, pull --ff-only for each target. */
 class PullStep : SwitchStep {
     override val name = "pull"
 
     override fun execute(context: SwitchContext): StepResult {
-        if (!context.options.pull || !context.preset.pull) return StepResult.Success
+        if (!context.options.pull || !context.preset.pullEnabled) return StepResult.Success
 
         val failures = LinkedHashMap<String, String>()
         for (target in context.preset.targets()) {

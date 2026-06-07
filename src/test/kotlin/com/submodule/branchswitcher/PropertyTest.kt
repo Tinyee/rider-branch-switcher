@@ -36,7 +36,7 @@ class PropertyTest : StringSpec({
             p.name == preset.name &&
             p.main == preset.main &&
             p.submodules == preset.submodules &&
-            p.pull == preset.pull
+            p.pullEnabled == preset.pullEnabled
         }
     }
 
@@ -45,7 +45,7 @@ class PropertyTest : StringSpec({
             Arb.bind(
                 Arb.string(1..15), Arb.string(1..15), Arb.boolean()
             ) { name, main, pull ->
-                Preset(name, main, pull = pull)
+                Preset(name, main, pullEnabled = pull)
             },
             0..10,
         )
@@ -55,7 +55,7 @@ class PropertyTest : StringSpec({
             val restored = Gson().fromJson(json, PresetFile::class.java)
             restored.presets.size == presets.size &&
             restored.presets.zip(presets).all { (a, b) ->
-                a.name == b.name && a.main == b.main && a.pull == b.pull
+                a.name == b.name && a.main == b.main && a.pullEnabled == b.pullEnabled
             }
         }
     }

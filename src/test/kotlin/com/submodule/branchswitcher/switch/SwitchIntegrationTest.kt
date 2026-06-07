@@ -149,7 +149,7 @@ class SwitchIntegrationTest {
         addSubmodule(root, subB, "SubB")
         gitOk(root, "submodule", "update", "--init", "--recursive")
 
-        val preset = Preset("multi", "main", mapOf("SubA" to "release", "SubB" to "feature"), pull = false)
+        val preset = Preset("multi", "main", mapOf("SubA" to "release", "SubB" to "feature"), pullEnabled = false)
         val (ok, _) = runSwitch(root, preset, SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false))
         assertTrue("Multi-repo switch should succeed", ok)
         assertEquals("main", git.currentBranch(root))
@@ -216,7 +216,7 @@ class SwitchIntegrationTest {
         if (subDir.exists()) subDir.deleteRecursively()
         assertFalse("SubA dir should be missing before switch", subDir.exists())
 
-        val preset = Preset("init-test", "main", mapOf("SubA" to "release"), pull = false)
+        val preset = Preset("init-test", "main", mapOf("SubA" to "release"), pullEnabled = false)
         val (ok, _) = runSwitch(root, preset, SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false))
         assertTrue("Switch with submodule init should succeed", ok)
         assertTrue("SubA dir should exist after init", subDir.exists())
@@ -329,7 +329,7 @@ class SwitchIntegrationTest {
         gitOk(File(root, "B"), "checkout", "main")
         gitOk(File(root, "C"), "checkout", "main")
 
-        val preset = Preset("three-subs", "main", mapOf("A" to "v1", "B" to "v2", "C" to "v3"), pull = false)
+        val preset = Preset("three-subs", "main", mapOf("A" to "v1", "B" to "v2", "C" to "v3"), pullEnabled = false)
         val (ok, _) = runSwitch(root, preset, SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false))
         assertTrue("Switch with 3 submodules should succeed", ok)
         assertEquals("v1", git.currentBranch(File(root, "A")))
@@ -346,7 +346,7 @@ class SwitchIntegrationTest {
         addSubmodule(root, subA, "SubA")
         gitOk(root, "submodule", "update", "--init", "--recursive")
 
-        val preset = Preset("missing-branch", "main", mapOf("SubA" to "no-branch"), pull = false)
+        val preset = Preset("missing-branch", "main", mapOf("SubA" to "no-branch"), pullEnabled = false)
         val (ok, logs) = runSwitch(root, preset, SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false))
         assertFalse("Switch should fail when submodule branch doesn't exist", ok)
         val hasSubFail = logs.any { it.contains("[fail]") && it.contains("SubA") }
@@ -363,7 +363,7 @@ class SwitchIntegrationTest {
         gitOk(root, "submodule", "update", "--init", "--recursive")
 
         val executor = SwitchExecutor(root.toPath(), { log += it }, git)
-        val preset = Preset("ck-test", "main", mapOf("SubA" to "main"), pull = false)
+        val preset = Preset("ck-test", "main", mapOf("SubA" to "main"), pullEnabled = false)
         executor.execute(preset, SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false))
 
         val checkpoint = executor.getCheckpoint()
@@ -406,7 +406,7 @@ class SwitchIntegrationTest {
         val subDir = File(root, "SubA")
         if (subDir.exists()) subDir.deleteRecursively()
 
-        val preset = Preset("auto-init", "main", mapOf("SubA" to "main"), pull = false)
+        val preset = Preset("auto-init", "main", mapOf("SubA" to "main"), pullEnabled = false)
         val (ok, _) = runSwitch(root, preset,
             SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false, confirmBeforeInit = false))
         assertTrue("Switch with auto-init should succeed", ok)

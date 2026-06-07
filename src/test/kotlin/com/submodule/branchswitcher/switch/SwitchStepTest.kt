@@ -162,15 +162,15 @@ class SwitchStepTest {
         val noPullGit = object : GitClient by fakeGit {
             override fun pullFf(workDir: File, branch: String): GitResult = error("should not be called")
         }
-        val noPullPreset = Preset("test", "dev", emptyMap(), pull = false)
+        val noPullPreset = Preset("test", "dev", emptyMap(), pullEnabled = false)
         val c = context(SwitchOptions(DirtyAction.Stash, pull = true)).copy(git = noPullGit, preset = noPullPreset)
         val step = PullStep()
-        assertTrue(step.execute(c) is StepResult.Success) // Both must be true, preset.pull is false -> skip
+        assertTrue(step.execute(c) is StepResult.Success) // Both must be true, preset.pullEnabled is false -> skip
     }
 
     @Test
     fun `pull step executes when both enabled`() {
-        val pullPreset = Preset("test", "dev", emptyMap(), pull = true)
+        val pullPreset = Preset("test", "dev", emptyMap(), pullEnabled = true)
         val c = context(SwitchOptions(DirtyAction.Stash, pull = true)).copy(preset = pullPreset)
         val step = PullStep()
         assertTrue(step.execute(c) is StepResult.Success)

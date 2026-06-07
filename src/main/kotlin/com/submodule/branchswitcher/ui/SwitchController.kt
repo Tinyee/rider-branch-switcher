@@ -74,7 +74,21 @@ class SwitchController(
                         }
                         override fun setText2(text: String?) {
                             indicator.text2 = text
-                            com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater { progressBar.string = text ?: Bundle.msg("tooltip.progress.switching") }
+                            com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater {
+                                progressBar.string = text ?: Bundle.msg("tooltip.progress.switching")
+                            }
+                        }
+                        override fun setText(text: String?) {
+                            indicator.text = text
+                            com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater {
+                                progressBar.string = text ?: Bundle.msg("tooltip.progress.switching")
+                            }
+                        }
+                        override fun setIndeterminate(indeterminate: Boolean) {
+                            indicator.isIndeterminate = indeterminate
+                            com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater {
+                                progressBar.isIndeterminate = indeterminate
+                            }
                         }
                     }
                     val executor = SwitchExecutor(root, log, service.gitClient, wrapped)
