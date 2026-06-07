@@ -2,14 +2,11 @@ package com.submodule.branchswitcher.ui
 
 import com.intellij.icons.AllIcons
 import com.intellij.openapi.progress.ProgressIndicator
-import com.intellij.openapi.progress.ProgressManager
-import com.intellij.openapi.progress.Task
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.Messages
 import com.submodule.branchswitcher.Notifier
 import com.submodule.branchswitcher.Strings
-import com.submodule.branchswitcher.model.DirtyAction
-import com.submodule.branchswitcher.model.PreflightRow
+import com.submodule.branchswitcher.TaskBridge
 import com.submodule.branchswitcher.model.Preset
 import com.submodule.branchswitcher.model.SwitchOptions
 import com.submodule.branchswitcher.service.BranchSwitcherService
@@ -23,7 +20,7 @@ import javax.swing.SwingUtilities
 
 /**
  * Handles all switch-related operations: preflight preview, execute, rollback,
- * derive branch, undo, and VCS refresh. Extracted from [BranchSwitcherPanel].
+ * derive branch, undo, and VCS refresh. All async via [service.scope].
  */
 class SwitchController(
     private val project: Project,
@@ -34,27 +31,25 @@ class SwitchController(
     private val onStateChanged: () -> Unit,
     private val progressBar: JProgressBar,
 ) {
-    private var lastMatchedPreset: Preset? = null
 
     fun runSwitch(preset: Preset) {
         val root = gitRoot() ?: return
-
-        val preflightTask = object : Task.Modal(project, "Inspecting branches", true) {
-            var result: List<PreflightRow> = emptyList()
-            override fun run(indicator: ProgressIndicator) {
+        service.scope.launch(Dispatchers.Default) {
+            val probeResult = TaskBridge.runModal(project, "Inspecting branches", true) { indicator ->
                 indicator.isIndeterminate = false
-                result = SwitchPreflight(service.gitClient).probe(root, preset, indicator)
+                SwitchPreflight(service.gitClient).probe(root, preset, indicator)
             }
-            override fun onSuccess() {
-                if (!SwitchPreviewDialog.showAndConfirm(project, preset, result)) return
-                executeSwitch(root, preset)
+            // Resumed on caller thread after modal closes
+            val app = com.intellij.openapi.application.ApplicationManager.getApplication()
+            app.invokeLater {
+                if (SwitchPreviewDialog.showAndConfirm(project, preset, probeResult)) {
+                    executeSwitch(root, preset)
+                }
             }
         }
-        ProgressManager.getInstance().run(preflightTask)
     }
 
     fun executeSwitch(root: Path, preset: Preset) {
-        // Determine options from current service state
         val opts = SwitchOptions(
             dirty = service.dirtyAction,
             pull = service.pullAfterSwitch,
@@ -63,99 +58,103 @@ class SwitchController(
         )
 
         setSwitchInProgress(true)
-        val task = object : Task.Backgroundable(project, "Switching branches", true) {
+        service.scope.launch(Dispatchers.Default) {
             var ok = false
-            private var rollbackExecutor: SwitchExecutor? = null
-            override fun run(indicator: ProgressIndicator) {
-                indicator.isIndeterminate = true
-                val wrapped = object : ProgressIndicator by indicator {
-                    override fun setFraction(fraction: Double) {
-                        indicator.fraction = fraction
-                        SwingUtilities.invokeLater {
-                            progressBar.isIndeterminate = false
-                            progressBar.value = (fraction * 100).toInt()
+            var rollbackExecutor: SwitchExecutor? = null
+            try {
+                TaskBridge.runBackground(project, "Switching branches", true) { indicator ->
+                    indicator.isIndeterminate = true
+                    val wrapped = object : ProgressIndicator by indicator {
+                        override fun setFraction(fraction: Double) {
+                            indicator.fraction = fraction
+                            SwingUtilities.invokeLater {
+                                progressBar.isIndeterminate = false
+                                progressBar.value = (fraction * 100).toInt()
+                            }
+                        }
+                        override fun setText2(text: String?) {
+                            indicator.text2 = text
+                            SwingUtilities.invokeLater { progressBar.string = text ?: "Switching..." }
                         }
                     }
-                    override fun setText2(text: String?) {
-                        indicator.text2 = text
-                        SwingUtilities.invokeLater { progressBar.string = text ?: "Switching..." }
-                    }
+                    val executor = SwitchExecutor(root, log, service.gitClient, wrapped)
+                    rollbackExecutor = executor
+                    ok = executor.execute(preset, opts)
                 }
-                val executor = SwitchExecutor(root, log, service.gitClient, wrapped)
-                rollbackExecutor = executor
-                ok = executor.execute(preset, opts)
+            } catch (_: Exception) {
+                ok = false
             }
-            override fun onFinished() {
-                setSwitchInProgress(false)
-                service.addHistory(preset.name)
-                if (ok) {
-                    Notifier.info(project, Strings.switchComplete, Strings.switchCompleteMsg.format(preset.name))
+            // Resumed on EDT via TaskBridge.onFinished
+            setSwitchInProgress(false)
+            service.addHistory(preset.name)
+            if (ok) {
+                Notifier.info(project, Strings.switchComplete, Strings.switchCompleteMsg.format(preset.name))
+            } else {
+                val executor = rollbackExecutor
+                if (executor?.getCheckpoint() != null) {
+                    Notifier.rollbackAction(project, Strings.switchFailed,
+                        Strings.switchPartialMsg.format(preset.name) + "。可回滚到切换前的 HEAD。") {
+                        rollbackSwitch(executor)
+                    }
                 } else {
-                    val executor = rollbackExecutor
-                    if (executor?.getCheckpoint() != null) {
-                        Notifier.rollbackAction(project, Strings.switchFailed,
-                            Strings.switchPartialMsg.format(preset.name) + "。可回滚到切换前的 HEAD。") {
-                            rollbackSwitch(executor)
-                        }
-                    } else {
-                        Notifier.error(project, Strings.switchFailed,
-                            Strings.switchPartialMsg.format(preset.name))
-                    }
+                    Notifier.error(project, Strings.switchFailed,
+                        Strings.switchPartialMsg.format(preset.name))
                 }
-                refreshVcs(root, preset)
             }
+            refreshVcs(root, preset)
         }
-        ProgressManager.getInstance().run(task)
     }
 
     fun rollbackSwitch(executor: SwitchExecutor) {
-        val task = object : Task.Backgroundable(project, "Rolling back", true) {
+        service.scope.launch(Dispatchers.Default) {
             var rollbackOk = false
-            override fun run(indicator: ProgressIndicator) {
-                indicator.isIndeterminate = true
-                rollbackOk = executor.rollback()
-            }
-            override fun onFinished() {
-                val root = gitRoot() ?: return
-                val submodulePaths = executor.getCheckpoint()?.keys?.filter { it != "." } ?: emptyList()
-                refreshVcs(root, Preset("_rollback", "", submodulePaths.associateWith { "" }))
-                onStateChanged()
-                if (!rollbackOk) {
-                    Notifier.warn(project, Strings.rollbackPartial, Strings.rollbackPartialMsg)
+            try {
+                TaskBridge.runBackground(project, "Rolling back", true) { indicator ->
+                    indicator.isIndeterminate = true
+                    rollbackOk = executor.rollback()
                 }
+            } catch (_: Exception) {
+                rollbackOk = false
+            }
+            // Resumed on EDT
+            val root = gitRoot() ?: return@launch
+            val submodulePaths = executor.getCheckpoint()?.keys?.filter { it != "." } ?: emptyList()
+            refreshVcs(root, Preset("_rollback", "", submodulePaths.associateWith { "" }))
+            onStateChanged()
+            if (!rollbackOk) {
+                Notifier.warn(project, Strings.rollbackPartial, Strings.rollbackPartialMsg)
             }
         }
-        ProgressManager.getInstance().run(task)
     }
 
     fun derivePresetBranch(root: Path, preset: Preset, branchName: String) {
-        val task = object : Task.Backgroundable(project, "Creating branch $branchName", true) {
-            override fun run(indicator: ProgressIndicator) {
-                indicator.isIndeterminate = true
-                indicator.text = "Creating branch on all repos..."
-                val targets = preset.targets()
-                for ((idx, target) in targets.withIndex()) {
-                    indicator.fraction = idx.toDouble() / targets.size
-                    indicator.text2 = if (target.path == ".") root.fileName.toString() else target.path
-                    val dir = if (target.path == ".") root.toFile() else root.resolve(target.path).toFile()
-                    if (!dir.exists() || !java.io.File(dir, ".git").exists()) {
-                        log("[derive] skip ${target.path} — not a git repo")
-                        continue
-                    }
-                    val r = service.gitClient.checkoutNewBranch(dir, branchName)
-                    if (r.ok) {
-                        log("[derive] ${target.path}: created branch $branchName")
-                    } else {
-                        log("[derive] ${target.path}: FAILED — ${r.stderr.lines().firstOrNull() ?: ""}")
+        service.scope.launch(Dispatchers.Default) {
+            try {
+                TaskBridge.runBackground(project, "Creating branch $branchName", true) { indicator ->
+                    indicator.isIndeterminate = true
+                    indicator.text = "Creating branch on all repos..."
+                    val targets = preset.targets()
+                    for ((idx, target) in targets.withIndex()) {
+                        indicator.fraction = idx.toDouble() / targets.size
+                        indicator.text2 = if (target.path == ".") root.fileName.toString() else target.path
+                        val dir = if (target.path == ".") root.toFile() else root.resolve(target.path).toFile()
+                        if (!dir.exists() || !java.io.File(dir, ".git").exists()) {
+                            log("[derive] skip ${target.path} — not a git repo")
+                            continue
+                        }
+                        val r = service.gitClient.checkoutNewBranch(dir, branchName)
+                        if (r.ok) {
+                            log("[derive] ${target.path}: created branch $branchName")
+                        } else {
+                            log("[derive] ${target.path}: FAILED — ${r.stderr.lines().firstOrNull() ?: ""}")
+                        }
                     }
                 }
-            }
-            override fun onFinished() {
-                onStateChanged()
-                Notifier.info(project, Strings.deriveComplete, "分支 $branchName 已创建，共 ${preset.targets().size} 个仓库")
-            }
+            } catch (_: Exception) { /* logged in task */ }
+            // Resumed on EDT
+            onStateChanged()
+            Notifier.info(project, Strings.deriveComplete, "分支 $branchName 已创建，共 ${preset.targets().size} 个仓库")
         }
-        ProgressManager.getInstance().run(task)
     }
 
     fun undoLastSwitch() {
