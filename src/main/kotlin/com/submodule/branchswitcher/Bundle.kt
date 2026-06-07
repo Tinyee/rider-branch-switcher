@@ -2,6 +2,7 @@ package com.submodule.branchswitcher
 
 import com.intellij.DynamicBundle
 import org.jetbrains.annotations.Nls
+import org.jetbrains.annotations.PropertyKey
 import java.text.MessageFormat
 
 /**
@@ -19,7 +20,7 @@ object Bundle {
     }
 
     @Nls
-    fun msg(key: String, vararg params: Any): String {
+    fun msg(@PropertyKey(resourceBundle = PATH) key: String, vararg params: Any): String {
         val template = try {
             bundle.getString(key)
         } catch (_: Exception) {

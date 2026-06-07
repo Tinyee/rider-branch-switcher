@@ -203,7 +203,7 @@ class SwitchController(
 
     private fun setSwitchInProgress(inProgress: Boolean) {
         val tw = com.intellij.openapi.wm.ToolWindowManager.getInstance(project)
-            .getToolWindow(com.submodule.branchswitcher.Bundle.msg("plugin.toolWindow.id")) ?: return
+            .getToolWindow("SubmoduleBranches") ?: return
         if (inProgress) {
             tw.setIcon(AllIcons.Process.Step_4)
             progressBar.isVisible = true

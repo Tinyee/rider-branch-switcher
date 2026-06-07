@@ -243,3 +243,160 @@ com.submodule.branchswitcher/
 **未列入计划的低优先级**：
 
 19. `noFocusRing()` 工厂化 / 全局 LAF
+
+---
+
+## v0.6 候选 — 2026-06-07 全面代码审查（50 项发现）
+
+三个维度同时扫描代码库（逐行 diff + 调用链追踪 + 并发/资源审查），发现 24 Bug + 18 质量问题 + 8 功能缺口。
+以下是按优先级排列的关键项，完整的 50 项列表见底部。
+
+### 🔴 致命 Bug（v0.6 第一波优先）
+
+| # | 文件:行 | 问题 | 后果 |
+|---|---------|------|------|
+| 1 | `TaskBridge.kt:49-67` | `onCancel()` 后 `onFinished()` 再次 `cont.resume(Unit)` | 取消任务时 double-resume 崩溃 |
+| 2 | `SwitchPresetAction.kt:67` | 硬编码 `DirtyAction.Stash`，忽略用户偏好 | Ctrl+Alt+B 切换时脏文件被意外 stash |
+| 3 | `SwitchController.kt:206` | ToolWindow ID 走 `Bundle.msg()` 查 i18n key | 切 IDE 语言后 `getToolWindow()` 找不到 |
+
+### 🟡 高价值修复（v0.6 第一波）
+
+| # | 文件:行 | 问题 | 建议 |
+|---|---------|------|------|
+| 4 | `Bundle.kt:22` | `msg()` 无编译时 key 校验 | 加 `@PropertyKey(resourceBundle = PATH)` |
+| 5 | `BranchSwitcherPanel.kt:85-89` | 日志 `JTextPane` 从不裁剪 | 限制 5000 行，超出 trim 前半 |
+| 6 | `BranchSwitcherPanel.kt:250-255` | messageBus 连接挂在 service 生命周期而非 panel | 改用 `Disposable` 模式，panel 销毁时断开 |
+| 7 | `BranchSwitcherService.kt:88` | 每次访问 `gitClient` 都 `new GitOps()` | 缓存实例，仅在 timeout 变更时重建 |
+| 8 | `PresetEditor.kt:232-255` + `SubmoduleRowManager.kt:223-246` | `loadComboBranches` 重复两份 | 提取到 `BranchComboUtil.kt` |
+
+### 🟢 中等优先级（后续做）
+
+| # | 文件:行 | 问题 | 建议 |
+|---|---------|------|------|
+| 9 | `SwitchPresetAction.kt:69-71` / `SwitchController.kt:84-86` | `catch (_: Exception) { ok = false }` 吞掉异常信息 | 记录 `e.message` 到日志或通知 |
+| 10 | `BranchSwitcherService.kt:139-141` | `detectGen: Long` 无 `@Volatile`，理论上 32-bit JVM 有数据竞争 | 加 `@Volatile` 或改用 `AtomicLong` |
+| 11 | `PresetListManager.kt:253-259` | 导入时名字全部冲突仍报 "imported N preset(s)" | 统计实际成功导入数 |
+| 12 | `PresetEditor.kt:369-381` | 重命名不检查重名 | 复用 `newNameValidator()` |
+| 13 | `PresetListManager.kt:225-228` | 导出剪贴板无异常处理 | wrap try-catch，失败时通知用户 |
+| 14 | `SubmoduleRowManager.kt:251-265` | 右键"仅切此一仓"不检查 dirty、不支持 remote-only 分支 | 加 dirty 检查 + `checkoutFromRemote` 回退 |
+| 15 | `CheckoutStep.kt:37-44` | `invokeAndWait` 弹确认框时取消不生效 | 弹框前检查 `indicator.isCanceled` |
+| 16 | `BranchSwitcherPanel.kt:213-247` | ComboBox 索引用 0/1/2/3 魔法数字 | 改用数据对象（enum / Pair）按值匹配 |
+| 17 | `GitOps.kt:58,64,67,109` | 硬编码 `origin` 远端名 | 检测实际 remote 名或使用 `git branch -a` |
+| 18 | `PresetLoader.kt:82-84` | 原子写入的临时文件在非 `AtomicMoveNotSupportedException` 异常时泄漏 | 加 `finally` 清理 |
+| 19 | `BranchSwitcherService.kt:143-144` | `setCurrentBranches`/`getCurrentBranches` 无调用方 | 加调用方或删除死代码 |
+| 20 | `BranchSwitcherPanel.kt:77-78` | checkbox 初始值硬编码 `true`，与 service 持久值可能短暂不一致 | 直接从 `service` 取值初始化 |
+| 21 | `SwitchPreviewDialog.kt:49` | 列宽用像素硬编码 `180/140/140/90/110` | 改用 `JBUI.scale()` |
+| 22 | `BranchSwitcherService.kt:34` | 切换历史不持久化（IDE 重启丢失） | 加入 `OptionsState` |
+| 23 | `BranchSwitcherService.kt:117-124` | `addHistory` 两次创建中间列表 | 用 `ArrayDeque` 优化 |
+| 24 | `SwitchController.kt:67-79` | ProgressIndicator delegate 只覆写 `setFraction`/`setText2` | 补 `setText`/`setIndeterminate`/`checkCanceled` |
+| 25 | `BranchSwitcherPanel.kt:337` | `private fun runSwitch()` 死代码 | 删除 |
+
+### 功能缺口
+
+| # | 需求 | 说明 |
+|---|------|------|
+| 26 | Settings 页面 | 用户无法通过 File→Settings 配置超时/策略，只能在面板里改 |
+| 27 | 状态栏 widget | 切换后无常驻指示当前 preset，类似 Git branch widget |
+| 28 | Preset 搜索/过滤 | 20+ preset 时无搜索 |
+| 29 | Per-preset 选项覆盖 | 某个 preset 需要特殊 dirty/fetch/pull 配置时无法覆盖全局设置 |
+| 30 | 嵌套子模块 | `listSubmodulePaths` 只解析根 `.gitmodules`，不递归 |
+| 31 | 无 preset 直接切换 | 想"全部切到 develop"必须建 preset |
+| 32 | git 不在 PATH 的友好提示 | `GeneralCommandLine("git", ...)` 失败时无提示 |
+
+---
+
+## v1.0 路线图 — Marketplace 发布准备工作
+
+参考 [JetBrains Marketplace 审核指南](https://plugins.jetbrains.com/docs/marketplace/jetbrains-marketplace-approval-guidelines.html) (v1.3, 2026-03)、[SDK DevGuide](https://plugins.jetbrains.com/docs/intellij) 和高质量插件实践。
+
+### P1 — Marketplace 上架必要条件
+
+| # | 事项 | 工作量 | 说明 |
+|---|------|--------|------|
+| M1 | 升级 IntelliJ Platform Gradle Plugin 2.2.1 → 2.10+ | 低 | 新版兼容 Kotlin 2.3.0，自带更严格的 Plugin Verifier |
+| M2 | CI 加 `verifyPlugin` | 低 | 自动检测二进制不兼容和 `@ApiStatus.Internal` 使用 |
+| M3 | 修复 `<vendor>internal</vendor>` | 极低 | 改为真实 vendor（url + email），否则审核不通过 |
+| M4 | 加 Exception Analyzer | 极低 | `plugin.xml` 加一行 `<errorHandler>`，崩溃自动上报 Marketplace |
+| M5 | 插件图标 | 低 | 40×40 SVG，不模仿 JetBrains 产品 logo |
+| M6 | 英文描述 + 截图 | 中 | 1280×800 (16:10)，不带设备边框 |
+| M7 | CI 加 Qodana/InspectCode | 低 | 静态分析在每次 push 自动跑 |
+
+### P2 — 生产级打磨
+
+| # | 事项 | 工作量 | 说明 |
+|---|------|--------|------|
+| M8 | Settings Configurable | 中 | File→Settings→Version Control 下注册配置页 |
+| M9 | 结构化日志 | 中 | `com.intellij.openapi.diagnostic.Logger` 替代 lambda `log()` |
+| M10 | 动态插件兼容 | 中 | 确保 service.dispose() 取消协程、不泄漏 classloader |
+| M11 | Bundle 加 `@PropertyKey` | 低 | 编译时校验 key 有效性 |
+
+### P3 — 锦上添花
+
+| # | 事项 | 说明 |
+|---|------|------|
+| M12 | 首次安装提示 | 介绍核心功能 + Ctrl+Alt+B 快捷键 |
+| M13 | 大仓性能测试 | 50+ 子模块场景下的 preflight 耗时 |
+| M14 | 匿名遥测（opt-in） | 按 Marketplace 要求明示同意 |
+
+---
+
+## 测试策略（个人开发者）
+
+### 当前状态
+
+- ✅ 122 测试，12 个测试类，`./gradlew test` 即可跑
+- ✅ `GitClient` 接口 + Fake 实现 → 架构已隔离 IntelliJ 运行时
+- ✅ 真实 git 临时仓库集成测试（`SwitchIntegrationTest`）
+- ⚠ 无 CI/CD，依赖手动跑测试
+- ⚠ UI 层无程序化测试（手工 checklist 替代）
+
+### 推荐方案（按投入排序）
+
+**1. GitHub Actions CI（30 分钟，免费）**
+
+```yaml
+# .github/workflows/build.yml
+name: Build
+on: [push, pull_request]
+jobs:
+  test:
+    runs-on: ubuntu-latest  # 无需 Rider SDK，Linux runner 免费
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: 17 }
+      - run: ./gradlew test
+      - run: ./gradlew buildPlugin
+```
+
+公共仓库无限免费分钟数。每次 push 自动跑，失败邮件通知。
+
+**2. Kotest 属性测试（1-2 小时）**
+
+依赖：`io.kotest:kotest-runner-junit5:5.9.1` + `io.kotest:kotest-property:5.9.1`
+
+用随机生成数据验证 5 个不变性：
+- Preset JSON 序列化往返一致性
+- .gitmodules 解析器在任意合法输入下不崩溃
+- 切换历史 ≤5 条、时间降序
+- PreflightRow 字段一致性
+- GitOps 命令字符串注入防护
+
+**3. PITest 变异测试（一次性，1 小时）**
+
+`id("info.solidsoft.pitest") version "1.15.0"` → `./gradlew pitest` → HTML 报告展示哪些测试不充分
+
+**4. 手工 Release Checklist（每次发版 5-10 分钟）**
+
+```
+□ 切换核心: 创建/切换/回切/三策略(stash/skip/force)
+□ 边界: 缺失子模块init / 目标分支不存在 / 取消 / 无remote
+□ UI: 状态点颜色 / Ctrl+Alt+B / IDE重启持久化 / Notification
+□ 数据: 无效JSON不崩溃 / 空状态 / 历史恢复
+```
+
+### 不推荐（ROI 低）
+
+- ❌ IntelliJ 轻量测试框架 — 对 tool window 插件 setup 太复杂
+- ❌ UI 快照测试 — 基础设施重，手工更灵活
+- ❌ 复杂发布流水线 — `./gradlew buildPlugin` + 手动上传够用到 10+ 用户

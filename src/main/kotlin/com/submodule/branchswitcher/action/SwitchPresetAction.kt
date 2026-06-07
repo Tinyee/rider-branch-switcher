@@ -9,7 +9,6 @@ import com.submodule.branchswitcher.BranchSwitchListener
 import com.submodule.branchswitcher.Bundle
 import com.submodule.branchswitcher.Notifier
 import com.submodule.branchswitcher.TaskBridge
-import com.submodule.branchswitcher.model.DirtyAction
 import com.submodule.branchswitcher.model.Preset
 import com.submodule.branchswitcher.model.SwitchOptions
 import com.submodule.branchswitcher.service.BranchSwitcherService
@@ -64,7 +63,12 @@ class SwitchPresetAction : AnAction() {
                         logLines += "[warn] 分支不存在 (本地/远端): $names"
                     }
                     val executor = SwitchExecutor(root, { logLines += it }, service.gitClient, indicator)
-                    ok = executor.execute(preset, SwitchOptions(DirtyAction.Stash, fetchFirst = service.fetchFirst, pull = service.pullAfterSwitch))
+                    ok = executor.execute(preset, SwitchOptions(
+                        dirty = service.dirtyAction,
+                        fetchFirst = service.fetchFirst,
+                        pull = service.pullAfterSwitch,
+                        confirmBeforeInit = service.confirmBeforeInit,
+                    ))
                 }
             } catch (_: Exception) {
                 ok = false
