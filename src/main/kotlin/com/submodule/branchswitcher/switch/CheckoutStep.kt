@@ -1,5 +1,6 @@
-package com.submodule.branchswitcher.switch
+﻿package com.submodule.branchswitcher.switch
 
+import com.submodule.branchswitcher.Bundle
 import java.io.File
 
 /**
@@ -35,10 +36,9 @@ class CheckoutStep : SwitchStep {
                         val result = java.util.concurrent.atomic.AtomicInteger(com.intellij.openapi.ui.Messages.NO)
                         com.intellij.openapi.application.ApplicationManager.getApplication()
                             .invokeAndWait {
-                                val bundle = com.submodule.branchswitcher.Bundle
                                 result.set(com.intellij.openapi.ui.Messages.showYesNoDialog(
-                                    bundle.message("dialog.init.submodule", target.path),
-                                    bundle.message("dialog.init.title"),
+                                    Bundle.msg("dialog.init.submodule", target.path),
+                                    Bundle.msg("dialog.init.title"),
                                     com.intellij.openapi.ui.Messages.getQuestionIcon(),
                                 ))
                             }

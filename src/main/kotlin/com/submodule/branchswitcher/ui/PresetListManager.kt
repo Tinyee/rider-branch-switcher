@@ -51,7 +51,7 @@ class PresetListManager(
                 val root = gitRoot()
                 if (root == null) {
                     log("[error] git root not found")
-                    Notifier.error(project, Bundle.message("plugin.title"), Bundle.message("git.root.not.found"))
+                    Notifier.error(project, Bundle.msg("plugin.title"), Bundle.msg("git.root.not.found"))
                     return@onSuccess
                 }
                 emptyStatePanel = null
@@ -69,7 +69,7 @@ class PresetListManager(
             }
             .onFailure {
                 log("[error] ${it.message}")
-                Notifier.error(project, Bundle.message("preset.load.failed"), it.message ?: "unknown error")
+                Notifier.error(project, Bundle.msg("preset.load.failed"), it.message ?: "unknown error")
             }
     }
 
@@ -96,8 +96,8 @@ class PresetListManager(
         val name = editor.currentPreset().name
         val confirm = Messages.showYesNoDialog(
             project,
-            Bundle.message("label.delete.confirm.msg").format(name),
-            Bundle.message("label.delete.confirm.title"),
+            Bundle.msg("label.delete.confirm.msg", name),
+            Bundle.msg("label.delete.confirm.title"),
             Messages.getWarningIcon(),
         )
         if (confirm != Messages.YES) return
@@ -122,8 +122,8 @@ class PresetListManager(
 
     fun addPreset(presetsInner: JPanel) {
         val name = Messages.showInputDialog(project,
-            Bundle.message("dialog.preset.name.rule"),
-            Bundle.message("dialog.add.preset"), null, "", newNameValidator())?.trim()
+            Bundle.msg("dialog.preset.name.rule"),
+            Bundle.msg("dialog.add.preset"), null, "", newNameValidator())?.trim()
         if (name.isNullOrEmpty()) return
         val template = service.presets.firstOrNull()
         val newPreset = Preset(
@@ -178,12 +178,12 @@ class PresetListManager(
                 val mb = result.mainBranch
                 if (mb.isNullOrEmpty()) {
                     Messages.showWarningDialog(project,
-                        Bundle.message("dialog.detached.head"), Bundle.message("plugin.title"))
+                        Bundle.msg("dialog.detached.head"), Bundle.msg("plugin.title"))
                     return@invokeLater
                 }
                 val name = Messages.showInputDialog(project,
-                    Bundle.message("dialog.preset.name.rule"),
-                    Bundle.message("dialog.from.current"), null, mb, newNameValidator())?.trim()
+                    Bundle.msg("dialog.preset.name.rule"),
+                    Bundle.msg("dialog.from.current"), null, mb, newNameValidator())?.trim()
                 if (name.isNullOrEmpty()) return@invokeLater
                 val newPreset = Preset(
                     name = name,
@@ -209,8 +209,8 @@ class PresetListManager(
         val file = PresetLoader.resolveFile(base)
         if (file == null) {
             Messages.showWarningDialog(project,
-                "${Bundle.message("preset.file.not.found")}\n$base/.idea/${PresetLoader.IDEA_FILE_NAME}",
-                Bundle.message("plugin.title"))
+                "${Bundle.msg("preset.file.not.found")}\n$base/.idea/${PresetLoader.IDEA_FILE_NAME}",
+                Bundle.msg("plugin.title"))
             return
         }
         val vf = com.intellij.openapi.vfs.LocalFileSystem.getInstance().refreshAndFindFileByPath(file.toString())
@@ -225,7 +225,7 @@ class PresetListManager(
         val clipboard = java.awt.Toolkit.getDefaultToolkit().systemClipboard
         clipboard.setContents(java.awt.datatransfer.StringSelection(json), null)
         log("[exported] ${editors.size} preset(s) 已复制到剪贴板")
-        Notifier.info(project, Bundle.message("notify.export.complete"), Bundle.message("notify.exported", editors.size))
+        Notifier.info(project, Bundle.msg("notify.export.complete"), Bundle.msg("notify.exported", editors.size))
     }
 
     fun importPresets(presetsContainer: JPanel) {
@@ -233,7 +233,7 @@ class PresetListManager(
             val clipboard = java.awt.Toolkit.getDefaultToolkit().systemClipboard
             val text = clipboard.getData(java.awt.datatransfer.DataFlavor.stringFlavor) as? String
             if (text.isNullOrBlank()) {
-                Messages.showInfoMessage(project, Bundle.message("dialog.import.empty"), Bundle.message("dialog.import"))
+                Messages.showInfoMessage(project, Bundle.msg("dialog.import.empty"), Bundle.msg("dialog.import"))
                 return
             }
             val trimmed = text.trim()
@@ -245,7 +245,7 @@ class PresetListManager(
                 gson.fromJson(trimmed, com.submodule.branchswitcher.model.PresetFile::class.java)
             }
             if (imported == null || imported.presets.isEmpty()) {
-                Messages.showWarningDialog(project, Bundle.message("dialog.import.invalid"), Bundle.message("dialog.import"))
+                Messages.showWarningDialog(project, Bundle.msg("dialog.import.invalid"), Bundle.msg("dialog.import"))
                 return
             }
             val root = gitRoot() ?: return
@@ -261,10 +261,10 @@ class PresetListManager(
             presetsContainer.repaint()
             saveAll()
             log("[imported] ${imported.presets.size} preset(s) from clipboard")
-            Notifier.info(project, Bundle.message("notify.import.complete"), Bundle.message("notify.imported", imported.presets.size))
+            Notifier.info(project, Bundle.msg("notify.import.complete"), Bundle.msg("notify.imported", imported.presets.size))
         } catch (e: Exception) {
             log("[import] error: ${e.message}")
-            Messages.showWarningDialog(project, "${Bundle.message("dialog.import.failed")}: ${e.message}", Bundle.message("dialog.import"))
+            Messages.showWarningDialog(project, "${Bundle.msg("dialog.import.failed")}: ${e.message}", Bundle.msg("dialog.import"))
         }
     }
 
@@ -282,12 +282,12 @@ class PresetListManager(
             layout = BoxLayout(this, BoxLayout.Y_AXIS)
             border = JBUI.Borders.empty(40, 16, 40, 16)
             alignmentX = JPanel.CENTER_ALIGNMENT
-            val hint = JLabel(Bundle.message("empty.no.presets")).apply {
+            val hint = JLabel(Bundle.msg("empty.no.presets")).apply {
                 font = font.deriveFont(Font.BOLD, 15f)
                 foreground = JBColor.GRAY
                 alignmentX = JPanel.CENTER_ALIGNMENT
             }
-            val subHint = JLabel(Bundle.message("empty.hint")).apply {
+            val subHint = JLabel(Bundle.msg("empty.hint")).apply {
                 font = font.deriveFont(Font.PLAIN, 12f)
                 foreground = JBColor.GRAY
                 alignmentX = JPanel.CENTER_ALIGNMENT
@@ -298,10 +298,10 @@ class PresetListManager(
             add(Box.createVerticalStrut(20))
             val cta = JPanel(FlowLayout(FlowLayout.CENTER, 8, 0))
             cta.alignmentX = JPanel.CENTER_ALIGNMENT
-            cta.add(JButton(Bundle.message("empty.from.current"), AllIcons.Vcs.Branch).noFocusRing().also {
+            cta.add(JButton(Bundle.msg("empty.from.current"), AllIcons.Vcs.Branch).noFocusRing().also {
                 it.addActionListener { addPresetFromCurrent(parent) }
             })
-            cta.add(JButton(Bundle.message("empty.manual"), AllIcons.General.Add).noFocusRing().also {
+            cta.add(JButton(Bundle.msg("empty.manual"), AllIcons.General.Add).noFocusRing().also {
                 it.addActionListener { addPreset(parent) }
             })
             add(cta)

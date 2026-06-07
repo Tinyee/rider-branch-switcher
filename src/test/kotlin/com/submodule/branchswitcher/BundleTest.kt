@@ -1,4 +1,4 @@
-package com.submodule.branchswitcher
+﻿package com.submodule.branchswitcher
 
 import org.junit.Assert.*
 import org.junit.Test
@@ -17,7 +17,7 @@ class BundleTest {
     @Test
     fun `all Bundle keys resolve to non-empty string in default locale`() {
         for (key in enProps.stringPropertyNames()) {
-            val value = Bundle.message(key)
+            val value = Bundle.msg(key)
             assertTrue("Key '$key' should resolve to non-empty string, got: '$value'", value.isNotEmpty())
             assertNotEquals("Key '$key' should not fall back to key itself", key, value)
         }
@@ -41,21 +41,21 @@ class BundleTest {
     @Test
     fun `known keys resolve correctly`() {
         // Spot-check: plugin.title should resolve (exact value depends on locale)
-        assertTrue(Bundle.message("plugin.title").isNotEmpty())
-        assertTrue(Bundle.message("action.switch").isNotEmpty())
-        // notify.switch.complete.msg has a %s placeholder for the preset name
-        assertTrue(Bundle.message("notify.switch.complete.msg").contains("%s"))
+        assertTrue(Bundle.msg("plugin.title").isNotEmpty())
+        assertTrue(Bundle.msg("action.switch").isNotEmpty())
+        // notify.switch.complete.msg has a {0} placeholder for the preset name
+        assertTrue(Bundle.msg("notify.switch.complete.msg").contains("{0}"))
     }
 
     @Test
     fun `missing key returns the key itself as fallback`() {
-        val result = Bundle.message("nonexistent.key.xyz")
+        val result = Bundle.msg("nonexistent.key.xyz")
         assertEquals("nonexistent.key.xyz", result)
     }
 
     @Test
     fun `formatted message works with params`() {
-        val result = Bundle.message("notify.switch.complete.msg", "dev")
+        val result = Bundle.msg("notify.switch.complete.msg", "dev")
         // In default locale (could be en or zh), should contain "dev"
         assertTrue("Formatted message should contain param 'dev', got: $result", "dev" in result)
     }
