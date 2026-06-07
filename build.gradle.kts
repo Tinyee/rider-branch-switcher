@@ -30,6 +30,8 @@ dependencies {
     }
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlin:kotlin-test")
+    testImplementation("io.kotest:kotest-runner-junit5:5.9.1")
+    testImplementation("io.kotest:kotest-property:5.9.1")
 }
 
 kotlin {
@@ -53,5 +55,8 @@ intellijPlatform {
 tasks {
     buildSearchableOptions {
         enabled = false
+    }
+    test {
+        useJUnitPlatform()
     }
 }
