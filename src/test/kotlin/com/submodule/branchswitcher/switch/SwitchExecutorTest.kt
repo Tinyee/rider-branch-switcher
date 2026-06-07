@@ -235,4 +235,48 @@ class SwitchExecutorTest {
         assertEquals("def456", entry.sha)
         assertNull(entry.branch)
     }
+
+    // ---- Rollback edge cases ----
+
+    @Test
+    fun `rollback skips missing repo`() {
+        val skipGit = object : GitClient by fakeGit {
+            override fun currentBranch(workDir: File): String? = "main"
+            override fun checkoutExisting(workDir: File, br: String): GitResult =
+                GitResult("checkout", 0, "", "")
+        }
+        val executor = SwitchExecutor(projectRoot, { log += it }, skipGit)
+        // Execute a switch so checkpoint is recorded
+        executor.execute(preset, SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false))
+        // Delete the .git dir to simulate missing repo
+        File(projectRoot.toFile(), ".git").deleteRecursively()
+        val result = executor.rollback()
+        // Should still return true (missing repos are skipped, not fatal)
+        assertTrue("Rollback should skip missing repos and succeed", result)
+    }
+
+    @Test
+    fun `rollback skips when branch already matches`() {
+        val executor = SwitchExecutor(projectRoot, { log += it }, fakeGit)
+        executor.execute(preset, SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false))
+        // fakeGit.currentBranch returns "main", checkpoint also has "main"
+        // Rollback should skip without calling checkout
+        val result = executor.rollback()
+        assertTrue("Rollback should succeed when already on checkpoint branch", result)
+    }
+
+    // ---- Shared utilities ----
+
+    @Test
+    fun `shortLabel extracts basename`() {
+        assertEquals("SubA", shortLabel("lib/SubA"))
+        assertEquals("main", shortLabel("main"))
+        assertEquals("repo", shortLabel("a/b/c/repo"))
+    }
+
+    @Test
+    fun `shortLabel strips trailing tilde`() {
+        assertEquals("SubA", shortLabel("lib/SubA~"))
+        assertEquals("x", shortLabel("x~"))
+    }
 }

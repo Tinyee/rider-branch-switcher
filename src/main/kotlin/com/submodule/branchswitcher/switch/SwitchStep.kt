@@ -62,3 +62,20 @@ fun shortLabel(path: String): String {
     if (!path.contains("/")) return path
     return path.substringAfterLast('/').removeSuffix("~")
 }
+
+/**
+ * Refreshes VCS status for main repo + submodule paths.
+ * Shared by both tool-window switch and shortcut action switch.
+ */
+fun refreshVcsRepos(project: com.intellij.openapi.project.Project, root: java.nio.file.Path, submodulePaths: Set<String>) {
+    val lfs = com.intellij.openapi.vfs.LocalFileSystem.getInstance()
+    val mgr = git4idea.repo.GitRepositoryManager.getInstance(project)
+    for (path in listOf(".") + submodulePaths) {
+        val dir = if (path == ".") root.toFile() else root.resolve(path).toFile()
+        try {
+            val vf = lfs.refreshAndFindFileByIoFile(dir) ?: continue
+            vf.refresh(false, true)
+            mgr.getRepositoryForRoot(vf)?.update()
+        } catch (_: Exception) { /* skip unreachable repos */ }
+    }
+}

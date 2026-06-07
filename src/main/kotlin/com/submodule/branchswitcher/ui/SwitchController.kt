@@ -12,6 +12,7 @@ import com.submodule.branchswitcher.model.SwitchOptions
 import com.submodule.branchswitcher.service.BranchSwitcherService
 import com.submodule.branchswitcher.switch.SwitchExecutor
 import com.submodule.branchswitcher.switch.SwitchPreflight
+import com.submodule.branchswitcher.switch.refreshVcsRepos
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import java.nio.file.Path
@@ -191,26 +192,16 @@ class SwitchController(
 
     private fun refreshVcs(root: Path, preset: Preset) {
         service.scope.launch(Dispatchers.IO) {
-            val dirs = mutableListOf(root.toFile())
-            preset.submodules.keys.forEach { dirs += root.resolve(it).toFile() }
-            val app = com.intellij.openapi.application.ApplicationManager.getApplication()
             try {
-                val lfs = com.intellij.openapi.vfs.LocalFileSystem.getInstance()
-                val mgr = git4idea.repo.GitRepositoryManager.getInstance(project)
-                for (dir in dirs) {
-                    val vf = lfs.refreshAndFindFileByIoFile(dir) ?: continue
-                    vf.refresh(false, true)
-                    mgr.getRepositoryForRoot(vf)?.update()
-                }
-                app.invokeLater {
-                    log("[vcs] refreshed ${dirs.size} repo(s)")
+                refreshVcsRepos(project, root, preset.submodules.keys)
+                com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater {
+                    log("[vcs] refreshed ${preset.submodules.size + 1} repo(s)")
                     onStateChanged()
                 }
             } catch (t: Throwable) {
-                app.invokeLater {
+                com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater {
                     log("[error] refreshVcs failed: ${t.javaClass.simpleName}: ${t.message}")
-                    Notifier.warn(project, Bundle.msg("rollback.partial"),
-                        "${t.javaClass.simpleName}: ${t.message}")
+                    Notifier.warn(project, Bundle.msg("rollback.partial"), "${t.javaClass.simpleName}: ${t.message}")
                     onStateChanged()
                 }
             }

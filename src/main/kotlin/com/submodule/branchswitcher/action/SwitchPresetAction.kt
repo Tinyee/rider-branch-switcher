@@ -14,6 +14,7 @@ import com.submodule.branchswitcher.model.SwitchOptions
 import com.submodule.branchswitcher.service.BranchSwitcherService
 import com.submodule.branchswitcher.switch.SwitchExecutor
 import com.submodule.branchswitcher.switch.SwitchPreflight
+import com.submodule.branchswitcher.switch.refreshVcsRepos
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
@@ -100,17 +101,8 @@ class SwitchPresetAction : AnAction() {
                     else Bundle.msg("notify.switch.partial.msg", preset.name))
             }
             project.messageBus.syncPublisher(BranchSwitchListener.TOPIC).onBranchSwitched()
-            // Refresh VCS
             service.scope.launch(Dispatchers.IO) {
-                val dirs = mutableListOf(root.toFile())
-                preset.submodules.keys.forEach { dirs += root.resolve(it).toFile() }
-                val lfs = com.intellij.openapi.vfs.LocalFileSystem.getInstance()
-                val mgr = git4idea.repo.GitRepositoryManager.getInstance(project)
-                for (dir in dirs) {
-                    val vf = lfs.refreshAndFindFileByIoFile(dir) ?: continue
-                    vf.refresh(false, true)
-                    mgr.getRepositoryForRoot(vf)?.update()
-                }
+                refreshVcsRepos(project, root, preset.submodules.keys)
             }
         }
     }
