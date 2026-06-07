@@ -1,7 +1,12 @@
 package com.submodule.branchswitcher.ui
 
+import com.intellij.openapi.application.ApplicationManager
+import com.submodule.branchswitcher.git.GitClient
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.launch
 import java.awt.event.KeyAdapter
 import java.awt.event.KeyEvent
+import java.io.File
 import javax.swing.DefaultComboBoxModel
 import javax.swing.JComboBox
 import javax.swing.JTextField
@@ -70,5 +75,43 @@ fun filterBranchPopup(combo: JComboBox<String>, editor: JTextField) {
     }
     if (combo.isShowing && editor.isFocusOwner) {
         combo.isPopupVisible = true
+    }
+}
+
+/**
+ * Shared async branch loader used by both [PresetEditor] and [SubmoduleRowManager].
+ * Sets combo to "loading..." state, launches a [scope] coroutine to fetch branches,
+ * then restores the combo on EDT with the full list + current selection.
+ */
+fun loadComboBranches(
+    combo: JComboBox<String>,
+    dir: File,
+    current: String,
+    gitClient: GitClient,
+    scope: CoroutineScope,
+    log: (String) -> Unit,
+    onLoadStart: () -> Unit,
+    onLoadEnd: () -> Unit,
+) {
+    combo.model = DefaultComboBoxModel(arrayOf("loading..."))
+    combo.selectedItem = "loading..."
+    combo.isEnabled = false
+    onLoadStart()
+    scope.launch {
+        val branches = try {
+            if (dir.exists()) gitClient.listAllBranches(dir) else emptyList()
+        } catch (e: Exception) {
+            log("loadBranches failed for ${dir.name}: ${e.message}")
+            emptyList()
+        }
+        ApplicationManager.getApplication().invokeLater {
+            val list = if (current.isNotEmpty() && !branches.contains(current))
+                listOf(current) + branches else branches
+            combo.model = DefaultComboBoxModel(list.toTypedArray())
+            combo.selectedItem = current
+            combo.putClientProperty(KEY_ALL_BRANCHES, list)
+            combo.isEnabled = true
+            onLoadEnd()
+        }
     }
 }

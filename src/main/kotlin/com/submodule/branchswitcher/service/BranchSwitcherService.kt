@@ -53,6 +53,7 @@ class BranchSwitcherService(
         var pullAfterSwitch: Boolean = true,
         var timeoutSeconds: Int = 60,
         var confirmBeforeInit: Boolean = false,
+        var history: MutableList<SwitchHistoryEntry> = mutableListOf(),
     )
 
     private var options = OptionsState()
@@ -121,20 +122,22 @@ class BranchSwitcherService(
         PresetLoader.save(file, presetFile)
     }
 
-    // -- Switch history for undo support (max 5 entries) --
+    // -- Switch history for undo support (max 5 entries, persisted across restarts) --
 
-    private var history = mutableListOf<SwitchHistoryEntry>()
     private val maxHistory = 5
     /** Records a completed switch: preset name + timestamp. */
-    data class SwitchHistoryEntry(val presetName: String, val timestamp: Long)
+    data class SwitchHistoryEntry(val presetName: String = "", val timestamp: Long = 0)
 
     fun addHistory(name: String) {
-        history.add(0, SwitchHistoryEntry(name, System.currentTimeMillis()))
-        if (history.size > maxHistory) history = history.take(maxHistory).toMutableList()
+        val list = options.history
+        list.add(0, SwitchHistoryEntry(name, System.currentTimeMillis()))
+        if (list.size > maxHistory) {
+            options.history = list.take(maxHistory).toMutableList()
+        }
     }
 
-    fun getHistory(): List<SwitchHistoryEntry> = history.toList()
-    fun getLastHistory(): SwitchHistoryEntry? = history.firstOrNull()
+    fun getHistory(): List<SwitchHistoryEntry> = options.history.toList()
+    fun getLastHistory(): SwitchHistoryEntry? = options.history.firstOrNull()
 
     // -- Stale-detection for async branch probes --
 

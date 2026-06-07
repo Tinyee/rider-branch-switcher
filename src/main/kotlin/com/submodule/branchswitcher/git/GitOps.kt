@@ -54,18 +54,32 @@ class GitOps(
     override fun localBranchExists(workDir: File, branch: String): Boolean =
         run(workDir, "show-ref", "--verify", "--quiet", "refs/heads/$branch").ok
 
+    /** Cache of remote name per workDir to avoid repeated `git remote` calls. */
+    private val remoteCache = java.util.concurrent.ConcurrentHashMap<String, String>()
+
+    /** Detect the default remote name (first line of `git remote`), falling back to "origin". */
+    private fun remoteName(workDir: File): String {
+        val key = workDir.absolutePath
+        return remoteCache[key] ?: run {
+            val r = run(workDir, "remote")
+            val name = r.stdout.lines().firstOrNull()?.trim().orEmpty().ifEmpty { "origin" }
+            remoteCache[key] = name
+            name
+        }
+    }
+
     /** Uses plumbing command `show-ref --verify` for fast existence check. */
     override fun remoteBranchExists(workDir: File, branch: String): Boolean =
-        run(workDir, "show-ref", "--verify", "--quiet", "refs/remotes/origin/$branch").ok
+        run(workDir, "show-ref", "--verify", "--quiet", "refs/remotes/${remoteName(workDir)}/$branch").ok
 
     override fun checkoutExisting(workDir: File, branch: String): GitResult =
         run(workDir, "checkout", branch)
 
     override fun checkoutFromRemote(workDir: File, branch: String): GitResult =
-        run(workDir, "checkout", "-b", branch, "origin/$branch")
+        run(workDir, "checkout", "-b", branch, "${remoteName(workDir)}/$branch")
 
     override fun pullFf(workDir: File, branch: String): GitResult =
-        run(workDir, "pull", "--ff-only", "origin", branch)
+        run(workDir, "pull", "--ff-only", remoteName(workDir), branch)
 
     override fun submoduleSync(gitRoot: File): GitResult =
         run(gitRoot, "submodule", "sync", "--recursive")
@@ -104,14 +118,15 @@ class GitOps(
      * strips `origin/` prefix, filters `origin/HEAD`, dedupes, and sorts.
      */
     override fun listAllBranches(workDir: File): List<String> {
+        val remote = remoteName(workDir)
         val r = run(workDir, "for-each-ref",
             "--format=%(refname:short)",
-            "refs/heads", "refs/remotes/origin")
+            "refs/heads", "refs/remotes/$remote")
         if (!r.ok) return emptyList()
         return r.stdout.lines()
             .map { it.trim() }
-            .filter { it.isNotEmpty() && !it.startsWith("origin/HEAD") }
-            .map { if (it.startsWith("origin/")) it.removePrefix("origin/") else it }
+            .filter { it.isNotEmpty() && !it.startsWith("$remote/HEAD") }
+            .map { if (it.startsWith("$remote/")) it.removePrefix("$remote/") else it }
             .distinct()
             .sorted()
     }

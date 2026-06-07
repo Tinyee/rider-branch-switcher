@@ -221,12 +221,17 @@ class PresetListManager(
     }
 
     fun exportPresets() {
-        val gson = com.google.gson.GsonBuilder().setPrettyPrinting().create()
-        val json = gson.toJson(com.submodule.branchswitcher.model.PresetFile(editors.map { it.currentPreset() }))
-        val clipboard = java.awt.Toolkit.getDefaultToolkit().systemClipboard
-        clipboard.setContents(java.awt.datatransfer.StringSelection(json), null)
-        log("[exported] ${editors.size} preset(s) 已复制到剪贴板")
-        Notifier.info(project, Bundle.msg("notify.export.complete"), Bundle.msg("notify.exported", editors.size))
+        try {
+            val gson = com.google.gson.GsonBuilder().setPrettyPrinting().create()
+            val json = gson.toJson(com.submodule.branchswitcher.model.PresetFile(editors.map { it.currentPreset() }))
+            val clipboard = java.awt.Toolkit.getDefaultToolkit().systemClipboard
+            clipboard.setContents(java.awt.datatransfer.StringSelection(json), null)
+            log("[exported] ${editors.size} preset(s) 已复制到剪贴板")
+            Notifier.info(project, Bundle.msg("notify.export.complete"), Bundle.msg("notify.exported", editors.size))
+        } catch (e: Exception) {
+            log("[export] failed: ${e.message}")
+            Notifier.error(project, Bundle.msg("notify.export.complete"), "${Bundle.msg("dialog.import.failed")}: ${e.message}")
+        }
     }
 
     fun importPresets(presetsContainer: JPanel) {
@@ -251,18 +256,20 @@ class PresetListManager(
             }
             val root = gitRoot() ?: return
             val presetsInner = (presetsContainer.getComponent(0) as? JPanel) ?: return
+            var importedCount = 0
             imported.presets.forEach { preset ->
                 if (editors.any { it.currentPreset().name == preset.name }) {
                     log("[import] skip ${preset.name} — 名字冲突")
                     return@forEach
                 }
                 addEditorRow(root, preset, presetsInner)
+                importedCount++
             }
             presetsContainer.revalidate()
             presetsContainer.repaint()
             saveAll()
-            log("[imported] ${imported.presets.size} preset(s) from clipboard")
-            Notifier.info(project, Bundle.msg("notify.import.complete"), Bundle.msg("notify.imported", imported.presets.size))
+            log("[imported] $importedCount preset(s) from clipboard")
+            Notifier.info(project, Bundle.msg("notify.import.complete"), Bundle.msg("notify.imported", importedCount))
         } catch (e: Exception) {
             log("[import] error: ${e.message}")
             Messages.showWarningDialog(project, "${Bundle.msg("dialog.import.failed")}: ${e.message}", Bundle.msg("dialog.import"))

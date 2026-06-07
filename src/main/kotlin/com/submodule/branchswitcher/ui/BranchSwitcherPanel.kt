@@ -74,8 +74,8 @@ class BranchSwitcherPanel(
 
     private val dirtyCombo = JComboBox(arrayOf(Bundle.msg("option.dirty.stash"), Bundle.msg("option.dirty.skip"), Bundle.msg("option.dirty.force")))
     private val timeoutCombo = JComboBox(arrayOf("30s", "60s", "120s", "300s"))
-    private val pullCheck = JCheckBox(Bundle.msg("option.pull.after"), true)
-    private val fetchCheck = JCheckBox(Bundle.msg("option.fetch.before"), true)
+    private val pullCheck = JCheckBox(Bundle.msg("option.pull.after"), service.pullAfterSwitch)
+    private val fetchCheck = JCheckBox(Bundle.msg("option.fetch.before"), service.fetchFirst)
 
     private val progressBar = JProgressBar().apply {
         isStringPainted = true
@@ -215,8 +215,12 @@ class BranchSwitcherPanel(
             DirtyAction.Skip -> 1
             DirtyAction.Force -> 2
         }
-        pullCheck.isSelected = service.pullAfterSwitch
-        fetchCheck.isSelected = service.fetchFirst
+        // Restore persisted dirty action + timeout
+        dirtyCombo.selectedIndex = when (service.dirtyAction) {
+            DirtyAction.Stash -> 0
+            DirtyAction.Skip -> 1
+            DirtyAction.Force -> 2
+        }
         // Persist options on change
         dirtyCombo.addItemListener {
             service.dirtyAction = when (dirtyCombo.selectedIndex) {
@@ -247,6 +251,9 @@ class BranchSwitcherPanel(
         }
 
         // Subscribe to switch events (e.g., from shortcut action)
+        // Connection is parented to the service (project lifetime) — the subscription
+        // is cleaned up when the project closes. For a tool window created once per
+        // project, this is safe and avoids premature disconnect on panel hide/show.
         val connection = project.messageBus.connect(service)
         connection.subscribe(BranchSwitchListener.TOPIC, object : BranchSwitchListener {
             override fun onBranchSwitched() {
