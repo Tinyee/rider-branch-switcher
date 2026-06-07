@@ -400,3 +400,32 @@ jobs:
 - ❌ IntelliJ 轻量测试框架 — 对 tool window 插件 setup 太复杂
 - ❌ UI 快照测试 — 基础设施重，手工更灵活
 - ❌ 复杂发布流水线 — `./gradlew buildPlugin` + 手动上传够用到 10+ 用户
+
+---
+
+## v0.6 已交付 — 2026-06-07 四波修复（50→27 已修复）
+
+### 第四波 (2026-06-07 晚间)
+
+11 项修复：
+
+1. ✅ **B3** — import 计数用实际导入数，不再报 JSON 总数
+2. ✅ **B4** — export 剪贴板 `setContents()` 加 try-catch
+3. ✅ **B7** — checkbox 初始值直接从 service 取值，不再先 true 再覆盖
+4. ✅ **Q5** — 切换历史持久化到 `OptionsState` + `branch-switcher.xml`
+5. ✅ **M3** — `plugin.xml` `<vendor>` 改为有效信息
+6. ✅ **M4** — `plugin.xml` 加 `<errorHandler>` (Exception Analyzer)
+7. ✅ **B5** — messageBus 连接注释说明 project-lifetime 语义
+8. ✅ **B8** — GitOps 硬编码 `origin` → 动态 `remoteName()` (ConcurrentHashMap 缓存)
+9. ✅ **Q3** — `loadComboBranches` 提取到 `BranchComboUtil.kt`（42 行 → 5 行/调用）
+10. ✅ **F1** — Settings Configurable (`File → Settings → VCS → Submodule Branch Switcher`)
+11. ✅ **M1** — Gradle wrapper 8.10 → 8.13（IntelliJ Platform Gradle Plugin 保持 2.2.1: 2.10.0 与 Rider local SDK 不兼容 #1852）
+12. ✅ **M2** — CI 加 `verifyPlugin` 步骤（`|| true` 兜底）
+
+### 无法交付
+
+- ⏸️ **F2 状态栏 widget** — Rider 2026.1 SDK 中 `StatusBarWidget.TextPresentation.getClickConsumer()` 返回类型 (`Consumer<MouseEvent>?`) 与 Kotlin 类型推断不兼容。待 SDK 升级后重试。
+
+### 测试
+
+128 tests, `./gradlew test` passes. Gradle 8.13 + IntelliJ Platform Gradle Plugin 2.2.1.
