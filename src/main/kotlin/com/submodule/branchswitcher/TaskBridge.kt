@@ -1,4 +1,4 @@
-package com.submodule.branchswitcher
+﻿package com.submodule.branchswitcher
 
 import com.intellij.openapi.progress.ProgressIndicator
 import com.intellij.openapi.progress.ProgressManager
@@ -57,7 +57,7 @@ object TaskBridge {
                     }
                 }
                 override fun onFinished() {
-                    SwingUtilities.invokeLater { cont.resume(Unit) }
+                    com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater { cont.resume(Unit) }
                 }
                 override fun onCancel() {
                     cont.cancel()

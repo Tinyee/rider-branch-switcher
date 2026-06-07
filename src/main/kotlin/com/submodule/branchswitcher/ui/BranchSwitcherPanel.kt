@@ -250,20 +250,20 @@ class BranchSwitcherPanel(
         val connection = project.messageBus.connect(service)
         connection.subscribe(BranchSwitchListener.TOPIC, object : BranchSwitchListener {
             override fun onBranchSwitched() {
-                SwingUtilities.invokeLater { detectCurrentState() }
+                com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater { detectCurrentState() }
             }
         })
 
         // Re-detect current state only when tool window transitions from hidden→visible
         addHierarchyListener { e ->
             if ((e.changeFlags and java.awt.event.HierarchyEvent.SHOWING_CHANGED.toLong()) != 0L && isShowing) {
-                SwingUtilities.invokeLater { detectCurrentState() }
+                com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater { detectCurrentState() }
             }
         }
 
         addAncestorListener(object : javax.swing.event.AncestorListener {
             override fun ancestorAdded(event: javax.swing.event.AncestorEvent) {
-                SwingUtilities.invokeLater {
+                com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater {
                     val kfm = java.awt.KeyboardFocusManager.getCurrentKeyboardFocusManager()
                     val owner = kfm.focusOwner
                     if (owner != null && SwingUtilities.isDescendingFrom(owner, this@BranchSwitcherPanel)) {
@@ -345,7 +345,7 @@ class BranchSwitcherPanel(
      * - default → theme foreground
      */
     private fun append(line: String) {
-        SwingUtilities.invokeLater {
+        com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater {
             val doc = log.styledDocument
             val color = when {
                 line.contains("[error]") || line.contains("[fail]") || line.contains("[fatal]") || line.startsWith("ERROR") -> JBColor.RED

@@ -1,6 +1,7 @@
 package com.submodule.branchswitcher
 
 import com.intellij.DynamicBundle
+import org.jetbrains.annotations.Nls
 import java.text.MessageFormat
 
 /**
@@ -17,6 +18,7 @@ object Bundle {
         DynamicBundle.getResourceBundle(javaClass.classLoader, PATH)
     }
 
+    @Nls
     fun msg(key: String, vararg params: Any): String {
         val template = try {
             bundle.getString(key)

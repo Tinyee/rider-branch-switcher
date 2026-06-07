@@ -161,7 +161,7 @@ class SubmoduleRowManager(
             loadingCount++
             scope.launch {
                 val seedBranch = gitClient.currentBranch(dir) ?: ""
-                SwingUtilities.invokeLater {
+                com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater {
                     row.combo.selectedItem = seedBranch
                     row.combo.isEnabled = true
                     loadingCount--
@@ -232,7 +232,7 @@ class SubmoduleRowManager(
                 log("loadBranches failed for ${dir.name}: ${e.message}")
                 emptyList()
             }
-            SwingUtilities.invokeLater {
+            com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater {
                 val list = if (current.isNotEmpty() && !branches.contains(current))
                     listOf(current) + branches else branches
                 combo.model = DefaultComboBoxModel(list.toTypedArray())
@@ -259,7 +259,7 @@ class SubmoduleRowManager(
                     } else {
                         com.submodule.branchswitcher.git.GitResult("checkout", 1, "", "branch $target not found")
                     }
-                    SwingUtilities.invokeLater { log(if (result.ok) "[switch] $path -> $target ok" else "[switch] $path fail") }
+                    com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater { log(if (result.ok) "[switch] $path -> $target ok" else "[switch] $path fail") }
                 }
             }
         }

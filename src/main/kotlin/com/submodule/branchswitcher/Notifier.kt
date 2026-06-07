@@ -3,6 +3,7 @@
 import com.intellij.notification.NotificationGroupManager
 import com.intellij.notification.NotificationType
 import com.intellij.openapi.project.Project
+import org.jetbrains.annotations.Nls
 
 /**
  * Convenience wrapper around IntelliJ's [NotificationGroupManager].
@@ -11,13 +12,13 @@ import com.intellij.openapi.project.Project
 object Notifier {
     private const val GROUP_ID = "Submodule Branch Switcher"
 
-    fun info(project: Project?, title: String, content: String) =
+    fun info(project: Project?, @Nls title: String, @Nls content: String) =
         notify(project, title, content, NotificationType.INFORMATION)
 
-    fun warn(project: Project?, title: String, content: String) =
+    fun warn(project: Project?, @Nls title: String, @Nls content: String) =
         notify(project, title, content, NotificationType.WARNING)
 
-    fun error(project: Project?, title: String, content: String) =
+    fun error(project: Project?, @Nls title: String, @Nls content: String) =
         notify(project, title, content, NotificationType.ERROR)
 
     /**
@@ -26,8 +27,8 @@ object Notifier {
      */
     fun rollbackAction(
         project: Project?,
-        title: String,
-        content: String,
+        @Nls title: String,
+        @Nls content: String,
         onRollback: () -> Unit,
     ) {
         NotificationGroupManager.getInstance()

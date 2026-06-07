@@ -241,7 +241,7 @@ class PresetEditor(
                 log("loadBranches failed for ${dir.name}: ${e.message}")
                 emptyList()
             }
-            SwingUtilities.invokeLater {
+            com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater {
                 val list = if (current.isNotEmpty() && !branches.contains(current))
                     listOf(current) + branches else branches
                 combo.model = DefaultComboBoxModel(list.toTypedArray())
