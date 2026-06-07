@@ -84,8 +84,17 @@ class BranchSwitcherService(
         get() = options.confirmBeforeInit
         set(value) { options.confirmBeforeInit = value }
 
-    /** Always returns a [GitOps] with the current timeout — safe to capture. */
-    val gitClient: GitClient get() = GitOps(options.timeoutSeconds)
+    /** Cached [GitOps] instance, recreated only when timeout changes. */
+    private var _gitClient: GitClient? = null
+    private var _gitClientTimeout: Int = -1
+
+    val gitClient: GitClient get() {
+        if (_gitClient == null || _gitClientTimeout != options.timeoutSeconds) {
+            _gitClient = GitOps(options.timeoutSeconds)
+            _gitClientTimeout = options.timeoutSeconds
+        }
+        return _gitClient!!
+    }
 
     private var presetFile: PresetFile = PresetFile()
     private var savedFilePath: Path? = null

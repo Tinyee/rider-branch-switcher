@@ -333,9 +333,6 @@ class BranchSwitcherPanel(
         append("[detect] main=$main, matched=${matched ?: "<none>"}")
     }
 
-    // ── Delegating methods ─────────────────────────────────────
-    private fun runSwitch(preset: Preset) = switchController.runSwitch(preset)
-
     /**
      * Appends a line to the log with color coding:
      * - ERROR/FAIL/FATAL → red
@@ -347,6 +344,15 @@ class BranchSwitcherPanel(
     private fun append(line: String) {
         com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater {
             val doc = log.styledDocument
+            // Cap log at ~5000 lines to prevent unbounded memory growth
+            val root = doc.defaultRootElement
+            if (root.elementCount > 5000) {
+                try {
+                    val removeCount = root.elementCount - 4000
+                    val endOffset = root.getElement(removeCount).endOffset
+                    doc.remove(0, endOffset)
+                } catch (_: Exception) {}
+            }
             val color = when {
                 line.contains("[error]") || line.contains("[fail]") || line.contains("[fatal]") || line.startsWith("ERROR") -> JBColor.RED
                 line.contains("[warn]") || line.startsWith("WARN") -> JBColor(0xE07B00, 0xFFA726)

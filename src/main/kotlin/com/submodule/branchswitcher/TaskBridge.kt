@@ -57,7 +57,9 @@ object TaskBridge {
                     }
                 }
                 override fun onFinished() {
-                    com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater { cont.resume(Unit) }
+                    com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater {
+                        if (cont.isActive) cont.resume(Unit)
+                    }
                 }
                 override fun onCancel() {
                     cont.cancel()
