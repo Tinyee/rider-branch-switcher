@@ -5,21 +5,26 @@
 - 多 preset 持久化（JSON），UI 内增删 preset 与子模块行（基于 `.gitmodules`）
 - 一键切换主仓 + 子模块；脏工作区三策略（stash / skip / force）；切换前 fetch；切换后 pull --ff-only；切换后 VCS 自动刷新
 - 分支下拉输入即过滤
-- **当前命中预设高亮 + 切换按钮自动禁用**（v0.2）
-- **切换前 Dry-run 预览表**：每仓 `当前 → 目标`、dirty 计数、远端是否存在、新建/已存在标记（v0.2）
-- **主仓切完自动 `submodule sync`，缺失子模块自动 `submodule update --init`**（v0.2）
-- **「从当前状态新建 preset」一键录入**：基于主仓与各子模块 HEAD 直接生成预设（v0.2）
-- **关键失败走 IDE Notification**（预设解析失败 / 切换有失败项 / VCS 刷新失败，v0.2）
-- **每个 preset 头部显示主仓 diff 标签**（v0.3）
-- **部分失败回滚**：切前 checkpoint，失败通知带「回滚到切换前」按钮（v0.3）
-- **GitOps 超时可配置 + 取消检查**：面板 30/60/120/300s 选项，Step 内 checkCanceled（v0.3）
-- **切换选项持久化**：dirty/fetch/pull/timeout 存 branch-switcher.xml，IDE 重启保留（v0.3）
-- **自动检测外部分支变更**：切回插件窗口时自动刷新 preset 匹配状态（v0.3）
-- **stash 自动 pop**：切回原分支时自动 git stash pop（v0.4）
-- **进度可视化**：进度条显示步骤名 + 仓名 + 分数（v0.4）
-- **快捷键 Action**：Ctrl+Alt+B 弹出 preset 列表快速切换（v0.4）
-- **派生功能分支**：基于 preset 一键 checkout -b 到所有仓库（v0.4）
-- IntelliJ 原生图标（AllIcons），主题感知色，按钮焦点 ring 行为已修
+- **当前命中预设高亮 + 切换按钮自动禁用**
+- **切换前 Dry-run 预览表**：每仓 `当前 → 目标`、dirty 计数、远端是否存在、新建/已存在标记
+- **主仓切完自动 `submodule sync`，缺失子模块自动 `submodule update --init`**
+- **「从当前状态新建 preset」一键录入**
+- **关键失败走 IDE Notification** + Exception Analyzer 自动上报
+- **每个 preset 头部显示主仓 diff 标签**
+- **部分失败回滚**：切前 checkpoint，失败通知带「回滚到切换前」按钮
+- **GitOps 超时可配置 + 取消检查**
+- **切换选项持久化**：dirty/fetch/pull/timeout + **历史记录** 存 branch-switcher.xml，IDE 重启保留
+- **自动检测外部分支变更**：切回插件窗口时自动刷新 preset 匹配状态
+- **stash 自动 pop**：切回原分支时自动 git stash pop
+- **进度可视化**：进度条显示步骤名 + 仓名 + 分数
+- **快捷键 Action**：Ctrl+Alt+B 弹出 preset 列表快速切换
+- **派生功能分支**：基于 preset 一键 checkout -b 到所有仓库
+- **Settings 页面**：File → Settings → VCS → Submodule Branch Switcher
+- **动态远端名**：自动检测 remote 名，不再硬编码 origin
+- IntelliJ 原生图标（AllIcons），主题感知色
+- i18n 中英双语（DynamicBundle + @PropertyKey 编译时校验）
+- 128 测试（JUnit 4 + Kotest 属性测试）
+- GitHub Actions CI（ubuntu/macOS/Windows）+ Qodana 静态分析
 
 下面按「切换体验 / 状态可视化 / UI / 工作流 / 质量」五块梳理后续要做的功能点，优先级 **P0(致命) / P1(高价值) / P2(锦上添花)**；状态列标记 v0.x 已落地或下阶段候选。
 
@@ -403,29 +408,58 @@ jobs:
 
 ---
 
-## v0.6 已交付 — 2026-06-07 四波修复（50→27 已修复）
+## v0.6 已交付 — 2026-06-07（50→34 已修复）
 
-### 第四波 (2026-06-07 晚间)
+### 第一波 — 3 Bug + 4 质量 (278f1a5)
+1. ✅ **Bug1** — TaskBridge onFinished 加 cont.isActive 防 double-resume
+2. ✅ **Bug2** — SwitchPresetAction DirtyAction 读 service 配置
+3. ✅ **Bug3** — SwitchController toolWindow ID 改用字面常量
+4. ✅ **Q1** — Bundle.msg 加 @PropertyKey 编译时校验
+5. ✅ **Q2** — 日志 JTextPane 限制 5000 行
+6. ✅ **Q3** — gitClient 加缓存
+7. ✅ **Q4** — 删除 BranchSwitcherPanel 死代码
 
-11 项修复：
+### 第二波 — CI + Kotest (ba9405e)
+8. ✅ **CI** — test.yml 加 test results + plugin artifact 上传
+9. ✅ **Kotest** — 6 个属性测试 (128 tests total)
 
-1. ✅ **B3** — import 计数用实际导入数，不再报 JSON 总数
-2. ✅ **B4** — export 剪贴板 `setContents()` 加 try-catch
-3. ✅ **B7** — checkbox 初始值直接从 service 取值，不再先 true 再覆盖
-4. ✅ **Q5** — 切换历史持久化到 `OptionsState` + `branch-switcher.xml`
-5. ✅ **M3** — `plugin.xml` `<vendor>` 改为有效信息
-6. ✅ **M4** — `plugin.xml` 加 `<errorHandler>` (Exception Analyzer)
-7. ✅ **B5** — messageBus 连接注释说明 project-lifetime 语义
-8. ✅ **B8** — GitOps 硬编码 `origin` → 动态 `remoteName()` (ConcurrentHashMap 缓存)
-9. ✅ **Q3** — `loadComboBranches` 提取到 `BranchComboUtil.kt`（42 行 → 5 行/调用）
-10. ✅ **F1** — Settings Configurable (`File → Settings → VCS → Submodule Branch Switcher`)
-11. ✅ **M1** — Gradle wrapper 8.10 → 8.13（IntelliJ Platform Gradle Plugin 保持 2.2.1: 2.10.0 与 Rider local SDK 不兼容 #1852）
-12. ✅ **M2** — CI 加 `verifyPlugin` 步骤（`|| true` 兜底）
+### 第三波 — 8 项 Bug/质量修复 (5748ce9)
+10. ✅ **Bug5** — catch 块记录异常信息
+11. ✅ **Bug11** — PresetLoader.save 改 try/finally 清理临时文件
+12. ✅ **Bug7+8** — 右键菜单加 dirty 检查 + checkoutFromRemote 回退
+13. ✅ **Bug18** — CheckoutStep 确认框前检查 isCanceled
+14. ✅ **Bug28** — PresetEditor.rename 加 nameValidator 防重名
+15. ✅ **Q4+5** — 删除死代码 + GitOps 去冗余 filter
+16. ✅ **Q7** — SwitchPreviewDialog 列宽 JBUI.scale()
+17. ✅ **Q9** — PresetLoader.DEFAULT_JSON 序列化真实 PresetFile()
+
+### 第四波 — 11 项 (1acbe33)
+18. ✅ **B3** — import 计数用实际导入数
+19. ✅ **B4** — export 加 try-catch
+20. ✅ **B7** — checkbox 初始值从 service 取
+21. ✅ **Q5** — History 持久化到 OptionsState
+22. ✅ **M3+M4** — vendor + errorHandler
+23. ✅ **B5** — messageBus 注释
+24. ✅ **B8** — 动态 remoteName()
+25. ✅ **Q3** — loadComboBranches 提取
+26. ✅ **F1** — Settings Configurable
+27. ✅ **M1** — Gradle 8.13
+28. ✅ **M2** — CI verifyPlugin
+
+### 第五波 — 5 项快速收尾 (17a844f)
+29. ✅ **B2** — SwitchPresetAction preflight 警告弹确认框
+30. ✅ **Q9** — addPreset 加预设加载守卫
+31. ✅ **B23** — ProgressIndicator delegate 补 setText/setIndeterminate
+32. ✅ **Q6** — isGitRepo 加 rev-parse 验证
+33. ✅ **Q10** — Preset.pull → pullEnabled + @SerializedName JSON 向后兼容
+
+### 第六波 — 文档 + 工具 (5b48859)
+34. ✅ **README.md** — 功能列表、安装方式、快速上手、JSON 格式、开发指南
+35. ✅ **CHANGELOG.md** — v0.1.0 → v0.5.0 完整变更记录
+36. ✅ **F7** — git PATH 检查（首次打开面板异步检测）
+37. ✅ **Qodana** — GitHub Actions 静态分析
 
 ### 无法交付
 
-- ⏸️ **F2 状态栏 widget** — Rider 2026.1 SDK 中 `StatusBarWidget.TextPresentation.getClickConsumer()` 返回类型 (`Consumer<MouseEvent>?`) 与 Kotlin 类型推断不兼容。待 SDK 升级后重试。
-
-### 测试
-
-128 tests, `./gradlew test` passes. Gradle 8.13 + IntelliJ Platform Gradle Plugin 2.2.1.
+- ⏸️ **F2 状态栏 widget** — Rider 2026.1 SDK `StatusBarWidget.TextPresentation.getClickConsumer()` 返回类型与 Kotlin 类型推断不兼容。
+- ⏸️ **M1 (Gradle Plugin 2.10)** — IntelliJ Platform Gradle Plugin 2.10.0 与 Rider local SDK 不兼容 (#1852)，保持 2.2.1。
