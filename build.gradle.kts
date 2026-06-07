@@ -8,13 +8,14 @@ group = "com.submodule"
 version = "0.5.0"
 
 repositories {
-    maven("https://maven.aliyun.com/repository/public")
-    maven("https://mirrors.cloud.tencent.com/nexus/repository/maven-public/")
-    maven("https://repo.huaweicloud.com/repository/maven/")
     mavenCentral()
     intellijPlatform {
         defaultRepositories()
     }
+    // Chinese mirrors as fallback (local dev), after official sources for CI reliability
+    maven("https://maven.aliyun.com/repository/public")
+    maven("https://mirrors.cloud.tencent.com/nexus/repository/maven-public/")
+    maven("https://repo.huaweicloud.com/repository/maven/")
 }
 
 val riderVersion = providers.gradleProperty("rider.version").get()
