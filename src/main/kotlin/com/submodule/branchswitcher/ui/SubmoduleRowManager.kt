@@ -250,16 +250,33 @@ class SubmoduleRowManager(
         val popup = javax.swing.JPopupMenu()
         popup.add("${Bundle.msg("menu.switch.only")} ($path)").addActionListener {
             val dir = gitRoot.resolve(path).toFile()
-            if (dir.exists() && File(dir, ".git").exists()) {
+            if (dir.exists() && java.io.File(dir, ".git").exists()) {
                 scope.launch {
                     val target = row.targetBranch.ifEmpty { row.combo.selectedItem as? String ?: "" }
                     if (target.isEmpty()) return@launch
-                    val result = if (gitClient.localBranchExists(dir, target) || gitClient.remoteBranchExists(dir, target)) {
-                        gitClient.checkoutExisting(dir, target)
-                    } else {
-                        com.submodule.branchswitcher.git.GitResult("checkout", 1, "", "branch $target not found")
+                    // Check dirty working tree
+                    if (gitClient.isDirty(dir)) {
+                        com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater {
+                            log("[switch] $path: working tree dirty, skip")
+                        }
+                        return@launch
                     }
-                    com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater { log(if (result.ok) "[switch] $path -> $target ok" else "[switch] $path fail") }
+                    val cur = gitClient.currentBranch(dir)
+                    if (cur == target) {
+                        com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater {
+                            log("[switch] $path already on $target")
+                        }
+                        return@launch
+                    }
+                    val result = when {
+                        gitClient.localBranchExists(dir, target) -> gitClient.checkoutExisting(dir, target)
+                        gitClient.remoteBranchExists(dir, target) -> gitClient.checkoutFromRemote(dir, target)
+                        else -> com.submodule.branchswitcher.git.GitResult("checkout", 1, "", "branch $target not found")
+                    }
+                    com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater {
+                        log(if (result.ok) "[switch] $path -> $target ok"
+                            else "[switch] $path fail: ${result.stderr.lines().firstOrNull() ?: ""}")
+                    }
                 }
             }
         }

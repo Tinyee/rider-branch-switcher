@@ -144,14 +144,10 @@ class BranchSwitcherService(
      * Async probe callbacks check [getDetectGen] — if a newer probe started,
      * the old result is discarded to avoid updating the UI with stale data.
      */
-    private var currentBranches: Map<String, String?> = emptyMap()
     private var detectGen: Long = 0
 
     fun nextDetectGen(): Long = ++detectGen
     fun getDetectGen(): Long = detectGen
-    fun setCurrentBranches(branches: Map<String, String?>) { currentBranches = branches }
-    fun getCurrentBranches(): Map<String, String?> = currentBranches
-
     companion object {
         fun getInstance(project: Project): BranchSwitcherService =
             project.service()

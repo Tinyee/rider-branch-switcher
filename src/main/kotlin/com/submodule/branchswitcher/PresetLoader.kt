@@ -79,15 +79,11 @@ object PresetLoader {
             } catch (_: java.nio.file.AtomicMoveNotSupportedException) {
                 Files.move(tmp, file, java.nio.file.StandardCopyOption.REPLACE_EXISTING)
             }
-        } catch (e: Throwable) {
+        } finally {
             try { Files.deleteIfExists(tmp) } catch (_: Throwable) {}
-            throw e
         }
     }
 
-    private val DEFAULT_JSON = """
-{
-  "presets": []
-}
-""".trimIndent()
+    private val DEFAULT_JSON = com.google.gson.GsonBuilder().setPrettyPrinting().create()
+        .toJson(com.submodule.branchswitcher.model.PresetFile()) + "\n"
 }

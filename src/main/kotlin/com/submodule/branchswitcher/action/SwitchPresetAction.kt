@@ -70,14 +70,15 @@ class SwitchPresetAction : AnAction() {
                         confirmBeforeInit = service.confirmBeforeInit,
                     ))
                 }
-            } catch (_: Exception) {
+            } catch (e: Exception) {
+                logLines += "[error] ${e.javaClass.simpleName}: ${e.message}"
                 ok = false
             }
             // Resumed on EDT via TaskBridge.onFinished
             if (ok) {
                 Notifier.info(project, Bundle.msg("switch.complete"), Bundle.msg("notify.switch.complete.msg", preset.name))
             } else {
-                val detail = logLines.filter { it.contains("[fail]") || it.contains("[fatal]") || it.contains("[warn]") }
+                val detail = logLines.filter { it.contains("[fail]") || it.contains("[fatal]") || it.contains("[warn]") || it.contains("[error]") }
                     .take(3).joinToString("\n")
                 Notifier.error(project, Bundle.msg("switch.failed"),
                     if (detail.isNotEmpty()) Bundle.msg("notify.switch.partial.msg", preset.name) + ":\n" + detail

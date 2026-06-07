@@ -46,7 +46,7 @@ class SwitchPreviewDialog(
             setShowGrid(false)
             tableHeader.reorderingAllowed = false
         }
-        val widths = intArrayOf(180, 140, 140, 90, 110)
+        val widths = intArrayOf(180, 140, 140, 90, 110).map { JBUI.scale(it) }.toIntArray()
         widths.forEachIndexed { i, w -> table.columnModel.getColumn(i).preferredWidth = w }
 
         val targetRenderer = TargetCellRenderer()

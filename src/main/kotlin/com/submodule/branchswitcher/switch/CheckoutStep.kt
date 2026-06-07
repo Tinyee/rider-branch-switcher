@@ -32,7 +32,7 @@ class CheckoutStep : SwitchStep {
             // Submodule init for missing directories (after main checkout only)
             if (!isMain && !isGitRepo(dir)) {
                 if (mainCheckoutOk) {
-                    if (context.confirmBeforeInit) {
+                    if (context.confirmBeforeInit && context.indicator?.isCanceled != true) {
                         val result = java.util.concurrent.atomic.AtomicInteger(com.intellij.openapi.ui.Messages.NO)
                         com.intellij.openapi.application.ApplicationManager.getApplication()
                             .invokeAndWait {
