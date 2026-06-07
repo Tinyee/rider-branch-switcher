@@ -1,9 +1,6 @@
 package com.submodule.branchswitcher.ui
 
 import com.intellij.icons.AllIcons
-import com.intellij.openapi.progress.ProgressIndicator
-import com.intellij.openapi.progress.ProgressManager
-import com.intellij.openapi.progress.Task
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.InputValidator
 import com.intellij.openapi.ui.Messages
@@ -14,6 +11,8 @@ import com.submodule.branchswitcher.PresetLoader
 import com.submodule.branchswitcher.Strings
 import com.submodule.branchswitcher.model.Preset
 import com.submodule.branchswitcher.service.BranchSwitcherService
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import java.awt.BorderLayout
 import java.awt.FlowLayout
 import java.awt.Font
@@ -143,15 +142,21 @@ class PresetListManager(
 
     fun addPresetFromCurrent(presetsInner: JPanel) {
         val root = gitRoot() ?: return
-        val rootFile = root.toFile()
-        val task = object : Task.Modal(project, "Reading current branches", false) {
-            var mainBranch: String? = null
-            val submodules = LinkedHashMap<String, String>()
-            val skipped = mutableListOf<String>()
-            override fun run(indicator: ProgressIndicator) {
+        service.scope.launch(Dispatchers.Default) {
+            val rootFile = root.toFile()
+            data class ProbeResult(
+                val mainBranch: String?,
+                val submodules: LinkedHashMap<String, String>,
+                val skipped: List<String>,
+            )
+            val result = com.submodule.branchswitcher.TaskBridge.runModal(
+                project, "Reading current branches", false
+            ) { indicator ->
                 indicator.isIndeterminate = true
                 indicator.text = "main repo"
-                mainBranch = service.gitClient.currentBranch(rootFile)
+                val mb = service.gitClient.currentBranch(rootFile)
+                val subs = LinkedHashMap<String, String>()
+                val skipped = mutableListOf<String>()
                 service.gitClient.listSubmodulePaths(rootFile).forEach { path ->
                     indicator.text = path
                     val dir = root.resolve(path).toFile()
@@ -164,39 +169,39 @@ class PresetListManager(
                         skipped += "$path (detached)"
                         return@forEach
                     }
-                    submodules[path] = br
+                    subs[path] = br
                 }
+                ProbeResult(mb, subs, skipped)
             }
-            override fun onSuccess() {
-                val mb = mainBranch
+            // Resumed after modal closes
+            SwingUtilities.invokeLater {
+                val mb = result.mainBranch
                 if (mb.isNullOrEmpty()) {
                     Messages.showWarningDialog(project,
-                        Strings.detachedHeadWarn,
-                        Strings.pluginTitle)
-                    return
+                        Strings.detachedHeadWarn, Strings.pluginTitle)
+                    return@invokeLater
                 }
                 val name = Messages.showInputDialog(project,
                     Strings.presetNameRule,
                     Strings.fromCurrentDialog, null, mb, newNameValidator())?.trim()
-                if (name.isNullOrEmpty()) return
+                if (name.isNullOrEmpty()) return@invokeLater
                 val newPreset = Preset(
                     name = name,
                     main = mb,
                     pull = true,
-                    submodules = submodules,
+                    submodules = result.submodules,
                 )
                 addEditorRow(root, newPreset, presetsInner)
                 presetsInner.parent?.revalidate()
                 presetsInner.parent?.repaint()
                 saveAll()
-                log("[added from current] $name -> 主仓=$mb, ${submodules.size} 个子模块")
-                if (skipped.isNotEmpty()) {
-                    log("[skipped] ${skipped.joinToString(", ")}")
+                log("[added from current] $name -> 主仓=$mb, ${result.submodules.size} 个子模块")
+                if (result.skipped.isNotEmpty()) {
+                    log("[skipped] ${result.skipped.joinToString(", ")}")
                 }
                 onStateChanged?.invoke()
             }
         }
-        ProgressManager.getInstance().run(task)
     }
 
     fun openConfig() {
