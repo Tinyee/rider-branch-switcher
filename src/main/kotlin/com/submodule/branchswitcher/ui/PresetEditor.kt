@@ -231,28 +231,10 @@ class PresetEditor(
 
     /** Asynchronously loads branch names into [combo] via [scope], preserving [current] as selected item. */
     private fun loadComboBranches(combo: JComboBox<String>, dir: File, current: String) {
-        combo.model = DefaultComboBoxModel(arrayOf("loading..."))
-        combo.selectedItem = "loading..."
-        combo.isEnabled = false
-        subManager.loadingCount++
-        scope.launch {
-            val branches = try {
-                if (dir.exists()) gitClient.listAllBranches(dir) else emptyList()
-            } catch (e: Exception) {
-                log("loadBranches failed for ${dir.name}: ${e.message}")
-                emptyList()
-            }
-            com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater {
-                val list = if (current.isNotEmpty() && !branches.contains(current))
-                    listOf(current) + branches else branches
-                combo.model = DefaultComboBoxModel(list.toTypedArray())
-                combo.selectedItem = current
-                combo.putClientProperty(KEY_ALL_BRANCHES, list)
-                combo.isEnabled = true
-                subManager.loadingCount--
-                updateDirty()
-            }
-        }
+        loadComboBranches(combo, dir, current, gitClient, scope, log,
+            onLoadStart = { subManager.loadingCount++ },
+            onLoadEnd = { subManager.loadingCount--; updateDirty() },
+        )
     }
 
     companion object {

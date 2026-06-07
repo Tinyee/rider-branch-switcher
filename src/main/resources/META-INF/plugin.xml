@@ -1,7 +1,7 @@
 <idea-plugin>
     <id>com.submodule.branchswitcher</id>
     <name>Submodule Branch Switcher</name>
-    <vendor>internal</vendor>
+    <vendor url="https://github.com/jty75/rider-branch-switcher" email="jty75@users.noreply.github.com">jty75</vendor>
     <resource-bundle>messages.BranchSwitcherBundle</resource-bundle>
     <description><![CDATA[
         One-click switch the main repo and all its submodules to a preset branch combo.
@@ -29,5 +29,10 @@
         <notificationGroup id="Submodule Branch Switcher"
                            displayType="BALLOON"
                            toolWindowId="SubmoduleBranches"/>
+        <errorHandler implementation="com.intellij.diagnostic.JetBrainsMarketplaceErrorReportSubmitter"/>
+        <projectConfigurable
+            instance="com.submodule.branchswitcher.settings.BranchSwitcherConfigurable"
+            displayName="Submodule Branch Switcher"
+            parentId="vcs"/>
     </extensions>
 </idea-plugin>
