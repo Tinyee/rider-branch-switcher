@@ -127,21 +127,25 @@ class BranchSwitcherPanel(
             layout = BoxLayout(this, BoxLayout.Y_AXIS)
             alignmentX = LEFT_ALIGNMENT
 
-            // Row 1: action icon buttons
+            // Row 1: action buttons (icon + text)
             val row1 = JPanel(FlowLayout(FlowLayout.LEFT, 4, 0))
-            row1.add(iconButton(Bundle.msg("action.reload"), AllIcons.Actions.Refresh,
-                Bundle.msg("action.reload")) { presetManager.reload(presetsInner); detectCurrentState() })
-            row1.add(iconButton(Bundle.msg("action.open.config"), AllIcons.Actions.EditSource,
-                Bundle.msg("action.open.config")) { presetManager.openConfig() })
-            row1.add(Box.createHorizontalStrut(8))
-            row1.add(iconButton(Bundle.msg("action.export"), AllIcons.Actions.MenuSaveall,
-                Bundle.msg("action.export")) { presetManager.exportPresets() })
-            row1.add(iconButton(Bundle.msg("action.import"), AllIcons.Actions.MenuSaveall,
-                Bundle.msg("action.import")) { presetManager.importPresets(presetsContainer) })
-            row1.add(Box.createHorizontalStrut(8))
-            row1.add(iconButton(Bundle.msg("action.undo"), AllIcons.Actions.Rollback,
-                Bundle.msg("action.undo.tip")) { switchController.undoLastSwitch() })
+            row1.add(JButton(Bundle.msg("action.reload"), AllIcons.Actions.Refresh).noFocusRing()
+                .also { it.addActionListener { presetManager.reload(presetsInner); detectCurrentState() } })
+            row1.add(JButton(Bundle.msg("action.open.config"), AllIcons.Actions.EditSource).noFocusRing()
+                .also { it.addActionListener { presetManager.openConfig() } })
             add(row1)
+
+            // Row 2: import/export/undo
+            val row1b = JPanel(FlowLayout(FlowLayout.LEFT, 4, 0))
+            row1b.add(JButton(Bundle.msg("action.export"), AllIcons.Actions.MenuSaveall).noFocusRing()
+                .also { it.addActionListener { presetManager.exportPresets() } })
+            row1b.add(JButton(Bundle.msg("action.import"), AllIcons.Actions.MenuSaveall).noFocusRing()
+                .also { it.addActionListener { presetManager.importPresets(presetsContainer) } })
+            row1b.add(JButton(Bundle.msg("action.undo"), AllIcons.Actions.Rollback).noFocusRing().also {
+                it.toolTipText = Bundle.msg("action.undo.tip")
+                it.addActionListener { switchController.undoLastSwitch() }
+            })
+            add(row1b)
 
             // Row 2: new preset buttons
             val row2 = JPanel(FlowLayout(FlowLayout.LEFT, 4, 0))
@@ -213,16 +217,6 @@ class BranchSwitcherPanel(
         revalidate()
         repaint()
     }
-
-    // ── Helper ─────────────────────────────────────────────────
-
-    private fun iconButton(tip: String, icon: javax.swing.Icon, altText: String, action: () -> Unit): JButton {
-        return JButton(icon).apply {
-            toolTipText = tip
-            addActionListener { action() }
-        }.noFocusRing()
-    }
-
 
     // ── Option persistence ─────────────────────────────────────
 
