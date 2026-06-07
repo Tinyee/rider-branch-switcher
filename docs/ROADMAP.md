@@ -1,6 +1,6 @@
 # Submodule Branch Switcher — 需求 / 路线图
 
-**当前版本 0.4.0**，已具备：
+**当前版本 0.5.0**，已具备：
 
 - 多 preset 持久化（JSON），UI 内增删 preset 与子模块行（基于 `.gitmodules`）
 - 一键切换主仓 + 子模块；脏工作区三策略（stash / skip / force）；切换前 fetch；切换后 pull --ff-only；切换后 VCS 自动刷新
@@ -103,6 +103,19 @@
 
 ## v0.4 已交付
 
+2026-06-07 SDK 规范对齐 + 代码审查收尾：
+
+1. ✅ **SwingUtilities.invokeLater → Application.invokeLater** — 13 处替换，使用 IntelliJ modality 系统
+2. ✅ **plugin.xml 去冗余** — 移除 `@Service` 已覆盖的 projectService 声明
+3. ✅ **Action text i18n** — `<action text="...">` 改用 resource-bundle key
+4. ✅ **CoroutineScope 平台注入** — BranchSwitcherService 构造函数接收平台 CoroutineScope
+5. ✅ **@Nls 注解** — Bundle.msg 返回值 + Notifier 方法参数
+6. ✅ **UiUtil 用 Application.invokeLater** — 替代裸 Swing Timer/Thread
+7. ✅ **Bundle 改用 DynamicBundle 官方 public API** — `getResourceBundle(classLoader, path)` + IDE locale 感知
+8. ✅ **Context menu bug fix** — SubmoduleRowManager 右键"仅切此一仓"使用 preset 目标分支
+9. ✅ **i18n 补完** — ~20 处硬编码中文 → Bundle, 中英 properties 各 ~105 key
+10. ✅ **UI 测试** — BundleTest(8) + SubmoduleRowManagerTest(5), 总测试 80→93
+
 2026-06-06 P1 + 架构改进：
 
 1. ✅ **stash 自动 pop** — DirtyHandlingStep 记录，CheckoutStep checkout 后自动 git stash pop
@@ -127,8 +140,8 @@
 | P0 | `GitOps` 是 object，不可 mock | ROADMAP P1「单元测试」无法落地 | ✅ v0.2.2 |
 | P0 | `SwitchExecutor` 一个 130 行 `execute` 串了所有步骤 | P0「部分失败回滚」需要 checkpoint，无 step 抽象就没法切入 | ✅ v0.2.2 |
 | P0 | 没有 `BranchSwitcherService`（Project Service） | 状态、CRUD、监听全没地方放 | ✅ v0.2.2 |
-| P1 | `PresetEditor` 是 god view（约 500 行） | 加拖拽/复制/导出/重命名只能继续塞这个文件 | ⚡ BranchComboUtil 抽出, Thread→coroutines |
-| P1 | 异步 API 四种混用（Thread / pooledThread / Task.Backgroundable / Task.Modal） | cancel/进度/错误处理语义不一致 | ⚡ Thread 全改 coroutines, Task 保留(进度对话框) |
+| P1 | `PresetEditor` 是 god view（约 500 行） | 加拖拽/复制/导出/重命名只能继续塞这个文件 | ✅ v0.5 拆分 SubmoduleRowManager(265行), PresetEditor→397行 |
+| P1 | 异步 API 四种混用（Thread / pooledThread / Task.Backgroundable / Task.Modal） | cancel/进度/错误处理语义不一致 | ✅ v0.5 全部统一为 `scope.launch`, TaskBridge 封装底层 |
 | P1 | `Preset` 没有稳定 ID | 重命名后历史 / 快捷键绑定 / 颜色标签都断 | — |
 | P1 | 切换选项（dirty / fetch / pull）不持久化 | IDE 重启重置 | ✅ v0.2.2 |
 | P1 | 没有 EventBus / Listener 模式 | 加任何派生组件都得回头改 Panel | ✅ v0.4 (BranchSwitchListener) |
@@ -136,6 +149,30 @@
 | P2 | 包结构扁平（`com.submodule.branchswitcher` 全平铺，11 个文件） | 加新功能继续平铺会变难找 | ✅ v0.2.2 |
 | P2 | 中英文硬编码，无 `BundleMessage` | i18n 时机械迁移 | ✅ v0.5 ResourceBundle(en/zh) + Bundle.kt |
 | P2 | `noFocusRing()` 每个按钮手动调，容易漏 | 应该工厂化或全局 LAF | — |
+| — | `TaskBridge` 底层仍用 `Task.Backgroundable` | 见下方决策记录 | ✅ 有意保留 |
+
+### TaskBridge 决策记录 (2026-06-07)
+
+`TaskBridge.runModal` 和 `runBackground` 对外暴露 suspend 函数，但内部实现使用了
+`ProgressManager.runProcessWithProgressSynchronously` 和 `Task.Backgroundable`。
+
+**为什么不用 IntelliJ 2024.1+ 的 coroutine-based 进度 API (`com.intellij.platform.ide.progress.*`)：**
+
+1. **Task API 未被标记 deprecated** — `Task.Backgroundable` 和 `Task.Modal` 在 IntelliJ 2024/2025/2026
+   源码中均无 `@Deprecated`，绝大多数 JetBrains 官方插件（Git4Idea、Database Tools 等）仍在使用。
+
+2. **新 API 版本间不稳定** — `com.intellij.platform.ide.progress` 包在 2024.1→2024.3→2025.1
+   之间多次变更签名，Rider 不同版本可能不可用。而 `Task.Backgroundable` 自 2015 年至今
+   接口未变。
+
+3. **封装隔离已完成** — 6 个调用方只看到 `suspend fun runModal/runBackground`，
+   底层实现完全透明。将来新 API 稳定后，只需改 `TaskBridge.kt` 一个文件。
+
+4. **风险收益不匹配** — 改为不稳定 API 需要重新验证所有 93 个测试、手动测试进度对话框
+   行为、处理 Rider 不同版本的兼容性，收益仅为去掉一个内部实现细节。
+
+**结论**：等 `com.intellij.platform.ide.progress` 在 2-3 个大版本内保持 API 稳定后，
+再考虑替换 `TaskBridge` 内部实现。
 
 ### 可扩展性现状
 
