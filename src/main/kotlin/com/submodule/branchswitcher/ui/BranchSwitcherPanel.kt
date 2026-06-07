@@ -1,33 +1,19 @@
 ﻿package com.submodule.branchswitcher.ui
 
 import com.intellij.icons.AllIcons
-import com.intellij.openapi.progress.ProgressIndicator
-import com.intellij.openapi.progress.ProgressManager
-import com.intellij.openapi.progress.Task
 import com.intellij.openapi.project.Project
-import com.intellij.openapi.ui.InputValidator
-import com.intellij.openapi.ui.Messages
 import com.intellij.ui.JBColor
 import com.intellij.ui.components.JBScrollPane
 import com.intellij.util.ui.JBUI
 import com.submodule.branchswitcher.BranchSwitchListener
 import com.submodule.branchswitcher.Bundle
 import com.submodule.branchswitcher.model.DirtyAction
-import com.submodule.branchswitcher.model.PreflightRow
-import com.submodule.branchswitcher.model.Preset
-import com.submodule.branchswitcher.model.SwitchOptions
-import com.submodule.branchswitcher.Notifier
-import com.submodule.branchswitcher.PresetLoader
 import com.submodule.branchswitcher.service.BranchSwitcherService
-import com.submodule.branchswitcher.switch.SwitchExecutor
-import com.submodule.branchswitcher.switch.SwitchPreflight
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import java.awt.BorderLayout
 import java.awt.Dimension
 import java.awt.FlowLayout
 import java.awt.Font
-import java.io.File
 import java.nio.file.Path
 import java.nio.file.Paths
 import javax.swing.JProgressBar
@@ -39,16 +25,15 @@ import javax.swing.JCheckBox
 import javax.swing.JComboBox
 import javax.swing.JLabel
 import javax.swing.JPanel
-import javax.swing.JTextArea
 import javax.swing.SwingUtilities
 
 /**
- * Main tool window panel: preset list, switch controls, options, and log.
+ * Main tool window panel with toolbar + card layout.
  *
  * Layout (BorderLayout):
- * - NORTH: title + current branch label + progress bar + scrollable preset list
- * - CENTER: colored log (JTextPane with [append])
- * - SOUTH: switch options (dirty/fetch/pull/timeout) + action buttons
+ * - NORTH: toolbar (action buttons + options) + current state bar
+ * - CENTER: scrollable preset cards
+ * - SOUTH: collapsible log panel (toggle to show/hide)
  *
  * Thread safety: uses [service.scope] for background git probes;
  * [detectCurrentState] uses generation-based stale detection.
@@ -62,7 +47,6 @@ class BranchSwitcherPanel(
     private val currentBranchLabel = JLabel(" ").apply {
         font = font.deriveFont(Font.BOLD, 12f)
         foreground = JBUI.CurrentTheme.Link.Foreground.ENABLED
-        border = JBUI.Borders.empty(0, 0, 2, 0)
     }
     private val presetsInner = JPanel().apply {
         layout = BoxLayout(this, BoxLayout.Y_AXIS)
@@ -70,6 +54,9 @@ class BranchSwitcherPanel(
     }
     private val presetsContainer = JPanel(BorderLayout()).apply {
         add(presetsInner, BorderLayout.NORTH)
+    }
+    private val presetsScroll = JBScrollPane(presetsContainer).apply {
+        border = BorderFactory.createEmptyBorder()
     }
 
     private val dirtyCombo = JComboBox(arrayOf(Bundle.msg("option.dirty.stash"), Bundle.msg("option.dirty.skip"), Bundle.msg("option.dirty.force")))
@@ -87,6 +74,9 @@ class BranchSwitcherPanel(
         font = Font(Font.MONOSPACED, Font.PLAIN, 12)
         contentType = "text/plain"
     }
+    private var logVisible = false
+    private lateinit var logToggle: JLabel
+    private lateinit var logScroll: JBScrollPane
 
     // ── Delegates (after UI fields to resolve init order) ──────
     private val presetManager = PresetListManager(
@@ -95,7 +85,7 @@ class BranchSwitcherPanel(
         onDerive = { root, preset, name -> switchController.derivePresetBranch(root, preset, name) },
     )
     @Suppress("unused")
-    private lateinit var switchController: SwitchController // lateinit required: presetManager lambda captures this before init{}
+    private lateinit var switchController: SwitchController // lateinit: presetManager captures before init{}
     private var worktreeInfoLogged = false
 
     init {
@@ -106,12 +96,12 @@ class BranchSwitcherPanel(
             progressBar = progressBar,
         )
         presetManager.onStateChanged = ::detectCurrentState
-        border = JBUI.Borders.empty(8, 8, 8, 8)
+        border = JBUI.Borders.empty(6, 8, 4, 8)
         minimumSize = Dimension(JBUI.scale(280), minimumSize.height)
 
-        add(createNorthBlock(), BorderLayout.NORTH)
-        add(JBScrollPane(log).apply { preferredSize = Dimension(0, JBUI.scale(30)) }, BorderLayout.CENTER)
-        add(createSouthBlock(), BorderLayout.SOUTH)
+        add(createTopBlock(), BorderLayout.NORTH)
+        add(presetsScroll, BorderLayout.CENTER)
+        add(createLogPanel(), BorderLayout.SOUTH)
 
         presetManager.reload(presetsInner)
         detectCurrentState()
@@ -119,94 +109,116 @@ class BranchSwitcherPanel(
         wireEventSubscriptions()
     }
 
-    // ── UI factory methods ─────────────────────────────────────
+    // ── Top block: toolbar + options + status ─────────────────
 
-    private fun createNorthBlock(): JPanel {
-        val title = JLabel(Bundle.msg("plugin.title")).apply {
-            font = font.deriveFont(Font.BOLD, 13f)
-            border = JBUI.Borders.empty(0, 0, 6, 0)
+    private fun createTopBlock(): JPanel {
+        return JPanel().apply {
+            layout = BoxLayout(this, BoxLayout.Y_AXIS)
+            alignmentX = LEFT_ALIGNMENT
+            add(createToolbar())
+            add(Box.createVerticalStrut(2))
+            add(createStatusBar())
         }
-        val presetsScroll = JBScrollPane(presetsContainer).apply {
-            preferredSize = Dimension(0, JBUI.scale(300))
-        }
-        val addPanel = JPanel(FlowLayout(FlowLayout.LEFT, 4, 4)).apply {
-            add(JButton(Bundle.msg("action.add.preset"), AllIcons.General.Add).noFocusRing()
+    }
+
+    private fun createToolbar(): JPanel {
+        return JPanel(BorderLayout()).apply {
+            // Left: action buttons
+            val left = JPanel(FlowLayout(FlowLayout.LEFT, 2, 0))
+            left.add(iconButton(Bundle.msg("action.reload"), AllIcons.Actions.Refresh,
+                Bundle.msg("action.reload")) { presetManager.reload(presetsInner); detectCurrentState() })
+            left.add(iconButton(Bundle.msg("action.open.config"), AllIcons.Actions.EditSource,
+                Bundle.msg("action.open.config")) { presetManager.openConfig() })
+            left.add(Box.createHorizontalStrut(6))
+            left.add(iconButton(Bundle.msg("action.export"), AllIcons.Actions.MenuSaveall,
+                Bundle.msg("action.export")) { presetManager.exportPresets() })
+            left.add(iconButton(Bundle.msg("action.import"), AllIcons.Actions.MenuSaveall,
+                Bundle.msg("action.import")) { presetManager.importPresets(presetsContainer) })
+            left.add(Box.createHorizontalStrut(6))
+            left.add(iconButton(Bundle.msg("action.undo"), AllIcons.Actions.Rollback,
+                Bundle.msg("action.undo.tip")) { switchController.undoLastSwitch() })
+            add(left, BorderLayout.WEST)
+
+            // Right: new preset buttons
+            val right = JPanel(FlowLayout(FlowLayout.RIGHT, 2, 0))
+            right.add(JButton(Bundle.msg("action.add.preset"), AllIcons.General.Add).noFocusRing()
                 .also { it.addActionListener { presetManager.addPreset(presetsInner) } })
-            add(JButton(Bundle.msg("action.from.current"), AllIcons.Vcs.Branch).noFocusRing().also {
+            right.add(JButton(Bundle.msg("action.from.current"), AllIcons.Vcs.Branch).noFocusRing().also {
                 it.toolTipText = Bundle.msg("action.from.current.tip")
                 it.addActionListener { presetManager.addPresetFromCurrent(presetsInner) }
             })
-        }
-        val presetsBlock = JPanel(BorderLayout()).apply {
-            add(presetsScroll, BorderLayout.CENTER)
-            add(addPanel, BorderLayout.SOUTH)
-        }
-        val statusRow = JPanel(BorderLayout()).apply {
-            add(currentBranchLabel, BorderLayout.NORTH)
-            add(progressBar, BorderLayout.SOUTH)
-        }
-        return JPanel(BorderLayout()).apply {
-            add(title, BorderLayout.NORTH)
-            add(statusRow, BorderLayout.SOUTH)
-            add(presetsBlock, BorderLayout.CENTER)
-        }
-    }
+            add(right, BorderLayout.EAST)
 
-    private fun createSouthBlock(): JPanel {
-        val optsRow1 = JPanel(FlowLayout(FlowLayout.LEFT, 8, 2)).apply {
-            add(JLabel(Bundle.msg("label.dirty.working.tree")))
-            add(dirtyCombo)
-            add(JLabel(Bundle.msg("option.timeout")))
-            add(timeoutCombo)
-        }
-        val optsRow2 = JPanel(FlowLayout(FlowLayout.LEFT, 8, 2)).apply {
-            add(fetchCheck)
-            add(pullCheck)
-            add(JCheckBox(Bundle.msg("option.confirm.init")).apply {
+            // Center: options row
+            val opts = JPanel(FlowLayout(FlowLayout.CENTER, 8, 0))
+            opts.add(JLabel(Bundle.msg("label.dirty.working.tree")))
+            opts.add(dirtyCombo)
+            opts.add(JLabel(Bundle.msg("option.timeout")))
+            opts.add(timeoutCombo)
+            opts.add(fetchCheck)
+            opts.add(pullCheck)
+            opts.add(JCheckBox(Bundle.msg("option.confirm.init")).apply {
                 isSelected = service.confirmBeforeInit
                 addItemListener { service.confirmBeforeInit = isSelected }
             })
-        }
-        val opts = JPanel().apply {
-            layout = BoxLayout(this, BoxLayout.Y_AXIS)
-            border = BorderFactory.createCompoundBorder(
-                BorderFactory.createMatteBorder(1, 0, 0, 0, JBColor.border()),
-                JBUI.Borders.empty(4, 0, 4, 0),
-            )
-            optsRow1.alignmentX = LEFT_ALIGNMENT
-            optsRow2.alignmentX = LEFT_ALIGNMENT
-            add(optsRow1)
-            add(optsRow2)
-        }
-        val buttons = JPanel().apply {
-            layout = BoxLayout(this, BoxLayout.Y_AXIS)
-            border = JBUI.Borders.empty(2, 0, 4, 0)
-        }
-        val btnRow1 = JPanel(FlowLayout(FlowLayout.LEFT, 4, 0)).apply { alignmentX = LEFT_ALIGNMENT }
-        btnRow1.add(JButton(Bundle.msg("action.reload"), AllIcons.Actions.Refresh).noFocusRing()
-            .also { it.addActionListener { presetManager.reload(presetsInner); detectCurrentState() } })
-        btnRow1.add(JButton(Bundle.msg("action.open.config"), AllIcons.Actions.EditSource).noFocusRing()
-            .also { it.addActionListener { presetManager.openConfig() } })
-        btnRow1.add(Box.createHorizontalStrut(12))
-        btnRow1.add(JButton(Bundle.msg("action.clear.log"), AllIcons.Actions.GC).noFocusRing()
-            .also { it.addActionListener { log.text = "" } })
-        buttons.add(btnRow1)
-        val btnRow2 = JPanel(FlowLayout(FlowLayout.LEFT, 4, 0)).apply { alignmentX = LEFT_ALIGNMENT }
-        btnRow2.add(JButton(Bundle.msg("action.undo"), AllIcons.Actions.Rollback).noFocusRing().also {
-            it.toolTipText = Bundle.msg("action.undo.tip")
-            it.addActionListener { switchController.undoLastSwitch() }
-        })
-        btnRow2.add(Box.createHorizontalStrut(12))
-        btnRow2.add(JButton(Bundle.msg("action.export"), AllIcons.Actions.MenuSaveall).noFocusRing()
-            .also { it.addActionListener { presetManager.exportPresets() } })
-        btnRow2.add(JButton(Bundle.msg("action.import"), AllIcons.Actions.MenuSaveall).noFocusRing()
-            .also { it.addActionListener { presetManager.importPresets(presetsContainer) } })
-        buttons.add(btnRow2)
-        return JPanel(BorderLayout()).apply {
-            add(opts, BorderLayout.NORTH)
-            add(buttons, BorderLayout.SOUTH)
+            add(opts, BorderLayout.CENTER)
         }
     }
+
+    private fun createStatusBar(): JPanel {
+        return JPanel(BorderLayout()).apply {
+            border = BorderFactory.createCompoundBorder(
+                BorderFactory.createMatteBorder(0, 0, 1, 0, JBColor.border()),
+                JBUI.Borders.empty(2, 2, 4, 2),
+            )
+            add(currentBranchLabel, BorderLayout.WEST)
+            add(progressBar, BorderLayout.EAST)
+        }
+    }
+
+    // ── Log panel (collapsible) ────────────────────────────────
+
+    private fun createLogPanel(): JPanel {
+        logScroll = JBScrollPane(log).apply {
+            preferredSize = Dimension(0, JBUI.scale(80))
+            isVisible = false
+        }
+        logToggle = JLabel("${AllIcons.General.ArrowRight} Log").apply {
+            font = font.deriveFont(Font.PLAIN, 11f)
+            foreground = JBColor.GRAY
+            cursor = java.awt.Cursor.getPredefinedCursor(java.awt.Cursor.HAND_CURSOR)
+            border = BorderFactory.createCompoundBorder(
+                BorderFactory.createMatteBorder(1, 0, 0, 0, JBColor.border()),
+                JBUI.Borders.empty(2, 4, 0, 0),
+            )
+            addMouseListener(object : java.awt.event.MouseAdapter() {
+                override fun mouseClicked(e: java.awt.event.MouseEvent) { toggleLog() }
+            })
+        }
+        return JPanel(BorderLayout()).apply {
+            add(logToggle, BorderLayout.NORTH)
+            add(logScroll, BorderLayout.CENTER)
+        }
+    }
+
+    private fun toggleLog() {
+        logVisible = !logVisible
+        logScroll.isVisible = logVisible
+        logToggle.icon = if (logVisible) AllIcons.General.ArrowDown else AllIcons.General.ArrowRight
+        logToggle.text = if (logVisible) " Log" else " Log"
+        revalidate()
+        repaint()
+    }
+
+    // ── Helper ─────────────────────────────────────────────────
+
+    private fun iconButton(tip: String, icon: javax.swing.Icon, altText: String, action: () -> Unit): JButton {
+        return JButton(icon).apply {
+            toolTipText = tip
+            addActionListener { action() }
+        }.noFocusRing()
+    }
+
 
     // ── Option persistence ─────────────────────────────────────
 
