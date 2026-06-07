@@ -94,8 +94,8 @@ class BranchSwitcherPanel(
         onSwitch = { preset -> switchController.runSwitch(preset) },
         onDerive = { root, preset, name -> switchController.derivePresetBranch(root, preset, name) },
     )
-    @Suppress("lateinit")
-    private lateinit var switchController: SwitchController
+    @Suppress("unused")
+    private lateinit var switchController: SwitchController // lateinit required: presetManager lambda captures this before init{}
     private var worktreeInfoLogged = false
 
     init {
@@ -109,11 +109,23 @@ class BranchSwitcherPanel(
         border = JBUI.Borders.empty(8, 8, 8, 8)
         minimumSize = Dimension(JBUI.scale(280), minimumSize.height)
 
+        add(createNorthBlock(), BorderLayout.NORTH)
+        add(JBScrollPane(log).apply { preferredSize = Dimension(0, JBUI.scale(30)) }, BorderLayout.CENTER)
+        add(createSouthBlock(), BorderLayout.SOUTH)
+
+        presetManager.reload(presetsInner)
+        detectCurrentState()
+        wireOptionsPersistence()
+        wireEventSubscriptions()
+    }
+
+    // ── UI factory methods ─────────────────────────────────────
+
+    private fun createNorthBlock(): JPanel {
         val title = JLabel(Bundle.msg("plugin.title")).apply {
             font = font.deriveFont(Font.BOLD, 13f)
             border = JBUI.Borders.empty(0, 0, 6, 0)
         }
-
         val presetsScroll = JBScrollPane(presetsContainer).apply {
             preferredSize = Dimension(0, JBUI.scale(300))
         }
@@ -129,20 +141,18 @@ class BranchSwitcherPanel(
             add(presetsScroll, BorderLayout.CENTER)
             add(addPanel, BorderLayout.SOUTH)
         }
-
         val statusRow = JPanel(BorderLayout()).apply {
             add(currentBranchLabel, BorderLayout.NORTH)
             add(progressBar, BorderLayout.SOUTH)
         }
-        val north = JPanel(BorderLayout())
-        north.add(title, BorderLayout.NORTH)
-        north.add(statusRow, BorderLayout.SOUTH)
-        north.add(presetsBlock, BorderLayout.CENTER)
-
-        val logScroll = JBScrollPane(log).apply {
-            preferredSize = Dimension(0, JBUI.scale(30))
+        return JPanel(BorderLayout()).apply {
+            add(title, BorderLayout.NORTH)
+            add(statusRow, BorderLayout.SOUTH)
+            add(presetsBlock, BorderLayout.CENTER)
         }
+    }
 
+    private fun createSouthBlock(): JPanel {
         val optsRow1 = JPanel(FlowLayout(FlowLayout.LEFT, 8, 2)).apply {
             add(JLabel(Bundle.msg("label.dirty.working.tree")))
             add(dirtyCombo)
@@ -168,14 +178,11 @@ class BranchSwitcherPanel(
             add(optsRow1)
             add(optsRow2)
         }
-
         val buttons = JPanel().apply {
             layout = BoxLayout(this, BoxLayout.Y_AXIS)
             border = JBUI.Borders.empty(2, 0, 4, 0)
         }
-        val btnRow1 = JPanel(FlowLayout(FlowLayout.LEFT, 4, 0)).apply {
-            alignmentX = LEFT_ALIGNMENT
-        }
+        val btnRow1 = JPanel(FlowLayout(FlowLayout.LEFT, 4, 0)).apply { alignmentX = LEFT_ALIGNMENT }
         btnRow1.add(JButton(Bundle.msg("action.reload"), AllIcons.Actions.Refresh).noFocusRing()
             .also { it.addActionListener { presetManager.reload(presetsInner); detectCurrentState() } })
         btnRow1.add(JButton(Bundle.msg("action.open.config"), AllIcons.Actions.EditSource).noFocusRing()
@@ -184,9 +191,7 @@ class BranchSwitcherPanel(
         btnRow1.add(JButton(Bundle.msg("action.clear.log"), AllIcons.Actions.GC).noFocusRing()
             .also { it.addActionListener { log.text = "" } })
         buttons.add(btnRow1)
-        val btnRow2 = JPanel(FlowLayout(FlowLayout.LEFT, 4, 0)).apply {
-            alignmentX = LEFT_ALIGNMENT
-        }
+        val btnRow2 = JPanel(FlowLayout(FlowLayout.LEFT, 4, 0)).apply { alignmentX = LEFT_ALIGNMENT }
         btnRow2.add(JButton(Bundle.msg("action.undo"), AllIcons.Actions.Rollback).noFocusRing().also {
             it.toolTipText = Bundle.msg("action.undo.tip")
             it.addActionListener { switchController.undoLastSwitch() }
@@ -197,77 +202,49 @@ class BranchSwitcherPanel(
         btnRow2.add(JButton(Bundle.msg("action.import"), AllIcons.Actions.MenuSaveall).noFocusRing()
             .also { it.addActionListener { presetManager.importPresets(presetsContainer) } })
         buttons.add(btnRow2)
-
-        val south = JPanel(BorderLayout())
-        south.add(opts, BorderLayout.NORTH)
-        south.add(buttons, BorderLayout.SOUTH)
-
-        add(north, BorderLayout.NORTH)
-        add(logScroll, BorderLayout.CENTER)
-        add(south, BorderLayout.SOUTH)
-
-        presetManager.reload(presetsInner)
-        detectCurrentState()
-
-        // Restore persisted switch options
-        dirtyCombo.selectedIndex = when (service.dirtyAction) {
-            DirtyAction.Stash -> 0
-            DirtyAction.Skip -> 1
-            DirtyAction.Force -> 2
+        return JPanel(BorderLayout()).apply {
+            add(opts, BorderLayout.NORTH)
+            add(buttons, BorderLayout.SOUTH)
         }
-        // Restore persisted dirty action + timeout
+    }
+
+    // ── Option persistence ─────────────────────────────────────
+
+    private fun wireOptionsPersistence() {
         dirtyCombo.selectedIndex = when (service.dirtyAction) {
-            DirtyAction.Stash -> 0
-            DirtyAction.Skip -> 1
-            DirtyAction.Force -> 2
+            DirtyAction.Stash -> 0; DirtyAction.Skip -> 1; DirtyAction.Force -> 2
         }
-        // Persist options on change
         dirtyCombo.addItemListener {
             service.dirtyAction = when (dirtyCombo.selectedIndex) {
-                1 -> DirtyAction.Skip
-                2 -> DirtyAction.Force
-                else -> DirtyAction.Stash
+                1 -> DirtyAction.Skip; 2 -> DirtyAction.Force; else -> DirtyAction.Stash
             }
         }
         pullCheck.addItemListener { service.pullAfterSwitch = pullCheck.isSelected }
         fetchCheck.addItemListener { service.fetchFirst = fetchCheck.isSelected }
-        // Restore timeout
         timeoutCombo.selectedIndex = when (service.timeoutSeconds) {
-            30 -> 0
-            120 -> 2
-            300 -> 3
-            else -> {
-                service.timeoutSeconds = 60
-                1
-            }
+            30 -> 0; 120 -> 2; 300 -> 3; else -> { service.timeoutSeconds = 60; 1 }
         }
         timeoutCombo.addItemListener {
             service.timeoutSeconds = when (timeoutCombo.selectedIndex) {
-                0 -> 30
-                2 -> 120
-                3 -> 300
-                else -> 60
+                0 -> 30; 2 -> 120; 3 -> 300; else -> 60
             }
         }
+    }
 
-        // Subscribe to switch events (e.g., from shortcut action)
-        // Connection is parented to the service (project lifetime) — the subscription
-        // is cleaned up when the project closes. For a tool window created once per
-        // project, this is safe and avoids premature disconnect on panel hide/show.
+    // ── Event subscriptions ────────────────────────────────────
+
+    private fun wireEventSubscriptions() {
         val connection = project.messageBus.connect(service)
         connection.subscribe(BranchSwitchListener.TOPIC, object : BranchSwitchListener {
             override fun onBranchSwitched() {
                 com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater { detectCurrentState() }
             }
         })
-
-        // Re-detect current state only when tool window transitions from hidden→visible
         addHierarchyListener { e ->
             if ((e.changeFlags and java.awt.event.HierarchyEvent.SHOWING_CHANGED.toLong()) != 0L && isShowing) {
                 com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater { detectCurrentState() }
             }
         }
-
         addAncestorListener(object : javax.swing.event.AncestorListener {
             override fun ancestorAdded(event: javax.swing.event.AncestorEvent) {
                 com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater {
