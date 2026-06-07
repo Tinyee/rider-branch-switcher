@@ -1,4 +1,4 @@
-package com.submodule.branchswitcher
+﻿package com.submodule.branchswitcher
 
 import com.intellij.notification.NotificationGroupManager
 import com.intellij.notification.NotificationType
@@ -33,7 +33,7 @@ object Notifier {
         NotificationGroupManager.getInstance()
             .getNotificationGroup(GROUP_ID)
             .createNotification(title, content, NotificationType.ERROR)
-            .addAction(com.intellij.notification.NotificationAction.createSimple(Strings.rollbackAction) {
+            .addAction(com.intellij.notification.NotificationAction.createSimple(Bundle.message("rollback.action")) {
                 onRollback()
             })
             .notify(project)

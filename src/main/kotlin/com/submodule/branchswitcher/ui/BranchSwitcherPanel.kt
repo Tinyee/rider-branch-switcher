@@ -1,4 +1,4 @@
-package com.submodule.branchswitcher.ui
+﻿package com.submodule.branchswitcher.ui
 
 import com.intellij.icons.AllIcons
 import com.intellij.openapi.progress.ProgressIndicator
@@ -11,7 +11,7 @@ import com.intellij.ui.JBColor
 import com.intellij.ui.components.JBScrollPane
 import com.intellij.util.ui.JBUI
 import com.submodule.branchswitcher.BranchSwitchListener
-import com.submodule.branchswitcher.Strings
+import com.submodule.branchswitcher.Bundle
 import com.submodule.branchswitcher.model.DirtyAction
 import com.submodule.branchswitcher.model.PreflightRow
 import com.submodule.branchswitcher.model.Preset
@@ -72,10 +72,10 @@ class BranchSwitcherPanel(
         add(presetsInner, BorderLayout.NORTH)
     }
 
-    private val dirtyCombo = JComboBox(arrayOf(Strings.dirtyStash, Strings.dirtySkip, Strings.dirtyForce))
+    private val dirtyCombo = JComboBox(arrayOf(Bundle.message("option.dirty.stash"), Bundle.message("option.dirty.skip"), Bundle.message("option.dirty.force")))
     private val timeoutCombo = JComboBox(arrayOf("30s", "60s", "120s", "300s"))
-    private val pullCheck = JCheckBox(Strings.pullAfter, true)
-    private val fetchCheck = JCheckBox(Strings.fetchBefore, true)
+    private val pullCheck = JCheckBox(Bundle.message("option.pull.after"), true)
+    private val fetchCheck = JCheckBox(Bundle.message("option.fetch.before"), true)
 
     private val progressBar = JProgressBar().apply {
         isStringPainted = true
@@ -94,6 +94,7 @@ class BranchSwitcherPanel(
         onSwitch = { preset -> switchController.runSwitch(preset) },
         onDerive = { root, preset, name -> switchController.derivePresetBranch(root, preset, name) },
     )
+    @Suppress("lateinit")
     private lateinit var switchController: SwitchController
     private var worktreeInfoLogged = false
 
@@ -108,7 +109,7 @@ class BranchSwitcherPanel(
         border = JBUI.Borders.empty(8, 8, 8, 8)
         minimumSize = Dimension(JBUI.scale(280), minimumSize.height)
 
-        val title = JLabel(Strings.pluginTitle).apply {
+        val title = JLabel(Bundle.message("plugin.title")).apply {
             font = font.deriveFont(Font.BOLD, 13f)
             border = JBUI.Borders.empty(0, 0, 6, 0)
         }
@@ -117,10 +118,10 @@ class BranchSwitcherPanel(
             preferredSize = Dimension(0, JBUI.scale(300))
         }
         val addPanel = JPanel(FlowLayout(FlowLayout.LEFT, 4, 4)).apply {
-            add(JButton(Strings.addPreset, AllIcons.General.Add).noFocusRing()
+            add(JButton(Bundle.message("action.add.preset"), AllIcons.General.Add).noFocusRing()
                 .also { it.addActionListener { presetManager.addPreset(presetsInner) } })
-            add(JButton(Strings.fromCurrent, AllIcons.Vcs.Branch).noFocusRing().also {
-                it.toolTipText = Strings.fromCurrentTip
+            add(JButton(Bundle.message("action.from.current"), AllIcons.Vcs.Branch).noFocusRing().also {
+                it.toolTipText = Bundle.message("action.from.current.tip")
                 it.addActionListener { presetManager.addPresetFromCurrent(presetsInner) }
             })
         }
@@ -143,15 +144,15 @@ class BranchSwitcherPanel(
         }
 
         val optsRow1 = JPanel(FlowLayout(FlowLayout.LEFT, 8, 2)).apply {
-            add(JLabel(Strings.dirtyWorkingTree))
+            add(JLabel(Bundle.message("label.dirty.working.tree")))
             add(dirtyCombo)
-            add(JLabel(Strings.timeoutSeconds))
+            add(JLabel(Bundle.message("option.timeout")))
             add(timeoutCombo)
         }
         val optsRow2 = JPanel(FlowLayout(FlowLayout.LEFT, 8, 2)).apply {
             add(fetchCheck)
             add(pullCheck)
-            add(JCheckBox(Strings.confirmInit).apply {
+            add(JCheckBox(Bundle.message("option.confirm.init")).apply {
                 isSelected = service.confirmBeforeInit
                 addItemListener { service.confirmBeforeInit = isSelected }
             })
@@ -175,25 +176,25 @@ class BranchSwitcherPanel(
         val btnRow1 = JPanel(FlowLayout(FlowLayout.LEFT, 4, 0)).apply {
             alignmentX = LEFT_ALIGNMENT
         }
-        btnRow1.add(JButton(Strings.reloadPresets, AllIcons.Actions.Refresh).noFocusRing()
+        btnRow1.add(JButton(Bundle.message("action.reload"), AllIcons.Actions.Refresh).noFocusRing()
             .also { it.addActionListener { presetManager.reload(presetsInner); detectCurrentState() } })
-        btnRow1.add(JButton(Strings.openPresetFile, AllIcons.Actions.EditSource).noFocusRing()
+        btnRow1.add(JButton(Bundle.message("action.open.config"), AllIcons.Actions.EditSource).noFocusRing()
             .also { it.addActionListener { presetManager.openConfig() } })
         btnRow1.add(Box.createHorizontalStrut(12))
-        btnRow1.add(JButton(Strings.clearLog, AllIcons.Actions.GC).noFocusRing()
+        btnRow1.add(JButton(Bundle.message("action.clear.log"), AllIcons.Actions.GC).noFocusRing()
             .also { it.addActionListener { log.text = "" } })
         buttons.add(btnRow1)
         val btnRow2 = JPanel(FlowLayout(FlowLayout.LEFT, 4, 0)).apply {
             alignmentX = LEFT_ALIGNMENT
         }
-        btnRow2.add(JButton(Strings.undoSwitch, AllIcons.Actions.Rollback).noFocusRing().also {
-            it.toolTipText = Strings.undoTip
+        btnRow2.add(JButton(Bundle.message("action.undo"), AllIcons.Actions.Rollback).noFocusRing().also {
+            it.toolTipText = Bundle.message("action.undo.tip")
             it.addActionListener { switchController.undoLastSwitch() }
         })
         btnRow2.add(Box.createHorizontalStrut(12))
-        btnRow2.add(JButton(Strings.exportPresets, AllIcons.Actions.MenuSaveall).noFocusRing()
+        btnRow2.add(JButton(Bundle.message("action.export"), AllIcons.Actions.MenuSaveall).noFocusRing()
             .also { it.addActionListener { presetManager.exportPresets() } })
-        btnRow2.add(JButton(Strings.importPresets, AllIcons.Actions.MenuSaveall).noFocusRing()
+        btnRow2.add(JButton(Bundle.message("action.import"), AllIcons.Actions.MenuSaveall).noFocusRing()
             .also { it.addActionListener { presetManager.importPresets(presetsContainer) } })
         buttons.add(btnRow2)
 
@@ -328,7 +329,7 @@ class BranchSwitcherPanel(
     private fun logDetected(eds: List<PresetEditor>, branches: Map<String, String?>) {
         val main = branches["."] ?: "(detached)"
         val matched = eds.firstOrNull { it.matchesState(branches) }?.currentPreset()?.name
-        currentBranchLabel.text = "${Strings.mainLabel} $main"
+        currentBranchLabel.text = "${Bundle.message("label.main.branch")} $main"
         append("[detect] main=$main, matched=${matched ?: "<none>"}")
     }
 

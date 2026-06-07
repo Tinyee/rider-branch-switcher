@@ -35,9 +35,10 @@ class CheckoutStep : SwitchStep {
                         val result = java.util.concurrent.atomic.AtomicInteger(com.intellij.openapi.ui.Messages.NO)
                         com.intellij.openapi.application.ApplicationManager.getApplication()
                             .invokeAndWait {
+                                val bundle = com.submodule.branchswitcher.Bundle
                                 result.set(com.intellij.openapi.ui.Messages.showYesNoDialog(
-                                    "子模块「${target.path}」目录缺失，是否执行 git submodule update --init？",
-                                    "初始化子模块",
+                                    bundle.message("dialog.init.submodule", target.path),
+                                    bundle.message("dialog.init.title"),
                                     com.intellij.openapi.ui.Messages.getQuestionIcon(),
                                 ))
                             }

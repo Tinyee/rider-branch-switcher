@@ -1,4 +1,4 @@
-package com.submodule.branchswitcher.action
+﻿package com.submodule.branchswitcher.action
 
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
@@ -10,7 +10,7 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.Messages
 import com.submodule.branchswitcher.BranchSwitchListener
 import com.submodule.branchswitcher.Notifier
-import com.submodule.branchswitcher.Strings
+import com.submodule.branchswitcher.Bundle
 import com.submodule.branchswitcher.model.DirtyAction
 import com.submodule.branchswitcher.model.Preset
 import com.submodule.branchswitcher.model.SwitchOptions
@@ -28,14 +28,14 @@ class SwitchPresetAction : AnAction() {
         service.loadPresets()
         val presets = service.presets
         if (presets.isEmpty()) {
-            Messages.showInfoMessage(project, "暂无预设，请先在 Branch Switcher 工具窗口创建", Strings.pluginTitle)
+            Messages.showInfoMessage(project, Bundle.message("action.no.presets"), Bundle.message("plugin.title"))
             return
         }
         val names = presets.map { it.name }.toTypedArray()
         @Suppress("DEPRECATION")
         val choice = Messages.showChooseDialog(
-            "选择要切换到的 Preset:",
-            "切到 Preset",
+            Bundle.message("action.select.preset"),
+            Bundle.message("action.switch.preset"),
             names,
             names[0],
             null,
@@ -71,13 +71,13 @@ class SwitchPresetAction : AnAction() {
             }
             override fun onFinished() {
                 if (ok) {
-                    Notifier.info(project, Strings.switchComplete, Strings.switchCompleteMsg.format(preset.name))
+                    Notifier.info(project, Bundle.message("switch.complete"), Bundle.message("notify.switch.complete.msg").format(preset.name))
                 } else {
                     val detail = logLines.filter { it.contains("[fail]") || it.contains("[fatal]") || it.contains("[warn]") }
                         .take(3).joinToString("\n")
-                    Notifier.error(project, Strings.switchFailed,
-                        if (detail.isNotEmpty()) "${Strings.switchPartialMsg.format(preset.name)}:\n$detail"
-                        else Strings.switchPartialMsg.format(preset.name))
+                    Notifier.error(project, Bundle.message("switch.failed"),
+                        if (detail.isNotEmpty()) "${Bundle.message("notify.switch.partial.msg").format(preset.name)}:\n$detail"
+                        else Bundle.message("notify.switch.partial.msg").format(preset.name))
                 }
                 project.messageBus.syncPublisher(BranchSwitchListener.TOPIC).onBranchSwitched()
                 // Refresh VCS
