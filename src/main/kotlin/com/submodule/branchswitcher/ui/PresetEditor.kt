@@ -49,6 +49,7 @@ class PresetEditor(
     private val onSave: (Preset) -> Unit,
     private val onDelete: () -> Unit,
     private val onDerive: (branchName: String) -> Unit = {},
+    private val nameValidator: (String) -> Boolean = { true },
     private val gitClient: GitClient,
     private val scope: CoroutineScope,
 ) : JPanel() {
@@ -374,10 +375,16 @@ class PresetEditor(
         )
         if (result.isNullOrBlank()) return
         val newName = result.trim()
-        if (newName != original.name) {
-            updatePresetName(newName)
-            onSave(original)
+        if (newName == original.name) return
+        if (!nameValidator(newName)) {
+            com.intellij.openapi.ui.Messages.showWarningDialog(
+                Bundle.msg("dialog.preset.name.rule"),
+                Bundle.msg("dialog.rename"),
+            )
+            return
         }
+        updatePresetName(newName)
+        onSave(original)
     }
 
     private fun deriveBranch() {

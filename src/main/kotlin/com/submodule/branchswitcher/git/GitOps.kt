@@ -110,7 +110,7 @@ class GitOps(
         if (!r.ok) return emptyList()
         return r.stdout.lines()
             .map { it.trim() }
-            .filter { it.isNotEmpty() && it != "origin/HEAD" && !it.startsWith("origin/HEAD") }
+            .filter { it.isNotEmpty() && !it.startsWith("origin/HEAD") }
             .map { if (it.startsWith("origin/")) it.removePrefix("origin/") else it }
             .distinct()
             .sorted()

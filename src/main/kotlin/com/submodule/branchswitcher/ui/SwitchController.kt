@@ -81,7 +81,8 @@ class SwitchController(
                     rollbackExecutor = executor
                     ok = executor.execute(preset, opts)
                 }
-            } catch (_: Exception) {
+            } catch (e: Exception) {
+                log("[error] switch: ${e.javaClass.simpleName}: ${e.message}")
                 ok = false
             }
             // Resumed on EDT via TaskBridge.onFinished
@@ -113,7 +114,8 @@ class SwitchController(
                     indicator.isIndeterminate = true
                     rollbackOk = executor.rollback()
                 }
-            } catch (_: Exception) {
+            } catch (e: Exception) {
+                log("[error] rollback: ${e.javaClass.simpleName}: ${e.message}")
                 rollbackOk = false
             }
             // Resumed on EDT
