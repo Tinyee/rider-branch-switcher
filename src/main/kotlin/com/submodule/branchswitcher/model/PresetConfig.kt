@@ -15,7 +15,8 @@ data class Preset(
     val name: String,
     val main: String,
     val submodules: Map<String, String> = emptyMap(),
-    val pull: Boolean = true,
+    @com.google.gson.annotations.SerializedName("pull")
+    val pullEnabled: Boolean = true,
 ) {
     /** Returns all targets: main (".") first, then submodules. Main-first ordering is critical for submodule init. */
     fun targets(): List<RepoTarget> {

@@ -37,7 +37,7 @@ class SwitchExecutorTest {
     }
 
     private val projectRoot = java.nio.file.Files.createTempDirectory("test-executor")
-    private val preset = Preset("test", "dev", emptyMap(), pull = false)
+    private val preset = Preset("test", "dev", emptyMap(), pullEnabled = false)
 
     @Before
     fun setup() {
@@ -63,7 +63,7 @@ class SwitchExecutorTest {
             override fun remoteBranchExists(workDir: File, branch: String): Boolean = false
         }
         val executor = SwitchExecutor(projectRoot, { log += it }, missingGit)
-        val result = executor.execute(Preset("test", "no-branch", emptyMap(), pull = false),
+        val result = executor.execute(Preset("test", "no-branch", emptyMap(), pullEnabled = false),
             SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false))
         assertFalse("Switch should fail when branch doesn't exist", result)
     }
@@ -140,7 +140,7 @@ class SwitchExecutorTest {
         }
         val executor = SwitchExecutor(projectRoot, { log += it }, trackGit)
         // Execute switch to dev — checkout records branch as "dev"
-        executor.execute(Preset("test", "dev", emptyMap(), pull = false),
+        executor.execute(Preset("test", "dev", emptyMap(), pullEnabled = false),
             SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false))
         checkoutCalls.clear()
         // Now branch = "dev", checkpoint has branch = "main" (recorded before switch)
@@ -208,7 +208,7 @@ class SwitchExecutorTest {
         File(projectRoot.toFile(), "SubB").mkdirs()
         File(projectRoot.toFile(), "SubB/.git").mkdirs()
 
-        val subPreset = Preset("sub-test", "dev", mapOf("SubA" to "dev", "SubB" to "feature-x"), pull = false)
+        val subPreset = Preset("sub-test", "dev", mapOf("SubA" to "dev", "SubB" to "feature-x"), pullEnabled = false)
         val executor = SwitchExecutor(projectRoot, { log += it }, fakeGit)
         val result = executor.execute(subPreset, SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false))
         assertTrue("Switch with submodules should succeed", result)

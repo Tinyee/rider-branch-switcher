@@ -132,7 +132,7 @@ class PresetLoaderTest {
         assertEquals(1, parsed.presets.size)
         assertEquals("dev", parsed.presets[0].name)
         assertEquals("dev", parsed.presets[0].main)
-        assertTrue(parsed.presets[0].pull)
+        assertTrue(parsed.presets[0].pullEnabled)
     }
 
     @Test
@@ -150,8 +150,8 @@ class PresetLoaderTest {
     @Test
     fun `save and load round-trip preserves data`() {
         val original = PresetFile(listOf(
-            Preset("a", "main", mapOf("SubA" to "dev"), pull = false),
-            Preset("b", "dev", mapOf("SubA" to "main", "SubB" to "feature"), pull = true),
+            Preset("a", "main", mapOf("SubA" to "dev"), pullEnabled = false),
+            Preset("b", "dev", mapOf("SubA" to "main", "SubB" to "feature"), pullEnabled = true),
         ))
         val file = PresetLoader.ensureFile(tmpDir)
         PresetLoader.save(file, original)
@@ -162,10 +162,10 @@ class PresetLoaderTest {
         assertEquals(2, restored.presets.size)
         assertEquals("a", restored.presets[0].name)
         assertEquals(mapOf("SubA" to "dev"), restored.presets[0].submodules)
-        assertFalse(restored.presets[0].pull)
+        assertFalse(restored.presets[0].pullEnabled)
         assertEquals("b", restored.presets[1].name)
         assertEquals(2, restored.presets[1].submodules.size)
-        assertTrue(restored.presets[1].pull)
+        assertTrue(restored.presets[1].pullEnabled)
     }
 
     @Test

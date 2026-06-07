@@ -126,11 +126,16 @@ class PresetListManager(
             Bundle.msg("dialog.preset.name.rule"),
             Bundle.msg("dialog.add.preset"), null, "", newNameValidator())?.trim()
         if (name.isNullOrEmpty()) return
+        // Guard: ensure presets are loaded before using one as template
+        if (service.presets.isEmpty() && service.loadPresets().isFailure) {
+            log("[warn] cannot add preset — failed to load existing presets")
+            return
+        }
         val template = service.presets.firstOrNull()
         val newPreset = Preset(
             name = name,
             main = name,
-            pull = true,
+            pullEnabled = true,
             submodules = template?.submodules ?: emptyMap(),
         )
         val root = gitRoot() ?: return
@@ -189,7 +194,7 @@ class PresetListManager(
                 val newPreset = Preset(
                     name = name,
                     main = mb,
-                    pull = true,
+                    pullEnabled = true,
                     submodules = result.submodules,
                 )
                 addEditorRow(root, newPreset, presetsInner)

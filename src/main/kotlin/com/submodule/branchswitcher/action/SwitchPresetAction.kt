@@ -54,13 +54,28 @@ class SwitchPresetAction : AnAction() {
                     val probeResult = preflight.probe(root, preset, indicator)
                     val missingDirs = probeResult.filter { !it.exists }
                     val missingBranches = probeResult.filter { it.branchMissing }
-                    if (missingDirs.isNotEmpty()) {
-                        val names = missingDirs.joinToString(", ") { it.label }
-                        logLines += "[warn] 目录缺失: $names"
-                    }
-                    if (missingBranches.isNotEmpty()) {
-                        val names = missingBranches.joinToString(", ") { it.label }
-                        logLines += "[warn] 分支不存在 (本地/远端): $names"
+                    // Show preflight warnings and confirm before proceeding
+                    if (missingDirs.isNotEmpty() || missingBranches.isNotEmpty()) {
+                        val warnings = mutableListOf<String>()
+                        if (missingDirs.isNotEmpty()) {
+                            warnings += "Directory missing: ${missingDirs.joinToString(", ") { it.label }}"
+                        }
+                        if (missingBranches.isNotEmpty()) {
+                            warnings += "Branch not found: ${missingBranches.joinToString(", ") { it.label }}"
+                        }
+                        val confirmed = booleanArrayOf(false)
+                        com.intellij.openapi.application.ApplicationManager.getApplication().invokeAndWait {
+                            confirmed[0] = com.intellij.openapi.ui.Messages.showYesNoDialog(
+                                project,
+                                warnings.joinToString("\n\n") + "\n\nContinue anyway?",
+                                Bundle.msg("dialog.switch.title"),
+                                com.intellij.openapi.ui.Messages.getWarningIcon(),
+                            ) == com.intellij.openapi.ui.Messages.YES
+                        }
+                        if (!confirmed[0]) {
+                            logLines += "[warn] switch cancelled by user due to preflight warnings"
+                            return@runBackground
+                        }
                     }
                     val executor = SwitchExecutor(root, { logLines += it }, service.gitClient, indicator)
                     ok = executor.execute(preset, SwitchOptions(
