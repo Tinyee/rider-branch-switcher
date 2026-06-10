@@ -113,6 +113,15 @@ class BranchSwitcherConfigurable(private val project: Project) : Configurable {
         confirmInitCheck?.isSelected = s.confirmBeforeInit
     }
 
+    override fun disposeUIResources() {
+        panel = null
+        dirtyCombo = null
+        timeoutCombo = null
+        fetchCheck = null
+        pullCheck = null
+        confirmInitCheck = null
+    }
+
     private fun dirtyComboIndex(): Int = dirtyCombo?.selectedIndex ?: 0
     private fun timeoutComboIndex(): Int = timeoutCombo?.selectedIndex ?: 1
 

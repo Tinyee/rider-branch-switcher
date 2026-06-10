@@ -47,8 +47,10 @@ object TaskBridge {
         block: (ProgressIndicator) -> Unit,
     ) {
         suspendCancellableCoroutine<Unit> { cont ->
-            ProgressManager.getInstance().run(object : Task.Backgroundable(project, title, canBeCancelled) {
+            val indicatorRef = java.util.concurrent.atomic.AtomicReference<ProgressIndicator>(null)
+            val task = object : Task.Backgroundable(project, title, canBeCancelled) {
                 override fun run(indicator: ProgressIndicator) {
+                    indicatorRef.set(indicator)
                     try {
                         block(indicator)
                     } catch (e: Exception) {
@@ -64,7 +66,11 @@ object TaskBridge {
                 override fun onCancel() {
                     cont.cancel()
                 }
-            })
+            }
+            cont.invokeOnCancellation {
+                indicatorRef.get()?.cancel()
+            }
+            ProgressManager.getInstance().run(task)
         }
     }
 }

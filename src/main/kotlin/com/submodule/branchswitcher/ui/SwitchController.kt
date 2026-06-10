@@ -100,24 +100,28 @@ class SwitchController(
                 log("[error] switch: ${e.javaClass.simpleName}: ${e.message}")
                 ok = false
             }
-            // Resumed on EDT via TaskBridge.onFinished
-            setSwitchInProgress(false)
-            service.addHistory(preset.name)
-            if (ok) {
-                Notifier.info(project, Bundle.msg("switch.complete"), Bundle.msg("notify.switch.complete.msg", preset.name))
-            } else {
-                val executor = rollbackExecutor
-                if (executor?.getCheckpoint() != null) {
-                    Notifier.rollbackAction(project, Bundle.msg("switch.failed"),
-                        Bundle.msg("notify.switch.partial.msg", preset.name) + "。可回滚到切换前的 HEAD。") {
-                        rollbackSwitch(executor)
-                    }
+            // Resumed on EDT via TaskBridge.onFinished, but continuation dispatcher is Default
+            // Wrap UI ops in invokeLater to avoid EDT violations
+            com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater({
+                if (project.isDisposed) return@invokeLater
+                setSwitchInProgress(false)
+                if (ok) {
+                    service.addHistory(preset.name)
+                    Notifier.info(project, Bundle.msg("switch.complete"), Bundle.msg("notify.switch.complete.msg", preset.name))
                 } else {
-                    Notifier.error(project, Bundle.msg("switch.failed"),
-                        Bundle.msg("notify.switch.partial.msg", preset.name))
+                    val executor = rollbackExecutor
+                    if (executor?.getCheckpoint() != null) {
+                        Notifier.rollbackAction(project, Bundle.msg("switch.failed"),
+                            Bundle.msg("notify.switch.partial.msg", preset.name) + "。可回滚到切换前的 HEAD。") {
+                            rollbackSwitch(executor)
+                        }
+                    } else {
+                        Notifier.error(project, Bundle.msg("switch.failed"),
+                            Bundle.msg("notify.switch.partial.msg", preset.name))
+                    }
                 }
-            }
-            refreshVcs(root, preset)
+                refreshVcs(root, preset)
+            }, com.intellij.openapi.application.ModalityState.any(), project.disposed)
         }
     }
 
@@ -133,14 +137,17 @@ class SwitchController(
                 log("[error] rollback: ${e.javaClass.simpleName}: ${e.message}")
                 rollbackOk = false
             }
-            // Resumed on EDT
-            val root = gitRoot() ?: return@launch
-            val submodulePaths = executor.getCheckpoint()?.keys?.filter { it != "." } ?: emptyList()
-            refreshVcs(root, Preset("_rollback", "", submodulePaths.associateWith { "" }))
-            onStateChanged()
-            if (!rollbackOk) {
-                Notifier.warn(project, Bundle.msg("rollback.partial"), Bundle.msg("rollback.partial.msg"))
-            }
+            // Wrap UI ops in invokeLater to avoid EDT violations
+            com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater({
+                if (project.isDisposed) return@invokeLater
+                val root = gitRoot() ?: return@invokeLater
+                val submodulePaths = executor.getCheckpoint()?.keys?.filter { it != "." } ?: emptyList()
+                refreshVcs(root, Preset("_rollback", "", submodulePaths.associateWith { "" }))
+                onStateChanged()
+                if (!rollbackOk) {
+                    Notifier.warn(project, Bundle.msg("rollback.partial"), Bundle.msg("rollback.partial.msg"))
+                }
+            }, com.intellij.openapi.application.ModalityState.any(), project.disposed)
         }
     }
 
@@ -168,9 +175,11 @@ class SwitchController(
                     }
                 }
             } catch (_: Exception) { /* logged in task */ }
-            // Resumed on EDT
-            onStateChanged()
-            Notifier.info(project, Bundle.msg("notify.derive.complete"), Bundle.msg("notify.derive.created", branchName, preset.targets().size))
+            com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater({
+                if (project.isDisposed) return@invokeLater
+                onStateChanged()
+                Notifier.info(project, Bundle.msg("notify.derive.complete"), Bundle.msg("notify.derive.created", branchName, preset.targets().size))
+            }, com.intellij.openapi.application.ModalityState.any(), project.disposed)
         }
     }
 

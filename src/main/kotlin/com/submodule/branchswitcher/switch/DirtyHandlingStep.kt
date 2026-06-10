@@ -28,6 +28,7 @@ class DirtyHandlingStep : SwitchStep {
                     DirtyAction.Skip -> {
                         context.log("[skip] working tree dirty — ${target.path}")
                         failures[target.path] = "working tree dirty"
+                        context.skippedPaths.add(target.path)
                         continue
                     }
                     DirtyAction.Stash -> {
@@ -40,6 +41,7 @@ class DirtyHandlingStep : SwitchStep {
                             if (r.stderr.isNotBlank()) context.log(r.stderr)
                             if (!r.ok) {
                                 failures[target.path] = "stash failed"
+                                context.skippedPaths.add(target.path)
                                 continue
                             }
                             context.stashedPaths[target.path] = "before -> ${target.branch}"

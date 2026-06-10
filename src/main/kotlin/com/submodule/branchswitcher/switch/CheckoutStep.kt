@@ -26,6 +26,13 @@ class CheckoutStep : SwitchStep {
             val isMain = target.path == "."
             val dir = resolveGitDir(context.projectRoot, target.path)
             val label = if (isMain) context.projectRoot.fileName.toString() else target.path
+
+            // Skip paths marked by DirtyHandlingStep (skip / stash-fail)
+            if (target.path in context.skippedPaths) {
+                context.log("[skip] $label — skipped by dirty handling")
+                continue
+            }
+
             context.log("")
             context.log("--- $label  →  ${target.branch} ---")
 
@@ -88,6 +95,16 @@ class CheckoutStep : SwitchStep {
             } else {
                 context.log("[fail] branch '${target.branch}' not found locally or on origin")
                 failures[target.path] = "branch not found"
+                // Still try to pop stash if this path was stashed — don't leave orphaned stashes
+                context.stashedPaths.remove(target.path)?.let { msg ->
+                    val popResult = context.git.stashPop(dir)
+                    if (popResult.ok) {
+                        context.log("stash pop ok (recovered after branch-not-found: $msg)")
+                    } else {
+                        context.log("[fail] stash pop also failed: ${popResult.stderr.lines().firstOrNull() ?: ""}")
+                        failures[target.path] = "branch not found + stash pop failed"
+                    }
+                }
                 continue
             }
             if (!checkoutResult.ok) {
@@ -97,16 +114,7 @@ class CheckoutStep : SwitchStep {
             }
             context.log("checkout ok")
             if (isMain) mainCheckoutOk = true
-            // Auto-pop stash if this path was stashed before switching
-            context.stashedPaths.remove(target.path)?.let { msg ->
-                val popResult = context.git.stashPop(dir)
-                if (popResult.ok) {
-                    context.log("stash pop ok ($msg)")
-                } else {
-                    context.log("[fail] stash pop failed: ${popResult.stderr.lines().firstOrNull() ?: ""}")
-                    failures[target.path] = "stash pop failed"
-                }
-            }
+            context.successfulCheckouts.add(target.path)
         }
         return if (failures.isEmpty()) StepResult.Success else StepResult.Partial(failures)
     }

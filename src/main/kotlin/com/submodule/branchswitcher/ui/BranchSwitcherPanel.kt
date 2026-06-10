@@ -25,6 +25,7 @@ import javax.swing.JCheckBox
 import javax.swing.JComboBox
 import javax.swing.JLabel
 import javax.swing.JPanel
+import javax.swing.SwingConstants
 import javax.swing.SwingUtilities
 
 /**
@@ -127,49 +128,49 @@ class BranchSwitcherPanel(
             layout = BoxLayout(this, BoxLayout.Y_AXIS)
             alignmentX = LEFT_ALIGNMENT
 
-            // Row 1: action buttons (icon + text)
-            val row1 = JPanel(FlowLayout(FlowLayout.LEFT, 4, 0))
-            row1.add(JButton(Bundle.msg("action.reload"), AllIcons.Actions.Refresh).noFocusRing()
+            // Row 1: actions (reload, open config)
+            val actionsRow = JPanel(FlowLayout(FlowLayout.LEFT, 4, 0))
+            actionsRow.add(JButton(Bundle.msg("action.reload"), AllIcons.Actions.Refresh).noFocusRing()
                 .also { it.addActionListener { presetManager.reload(presetsInner); detectCurrentState() } })
-            row1.add(JButton(Bundle.msg("action.open.config"), AllIcons.Actions.EditSource).noFocusRing()
+            actionsRow.add(JButton(Bundle.msg("action.open.config"), AllIcons.Actions.EditSource).noFocusRing()
                 .also { it.addActionListener { presetManager.openConfig() } })
-            add(row1)
+            add(actionsRow)
 
-            // Row 2: import/export/undo
-            val row1b = JPanel(FlowLayout(FlowLayout.LEFT, 4, 0))
-            row1b.add(JButton(Bundle.msg("action.export"), AllIcons.Actions.MenuSaveall).noFocusRing()
+            // Row 2: export/import/undo
+            val exportRow = JPanel(FlowLayout(FlowLayout.LEFT, 4, 0))
+            exportRow.add(JButton(Bundle.msg("action.export"), AllIcons.Actions.MenuSaveall).noFocusRing()
                 .also { it.addActionListener { presetManager.exportPresets() } })
-            row1b.add(JButton(Bundle.msg("action.import"), AllIcons.Actions.MenuSaveall).noFocusRing()
+            exportRow.add(JButton(Bundle.msg("action.import"), AllIcons.Actions.MenuSaveall).noFocusRing()
                 .also { it.addActionListener { presetManager.importPresets(presetsContainer) } })
-            row1b.add(JButton(Bundle.msg("action.undo"), AllIcons.Actions.Rollback).noFocusRing().also {
+            exportRow.add(JButton(Bundle.msg("action.undo"), AllIcons.Actions.Rollback).noFocusRing().also {
                 it.toolTipText = Bundle.msg("action.undo.tip")
                 it.addActionListener { switchController.undoLastSwitch() }
             })
-            add(row1b)
+            add(exportRow)
 
-            // Row 2: new preset buttons
-            val row2 = JPanel(FlowLayout(FlowLayout.LEFT, 4, 0))
-            row2.add(JButton(Bundle.msg("action.add.preset"), AllIcons.General.Add).noFocusRing()
+            // Row 3: new preset buttons
+            val addRow = JPanel(FlowLayout(FlowLayout.LEFT, 4, 0))
+            addRow.add(JButton(Bundle.msg("action.add.preset"), AllIcons.General.Add).noFocusRing()
                 .also { it.addActionListener { presetManager.addPreset(presetsInner) } })
-            row2.add(JButton(Bundle.msg("action.from.current"), AllIcons.Vcs.Branch).noFocusRing().also {
+            addRow.add(JButton(Bundle.msg("action.from.current"), AllIcons.Vcs.Branch).noFocusRing().also {
                 it.toolTipText = Bundle.msg("action.from.current.tip")
                 it.addActionListener { presetManager.addPresetFromCurrent(presetsInner) }
             })
-            add(row2)
+            add(addRow)
 
-            // Row 3: options
-            val row3 = JPanel(FlowLayout(FlowLayout.LEFT, 8, 2))
-            row3.add(JLabel(Bundle.msg("label.dirty.working.tree")))
-            row3.add(dirtyCombo)
-            row3.add(JLabel(Bundle.msg("option.timeout")))
-            row3.add(timeoutCombo)
-            row3.add(fetchCheck)
-            row3.add(pullCheck)
-            row3.add(JCheckBox(Bundle.msg("option.confirm.init")).apply {
+            // Row 4: options
+            val optionsRow = JPanel(FlowLayout(FlowLayout.LEFT, 8, 2))
+            optionsRow.add(JLabel(Bundle.msg("label.dirty.working.tree")))
+            optionsRow.add(dirtyCombo)
+            optionsRow.add(JLabel(Bundle.msg("option.timeout")))
+            optionsRow.add(timeoutCombo)
+            optionsRow.add(fetchCheck)
+            optionsRow.add(pullCheck)
+            optionsRow.add(JCheckBox(Bundle.msg("option.confirm.init")).apply {
                 isSelected = service.confirmBeforeInit
                 addItemListener { service.confirmBeforeInit = isSelected }
             })
-            add(row3)
+            add(optionsRow)
         }
     }
 
@@ -191,7 +192,7 @@ class BranchSwitcherPanel(
             preferredSize = Dimension(0, JBUI.scale(80))
             isVisible = false
         }
-        logToggle = JLabel("${AllIcons.General.ArrowRight} Log").apply {
+        logToggle = JLabel(" Log", AllIcons.General.ArrowRight, SwingConstants.LEFT).apply {
             font = font.deriveFont(Font.PLAIN, 11f)
             foreground = JBColor.GRAY
             cursor = java.awt.Cursor.getPredefinedCursor(java.awt.Cursor.HAND_CURSOR)
@@ -213,7 +214,6 @@ class BranchSwitcherPanel(
         logVisible = !logVisible
         logScroll.isVisible = logVisible
         logToggle.icon = if (logVisible) AllIcons.General.ArrowDown else AllIcons.General.ArrowRight
-        logToggle.text = if (logVisible) " Log" else " Log"
         revalidate()
         repaint()
     }

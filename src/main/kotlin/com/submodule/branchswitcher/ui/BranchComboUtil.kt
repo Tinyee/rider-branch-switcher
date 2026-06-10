@@ -93,10 +93,10 @@ fun loadComboBranches(
     onLoadStart: () -> Unit,
     onLoadEnd: () -> Unit,
 ) {
+    onLoadStart()
     combo.model = DefaultComboBoxModel(arrayOf("loading..."))
     combo.selectedItem = "loading..."
     combo.isEnabled = false
-    onLoadStart()
     scope.launch {
         val branches = try {
             if (dir.exists()) gitClient.listAllBranches(dir) else emptyList()
@@ -105,6 +105,7 @@ fun loadComboBranches(
             emptyList()
         }
         ApplicationManager.getApplication().invokeLater {
+            if (!combo.isDisplayable) return@invokeLater
             val list = if (current.isNotEmpty() && !branches.contains(current))
                 listOf(current) + branches else branches
             combo.model = DefaultComboBoxModel(list.toTypedArray())

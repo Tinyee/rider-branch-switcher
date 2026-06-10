@@ -24,8 +24,12 @@ data class SwitchContext(
     val indicator: ProgressIndicator? = null,
     /** Mutable flag checked between/within steps for cancellation. */
     val cancelled: () -> Boolean = { false },
-    /** Tracks stashed repos: path -> stash message. CheckoutStep auto-pops on return. */
+    /** Tracks stashed repos: path -> stash message. Pop is deferred to PullStep. */
     val stashedPaths: MutableMap<String, String> = mutableMapOf(),
+    /** Paths that DirtyHandlingStep marked as skipped (skip/stash-fail). Subsequent steps skip these. */
+    val skippedPaths: MutableSet<String> = mutableSetOf(),
+    /** Paths where checkout succeeded. PullStep / SubmoduleSyncStep only operate on these. */
+    val successfulCheckouts: MutableSet<String> = mutableSetOf(),
     /** If true, show confirmation dialog before auto-init of missing submodules. */
     val confirmBeforeInit: Boolean = false,
 )

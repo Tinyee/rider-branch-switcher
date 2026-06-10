@@ -1,5 +1,6 @@
 ﻿package com.submodule.branchswitcher.action
 
+import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.components.service
@@ -15,10 +16,17 @@ import com.submodule.branchswitcher.service.BranchSwitcherService
 import com.submodule.branchswitcher.switch.SwitchExecutor
 import com.submodule.branchswitcher.switch.SwitchPreflight
 import com.submodule.branchswitcher.switch.refreshVcsRepos
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
 class SwitchPresetAction : AnAction() {
+    override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
+
+    override fun update(e: AnActionEvent) {
+        e.presentation.isEnabledAndVisible = e.project != null
+    }
+
     override fun actionPerformed(e: AnActionEvent) {
         val project = e.project ?: return
         val service = project.service<BranchSwitcherService>()
@@ -47,6 +55,7 @@ class SwitchPresetAction : AnAction() {
         service.scope.launch(Dispatchers.Default) {
             val logLines = mutableListOf<String>()
             var ok = false
+            var cancelled = false
             try {
                 // Run preflight + switch as a background task
                 TaskBridge.runBackground(project, "Switching to ${preset.name}", true) { indicator ->
@@ -75,6 +84,7 @@ class SwitchPresetAction : AnAction() {
                         }
                         if (!confirmed[0]) {
                             logLines += "[warn] switch cancelled by user due to preflight warnings"
+                            cancelled = true
                             return@runBackground
                         }
                     }
@@ -86,23 +96,32 @@ class SwitchPresetAction : AnAction() {
                         confirmBeforeInit = service.confirmBeforeInit,
                     ))
                 }
+            } catch (e: CancellationException) {
+                logLines += "[warn] switch cancelled by user"
+                cancelled = true
             } catch (e: Exception) {
                 logLines += "[error] ${e.javaClass.simpleName}: ${e.message}"
                 ok = false
             }
-            // Resumed on EDT via TaskBridge.onFinished
-            if (ok) {
-                Notifier.info(project, Bundle.msg("switch.complete"), Bundle.msg("notify.switch.complete.msg", preset.name))
-            } else {
-                val detail = logLines.filter { it.contains("[fail]") || it.contains("[fatal]") || it.contains("[warn]") || it.contains("[error]") }
-                    .take(3).joinToString("\n")
-                Notifier.error(project, Bundle.msg("switch.failed"),
-                    if (detail.isNotEmpty()) Bundle.msg("notify.switch.partial.msg", preset.name) + ":\n" + detail
-                    else Bundle.msg("notify.switch.partial.msg", preset.name))
-            }
-            project.messageBus.syncPublisher(BranchSwitchListener.TOPIC).onBranchSwitched()
-            service.scope.launch(Dispatchers.IO) {
-                refreshVcsRepos(project, root, preset.submodules.keys)
+            // Resumed on EDT via TaskBridge.onFinished — wrap UI ops
+            com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater {
+                if (project.isDisposed) return@invokeLater
+                if (cancelled) {
+                    return@invokeLater
+                }
+                if (ok) {
+                    Notifier.info(project, Bundle.msg("switch.complete"), Bundle.msg("notify.switch.complete.msg", preset.name))
+                } else {
+                    val detail = logLines.filter { it.contains("[fail]") || it.contains("[fatal]") || it.contains("[warn]") || it.contains("[error]") }
+                        .take(3).joinToString("\n")
+                    Notifier.error(project, Bundle.msg("switch.failed"),
+                        if (detail.isNotEmpty()) Bundle.msg("notify.switch.partial.msg", preset.name) + ":\n" + detail
+                        else Bundle.msg("notify.switch.partial.msg", preset.name))
+                }
+                project.messageBus.syncPublisher(BranchSwitchListener.TOPIC).onBranchSwitched()
+                service.scope.launch(Dispatchers.IO) {
+                    refreshVcsRepos(project, root, preset.submodules.keys)
+                }
             }
         }
     }

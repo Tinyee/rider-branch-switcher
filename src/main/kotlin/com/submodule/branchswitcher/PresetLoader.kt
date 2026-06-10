@@ -3,6 +3,7 @@ package com.submodule.branchswitcher
 import com.google.gson.Gson
 import com.google.gson.JsonSyntaxException
 import com.submodule.branchswitcher.model.PresetFile
+import com.submodule.branchswitcher.model.PresetFileDto
 import java.nio.file.Files
 import java.nio.file.Path
 
@@ -53,13 +54,16 @@ object PresetLoader {
     }
 
     fun load(ideBase: Path): Result<Pair<Path, PresetFile>> {
-        val file = ensureFile(ideBase)
-        return try {
+        return runCatching {
+            val file = ensureFile(ideBase)
             val text = Files.readString(file)
-            val parsed = Gson().fromJson(text, PresetFile::class.java) ?: PresetFile()
-            Result.success(file to parsed)
-        } catch (e: JsonSyntaxException) {
-            Result.failure(IllegalStateException("$file parse error: ${e.message}", e))
+            val dto = Gson().fromJson(text, PresetFileDto::class.java) ?: PresetFileDto()
+            file to dto.toPresetFile()
+        }.recoverCatching { e ->
+            when (e) {
+                is JsonSyntaxException -> throw IllegalStateException("preset file parse error: ${e.message}", e)
+                else -> throw e
+            }
         }
     }
 
