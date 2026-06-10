@@ -83,6 +83,7 @@ class CheckoutStep : SwitchStep {
             if (cur != null && cur == target.branch) {
                 context.log("already on '${target.branch}', skipping checkout")
                 if (isMain) mainCheckoutOk = true
+                context.successfulCheckouts.add(target.path)
                 continue
             }
 

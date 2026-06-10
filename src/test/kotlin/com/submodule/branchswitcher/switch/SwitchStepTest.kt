@@ -43,8 +43,17 @@ class SwitchStepTest {
     @Before
     fun setup() {
         log.clear()
-        projectRoot.toFile().mkdirs()
-        File(projectRoot.toFile(), ".git").mkdirs()
+        initGitRepo(projectRoot.toFile())
+    }
+
+    private fun initGitRepo(dir: File) {
+        dir.mkdirs()
+        val proc = ProcessBuilder("git", "init")
+            .directory(dir)
+            .redirectErrorStream(true)
+            .start()
+        val out = proc.inputStream.bufferedReader().readText()
+        assertEquals("git init should succeed in ${dir.absolutePath}: $out", 0, proc.waitFor())
     }
 
     // ---- CheckoutStep ----
@@ -66,6 +75,7 @@ class SwitchStepTest {
         val step = CheckoutStep()
         assertTrue(step.execute(c) is StepResult.Success)
         assertTrue(log.any { it.contains("already on") })
+        assertTrue(c.successfulCheckouts.contains("."))
     }
 
     @Test
@@ -170,10 +180,20 @@ class SwitchStepTest {
 
     @Test
     fun `pull step executes when both enabled`() {
+        val calls = mutableListOf<String>()
+        val pullGit = object : GitClient by fakeGit {
+            override fun currentBranch(workDir: File): String? = "dev"
+            override fun pullFf(workDir: File, branch: String): GitResult {
+                calls += branch
+                return GitResult("pull", 0, "", "")
+            }
+        }
         val pullPreset = Preset("test", "dev", emptyMap(), pullEnabled = true)
-        val c = context(SwitchOptions(DirtyAction.Stash, pull = true)).copy(preset = pullPreset)
+        val c = context(SwitchOptions(DirtyAction.Stash, pull = true)).copy(git = pullGit, preset = pullPreset)
+        c.successfulCheckouts.add(".")
         val step = PullStep()
         assertTrue(step.execute(c) is StepResult.Success)
+        assertEquals(listOf("dev"), calls)
     }
 
     // ---- SubmoduleSyncStep ----
@@ -181,6 +201,7 @@ class SwitchStepTest {
     @Test
     fun `submodule sync step always runs`() {
         val c = context()
+        c.successfulCheckouts.add(".")
         val step = SubmoduleSyncStep()
         assertTrue(step.execute(c) is StepResult.Success)
     }
@@ -191,6 +212,7 @@ class SwitchStepTest {
             override fun submoduleSync(gitRoot: File): GitResult = GitResult("sync", 1, "", "error")
         }
         val c = context().copy(git = failGit)
+        c.successfulCheckouts.add(".")
         val step = SubmoduleSyncStep()
         // SubmoduleSyncStep now returns Partial on failure, consistent with FetchStep/PullStep
         assertTrue(step.execute(c) is StepResult.Partial)

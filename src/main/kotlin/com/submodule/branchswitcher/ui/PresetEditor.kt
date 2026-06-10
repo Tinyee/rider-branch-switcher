@@ -369,8 +369,13 @@ class PresetEditor(
             )
             return
         }
-        updatePresetName(newName)
-        onSave(original)
+        val renamed = original.copy(name = newName)
+        try {
+            onSave(renamed)
+            updatePresetName(newName)
+        } catch (e: Exception) {
+            log("[error] rename failed: ${e.message}")
+        }
     }
 
     private fun deriveBranch() {

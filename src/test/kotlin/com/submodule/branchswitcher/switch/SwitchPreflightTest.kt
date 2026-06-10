@@ -36,12 +36,19 @@ class SwitchPreflightTest {
 
     @Before
     fun setup() {
-        projectRoot.toFile().mkdirs()
-        File(projectRoot.toFile(), ".git").mkdirs()
-        File(projectRoot.toFile(), "SubA").mkdirs()
-        File(projectRoot.toFile(), "SubA/.git").mkdirs()
-        File(projectRoot.toFile(), "SubB").mkdirs()
-        File(projectRoot.toFile(), "SubB/.git").mkdirs()
+        initGitRepo(projectRoot.toFile())
+        initGitRepo(projectRoot.resolve("SubA").toFile())
+        initGitRepo(projectRoot.resolve("SubB").toFile())
+    }
+
+    private fun initGitRepo(dir: File) {
+        dir.mkdirs()
+        val proc = ProcessBuilder("git", "init")
+            .directory(dir)
+            .redirectErrorStream(true)
+            .start()
+        val out = proc.inputStream.bufferedReader().readText()
+        assertEquals("git init should succeed in ${dir.absolutePath}: $out", 0, proc.waitFor())
     }
 
     @Test

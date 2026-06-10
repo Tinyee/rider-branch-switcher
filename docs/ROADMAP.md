@@ -23,7 +23,7 @@
 - **动态远端名**：自动检测 remote 名，不再硬编码 origin
 - IntelliJ 原生图标（AllIcons），主题感知色
 - i18n 中英双语（DynamicBundle + @PropertyKey 编译时校验）
-- 128 测试（JUnit 4 + Kotest 属性测试）
+- 131 测试（JUnit 4 + Kotest 属性测试）
 - GitHub Actions CI（ubuntu/macOS/Windows）+ Qodana 静态分析
 
 下面按「切换体验 / 状态可视化 / UI / 工作流 / 质量」五块梳理后续要做的功能点，优先级 **P0(致命) / P1(高价值) / P2(锦上添花)**；状态列标记 v0.x 已落地或下阶段候选。
@@ -349,7 +349,7 @@ com.submodule.branchswitcher/
 
 ### 当前状态
 
-- ✅ 122 测试，12 个测试类，`./gradlew test` 即可跑
+- ✅ 131 测试，13 个测试类，`./gradlew test` 即可跑
 - ✅ `GitClient` 接口 + Fake 实现 → 架构已隔离 IntelliJ 运行时
 - ✅ 真实 git 临时仓库集成测试（`SwitchIntegrationTest`）
 - ⚠ 无 CI/CD，依赖手动跑测试
@@ -421,7 +421,7 @@ jobs:
 
 ### 第二波 — CI + Kotest (ba9405e)
 8. ✅ **CI** — test.yml 加 test results + plugin artifact 上传
-9. ✅ **Kotest** — 6 个属性测试 (128 tests total)
+9. ✅ **Kotest** — 6 个属性测试 (131 tests total)
 
 ### 第三波 — 8 项 Bug/质量修复 (5748ce9)
 10. ✅ **Bug5** — catch 块记录异常信息

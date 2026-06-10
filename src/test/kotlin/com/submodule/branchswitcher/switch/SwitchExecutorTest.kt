@@ -42,8 +42,17 @@ class SwitchExecutorTest {
     @Before
     fun setup() {
         log.clear()
-        projectRoot.toFile().mkdirs()
-        File(projectRoot.toFile(), ".git").mkdirs()
+        initGitRepo(projectRoot.toFile())
+    }
+
+    private fun initGitRepo(dir: File) {
+        dir.mkdirs()
+        val proc = ProcessBuilder("git", "init")
+            .directory(dir)
+            .redirectErrorStream(true)
+            .start()
+        val out = proc.inputStream.bufferedReader().readText()
+        assertEquals("git init should succeed in ${dir.absolutePath}: $out", 0, proc.waitFor())
     }
 
     // ---- Basic success / failure ----
@@ -203,10 +212,8 @@ class SwitchExecutorTest {
     @Test
     fun `switch with submodules processes all targets`() {
         // Create submodule dirs
-        File(projectRoot.toFile(), "SubA").mkdirs()
-        File(projectRoot.toFile(), "SubA/.git").mkdirs()
-        File(projectRoot.toFile(), "SubB").mkdirs()
-        File(projectRoot.toFile(), "SubB/.git").mkdirs()
+        initGitRepo(File(projectRoot.toFile(), "SubA"))
+        initGitRepo(File(projectRoot.toFile(), "SubB"))
 
         val subPreset = Preset("sub-test", "dev", mapOf("SubA" to "dev", "SubB" to "feature-x"), pullEnabled = false)
         val executor = SwitchExecutor(projectRoot, { log += it }, fakeGit)
