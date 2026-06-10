@@ -83,14 +83,18 @@ class PresetListManager(
             onSwitch = { onSwitch(it) },
             onSave = { saveAll() },
             onDelete = { deleteEditor(editor, presetsInner) },
-            onDerive = { branchName -> onDerive(root, preset, branchName) },
+            onDerive = { branchName -> onDerive(root, editor.currentPreset(), branchName) },
             nameValidator = { newName -> editors.none { it !== editor && it.currentPreset().name == newName } },
             gitClient = service.gitClient,
             scope = service.scope,
         )
         editors.add(editor)
-        presetsInner.add(editor)
-        presetsInner.add(Box.createVerticalStrut(4))
+        val wrapper = JPanel(BorderLayout()).apply {
+            isOpaque = false
+            add(editor, BorderLayout.CENTER)
+            add(Box.createVerticalStrut(4), BorderLayout.SOUTH)
+        }
+        presetsInner.add(wrapper)
     }
 
     fun deleteEditor(editor: PresetEditor, presetsInner: JPanel) {
@@ -103,7 +107,13 @@ class PresetListManager(
         )
         if (confirm != Messages.YES) return
         editors.remove(editor)
-        presetsInner.remove(editor)
+        // Remove wrapper panel (editor + strut) to avoid orphaned struts
+        val wrapper = editor.parent
+        if (wrapper != null && wrapper !== presetsInner) {
+            presetsInner.remove(wrapper)
+        } else {
+            presetsInner.remove(editor)
+        }
         saveAll()
         if (editors.isEmpty()) {
             val panel = createEmptyState(presetsInner)
@@ -180,7 +190,8 @@ class PresetListManager(
                 ProbeResult(mb, subs, skipped)
             }
             // Resumed after modal closes
-            com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater {
+            com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater({
+                if (project.isDisposed) return@invokeLater
                 val mb = result.mainBranch
                 if (mb.isNullOrEmpty()) {
                     Messages.showWarningDialog(project,
@@ -206,7 +217,7 @@ class PresetListManager(
                     log("[skipped] ${result.skipped.joinToString(", ")}")
                 }
                 onStateChanged?.invoke()
-            }
+            })
         }
     }
 
@@ -249,20 +260,38 @@ class PresetListManager(
             }
             val trimmed = text.trim()
             val gson = com.google.gson.Gson()
-            val imported = if (trimmed.startsWith("[")) {
-                val presets = gson.fromJson(trimmed, Array<Preset>::class.java)
-                com.submodule.branchswitcher.model.PresetFile(presets.toList())
+            // Parse via DTO to avoid Gson Kotlin-defaults issue (#11)
+            val dto = if (trimmed.startsWith("[")) {
+                val presets = gson.fromJson(trimmed, Array<com.submodule.branchswitcher.model.PresetDto>::class.java)
+                com.submodule.branchswitcher.model.PresetFileDto(presets.toList())
             } else {
-                gson.fromJson(trimmed, com.submodule.branchswitcher.model.PresetFile::class.java)
+                gson.fromJson(trimmed, com.submodule.branchswitcher.model.PresetFileDto::class.java)
             }
-            if (imported == null || imported.presets.isEmpty()) {
+            if (dto == null || dto.presets.isEmpty()) {
                 Messages.showWarningDialog(project, Bundle.msg("dialog.import.invalid"), Bundle.msg("dialog.import"))
                 return
+            }
+            // Validate and convert, skipping invalid entries
+            val validPresets = mutableListOf<Preset>()
+            val skipped = mutableListOf<String>()
+            for (p in dto.presets) {
+                if (p.name.isNullOrBlank() || p.main.isNullOrBlank()) {
+                    skipped += p.name ?: "(unnamed)"
+                    continue
+                }
+                validPresets += p.toPreset()
+            }
+            if (validPresets.isEmpty()) {
+                Messages.showWarningDialog(project, Bundle.msg("dialog.import.invalid"), Bundle.msg("dialog.import"))
+                return
+            }
+            if (skipped.isNotEmpty()) {
+                log("[import] skipped ${skipped.size} invalid: ${skipped.joinToString(", ")}")
             }
             val root = gitRoot() ?: return
             val presetsInner = (presetsContainer.getComponent(0) as? JPanel) ?: return
             var importedCount = 0
-            imported.presets.forEach { preset ->
+            validPresets.forEach { preset ->
                 if (editors.any { it.currentPreset().name == preset.name }) {
                     log("[import] skip ${preset.name} — 名字冲突")
                     return@forEach

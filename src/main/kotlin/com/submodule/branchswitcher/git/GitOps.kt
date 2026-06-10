@@ -12,13 +12,14 @@ import java.nio.charset.StandardCharsets
 class GitOps(
     private val timeoutSeconds: Int = 60,
 ) : GitClient {
-    /** Executes `git [args]` in [workDir] with a configurable timeout. */
+    /** Executes `git [args]` in [workDir] with a configurable timeout (clamped to 1-3600s). */
     private fun run(workDir: File, vararg args: String): GitResult {
         val cmd = GeneralCommandLine("git", *args)
             .withWorkDirectory(workDir)
             .withCharset(StandardCharsets.UTF_8)
         val handler = CapturingProcessHandler(cmd)
-        val out = handler.runProcess(timeoutSeconds * 1000)
+        val safeTimeout = timeoutSeconds.coerceIn(1, 3600)
+        val out = handler.runProcess(safeTimeout * 1000)
         return GitResult(
             cmd = "git ${args.joinToString(" ")}",
             exitCode = out.exitCode,
@@ -57,12 +58,17 @@ class GitOps(
     /** Cache of remote name per workDir to avoid repeated `git remote` calls. */
     private val remoteCache = java.util.concurrent.ConcurrentHashMap<String, String>()
 
-    /** Detect the default remote name (first line of `git remote`), falling back to "origin". */
+    /** Detect the default remote name: prefer "origin", then the first remote, falling back to "origin". */
     private fun remoteName(workDir: File): String {
         val key = workDir.absolutePath
         return remoteCache[key] ?: run {
             val r = run(workDir, "remote")
-            val name = r.stdout.lines().firstOrNull()?.trim().orEmpty().ifEmpty { "origin" }
+            val remotes = r.stdout.lines().map { it.trim() }.filter { it.isNotEmpty() }
+            val name = when {
+                remotes.isEmpty() -> "origin"
+                remotes.any { it == "origin" } -> "origin"
+                else -> remotes.first()
+            }
             remoteCache[key] = name
             name
         }

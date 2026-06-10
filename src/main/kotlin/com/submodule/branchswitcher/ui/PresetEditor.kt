@@ -166,11 +166,15 @@ class PresetEditor(
         revertBtn.addActionListener { revert() }
         saveBtn.addActionListener {
             val cur = buildCurrent()
-            original = cur
-            onSave(cur)
-            subManager.removeDeletedRows()
-            body.revalidate()
-            body.repaint()
+            try {
+                onSave(cur)
+                original = cur
+                subManager.removeDeletedRows()
+                body.revalidate()
+                body.repaint()
+            } catch (e: Exception) {
+                log("[error] save failed: ${e.message}")
+            }
             updateDirty()
         }
         val leftActions = JPanel(FlowLayout(FlowLayout.LEFT, 4, 0)).apply { isOpaque = false }

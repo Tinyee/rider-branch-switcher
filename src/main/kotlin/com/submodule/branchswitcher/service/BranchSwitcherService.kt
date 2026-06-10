@@ -15,6 +15,7 @@ import kotlinx.coroutines.CoroutineScope
 import com.submodule.branchswitcher.model.Preset
 import com.submodule.branchswitcher.model.PresetFile
 import java.nio.file.Path
+import java.util.concurrent.atomic.AtomicLong
 
 /**
  * Central project-level service for the Branch Switcher plugin.
@@ -128,6 +129,7 @@ class BranchSwitcherService(
     /** Records a completed switch: preset name + timestamp. */
     data class SwitchHistoryEntry(val presetName: String = "", val timestamp: Long = 0)
 
+    @Synchronized
     fun addHistory(name: String) {
         val list = options.history
         list.add(0, SwitchHistoryEntry(name, System.currentTimeMillis()))
@@ -142,15 +144,15 @@ class BranchSwitcherService(
     // -- Stale-detection for async branch probes --
 
     /**
-     * Monotonically increasing generation counter.
+     * Monotonically increasing generation counter (atomic for thread safety).
      * Each [detectCurrentState] call increments it via [nextDetectGen].
      * Async probe callbacks check [getDetectGen] — if a newer probe started,
      * the old result is discarded to avoid updating the UI with stale data.
      */
-    private var detectGen: Long = 0
+    private val detectGen = AtomicLong(0)
 
-    fun nextDetectGen(): Long = ++detectGen
-    fun getDetectGen(): Long = detectGen
+    fun nextDetectGen(): Long = detectGen.incrementAndGet()
+    fun getDetectGen(): Long = detectGen.get()
     companion object {
         fun getInstance(project: Project): BranchSwitcherService =
             project.service()

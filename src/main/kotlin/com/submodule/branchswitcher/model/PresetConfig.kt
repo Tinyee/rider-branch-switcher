@@ -21,9 +21,36 @@ data class Preset(
     /** Returns all targets: main (".") first, then submodules. Main-first ordering is critical for submodule init. */
     fun targets(): List<RepoTarget> {
         val list = mutableListOf(RepoTarget(".", main))
-        submodules.forEach { (path, branch) -> list += RepoTarget(path, branch) }
+        (submodules ?: emptyMap()).forEach { (path, branch) -> list += RepoTarget(path, branch) }
         return list
     }
+}
+
+/**
+ * Gson-safe DTO for [Preset]. All fields are nullable so Gson doesn't silently
+ * set Kotlin defaults to JVM zero-values (null/false) via UnsafeAllocator.
+ * Always convert to [Preset] via [toPreset] before use.
+ */
+data class PresetDto(
+    val name: String? = null,
+    val main: String? = null,
+    val submodules: Map<String, String>? = null,
+    @com.google.gson.annotations.SerializedName("pull")
+    val pull: Boolean? = null,
+) {
+    fun toPreset(): Preset = Preset(
+        name = name ?: error("preset.name is required"),
+        main = main ?: error("preset.main is required"),
+        submodules = submodules ?: emptyMap(),
+        pullEnabled = pull ?: true,
+    )
+}
+
+/** Persistence container for [PresetDto] — parsed from JSON, then normalized to [PresetFile]. */
+data class PresetFileDto(
+    val presets: List<PresetDto> = emptyList(),
+) {
+    fun toPresetFile(): PresetFile = PresetFile(presets.map { it.toPreset() })
 }
 
 /** Persistence container — a list of presets serialized to JSON. */
