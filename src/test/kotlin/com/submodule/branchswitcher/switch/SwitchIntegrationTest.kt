@@ -176,7 +176,7 @@ class SwitchIntegrationTest {
     }
 
     @Test
-    fun `dirty skip reports failure but checkout still proceeds`() {
+    fun `dirty skip reports failure and leaves branch unchanged`() {
         val root = createRepo(tmpDir, "project")
         createBranch(root, "dev")
         File(root, "dirty.txt").writeText("changes\n")
@@ -187,7 +187,7 @@ class SwitchIntegrationTest {
         assertFalse("Dirty+Skip should report overall failure", ok)
         val hasSkip = logs.any { it.contains("skip") || it.contains("dirty") }
         assertTrue("Log should mention dirty skip, got: $logs", hasSkip)
-        // Note: branch may still change because Partial doesn't stop the pipeline
+        assertEquals("main", git.currentBranch(root))
     }
 
     @Test

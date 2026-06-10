@@ -172,4 +172,18 @@ class GitOpsTest {
         assertFalse(r.ok)
         assertEquals("error", r.stderr)
     }
+
+    @Test
+    fun `remote selection prefers origin then first configured remote`() {
+        assertEquals("origin", selectRemoteName(emptyList()))
+        assertEquals("origin", selectRemoteName(listOf("upstream", "origin", "fork")))
+        assertEquals("upstream", selectRemoteName(listOf("upstream", "fork")))
+    }
+
+    @Test
+    fun `timeout milliseconds clamps unsafe values`() {
+        assertEquals(1_000, safeTimeoutMillis(Int.MIN_VALUE))
+        assertEquals(60_000, safeTimeoutMillis(60))
+        assertEquals(3_600_000, safeTimeoutMillis(Int.MAX_VALUE))
+    }
 }

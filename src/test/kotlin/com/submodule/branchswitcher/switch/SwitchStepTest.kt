@@ -101,6 +101,54 @@ class SwitchStepTest {
         assertTrue(log.any { it.contains("local branch missing") })
     }
 
+    @Test
+    fun `checkout step does not touch paths skipped by dirty handling`() {
+        var checkoutCalls = 0
+        val trackingGit = object : GitClient by fakeGit {
+            override fun checkoutExisting(workDir: File, branch: String): GitResult {
+                checkoutCalls++
+                return GitResult("checkout", 0, "", "")
+            }
+        }
+        val c = context().copy(git = trackingGit)
+        c.skippedPaths.add(".")
+
+        assertTrue(CheckoutStep().execute(c) is StepResult.Success)
+        assertEquals(0, checkoutCalls)
+        assertFalse(c.successfulCheckouts.contains("."))
+    }
+
+    @Test
+    fun `checkout failure is not recorded as successful`() {
+        val failingGit = object : GitClient by fakeGit {
+            override fun checkoutExisting(workDir: File, branch: String): GitResult =
+                GitResult("checkout", 1, "", "conflict")
+        }
+        val c = context().copy(git = failingGit)
+
+        assertTrue(CheckoutStep().execute(c) is StepResult.Partial)
+        assertFalse(c.successfulCheckouts.contains("."))
+    }
+
+    @Test
+    fun `missing branch restores stash and removes its tracking entry`() {
+        var popCalls = 0
+        val missingGit = object : GitClient by fakeGit {
+            override fun localBranchExists(workDir: File, branch: String): Boolean = false
+            override fun remoteBranchExists(workDir: File, branch: String): Boolean = false
+            override fun stashPop(workDir: File): GitResult {
+                popCalls++
+                return GitResult("pop", 0, "", "")
+            }
+        }
+        val c = context().copy(git = missingGit)
+        c.stashedPaths["."] = "before -> dev"
+
+        assertTrue(CheckoutStep().execute(c) is StepResult.Partial)
+        assertEquals(1, popCalls)
+        assertFalse(c.stashedPaths.containsKey("."))
+    }
+
     // ---- DirtyHandlingStep ----
 
     @Test
@@ -129,6 +177,21 @@ class SwitchStepTest {
         val c = context(SwitchOptions(DirtyAction.Skip)).copy(git = dirtyGit)
         val step = DirtyHandlingStep()
         assertTrue(step.execute(c) is StepResult.Partial)
+        assertTrue(c.skippedPaths.contains("."))
+    }
+
+    @Test
+    fun `stash failure marks path skipped and does not track stash`() {
+        val dirtyGit = object : GitClient by fakeGit {
+            override fun isDirty(workDir: File): Boolean = true
+            override fun stash(workDir: File, message: String): GitResult =
+                GitResult("stash", 1, "", "failed")
+        }
+        val c = context(SwitchOptions(DirtyAction.Stash)).copy(git = dirtyGit)
+
+        assertTrue(DirtyHandlingStep().execute(c) is StepResult.Partial)
+        assertTrue(c.skippedPaths.contains("."))
+        assertTrue(c.stashedPaths.isEmpty())
     }
 
     // ---- FetchStep ----
@@ -196,6 +259,40 @@ class SwitchStepTest {
         assertEquals(listOf("dev"), calls)
     }
 
+    @Test
+    fun `pull step skips repos whose checkout did not succeed`() {
+        var pullCalls = 0
+        val pullGit = object : GitClient by fakeGit {
+            override fun currentBranch(workDir: File): String? = "dev"
+            override fun pullFf(workDir: File, branch: String): GitResult {
+                pullCalls++
+                return GitResult("pull", 0, "", "")
+            }
+        }
+        val pullPreset = Preset("test", "dev", emptyMap(), pullEnabled = true)
+        val c = context(SwitchOptions(DirtyAction.Stash, pull = true)).copy(git = pullGit, preset = pullPreset)
+
+        assertTrue(PullStep().execute(c) is StepResult.Success)
+        assertEquals(0, pullCalls)
+    }
+
+    @Test
+    fun `pull disabled still restores tracked stashes`() {
+        var popCalls = 0
+        val popGit = object : GitClient by fakeGit {
+            override fun stashPop(workDir: File): GitResult {
+                popCalls++
+                return GitResult("pop", 0, "", "")
+            }
+        }
+        val c = context(SwitchOptions(DirtyAction.Stash, pull = false)).copy(git = popGit)
+        c.stashedPaths["."] = "before -> dev"
+
+        assertTrue(PullStep().execute(c) is StepResult.Success)
+        assertEquals(1, popCalls)
+        assertTrue(c.stashedPaths.isEmpty())
+    }
+
     // ---- SubmoduleSyncStep ----
 
     @Test
@@ -216,6 +313,21 @@ class SwitchStepTest {
         val step = SubmoduleSyncStep()
         // SubmoduleSyncStep now returns Partial on failure, consistent with FetchStep/PullStep
         assertTrue(step.execute(c) is StepResult.Partial)
+    }
+
+    @Test
+    fun `submodule sync is skipped when main checkout failed`() {
+        var syncCalls = 0
+        val trackingGit = object : GitClient by fakeGit {
+            override fun submoduleSync(gitRoot: File): GitResult {
+                syncCalls++
+                return GitResult("sync", 0, "", "")
+            }
+        }
+        val c = context().copy(git = trackingGit)
+
+        assertTrue(SubmoduleSyncStep().execute(c) is StepResult.Partial)
+        assertEquals(0, syncCalls)
     }
 
     // ---- StepResult pipeline behavior ----

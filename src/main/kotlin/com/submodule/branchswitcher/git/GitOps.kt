@@ -5,6 +5,14 @@ import com.intellij.execution.process.CapturingProcessHandler
 import java.io.File
 import java.nio.charset.StandardCharsets
 
+fun selectRemoteName(remotes: List<String>): String = when {
+    remotes.isEmpty() -> "origin"
+    "origin" in remotes -> "origin"
+    else -> remotes.first()
+}
+
+fun safeTimeoutMillis(timeoutSeconds: Int): Int = timeoutSeconds.coerceIn(1, 3600) * 1000
+
 /**
  * CLI-based [GitClient] implementation using IntelliJ's [GeneralCommandLine] + [CapturingProcessHandler].
  * All git commands inherit [timeoutSeconds] (default 60s).
@@ -18,8 +26,7 @@ class GitOps(
             .withWorkDirectory(workDir)
             .withCharset(StandardCharsets.UTF_8)
         val handler = CapturingProcessHandler(cmd)
-        val safeTimeout = timeoutSeconds.coerceIn(1, 3600)
-        val out = handler.runProcess(safeTimeout * 1000)
+        val out = handler.runProcess(safeTimeoutMillis(timeoutSeconds))
         return GitResult(
             cmd = "git ${args.joinToString(" ")}",
             exitCode = out.exitCode,
@@ -64,11 +71,7 @@ class GitOps(
         return remoteCache[key] ?: run {
             val r = run(workDir, "remote")
             val remotes = r.stdout.lines().map { it.trim() }.filter { it.isNotEmpty() }
-            val name = when {
-                remotes.isEmpty() -> "origin"
-                remotes.any { it == "origin" } -> "origin"
-                else -> remotes.first()
-            }
+            val name = selectRemoteName(remotes)
             remoteCache[key] = name
             name
         }

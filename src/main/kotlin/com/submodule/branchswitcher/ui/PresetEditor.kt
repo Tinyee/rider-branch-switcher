@@ -94,10 +94,7 @@ class PresetEditor(
     }
     private var isCurrent = false
 
-    private val body = object : JPanel() {
-        override fun getMaximumSize(): Dimension =
-            Dimension(Short.MAX_VALUE.toInt(), preferredSize.height)
-    }.apply {
+    private val body = CompactHeightPanel().apply {
         layout = BoxLayout(this, BoxLayout.Y_AXIS)
         alignmentX = LEFT_ALIGNMENT
         isVisible = false
@@ -115,10 +112,7 @@ class PresetEditor(
         alignmentX = LEFT_ALIGNMENT
         border = makeBorder(highlighted = false)
 
-        val header = object : JPanel() {
-            override fun getMaximumSize(): Dimension =
-                Dimension(Short.MAX_VALUE.toInt(), preferredSize.height)
-        }.apply {
+        val header = CompactHeightPanel().apply {
             layout = BoxLayout(this, BoxLayout.Y_AXIS)
             alignmentX = LEFT_ALIGNMENT
             cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
@@ -141,10 +135,7 @@ class PresetEditor(
                 override fun mouseClicked(e: MouseEvent) { toggle() }
             })
         }
-        val right = object : JPanel(FlowLayout(FlowLayout.RIGHT, 4, 0)) {
-            override fun getMaximumSize(): Dimension =
-                Dimension(Short.MAX_VALUE.toInt(), preferredSize.height)
-        }.apply { isOpaque = false }
+        val right = CompactHeightPanel(FlowLayout(FlowLayout.RIGHT, 4, 0)).apply { isOpaque = false }
         switchBtn.addActionListener { onSwitch(buildCurrent()) }
         val moreBtn = createPresetMoreButton()
         right.add(switchBtn)
@@ -163,7 +154,7 @@ class PresetEditor(
             return buttonsWidth + flow.hgap * 4 + right.insets.left + right.insets.right + JBUI.scale(16)
         }
         fun updateResponsiveActions() {
-            val showDerive = header.width <= 0 || header.width >= requiredActionsWidth()
+            val showDerive = shouldShowSecondaryAction(header.width, requiredActionsWidth())
             if (deriveBtn.isVisible != showDerive) {
                 deriveBtn.isVisible = showDerive
                 right.revalidate()
@@ -327,34 +318,23 @@ class PresetEditor(
         setHighlighted(matchesState(currentBranches))
         val currentMain = currentBranches["."] ?: "(detached)"
         val mainDirty = dirtyRepos["."] == true
-        if (currentMain != original.main) {
-            mainDiffLabel.text = Bundle.msg("preset.main.diff", currentMain, original.main)
-            mainDiffLabel.isVisible = true
-            mainDiffLabel.foreground = JBColor(0xE07B00, 0xFFA726)
-        } else if (mainDirty) {
-            mainDiffLabel.text = "${Bundle.msg("label.main.repo")} · ${Bundle.msg("status.tooltip.dirty")}"
-            mainDiffLabel.isVisible = true
-            mainDiffLabel.foreground = JBColor(0xE07B00, 0xFFA726)
-        } else {
-            mainDiffLabel.isVisible = false
-        }
+        val mainStatus = mainStatusText(currentMain, original.main, mainDirty)
+        mainDiffLabel.text = mainStatus
+        mainDiffLabel.isVisible = mainStatus != null
+        mainDiffLabel.foreground = JBColor(0xE07B00, 0xFFA726)
         // Update submodule status dots
         original.submodules.forEach { (path, targetBranch) ->
             val row = subRows[path] ?: return@forEach
             if (row.deleted) return@forEach
             val cur = currentBranches[path]
             val isDirty = dirtyRepos[path] == true
-            row.statusDot.foreground = when {
-                cur == null -> JBColor(0x9E9E9E, 0x757575) // gray: not initialized
-                cur == targetBranch -> JBColor(0x4CAF50, 0x66BB6A) // green: matched
-                else -> JBColor(0xE07B00, 0xFFA726) // orange: different branch (not an error)
+            val presentation = repoStatusPresentation(path, cur, targetBranch, isDirty)
+            row.statusDot.foreground = when (presentation.tone) {
+                RepoStatusTone.NOT_INITIALIZED -> JBColor(0x9E9E9E, 0x757575)
+                RepoStatusTone.MATCHED -> JBColor(0x4CAF50, 0x66BB6A)
+                RepoStatusTone.MISMATCHED -> JBColor(0xE07B00, 0xFFA726)
             }
-            val base = when {
-                cur == null -> "$path: ${Bundle.msg("status.tooltip.not.init")}"
-                cur == targetBranch -> Bundle.msg("status.tooltip.matched", path, cur)
-                else -> Bundle.msg("status.tooltip.mismatch", path, cur, targetBranch)
-            }
-            row.statusDot.toolTipText = if (isDirty) "$base · ${Bundle.msg("status.tooltip.dirty")}" else base
+            row.statusDot.toolTipText = presentation.tooltip
         }
     }
 
