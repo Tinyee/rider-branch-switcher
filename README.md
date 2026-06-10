@@ -3,7 +3,7 @@
 **Rider plugin** — one-click switch the main repo and all submodules to a preset branch combination.
 
 ![version](https://img.shields.io/badge/version-0.5.0-blue)
-![tests](https://img.shields.io/badge/tests-131-green)
+![tests](https://img.shields.io/badge/tests-150-green)
 ![Rider](https://img.shields.io/badge/Rider-2026.1-purple)
 
 ## Features
@@ -83,7 +83,7 @@ Configured in the tool window (bottom) or via `Settings → Version Control → 
 ## Dev
 
 ```bash
-# Run tests (131 tests, no IDE runtime needed)
+# Run tests (150 tests, no IDE runtime needed)
 ./gradlew test
 
 # Build plugin zip

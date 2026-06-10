@@ -1,3 +1,5 @@
+import java.time.Duration
+
 plugins {
     id("org.jetbrains.kotlin.jvm") version "2.3.0"
     id("org.jetbrains.intellij.platform") version "2.2.1"
@@ -20,6 +22,7 @@ repositories {
 
 val riderVersion = providers.gradleProperty("rider.version").get()
 val riderPath = providers.gradleProperty("rider.path").orNull
+val verifierRiderNotation = providers.gradleProperty("rider.version").map { "RD-$it" }
 
 dependencies {
     intellijPlatform {
@@ -53,6 +56,11 @@ intellijPlatform {
             .orElse(providers.gradleProperty("publishToken"))
             .orElse("")
     }
+    pluginVerification {
+        ides {
+            ide(verifierRiderNotation)
+        }
+    }
 }
 
 detekt {
@@ -66,5 +74,6 @@ tasks {
     }
     test {
         useJUnitPlatform()
+        timeout.set(Duration.ofMinutes(15))
     }
 }

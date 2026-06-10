@@ -8,6 +8,7 @@ on:
 
 jobs:
   test:
+    timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:
@@ -36,10 +37,10 @@ jobs:
         run: ./gradlew buildPlugin
 
       - name: Static analysis (detekt)
-        run: ./gradlew detekt || true
+        run: ./gradlew detekt
 
       - name: Verify plugin compatibility
-        run: ./gradlew verifyPlugin || true
+        run: ./gradlew verifyPlugin
 
       - name: Upload test results
         if: always()

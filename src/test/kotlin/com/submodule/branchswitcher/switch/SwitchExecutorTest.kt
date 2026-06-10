@@ -81,12 +81,36 @@ class SwitchExecutorTest {
 
     @Test
     fun `dirty skip prevents checkout`() {
+        var checkoutCalls = 0
         val dirtyGit = object : GitClient by fakeGit {
             override fun isDirty(workDir: File): Boolean = true
+            override fun checkoutExisting(workDir: File, branch: String): GitResult {
+                checkoutCalls++
+                return GitResult("checkout", 0, "", "")
+            }
         }
         val executor = SwitchExecutor(projectRoot, { log += it }, dirtyGit)
         val result = executor.execute(preset, SwitchOptions(DirtyAction.Skip, pull = false, fetchFirst = false))
         assertFalse("Dirty+Skip should cause failure", result)
+        assertEquals("Dirty+Skip must not checkout", 0, checkoutCalls)
+    }
+
+    @Test
+    fun `stash failure prevents checkout`() {
+        var checkoutCalls = 0
+        val failingGit = object : GitClient by fakeGit {
+            override fun isDirty(workDir: File): Boolean = true
+            override fun stash(workDir: File, message: String): GitResult =
+                GitResult("stash", 1, "", "stash failed")
+            override fun checkoutExisting(workDir: File, branch: String): GitResult {
+                checkoutCalls++
+                return GitResult("checkout", 0, "", "")
+            }
+        }
+        val executor = SwitchExecutor(projectRoot, { log += it }, failingGit)
+
+        assertFalse(executor.execute(preset, SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false)))
+        assertEquals("Stash failure must not checkout", 0, checkoutCalls)
     }
 
     @Test
@@ -113,6 +137,30 @@ class SwitchExecutorTest {
         val executor = SwitchExecutor(projectRoot, { log += it }, dirtyGit)
         val result = executor.execute(preset, SwitchOptions(DirtyAction.Force, pull = false, fetchFirst = false))
         assertTrue("Dirty+Force should succeed", result)
+    }
+
+    @Test
+    fun `checkout failure prevents pull and submodule sync`() {
+        var pullCalls = 0
+        var syncCalls = 0
+        val failingGit = object : GitClient by fakeGit {
+            override fun checkoutExisting(workDir: File, branch: String): GitResult =
+                GitResult("checkout", 1, "", "checkout failed")
+            override fun pullFf(workDir: File, branch: String): GitResult {
+                pullCalls++
+                return GitResult("pull", 0, "", "")
+            }
+            override fun submoduleSync(gitRoot: File): GitResult {
+                syncCalls++
+                return GitResult("sync", 0, "", "")
+            }
+        }
+        val pullPreset = Preset("test", "dev", emptyMap(), pullEnabled = true)
+        val executor = SwitchExecutor(projectRoot, { log += it }, failingGit)
+
+        assertFalse(executor.execute(pullPreset, SwitchOptions(DirtyAction.Stash, pull = true, fetchFirst = false)))
+        assertEquals("Failed checkout must not pull the old branch", 0, pullCalls)
+        assertEquals("Failed main checkout must not sync submodules", 0, syncCalls)
     }
 
     // ---- Rollback ----

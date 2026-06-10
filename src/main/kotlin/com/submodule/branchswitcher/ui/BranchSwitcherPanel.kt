@@ -13,7 +13,6 @@ import com.intellij.util.Alarm
 import com.intellij.util.ui.JBUI
 import com.submodule.branchswitcher.BranchSwitchListener
 import com.submodule.branchswitcher.Bundle
-import com.submodule.branchswitcher.model.DirtyAction
 import com.submodule.branchswitcher.service.BranchSwitcherService
 import com.submodule.branchswitcher.settings.BranchSwitcherConfigurable
 import kotlinx.coroutines.launch
@@ -149,10 +148,7 @@ class BranchSwitcherPanel(
     }
 
     private fun createHeaderRow(): JPanel {
-        return object : JPanel(BorderLayout()) {
-            override fun getMaximumSize(): Dimension =
-                Dimension(Short.MAX_VALUE.toInt(), preferredSize.height)
-        }.apply {
+        return CompactHeightPanel(BorderLayout()).apply {
             isOpaque = false
             add(currentBranchLabel, BorderLayout.WEST)
             add(createMoreActionsButton(), BorderLayout.EAST)
@@ -160,10 +156,7 @@ class BranchSwitcherPanel(
     }
 
     private fun createActionRow(): JPanel {
-        return object : JPanel() {
-            override fun getMaximumSize(): Dimension =
-                Dimension(Short.MAX_VALUE.toInt(), preferredSize.height)
-        }.apply {
+        return CompactHeightPanel().apply {
             layout = BoxLayout(this, BoxLayout.X_AXIS)
             isOpaque = false
             add(JButton(Bundle.msg("action.from.current"), AllIcons.Vcs.Branch).noFocusRing().also {
@@ -220,16 +213,12 @@ class BranchSwitcherPanel(
     // ── Strategy summary ───────────────────────────────────────
 
     private fun refreshStrategySummary() {
-        val dirty = when (service.dirtyAction) {
-            DirtyAction.Stash -> Bundle.msg("label.strategy.stash")
-            DirtyAction.Skip -> Bundle.msg("label.strategy.skip")
-            DirtyAction.Force -> Bundle.msg("label.strategy.force")
-        }
-        val parts = mutableListOf(dirty)
-        if (service.fetchFirst) parts += Bundle.msg("label.strategy.fetch")
-        if (service.pullAfterSwitch) parts += Bundle.msg("label.strategy.pull")
-        parts += "${service.timeoutSeconds}s"
-        strategyLabel.text = parts.joinToString(" · ")
+        strategyLabel.text = strategySummary(
+            service.dirtyAction,
+            service.fetchFirst,
+            service.pullAfterSwitch,
+            service.timeoutSeconds,
+        )
     }
 
     private fun openSettings() {

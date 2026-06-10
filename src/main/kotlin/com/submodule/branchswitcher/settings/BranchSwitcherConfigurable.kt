@@ -5,10 +5,9 @@ import com.intellij.openapi.options.Configurable
 import com.intellij.openapi.project.Project
 import com.intellij.util.ui.JBUI
 import com.submodule.branchswitcher.Bundle
-import com.submodule.branchswitcher.model.DirtyAction
 import com.submodule.branchswitcher.service.BranchSwitcherService
+import com.submodule.branchswitcher.ui.withCompactHeight
 import java.awt.BorderLayout
-import java.awt.Dimension
 import javax.swing.BoxLayout
 import javax.swing.JCheckBox
 import javax.swing.JComboBox
@@ -52,17 +51,15 @@ class BranchSwitcherConfigurable(private val project: Project) : Configurable {
         form.add(JLabel(Bundle.msg("label.dirty.working.tree")).apply {
             border = JBUI.Borders.empty(0, 0, 2, 0)
         })
-        form.add(dirtyCombo!!.apply {
+        form.add(dirtyCombo!!.withCompactHeight(JBUI.scale(360)).apply {
             alignmentX = JPanel.LEFT_ALIGNMENT
-            maximumSize = Dimension(JBUI.scale(360), preferredSize.height)
         })
 
         form.add(JLabel(Bundle.msg("option.timeout")).apply {
             border = JBUI.Borders.empty(12, 0, 2, 0)
         })
-        form.add(timeoutCombo!!.apply {
+        form.add(timeoutCombo!!.withCompactHeight(JBUI.scale(180)).apply {
             alignmentX = JPanel.LEFT_ALIGNMENT
-            maximumSize = Dimension(JBUI.scale(180), preferredSize.height)
         })
 
         form.add(fetchCheck!!.apply {
@@ -123,28 +120,4 @@ class BranchSwitcherConfigurable(private val project: Project) : Configurable {
     private fun dirtyComboIndex(): Int = dirtyCombo?.selectedIndex ?: 0
     private fun timeoutComboIndex(): Int = timeoutCombo?.selectedIndex ?: 1
 
-    companion object {
-        private fun dirtyActionToIndex(a: DirtyAction) = when (a) {
-            DirtyAction.Stash -> 0
-            DirtyAction.Skip -> 1
-            DirtyAction.Force -> 2
-        }
-        private fun indexToDirtyAction(i: Int) = when (i) {
-            1 -> DirtyAction.Skip
-            2 -> DirtyAction.Force
-            else -> DirtyAction.Stash
-        }
-        private fun timeoutToIndex(s: Int) = when (s) {
-            30 -> 0
-            120 -> 2
-            300 -> 3
-            else -> 1
-        }
-        private fun indexToTimeout(i: Int) = when (i) {
-            0 -> 30
-            2 -> 120
-            3 -> 300
-            else -> 60
-        }
-    }
 }

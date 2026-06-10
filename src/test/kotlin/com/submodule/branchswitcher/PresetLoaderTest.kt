@@ -136,6 +136,47 @@ class PresetLoaderTest {
     }
 
     @Test
+    fun `load applies defaults for optional preset fields`() {
+        val id = Files.createDirectories(tmpDir.resolve(".idea"))
+        Files.writeString(id.resolve("branch-presets.json"), """
+            {"presets":[{"name":"dev","main":"dev"}]}
+        """.trimIndent())
+
+        val result = PresetLoader.load(tmpDir)
+
+        assertTrue(result.isSuccess)
+        val preset = result.getOrThrow().second.presets.single()
+        assertTrue(preset.submodules.isEmpty())
+        assertTrue(preset.pullEnabled)
+    }
+
+    @Test
+    fun `load rejects preset missing required name`() {
+        val id = Files.createDirectories(tmpDir.resolve(".idea"))
+        Files.writeString(id.resolve("branch-presets.json"), """
+            {"presets":[{"main":"dev"}]}
+        """.trimIndent())
+
+        val result = PresetLoader.load(tmpDir)
+
+        assertTrue(result.isFailure)
+        assertTrue(result.exceptionOrNull()!!.message!!.contains("preset.name"))
+    }
+
+    @Test
+    fun `load rejects preset missing required main branch`() {
+        val id = Files.createDirectories(tmpDir.resolve(".idea"))
+        Files.writeString(id.resolve("branch-presets.json"), """
+            {"presets":[{"name":"dev"}]}
+        """.trimIndent())
+
+        val result = PresetLoader.load(tmpDir)
+
+        assertTrue(result.isFailure)
+        assertTrue(result.exceptionOrNull()!!.message!!.contains("preset.main"))
+    }
+
+    @Test
     fun `load returns failure on corrupted JSON`() {
         val id = Files.createDirectories(tmpDir.resolve(".idea"))
         Files.writeString(id.resolve("branch-presets.json"), "{not json}")
