@@ -81,7 +81,7 @@ class PresetListManager(
             initial = preset,
             log = log,
             onSwitch = { onSwitch(it) },
-            onSave = { saveAll() },
+            onSave = { updated -> saveAll(editor, updated) },
             onDelete = { deleteEditor(editor, presetsInner) },
             onDerive = { branchName -> onDerive(root, editor.currentPreset(), branchName) },
             nameValidator = { newName -> editors.none { it !== editor && it.currentPreset().name == newName } },
@@ -125,8 +125,11 @@ class PresetListManager(
         log("[deleted] $name")
     }
 
-    fun saveAll() {
-        service.savePresets(editors.map { it.currentPreset() })
+    fun saveAll(pendingEditor: PresetEditor? = null, pendingPreset: Preset? = null) {
+        val presets = editors.map {
+            if (it === pendingEditor && pendingPreset != null) pendingPreset else it.currentPreset()
+        }
+        service.savePresets(presets)
         log("[saved]")
         onStateChanged?.invoke()
     }

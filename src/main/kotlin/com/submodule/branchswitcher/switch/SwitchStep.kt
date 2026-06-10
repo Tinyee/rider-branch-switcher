@@ -63,7 +63,6 @@ fun isGitRepo(dir: java.io.File): Boolean {
 
 /** Returns the last path segment, stripping trailing `~`. Used for display labels. */
 fun shortLabel(path: String): String {
-    if (!path.contains("/")) return path
     return path.substringAfterLast('/').removeSuffix("~")
 }
 

@@ -1,6 +1,8 @@
 ﻿package com.submodule.branchswitcher.ui
 
 import com.intellij.icons.AllIcons
+import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.application.ModalityState
 import com.intellij.openapi.progress.ProgressIndicator
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.Messages
@@ -17,7 +19,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import java.nio.file.Path
 import javax.swing.JProgressBar
-import javax.swing.SwingUtilities
 
 /**
  * Handles all switch-related operations: preflight preview, execute, rollback,
@@ -41,8 +42,7 @@ class SwitchController(
                 SwitchPreflight(service.gitClient).probe(root, preset, indicator)
             }
             // Resumed on caller thread after modal closes
-            val app = com.intellij.openapi.application.ApplicationManager.getApplication()
-            app.invokeLater {
+            invokeLaterIfProjectAlive {
                 if (SwitchPreviewDialog.showAndConfirm(project, preset, probeResult)) {
                     executeSwitch(root, preset)
                 }
@@ -68,26 +68,26 @@ class SwitchController(
                     val wrapped = object : ProgressIndicator by indicator {
                         override fun setFraction(fraction: Double) {
                             indicator.fraction = fraction
-                            com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater {
+                            invokeLaterIfProjectAlive {
                                 progressBar.isIndeterminate = false
                                 progressBar.value = (fraction * 100).toInt()
                             }
                         }
                         override fun setText2(text: String?) {
                             indicator.text2 = text
-                            com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater {
+                            invokeLaterIfProjectAlive {
                                 progressBar.string = text ?: Bundle.msg("tooltip.progress.switching")
                             }
                         }
                         override fun setText(text: String?) {
                             indicator.text = text
-                            com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater {
+                            invokeLaterIfProjectAlive {
                                 progressBar.string = text ?: Bundle.msg("tooltip.progress.switching")
                             }
                         }
                         override fun setIndeterminate(indeterminate: Boolean) {
                             indicator.isIndeterminate = indeterminate
-                            com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater {
+                            invokeLaterIfProjectAlive {
                                 progressBar.isIndeterminate = indeterminate
                             }
                         }
@@ -102,8 +102,7 @@ class SwitchController(
             }
             // Resumed on EDT via TaskBridge.onFinished, but continuation dispatcher is Default
             // Wrap UI ops in invokeLater to avoid EDT violations
-            com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater({
-                if (project.isDisposed) return@invokeLater
+            invokeLaterIfProjectAlive {
                 setSwitchInProgress(false)
                 if (ok) {
                     service.addHistory(preset.name)
@@ -121,7 +120,7 @@ class SwitchController(
                     }
                 }
                 refreshVcs(root, preset)
-            }, com.intellij.openapi.application.ModalityState.any(), project.disposed)
+            }
         }
     }
 
@@ -138,16 +137,17 @@ class SwitchController(
                 rollbackOk = false
             }
             // Wrap UI ops in invokeLater to avoid EDT violations
-            com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater({
-                if (project.isDisposed) return@invokeLater
-                val root = gitRoot() ?: return@invokeLater
-                val submodulePaths = executor.getCheckpoint()?.keys?.filter { it != "." } ?: emptyList()
-                refreshVcs(root, Preset("_rollback", "", submodulePaths.associateWith { "" }))
-                onStateChanged()
-                if (!rollbackOk) {
-                    Notifier.warn(project, Bundle.msg("rollback.partial"), Bundle.msg("rollback.partial.msg"))
+            invokeLaterIfProjectAlive {
+                val root = gitRoot()
+                if (root != null) {
+                    val submodulePaths = executor.getCheckpoint()?.keys?.filter { it != "." } ?: emptyList()
+                    refreshVcs(root, Preset("_rollback", "", submodulePaths.associateWith { "" }))
+                    onStateChanged()
+                    if (!rollbackOk) {
+                        Notifier.warn(project, Bundle.msg("rollback.partial"), Bundle.msg("rollback.partial.msg"))
+                    }
                 }
-            }, com.intellij.openapi.application.ModalityState.any(), project.disposed)
+            }
         }
     }
 
@@ -175,11 +175,10 @@ class SwitchController(
                     }
                 }
             } catch (_: Exception) { /* logged in task */ }
-            com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater({
-                if (project.isDisposed) return@invokeLater
+            invokeLaterIfProjectAlive {
                 onStateChanged()
                 Notifier.info(project, Bundle.msg("notify.derive.complete"), Bundle.msg("notify.derive.created", branchName, preset.targets().size))
-            }, com.intellij.openapi.application.ModalityState.any(), project.disposed)
+            }
         }
     }
 
@@ -203,18 +202,25 @@ class SwitchController(
         service.scope.launch(Dispatchers.IO) {
             try {
                 refreshVcsRepos(project, root, preset.submodules.keys)
-                com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater {
+                invokeLaterIfProjectAlive {
                     log("[vcs] refreshed ${preset.submodules.size + 1} repo(s)")
                     onStateChanged()
                 }
             } catch (t: Throwable) {
-                com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater {
+                invokeLaterIfProjectAlive {
                     log("[error] refreshVcs failed: ${t.javaClass.simpleName}: ${t.message}")
                     Notifier.warn(project, Bundle.msg("rollback.partial"), "${t.javaClass.simpleName}: ${t.message}")
                     onStateChanged()
                 }
             }
         }
+    }
+
+    private fun invokeLaterIfProjectAlive(action: () -> Unit) {
+        ApplicationManager.getApplication().invokeLater({
+            if (project.isDisposed) return@invokeLater
+            action()
+        }, ModalityState.any(), project.disposed)
     }
 
     private fun setSwitchInProgress(inProgress: Boolean) {

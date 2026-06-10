@@ -18,7 +18,7 @@
 
 ### Quality
 - **28 bug fixes** across all layers (double-resume crash, DirtyAction ignored in shortcut, toolWindow ID i18n leak, etc.)
-- **128 tests** (JUnit 4 + Kotest property-based)
+- **131 tests** (JUnit 4 + Kotest property-based)
 - Kotest 5.9.1 property-based testing (6 generators)
 - Gradle wrapper 8.13
 - GitHub Actions CI with test artifacts on ubuntu/macOS/Windows
