@@ -213,9 +213,9 @@ class PresetEditor(
 
     /** Creates the "..." more-actions button for this preset card. */
     private fun createPresetMoreButton(): JButton {
-        return JButton(AllIcons.General.Gear).apply {
+        return JButton(AllIcons.Actions.MoreHorizontal).apply {
             margin = JBUI.insets(0, 4, 0, 4)
-            toolTipText = "更多操作"
+            toolTipText = Bundle.msg("action.more.tip")
             addActionListener {
                 JPopupMenu().apply {
                     add(JMenuItem(Bundle.msg("action.delete"), AllIcons.Actions.Cancel).apply {
@@ -284,8 +284,9 @@ class PresetEditor(
     /**
      * Updates the preset header diff label and submodule status dots.
      * Dot colors: gray = not initialized, green = branch matched, orange = different branch.
+     * When [dirtyRepos] marks a path as dirty, the tooltip appends a warning.
      */
-    fun applyCurrentState(currentBranches: Map<String, String?>) {
+    fun applyCurrentState(currentBranches: Map<String, String?>, dirtyRepos: Map<String, Boolean> = emptyMap()) {
         setHighlighted(matchesState(currentBranches))
         val currentMain = currentBranches["."] ?: "(detached)"
         if (currentMain != original.main) {
@@ -300,16 +301,18 @@ class PresetEditor(
             val row = subRows[path] ?: return@forEach
             if (row.deleted) return@forEach
             val cur = currentBranches[path]
+            val isDirty = dirtyRepos[path] == true
             row.statusDot.foreground = when {
                 cur == null -> JBColor(0x9E9E9E, 0x757575) // gray: not initialized
                 cur == targetBranch -> JBColor(0x4CAF50, 0x66BB6A) // green: matched
                 else -> JBColor(0xE07B00, 0xFFA726) // orange: different branch (not an error)
             }
-            row.statusDot.toolTipText = when {
+            val base = when {
                 cur == null -> "$path: 未初始化"
                 cur == targetBranch -> "$path: $cur ✓"
                 else -> "$path: $cur → $targetBranch"
             }
+            row.statusDot.toolTipText = if (isDirty) "$base · 脏工作区" else base
         }
     }
 
