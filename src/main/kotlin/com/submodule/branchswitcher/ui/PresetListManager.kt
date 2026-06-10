@@ -89,8 +89,12 @@ class PresetListManager(
             scope = service.scope,
         )
         editors.add(editor)
-        val wrapper = JPanel(BorderLayout()).apply {
+        val wrapper = object : JPanel(BorderLayout()) {
+            override fun getMaximumSize(): java.awt.Dimension =
+                java.awt.Dimension(Short.MAX_VALUE.toInt(), preferredSize.height)
+        }.apply {
             isOpaque = false
+            alignmentX = JPanel.LEFT_ALIGNMENT
             add(editor, BorderLayout.CENTER)
             add(Box.createVerticalStrut(4), BorderLayout.SOUTH)
         }

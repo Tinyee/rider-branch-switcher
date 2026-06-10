@@ -3,14 +3,12 @@ package com.submodule.branchswitcher.settings
 import com.intellij.openapi.components.service
 import com.intellij.openapi.options.Configurable
 import com.intellij.openapi.project.Project
-import com.intellij.ui.JBColor
 import com.intellij.util.ui.JBUI
 import com.submodule.branchswitcher.Bundle
 import com.submodule.branchswitcher.model.DirtyAction
 import com.submodule.branchswitcher.service.BranchSwitcherService
 import java.awt.BorderLayout
-import java.awt.FlowLayout
-import javax.swing.BorderFactory
+import java.awt.Dimension
 import javax.swing.BoxLayout
 import javax.swing.JCheckBox
 import javax.swing.JComboBox
@@ -46,42 +44,42 @@ class BranchSwitcherConfigurable(private val project: Project) : Configurable {
         pullCheck = JCheckBox(Bundle.msg("option.pull.after"))
         confirmInitCheck = JCheckBox(Bundle.msg("option.confirm.init"))
 
-        val panel = JPanel().apply {
+        val form = JPanel().apply {
             layout = BoxLayout(this, BoxLayout.Y_AXIS)
-            border = JBUI.Borders.empty(12, 12, 12, 12)
+            alignmentX = JPanel.LEFT_ALIGNMENT
         }
 
-        // Dirty strategy row
-        panel.add(JLabel(Bundle.msg("label.dirty.working.tree")).apply {
+        form.add(JLabel(Bundle.msg("label.dirty.working.tree")).apply {
             border = JBUI.Borders.empty(0, 0, 2, 0)
         })
-        panel.add(dirtyCombo!!.apply {
+        form.add(dirtyCombo!!.apply {
             alignmentX = JPanel.LEFT_ALIGNMENT
+            maximumSize = Dimension(JBUI.scale(360), preferredSize.height)
         })
 
-        // Timeout row
-        panel.add(JLabel(Bundle.msg("option.timeout")).apply {
+        form.add(JLabel(Bundle.msg("option.timeout")).apply {
             border = JBUI.Borders.empty(12, 0, 2, 0)
         })
-        panel.add(timeoutCombo!!.apply {
+        form.add(timeoutCombo!!.apply {
             alignmentX = JPanel.LEFT_ALIGNMENT
+            maximumSize = Dimension(JBUI.scale(180), preferredSize.height)
         })
 
-        // Checkboxes
-        panel.add(JPanel(FlowLayout(FlowLayout.LEFT, 0, 0)).apply {
+        form.add(fetchCheck!!.apply {
             border = JBUI.Borders.empty(14, 0, 0, 0)
             alignmentX = JPanel.LEFT_ALIGNMENT
-            add(fetchCheck!!)
         })
-        panel.add(JPanel(FlowLayout(FlowLayout.LEFT, 0, 0)).apply {
+        form.add(pullCheck!!.apply {
             alignmentX = JPanel.LEFT_ALIGNMENT
-            add(pullCheck!!)
         })
-        panel.add(JPanel(FlowLayout(FlowLayout.LEFT, 0, 0)).apply {
+        form.add(confirmInitCheck!!.apply {
             alignmentX = JPanel.LEFT_ALIGNMENT
-            add(confirmInitCheck!!)
         })
 
+        val panel = JPanel(BorderLayout()).apply {
+            border = JBUI.Borders.empty(12, 12, 12, 12)
+            add(form, BorderLayout.NORTH)
+        }
         this.panel = panel
         return panel
     }
