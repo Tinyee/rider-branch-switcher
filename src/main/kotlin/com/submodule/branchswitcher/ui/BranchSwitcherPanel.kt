@@ -55,7 +55,7 @@ class BranchSwitcherPanel(
         font = font.deriveFont(Font.PLAIN, 11f)
         foreground = JBColor.GRAY
         cursor = java.awt.Cursor.getPredefinedCursor(java.awt.Cursor.HAND_CURSOR)
-        toolTipText = "点击打开 Settings"
+        toolTipText = Bundle.msg("label.strategy.tip")
         addMouseListener(object : java.awt.event.MouseAdapter() {
             override fun mouseClicked(e: java.awt.event.MouseEvent) { openSettings() }
         })
@@ -64,8 +64,17 @@ class BranchSwitcherPanel(
         layout = BoxLayout(this, BoxLayout.Y_AXIS)
         alignmentX = LEFT_ALIGNMENT
     }
-    private val presetsContainer = JPanel(BorderLayout()).apply {
-        add(presetsInner, BorderLayout.NORTH)
+    private val presetsContainer = object : JPanel() {
+        init { layout = BoxLayout(this, BoxLayout.Y_AXIS) }
+        override fun getPreferredSize(): Dimension {
+            val pref = super.getPreferredSize()
+            val p = parent
+            if (p is javax.swing.JViewport) pref.height = maxOf(pref.height, p.height)
+            return pref
+        }
+    }.apply {
+        add(presetsInner)
+        add(Box.createVerticalGlue())
     }
     private val presetsScroll = JBScrollPane(presetsContainer).apply {
         border = BorderFactory.createEmptyBorder()
@@ -142,9 +151,8 @@ class BranchSwitcherPanel(
             leftPanel.add(currentBranchLabel)
             add(leftPanel, BorderLayout.WEST)
 
-            // Right: strategy summary + more actions
+            // Right: more actions only (strategy summary moved to action row)
             val rightPanel = JPanel(FlowLayout(FlowLayout.RIGHT, 4, 0)).apply { isOpaque = false }
-            rightPanel.add(strategyLabel)
             rightPanel.add(createMoreActionsButton())
             add(rightPanel, BorderLayout.EAST)
         }
@@ -152,6 +160,7 @@ class BranchSwitcherPanel(
 
     private fun createActionRow(): JPanel {
         return JPanel(BorderLayout()).apply {
+            // Left: CTA buttons
             val left = JPanel(FlowLayout(FlowLayout.LEFT, 4, 0)).apply { isOpaque = false }
             left.add(JButton(Bundle.msg("action.from.current"), AllIcons.Vcs.Branch).noFocusRing().also {
                 it.toolTipText = Bundle.msg("action.from.current.tip")
@@ -160,13 +169,17 @@ class BranchSwitcherPanel(
             left.add(JButton(Bundle.msg("action.add.preset"), AllIcons.General.Add).noFocusRing()
                 .also { it.addActionListener { presetManager.addPreset(presetsInner) } })
             add(left, BorderLayout.WEST)
+            // Right: strategy summary
+            val right = JPanel(FlowLayout(FlowLayout.RIGHT, 4, 0)).apply { isOpaque = false }
+            right.add(strategyLabel)
+            add(right, BorderLayout.EAST)
         }
     }
 
     private fun createMoreActionsButton(): JButton {
-        return JButton(AllIcons.General.Gear).apply {
+        return JButton(AllIcons.Actions.MoreHorizontal).apply {
             margin = JBUI.insets(0, 4, 0, 4)
-            toolTipText = "更多操作"
+            toolTipText = Bundle.msg("action.more.tip")
             addActionListener {
                 createMoreMenu().show(this, 0, height)
             }
@@ -193,7 +206,7 @@ class BranchSwitcherPanel(
                 addActionListener { switchController.undoLastSwitch() }
             })
             addSeparator()
-            add(JMenuItem("Settings…", AllIcons.General.Gear).apply {
+            add(JMenuItem(Bundle.msg("action.settings"), AllIcons.General.Gear).apply {
                 addActionListener { openSettings() }
             })
         }
@@ -203,19 +216,20 @@ class BranchSwitcherPanel(
 
     private fun refreshStrategySummary() {
         val dirty = when (service.dirtyAction) {
-            DirtyAction.Stash -> "Stash"
-            DirtyAction.Skip -> "Skip"
-            DirtyAction.Force -> "Force"
+            DirtyAction.Stash -> Bundle.msg("label.strategy.stash")
+            DirtyAction.Skip -> Bundle.msg("label.strategy.skip")
+            DirtyAction.Force -> Bundle.msg("label.strategy.force")
         }
         val parts = mutableListOf(dirty)
-        if (service.fetchFirst) parts += "fetch"
-        if (service.pullAfterSwitch) parts += "pull"
+        if (service.fetchFirst) parts += Bundle.msg("label.strategy.fetch")
+        if (service.pullAfterSwitch) parts += Bundle.msg("label.strategy.pull")
         parts += "${service.timeoutSeconds}s"
         strategyLabel.text = parts.joinToString(" · ")
     }
 
     private fun openSettings() {
         ShowSettingsUtil.getInstance().showSettingsDialog(project, BranchSwitcherConfigurable::class.java)
+        refreshStrategySummary()
     }
 
     // ── Status bar: progress + border ──────────────────────────
@@ -274,7 +288,10 @@ class BranchSwitcherPanel(
         })
         addHierarchyListener { e ->
             if ((e.changeFlags and java.awt.event.HierarchyEvent.SHOWING_CHANGED.toLong()) != 0L && isShowing) {
-                com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater { detectCurrentState() }
+                com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater {
+                    detectCurrentState()
+                    refreshStrategySummary()
+                }
             }
         }
         addAncestorListener(object : javax.swing.event.AncestorListener {
@@ -326,14 +343,16 @@ class BranchSwitcherPanel(
         val gen = service.nextDetectGen()
         service.scope.launch {
             val branches = HashMap<String, String?>(snapshot.size)
+            val dirty = HashMap<String, Boolean>(snapshot.size)
             for (p in snapshot) {
                 val dir = if (p == ".") root.toFile() else root.resolve(p).toFile()
                 branches[p] = if (dir.exists()) service.gitClient.currentBranch(dir) else null
+                dirty[p] = if (dir.exists()) service.gitClient.isDirty(dir) else false
             }
             com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater {
                 if (gen != service.getDetectGen()) return@invokeLater
                 pinnedEditors.forEach { editor ->
-                    if (editor in eds) editor.applyCurrentState(branches)
+                    if (editor in eds) editor.applyCurrentState(branches, dirty)
                 }
                 presetsInner.revalidate()
                 presetsInner.repaint()

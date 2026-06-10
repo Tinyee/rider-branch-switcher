@@ -90,6 +90,7 @@ class SubmoduleRowManager(
                 maximumSize = Dimension(JBUI.scale(32), JBUI.scale(24))
                 minimumSize = Dimension(JBUI.scale(32), JBUI.scale(24))
                 toolTipText = Bundle.msg("tooltip.remove.submodule")
+                isVisible = false
                 addActionListener {
                     val r = subRows[path] ?: return@addActionListener
                     r.deleted = true
@@ -100,6 +101,12 @@ class SubmoduleRowManager(
                 }
             }.noFocusRing()
             add(delBtn, BorderLayout.EAST)
+
+            // Hover to reveal delete button
+            addMouseListener(object : MouseAdapter() {
+                override fun mouseEntered(e: MouseEvent) { delBtn.isVisible = true }
+                override fun mouseExited(e: MouseEvent) { delBtn.isVisible = false }
+            })
         }
         // Right-click context menu
         rowPanel.addMouseListener(object : MouseAdapter() {
