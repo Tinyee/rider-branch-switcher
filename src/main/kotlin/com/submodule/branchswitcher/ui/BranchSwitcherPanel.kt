@@ -1,6 +1,7 @@
-﻿package com.submodule.branchswitcher.ui
+package com.submodule.branchswitcher.ui
 
 import com.intellij.icons.AllIcons
+import com.intellij.openapi.options.ShowSettingsUtil
 import com.intellij.openapi.project.Project
 import com.intellij.ui.JBColor
 import com.intellij.ui.components.JBScrollPane
@@ -9,6 +10,7 @@ import com.submodule.branchswitcher.BranchSwitchListener
 import com.submodule.branchswitcher.Bundle
 import com.submodule.branchswitcher.model.DirtyAction
 import com.submodule.branchswitcher.service.BranchSwitcherService
+import com.submodule.branchswitcher.settings.BranchSwitcherConfigurable
 import kotlinx.coroutines.launch
 import java.awt.BorderLayout
 import java.awt.Dimension
@@ -21,18 +23,18 @@ import javax.swing.BorderFactory
 import javax.swing.Box
 import javax.swing.BoxLayout
 import javax.swing.JButton
-import javax.swing.JCheckBox
-import javax.swing.JComboBox
 import javax.swing.JLabel
+import javax.swing.JMenuItem
 import javax.swing.JPanel
+import javax.swing.JPopupMenu
 import javax.swing.SwingConstants
 import javax.swing.SwingUtilities
 
 /**
- * Main tool window panel with toolbar + card layout.
+ * Main tool window panel with header + card layout.
  *
  * Layout (BorderLayout):
- * - NORTH: toolbar (action buttons + options) + current state bar
+ * - NORTH: header (title + current branch + more menu) + action row + status bar
  * - CENTER: scrollable preset cards
  * - SOUTH: collapsible log panel (toggle to show/hide)
  *
@@ -49,6 +51,15 @@ class BranchSwitcherPanel(
         font = font.deriveFont(Font.BOLD, 12f)
         foreground = JBUI.CurrentTheme.Link.Foreground.ENABLED
     }
+    private val strategyLabel = JLabel().apply {
+        font = font.deriveFont(Font.PLAIN, 11f)
+        foreground = JBColor.GRAY
+        cursor = java.awt.Cursor.getPredefinedCursor(java.awt.Cursor.HAND_CURSOR)
+        toolTipText = "点击打开 Settings"
+        addMouseListener(object : java.awt.event.MouseAdapter() {
+            override fun mouseClicked(e: java.awt.event.MouseEvent) { openSettings() }
+        })
+    }
     private val presetsInner = JPanel().apply {
         layout = BoxLayout(this, BoxLayout.Y_AXIS)
         alignmentX = LEFT_ALIGNMENT
@@ -59,11 +70,6 @@ class BranchSwitcherPanel(
     private val presetsScroll = JBScrollPane(presetsContainer).apply {
         border = BorderFactory.createEmptyBorder()
     }
-
-    private val dirtyCombo = JComboBox(arrayOf(Bundle.msg("option.dirty.stash"), Bundle.msg("option.dirty.skip"), Bundle.msg("option.dirty.force")))
-    private val timeoutCombo = JComboBox(arrayOf("30s", "60s", "120s", "300s"))
-    private val pullCheck = JCheckBox(Bundle.msg("option.pull.after"), service.pullAfterSwitch)
-    private val fetchCheck = JCheckBox(Bundle.msg("option.fetch.before"), service.fetchFirst)
 
     private val progressBar = JProgressBar(0, 100).apply {
         isStringPainted = true
@@ -107,72 +113,112 @@ class BranchSwitcherPanel(
 
         presetManager.reload(presetsInner)
         detectCurrentState()
-        wireOptionsPersistence()
+        refreshStrategySummary()
         wireEventSubscriptions()
     }
 
-    // ── Top block: toolbar + options + status ─────────────────
+    // ── Top block: header + action row + status ────────────────
 
     private fun createTopBlock(): JPanel {
         return JPanel().apply {
             layout = BoxLayout(this, BoxLayout.Y_AXIS)
             alignmentX = LEFT_ALIGNMENT
-            add(createToolbar())
+            add(createHeaderRow())
+            add(Box.createVerticalStrut(4))
+            add(createActionRow())
             add(Box.createVerticalStrut(2))
             add(createStatusBar())
         }
     }
 
-    private fun createToolbar(): JPanel {
-        return JPanel().apply {
-            layout = BoxLayout(this, BoxLayout.Y_AXIS)
-            alignmentX = LEFT_ALIGNMENT
-
-            // Row 1: actions (reload, open config)
-            val actionsRow = JPanel(FlowLayout(FlowLayout.LEFT, 4, 0))
-            actionsRow.add(JButton(Bundle.msg("action.reload"), AllIcons.Actions.Refresh).noFocusRing()
-                .also { it.addActionListener { presetManager.reload(presetsInner); detectCurrentState() } })
-            actionsRow.add(JButton(Bundle.msg("action.open.config"), AllIcons.Actions.EditSource).noFocusRing()
-                .also { it.addActionListener { presetManager.openConfig() } })
-            add(actionsRow)
-
-            // Row 2: export/import/undo
-            val exportRow = JPanel(FlowLayout(FlowLayout.LEFT, 4, 0))
-            exportRow.add(JButton(Bundle.msg("action.export"), AllIcons.Actions.MenuSaveall).noFocusRing()
-                .also { it.addActionListener { presetManager.exportPresets() } })
-            exportRow.add(JButton(Bundle.msg("action.import"), AllIcons.Actions.MenuSaveall).noFocusRing()
-                .also { it.addActionListener { presetManager.importPresets(presetsContainer) } })
-            exportRow.add(JButton(Bundle.msg("action.undo"), AllIcons.Actions.Rollback).noFocusRing().also {
-                it.toolTipText = Bundle.msg("action.undo.tip")
-                it.addActionListener { switchController.undoLastSwitch() }
+    private fun createHeaderRow(): JPanel {
+        return JPanel(BorderLayout()).apply {
+            // Left: title + current branch
+            val leftPanel = JPanel(FlowLayout(FlowLayout.LEFT, 6, 0)).apply { isOpaque = false }
+            leftPanel.add(JLabel(Bundle.msg("plugin.title")).apply {
+                font = font.deriveFont(Font.BOLD, 13f)
             })
-            add(exportRow)
+            leftPanel.add(Box.createHorizontalStrut(8))
+            leftPanel.add(currentBranchLabel)
+            add(leftPanel, BorderLayout.WEST)
 
-            // Row 3: new preset buttons
-            val addRow = JPanel(FlowLayout(FlowLayout.LEFT, 4, 0))
-            addRow.add(JButton(Bundle.msg("action.add.preset"), AllIcons.General.Add).noFocusRing()
-                .also { it.addActionListener { presetManager.addPreset(presetsInner) } })
-            addRow.add(JButton(Bundle.msg("action.from.current"), AllIcons.Vcs.Branch).noFocusRing().also {
+            // Right: strategy summary + more actions
+            val rightPanel = JPanel(FlowLayout(FlowLayout.RIGHT, 4, 0)).apply { isOpaque = false }
+            rightPanel.add(strategyLabel)
+            rightPanel.add(createMoreActionsButton())
+            add(rightPanel, BorderLayout.EAST)
+        }
+    }
+
+    private fun createActionRow(): JPanel {
+        return JPanel(BorderLayout()).apply {
+            val left = JPanel(FlowLayout(FlowLayout.LEFT, 4, 0)).apply { isOpaque = false }
+            left.add(JButton(Bundle.msg("action.from.current"), AllIcons.Vcs.Branch).noFocusRing().also {
                 it.toolTipText = Bundle.msg("action.from.current.tip")
                 it.addActionListener { presetManager.addPresetFromCurrent(presetsInner) }
             })
-            add(addRow)
-
-            // Row 4: options
-            val optionsRow = JPanel(FlowLayout(FlowLayout.LEFT, 8, 2))
-            optionsRow.add(JLabel(Bundle.msg("label.dirty.working.tree")))
-            optionsRow.add(dirtyCombo)
-            optionsRow.add(JLabel(Bundle.msg("option.timeout")))
-            optionsRow.add(timeoutCombo)
-            optionsRow.add(fetchCheck)
-            optionsRow.add(pullCheck)
-            optionsRow.add(JCheckBox(Bundle.msg("option.confirm.init")).apply {
-                isSelected = service.confirmBeforeInit
-                addItemListener { service.confirmBeforeInit = isSelected }
-            })
-            add(optionsRow)
+            left.add(JButton(Bundle.msg("action.add.preset"), AllIcons.General.Add).noFocusRing()
+                .also { it.addActionListener { presetManager.addPreset(presetsInner) } })
+            add(left, BorderLayout.WEST)
         }
     }
+
+    private fun createMoreActionsButton(): JButton {
+        return JButton(AllIcons.General.Gear).apply {
+            margin = JBUI.insets(0, 4, 0, 4)
+            toolTipText = "更多操作"
+            addActionListener {
+                createMoreMenu().show(this, 0, height)
+            }
+        }.noFocusRing()
+    }
+
+    private fun createMoreMenu(): JPopupMenu {
+        return JPopupMenu().apply {
+            add(JMenuItem(Bundle.msg("action.reload"), AllIcons.Actions.Refresh).apply {
+                addActionListener { presetManager.reload(presetsInner); detectCurrentState() }
+            })
+            add(JMenuItem(Bundle.msg("action.open.config"), AllIcons.Actions.EditSource).apply {
+                addActionListener { presetManager.openConfig() }
+            })
+            addSeparator()
+            add(JMenuItem(Bundle.msg("action.import"), AllIcons.Actions.MenuSaveall).apply {
+                addActionListener { presetManager.importPresets(presetsContainer) }
+            })
+            add(JMenuItem(Bundle.msg("action.export"), AllIcons.Actions.MenuSaveall).apply {
+                addActionListener { presetManager.exportPresets() }
+            })
+            addSeparator()
+            add(JMenuItem(Bundle.msg("action.undo"), AllIcons.Actions.Rollback).apply {
+                addActionListener { switchController.undoLastSwitch() }
+            })
+            addSeparator()
+            add(JMenuItem("Settings…", AllIcons.General.Gear).apply {
+                addActionListener { openSettings() }
+            })
+        }
+    }
+
+    // ── Strategy summary ───────────────────────────────────────
+
+    private fun refreshStrategySummary() {
+        val dirty = when (service.dirtyAction) {
+            DirtyAction.Stash -> "Stash"
+            DirtyAction.Skip -> "Skip"
+            DirtyAction.Force -> "Force"
+        }
+        val parts = mutableListOf(dirty)
+        if (service.fetchFirst) parts += "fetch"
+        if (service.pullAfterSwitch) parts += "pull"
+        parts += "${service.timeoutSeconds}s"
+        strategyLabel.text = parts.joinToString(" · ")
+    }
+
+    private fun openSettings() {
+        ShowSettingsUtil.getInstance().showSettingsDialog(project, BranchSwitcherConfigurable::class.java)
+    }
+
+    // ── Status bar: progress + border ──────────────────────────
 
     private fun createStatusBar(): JPanel {
         return JPanel(BorderLayout()).apply {
@@ -180,7 +226,6 @@ class BranchSwitcherPanel(
                 BorderFactory.createMatteBorder(0, 0, 1, 0, JBColor.border()),
                 JBUI.Borders.empty(2, 2, 4, 2),
             )
-            add(currentBranchLabel, BorderLayout.WEST)
             add(progressBar, BorderLayout.EAST)
         }
     }
@@ -216,29 +261,6 @@ class BranchSwitcherPanel(
         logToggle.icon = if (logVisible) AllIcons.General.ArrowDown else AllIcons.General.ArrowRight
         revalidate()
         repaint()
-    }
-
-    // ── Option persistence ─────────────────────────────────────
-
-    private fun wireOptionsPersistence() {
-        dirtyCombo.selectedIndex = when (service.dirtyAction) {
-            DirtyAction.Stash -> 0; DirtyAction.Skip -> 1; DirtyAction.Force -> 2
-        }
-        dirtyCombo.addItemListener {
-            service.dirtyAction = when (dirtyCombo.selectedIndex) {
-                1 -> DirtyAction.Skip; 2 -> DirtyAction.Force; else -> DirtyAction.Stash
-            }
-        }
-        pullCheck.addItemListener { service.pullAfterSwitch = pullCheck.isSelected }
-        fetchCheck.addItemListener { service.fetchFirst = fetchCheck.isSelected }
-        timeoutCombo.selectedIndex = when (service.timeoutSeconds) {
-            30 -> 0; 120 -> 2; 300 -> 3; else -> { service.timeoutSeconds = 60; 1 }
-        }
-        timeoutCombo.addItemListener {
-            service.timeoutSeconds = when (timeoutCombo.selectedIndex) {
-                0 -> 30; 2 -> 120; 3 -> 300; else -> 60
-            }
-        }
     }
 
     // ── Event subscriptions ────────────────────────────────────

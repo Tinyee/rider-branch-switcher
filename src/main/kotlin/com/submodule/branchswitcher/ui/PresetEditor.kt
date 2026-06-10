@@ -27,7 +27,9 @@ import javax.swing.DefaultComboBoxModel
 import javax.swing.JButton
 import javax.swing.JComboBox
 import javax.swing.JLabel
+import javax.swing.JMenuItem
 import javax.swing.JPanel
+import javax.swing.JPopupMenu
 import javax.swing.border.Border
 
 /**
@@ -124,13 +126,14 @@ class PresetEditor(
             add(arrow)
             add(nameLabel.apply { font = font.deriveFont(Font.BOLD) })
             add(currentBadge)
+            add(Box.createHorizontalStrut(4))
+            add(mainDiffLabel)
         }
         val left = JPanel().apply {
             layout = BoxLayout(this, BoxLayout.Y_AXIS)
             isOpaque = false
             alignmentX = LEFT_ALIGNMENT
             add(nameRow)
-            add(mainDiffLabel)
             cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
             addMouseListener(object : MouseAdapter() {
                 override fun mouseClicked(e: MouseEvent) { toggle() }
@@ -138,15 +141,15 @@ class PresetEditor(
         }
         val right = JPanel(FlowLayout(FlowLayout.RIGHT, 4, 0)).apply { isOpaque = false }
         switchBtn.addActionListener { onSwitch(buildCurrent()) }
+        // Primary action: switch button (first, most prominent)
+        right.add(switchBtn)
+        // Secondary action: derive
         right.add(JButton(Bundle.msg("action.derive"), AllIcons.Vcs.Branch).noFocusRing().also {
             it.toolTipText = Bundle.msg("action.derive.tip")
             it.addActionListener { deriveBranch() }
         })
-        right.add(switchBtn)
-        right.add(JButton(Bundle.msg("action.delete"), AllIcons.Actions.Cancel).noFocusRing().also {
-            it.foreground = NamedColorUtil.getErrorForeground()
-            it.addActionListener { onDelete() }
-        })
+        // More actions: delete (moved here to reduce visual noise)
+        right.add(createPresetMoreButton())
 
         header.add(left, BorderLayout.WEST)
         header.add(right, BorderLayout.EAST)
@@ -208,6 +211,22 @@ class PresetEditor(
         }
     }
 
+    /** Creates the "..." more-actions button for this preset card. */
+    private fun createPresetMoreButton(): JButton {
+        return JButton(AllIcons.General.Gear).apply {
+            margin = JBUI.insets(0, 4, 0, 4)
+            toolTipText = "更多操作"
+            addActionListener {
+                JPopupMenu().apply {
+                    add(JMenuItem(Bundle.msg("action.delete"), AllIcons.Actions.Cancel).apply {
+                        foreground = NamedColorUtil.getErrorForeground()
+                        addActionListener { onDelete() }
+                    })
+                }.show(this@apply, 0, height)
+            }
+        }.noFocusRing()
+    }
+
     private fun applyOriginalToUI() {
         mainCombo.selectedItem = original.main
         subManager.applyPresetToUI(original)
@@ -264,7 +283,7 @@ class PresetEditor(
 
     /**
      * Updates the preset header diff label and submodule status dots.
-     * Dot colors: gray = not initialized, green = branch matched, red = mismatch.
+     * Dot colors: gray = not initialized, green = branch matched, orange = different branch.
      */
     fun applyCurrentState(currentBranches: Map<String, String?>) {
         setHighlighted(matchesState(currentBranches))
@@ -284,7 +303,7 @@ class PresetEditor(
             row.statusDot.foreground = when {
                 cur == null -> JBColor(0x9E9E9E, 0x757575) // gray: not initialized
                 cur == targetBranch -> JBColor(0x4CAF50, 0x66BB6A) // green: matched
-                else -> JBColor(0xF44336, 0xEF5350) // red: mismatch
+                else -> JBColor(0xE07B00, 0xFFA726) // orange: different branch (not an error)
             }
             row.statusDot.toolTipText = when {
                 cur == null -> "$path: 未初始化"

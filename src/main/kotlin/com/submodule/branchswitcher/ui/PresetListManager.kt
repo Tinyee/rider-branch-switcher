@@ -325,8 +325,14 @@ class PresetListManager(
     private fun createEmptyState(parent: JPanel): JPanel {
         return JPanel().apply {
             layout = BoxLayout(this, BoxLayout.Y_AXIS)
-            border = JBUI.Borders.empty(40, 16, 40, 16)
+            border = JBUI.Borders.empty(32, 16, 32, 16)
             alignmentX = JPanel.CENTER_ALIGNMENT
+            // Large icon as visual anchor
+            val iconLabel = JLabel(AllIcons.Vcs.Branch).apply {
+                alignmentX = JPanel.CENTER_ALIGNMENT
+            }
+            add(iconLabel)
+            add(Box.createVerticalStrut(16))
             val hint = JLabel(Bundle.msg("empty.no.presets")).apply {
                 font = font.deriveFont(Font.BOLD, 15f)
                 foreground = JBColor.GRAY
@@ -338,7 +344,7 @@ class PresetListManager(
                 alignmentX = JPanel.CENTER_ALIGNMENT
             }
             add(hint)
-            add(Box.createVerticalStrut(12))
+            add(Box.createVerticalStrut(8))
             add(subHint)
             add(Box.createVerticalStrut(20))
             val cta = JPanel(FlowLayout(FlowLayout.CENTER, 8, 0))
