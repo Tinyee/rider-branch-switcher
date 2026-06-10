@@ -1,6 +1,7 @@
 package com.submodule.branchswitcher.ui
 
 import com.intellij.icons.AllIcons
+import com.intellij.openapi.Disposable
 import com.intellij.openapi.options.ShowSettingsUtil
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vcs.FileStatusListener
@@ -20,7 +21,6 @@ import java.awt.BorderLayout
 import java.awt.Dimension
 import java.awt.FlowLayout
 import java.awt.Font
-import java.awt.GridLayout
 import java.nio.file.Path
 import java.nio.file.Paths
 import javax.swing.JProgressBar
@@ -49,7 +49,7 @@ import javax.swing.SwingUtilities
 class BranchSwitcherPanel(
     private val project: Project,
     private val service: BranchSwitcherService,
-) : JPanel(BorderLayout()) {
+) : JPanel(BorderLayout()), Disposable {
 
     // ── UI state ───────────────────────────────────────────────
     private val currentBranchLabel = JLabel(" ").apply {
@@ -101,7 +101,7 @@ class BranchSwitcherPanel(
     private var logVisible = false
     private lateinit var logToggle: JLabel
     private lateinit var logScroll: JBScrollPane
-    private val stateRefreshAlarm = Alarm(Alarm.ThreadToUse.SWING_THREAD, service)
+    private val stateRefreshAlarm = Alarm(Alarm.ThreadToUse.SWING_THREAD, this)
 
     // ── Delegates (after UI fields to resolve init order) ──────
     private val presetManager = PresetListManager(
@@ -149,62 +149,41 @@ class BranchSwitcherPanel(
     }
 
     private fun createHeaderRow(): JPanel {
-        return JPanel().apply {
-            layout = BoxLayout(this, BoxLayout.Y_AXIS)
+        return object : JPanel(BorderLayout()) {
+            override fun getMaximumSize(): Dimension =
+                Dimension(Short.MAX_VALUE.toInt(), preferredSize.height)
+        }.apply {
             isOpaque = false
-
-            val titleRow = object : JPanel(BorderLayout()) {
-                override fun getMaximumSize(): Dimension =
-                    Dimension(Short.MAX_VALUE.toInt(), preferredSize.height)
-            }.apply {
-                isOpaque = false
-                add(JLabel(Bundle.msg("plugin.title")).apply {
-                    font = font.deriveFont(Font.BOLD, 13f)
-                }, BorderLayout.WEST)
-                add(createMoreActionsButton(), BorderLayout.EAST)
-            }
-            add(titleRow)
-            add(Box.createVerticalStrut(2))
-            add(currentBranchLabel.apply {
-                font = font.deriveFont(Font.BOLD, 13f)
-                alignmentX = LEFT_ALIGNMENT
-            })
+            add(currentBranchLabel, BorderLayout.WEST)
+            add(createMoreActionsButton(), BorderLayout.EAST)
         }
     }
 
     private fun createActionRow(): JPanel {
-        return JPanel().apply {
-            layout = BoxLayout(this, BoxLayout.Y_AXIS)
+        return object : JPanel() {
+            override fun getMaximumSize(): Dimension =
+                Dimension(Short.MAX_VALUE.toInt(), preferredSize.height)
+        }.apply {
+            layout = BoxLayout(this, BoxLayout.X_AXIS)
             isOpaque = false
-
-            val actions = object : JPanel(GridLayout(1, 2, 4, 0)) {
-                override fun getMaximumSize(): Dimension =
-                    Dimension(Short.MAX_VALUE.toInt(), preferredSize.height)
-            }.apply {
-                isOpaque = false
-                add(JButton(Bundle.msg("action.from.current"), AllIcons.Vcs.Branch).noFocusRing().also {
-                    it.toolTipText = Bundle.msg("action.from.current.tip")
-                    it.addActionListener { presetManager.addPresetFromCurrent(presetsInner) }
-                })
-                add(JButton(Bundle.msg("action.add.preset"), AllIcons.General.Add).noFocusRing()
-                    .also { it.addActionListener { presetManager.addPreset(presetsInner) } })
-            }
-            val strategyRow = object : JPanel(FlowLayout(FlowLayout.RIGHT, 0, 0)) {
-                override fun getMaximumSize(): Dimension =
-                    Dimension(Short.MAX_VALUE.toInt(), preferredSize.height)
-            }.apply {
-                isOpaque = false
-                add(strategyLabel)
-            }
-            add(actions)
-            add(Box.createVerticalStrut(3))
-            add(strategyRow)
+            add(JButton(Bundle.msg("action.from.current"), AllIcons.Vcs.Branch).noFocusRing().also {
+                it.toolTipText = Bundle.msg("action.from.current.tip")
+                it.addActionListener { presetManager.addPresetFromCurrent(presetsInner) }
+            })
+            add(Box.createHorizontalStrut(4))
+            add(JButton(Bundle.msg("action.add.preset"), AllIcons.General.Add).noFocusRing()
+                .also { it.addActionListener { presetManager.addPreset(presetsInner) } })
+            add(Box.createHorizontalGlue())
+            add(strategyLabel)
         }
     }
 
     private fun createMoreActionsButton(): JButton {
         return JButton(AllIcons.Actions.MoreHorizontal).apply {
             margin = JBUI.insets(0, 4, 0, 4)
+            preferredSize = Dimension(JBUI.scale(32), JBUI.scale(24))
+            maximumSize = preferredSize
+            minimumSize = preferredSize
             toolTipText = Bundle.msg("action.more.tip")
             addActionListener {
                 createMoreMenu().show(this, 0, height)
@@ -306,7 +285,7 @@ class BranchSwitcherPanel(
     // ── Event subscriptions ────────────────────────────────────
 
     private fun wireEventSubscriptions() {
-        val connection = project.messageBus.connect(service)
+        val connection = project.messageBus.connect(this)
         connection.subscribe(BranchSwitchListener.TOPIC, object : BranchSwitchListener {
             override fun onBranchSwitched() {
                 com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater { detectCurrentState() }
@@ -324,7 +303,7 @@ class BranchSwitcherPanel(
                     scheduleStateRefresh()
                 }
             }
-        }, service)
+        }, this)
         addHierarchyListener { e ->
             if ((e.changeFlags and java.awt.event.HierarchyEvent.SHOWING_CHANGED.toLong()) != 0L && isShowing) {
                 com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater {
@@ -352,6 +331,10 @@ class BranchSwitcherPanel(
         if (!isShowing || project.isDisposed) return
         stateRefreshAlarm.cancelAllRequests()
         stateRefreshAlarm.addRequest({ detectCurrentState() }, 750)
+    }
+
+    override fun dispose() {
+        // Alarm and listeners are registered as children of this panel.
     }
 
     private fun ideBase(): Path? = project.basePath?.let { Paths.get(it) }

@@ -146,20 +146,41 @@ class PresetEditor(
                 Dimension(Short.MAX_VALUE.toInt(), preferredSize.height)
         }.apply { isOpaque = false }
         switchBtn.addActionListener { onSwitch(buildCurrent()) }
+        val moreBtn = createPresetMoreButton()
         right.add(switchBtn)
         right.add(deriveBtn)
-        right.add(createPresetMoreButton())
+        right.add(moreBtn)
 
-        mainDiffLabel.alignmentX = LEFT_ALIGNMENT
+        nameRow.add(Box.createHorizontalStrut(4))
+        nameRow.add(mainDiffLabel)
         header.add(nameRow)
-        header.add(mainDiffLabel)
         header.add(right)
-        val expandedActionsWidth = right.preferredSize.width
+        fun requiredActionsWidth(): Int {
+            val flow = right.layout as FlowLayout
+            val buttonsWidth = switchBtn.preferredSize.width +
+                deriveBtn.preferredSize.width +
+                moreBtn.preferredSize.width
+            return buttonsWidth + flow.hgap * 4 + right.insets.left + right.insets.right + JBUI.scale(16)
+        }
+        fun updateResponsiveActions() {
+            val showDerive = header.width <= 0 || header.width >= requiredActionsWidth()
+            if (deriveBtn.isVisible != showDerive) {
+                deriveBtn.isVisible = showDerive
+                right.revalidate()
+                right.repaint()
+            }
+        }
         header.addComponentListener(object : ComponentAdapter() {
             override fun componentResized(e: ComponentEvent) {
-                deriveBtn.isVisible = header.width >= expandedActionsWidth + JBUI.scale(16)
+                updateResponsiveActions()
             }
         })
+        val buttonMetricsChanged = java.beans.PropertyChangeListener { updateResponsiveActions() }
+        listOf(switchBtn, deriveBtn, moreBtn).forEach { button ->
+            button.addPropertyChangeListener("text", buttonMetricsChanged)
+            button.addPropertyChangeListener("font", buttonMetricsChanged)
+            button.addPropertyChangeListener("icon", buttonMetricsChanged)
+        }
 
         body.add(makeMainRow())
         initial.submodules.forEach { (path, branch) ->
@@ -222,6 +243,9 @@ class PresetEditor(
     private fun createPresetMoreButton(): JButton {
         return JButton(AllIcons.Actions.MoreHorizontal).apply {
             margin = JBUI.insets(0, 4, 0, 4)
+            preferredSize = Dimension(JBUI.scale(32), JBUI.scale(24))
+            maximumSize = preferredSize
+            minimumSize = preferredSize
             toolTipText = Bundle.msg("action.more.tip")
             addActionListener {
                 JPopupMenu().apply {

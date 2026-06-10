@@ -20,6 +20,7 @@ class BranchSwitcherToolWindowFactory : ToolWindowFactory {
         val service = project.service<BranchSwitcherService>()
         val panel = BranchSwitcherPanel(project, service)
         val content = ContentFactory.getInstance().createContent(panel, "", false)
+        content.setDisposer(panel)
         toolWindow.contentManager.addContent(content)
 
         // Check git availability once per project
