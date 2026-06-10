@@ -289,8 +289,13 @@ class PresetEditor(
     fun applyCurrentState(currentBranches: Map<String, String?>, dirtyRepos: Map<String, Boolean> = emptyMap()) {
         setHighlighted(matchesState(currentBranches))
         val currentMain = currentBranches["."] ?: "(detached)"
+        val mainDirty = dirtyRepos["."] == true
         if (currentMain != original.main) {
             mainDiffLabel.text = Bundle.msg("preset.main.diff", currentMain, original.main)
+            mainDiffLabel.isVisible = true
+            mainDiffLabel.foreground = JBColor(0xE07B00, 0xFFA726)
+        } else if (mainDirty) {
+            mainDiffLabel.text = "${Bundle.msg("label.main.repo")} · ${Bundle.msg("status.tooltip.dirty")}"
             mainDiffLabel.isVisible = true
             mainDiffLabel.foreground = JBColor(0xE07B00, 0xFFA726)
         } else {
@@ -308,11 +313,11 @@ class PresetEditor(
                 else -> JBColor(0xE07B00, 0xFFA726) // orange: different branch (not an error)
             }
             val base = when {
-                cur == null -> "$path: 未初始化"
-                cur == targetBranch -> "$path: $cur ✓"
-                else -> "$path: $cur → $targetBranch"
+                cur == null -> "$path: ${Bundle.msg("status.tooltip.not.init")}"
+                cur == targetBranch -> Bundle.msg("status.tooltip.matched", path, cur)
+                else -> Bundle.msg("status.tooltip.mismatch", path, cur, targetBranch)
             }
-            row.statusDot.toolTipText = if (isDirty) "$base · 脏工作区" else base
+            row.statusDot.toolTipText = if (isDirty) "$base · ${Bundle.msg("status.tooltip.dirty")}" else base
         }
     }
 

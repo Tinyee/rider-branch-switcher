@@ -56,6 +56,8 @@ class BranchSwitcherPanel(
         foreground = JBColor.GRAY
         cursor = java.awt.Cursor.getPredefinedCursor(java.awt.Cursor.HAND_CURSOR)
         toolTipText = Bundle.msg("label.strategy.tip")
+        // Allow BoxLayout to shrink this label in narrow windows
+        minimumSize = Dimension(0, preferredSize.height)
         addMouseListener(object : java.awt.event.MouseAdapter() {
             override fun mouseClicked(e: java.awt.event.MouseEvent) { openSettings() }
         })
@@ -159,20 +161,18 @@ class BranchSwitcherPanel(
     }
 
     private fun createActionRow(): JPanel {
-        return JPanel(BorderLayout()).apply {
-            // Left: CTA buttons
-            val left = JPanel(FlowLayout(FlowLayout.LEFT, 4, 0)).apply { isOpaque = false }
-            left.add(JButton(Bundle.msg("action.from.current"), AllIcons.Vcs.Branch).noFocusRing().also {
+        return JPanel().apply {
+            layout = BoxLayout(this, BoxLayout.X_AXIS)
+            isOpaque = false
+            add(JButton(Bundle.msg("action.from.current"), AllIcons.Vcs.Branch).noFocusRing().also {
                 it.toolTipText = Bundle.msg("action.from.current.tip")
                 it.addActionListener { presetManager.addPresetFromCurrent(presetsInner) }
             })
-            left.add(JButton(Bundle.msg("action.add.preset"), AllIcons.General.Add).noFocusRing()
+            add(Box.createHorizontalStrut(4))
+            add(JButton(Bundle.msg("action.add.preset"), AllIcons.General.Add).noFocusRing()
                 .also { it.addActionListener { presetManager.addPreset(presetsInner) } })
-            add(left, BorderLayout.WEST)
-            // Right: strategy summary
-            val right = JPanel(FlowLayout(FlowLayout.RIGHT, 4, 0)).apply { isOpaque = false }
-            right.add(strategyLabel)
-            add(right, BorderLayout.EAST)
+            add(Box.createHorizontalGlue())
+            add(strategyLabel)
         }
     }
 
@@ -356,16 +356,23 @@ class BranchSwitcherPanel(
                 }
                 presetsInner.revalidate()
                 presetsInner.repaint()
-                logDetected(eds.toList(), branches)
+                logDetected(eds.toList(), branches, dirty)
             }
         }
     }
 
-    private fun logDetected(eds: List<PresetEditor>, branches: Map<String, String?>) {
+    private fun logDetected(eds: List<PresetEditor>, branches: Map<String, String?>, dirtyRepos: Map<String, Boolean>) {
         val main = branches["."] ?: "(detached)"
+        val mainDirty = dirtyRepos["."] == true
         val matched = eds.firstOrNull { it.matchesState(branches) }?.currentPreset()?.name
         currentBranchLabel.text = "${Bundle.msg("label.main.branch")} $main"
-        append("[detect] main=$main, matched=${matched ?: "<none>"}")
+        if (mainDirty) {
+            currentBranchLabel.text += " · ${Bundle.msg("status.tooltip.dirty")}"
+            currentBranchLabel.foreground = JBColor(0xE07B00, 0xFFA726)
+        } else {
+            currentBranchLabel.foreground = JBUI.CurrentTheme.Link.Foreground.ENABLED
+        }
+        append("[detect] main=$main${if (mainDirty) " (dirty)" else ""}, matched=${matched ?: "<none>"}")
     }
 
     /**
