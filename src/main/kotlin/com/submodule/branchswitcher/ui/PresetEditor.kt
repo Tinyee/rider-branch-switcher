@@ -16,6 +16,8 @@ import java.awt.Dimension
 import java.awt.FlowLayout
 import java.awt.Font
 import java.awt.Insets
+import java.awt.event.ComponentAdapter
+import java.awt.event.ComponentEvent
 import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
 import java.io.File
@@ -86,6 +88,10 @@ class PresetEditor(
         border = JBUI.Borders.empty(1, 0, 0, 0)
     }
     private val switchBtn = JButton(Bundle.msg("action.switch"), AllIcons.Actions.Execute).noFocusRing()
+    private val deriveBtn = JButton(Bundle.msg("action.derive"), AllIcons.Vcs.Branch).noFocusRing().apply {
+        toolTipText = Bundle.msg("action.derive.tip")
+        addActionListener { deriveBranch() }
+    }
     private var isCurrent = false
 
     private val body = object : JPanel() {
@@ -109,10 +115,11 @@ class PresetEditor(
         alignmentX = LEFT_ALIGNMENT
         border = makeBorder(highlighted = false)
 
-        val header = object : JPanel(BorderLayout()) {
+        val header = object : JPanel() {
             override fun getMaximumSize(): Dimension =
                 Dimension(Short.MAX_VALUE.toInt(), preferredSize.height)
         }.apply {
+            layout = BoxLayout(this, BoxLayout.Y_AXIS)
             alignmentX = LEFT_ALIGNMENT
             cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
             addMouseListener(object : MouseAdapter() {
@@ -123,36 +130,36 @@ class PresetEditor(
         }
         val nameRow = JPanel(FlowLayout(FlowLayout.LEFT, 4, 0)).apply {
             isOpaque = false
-            add(arrow)
+            add(arrow.apply {
+                addMouseListener(object : MouseAdapter() {
+                    override fun mouseClicked(e: MouseEvent) { toggle() }
+                })
+            })
             add(nameLabel.apply { font = font.deriveFont(Font.BOLD) })
             add(currentBadge)
-            add(Box.createHorizontalStrut(4))
-            add(mainDiffLabel)
-        }
-        val left = JPanel().apply {
-            layout = BoxLayout(this, BoxLayout.Y_AXIS)
-            isOpaque = false
-            alignmentX = LEFT_ALIGNMENT
-            add(nameRow)
-            cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
             addMouseListener(object : MouseAdapter() {
                 override fun mouseClicked(e: MouseEvent) { toggle() }
             })
         }
-        val right = JPanel(FlowLayout(FlowLayout.RIGHT, 4, 0)).apply { isOpaque = false }
+        val right = object : JPanel(FlowLayout(FlowLayout.RIGHT, 4, 0)) {
+            override fun getMaximumSize(): Dimension =
+                Dimension(Short.MAX_VALUE.toInt(), preferredSize.height)
+        }.apply { isOpaque = false }
         switchBtn.addActionListener { onSwitch(buildCurrent()) }
-        // Primary action: switch button (first, most prominent)
         right.add(switchBtn)
-        // Secondary action: derive
-        right.add(JButton(Bundle.msg("action.derive"), AllIcons.Vcs.Branch).noFocusRing().also {
-            it.toolTipText = Bundle.msg("action.derive.tip")
-            it.addActionListener { deriveBranch() }
-        })
-        // More actions: delete (moved here to reduce visual noise)
+        right.add(deriveBtn)
         right.add(createPresetMoreButton())
 
-        header.add(left, BorderLayout.WEST)
-        header.add(right, BorderLayout.EAST)
+        mainDiffLabel.alignmentX = LEFT_ALIGNMENT
+        header.add(nameRow)
+        header.add(mainDiffLabel)
+        header.add(right)
+        val expandedActionsWidth = right.preferredSize.width
+        header.addComponentListener(object : ComponentAdapter() {
+            override fun componentResized(e: ComponentEvent) {
+                deriveBtn.isVisible = header.width >= expandedActionsWidth + JBUI.scale(16)
+            }
+        })
 
         body.add(makeMainRow())
         initial.submodules.forEach { (path, branch) ->
@@ -218,6 +225,12 @@ class PresetEditor(
             toolTipText = Bundle.msg("action.more.tip")
             addActionListener {
                 JPopupMenu().apply {
+                    if (!deriveBtn.isVisible) {
+                        add(JMenuItem(Bundle.msg("action.derive"), AllIcons.Vcs.Branch).apply {
+                            addActionListener { deriveBranch() }
+                        })
+                        addSeparator()
+                    }
                     add(JMenuItem(Bundle.msg("action.delete"), AllIcons.Actions.Cancel).apply {
                         foreground = NamedColorUtil.getErrorForeground()
                         addActionListener { onDelete() }

@@ -84,23 +84,31 @@ class SubmoduleRowManager(
             add(labelPanel, BorderLayout.WEST)
             add(combo, BorderLayout.CENTER)
 
-            val delBtn = JButton(AllIcons.General.Remove).apply {
-                margin = JBUI.insets(0, 4, 0, 4)
-                preferredSize = Dimension(JBUI.scale(32), JBUI.scale(24))
-                maximumSize = Dimension(JBUI.scale(32), JBUI.scale(24))
-                minimumSize = Dimension(JBUI.scale(32), JBUI.scale(24))
-                toolTipText = Bundle.msg("tooltip.remove.submodule")
-                foreground = JBColor.GRAY
-                addActionListener {
-                    val r = subRows[path] ?: return@addActionListener
+            val removeRow = {
+                val r = subRows[path]
+                if (r != null) {
                     r.deleted = true
                     r.panel.isVisible = false
                     onDirty()
                     body.revalidate()
                     body.repaint()
                 }
+            }
+            val rowMenuBtn = JButton(AllIcons.Actions.MoreHorizontal).apply {
+                margin = JBUI.insets(0, 4, 0, 4)
+                preferredSize = Dimension(JBUI.scale(32), JBUI.scale(24))
+                maximumSize = Dimension(JBUI.scale(32), JBUI.scale(24))
+                minimumSize = Dimension(JBUI.scale(32), JBUI.scale(24))
+                toolTipText = Bundle.msg("action.more.tip")
+                addActionListener {
+                    val popup = javax.swing.JPopupMenu()
+                    popup.add(javax.swing.JMenuItem(Bundle.msg("action.remove.submodule"), AllIcons.General.Remove).apply {
+                        addActionListener { removeRow() }
+                    })
+                    popup.show(this, 0, height)
+                }
             }.noFocusRing()
-            add(delBtn, BorderLayout.EAST)
+            add(rowMenuBtn, BorderLayout.EAST)
         }
         // Right-click context menu
         rowPanel.addMouseListener(object : MouseAdapter() {
