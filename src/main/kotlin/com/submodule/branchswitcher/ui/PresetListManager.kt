@@ -301,7 +301,9 @@ class PresetListManager(
                     log.debug("[import] skip ${preset.name} — 名字冲突")
                     return@forEach
                 }
-                addEditorRow(root, preset, presetsInner)
+                // Generate new id for imported copies — avoids collisions
+                // when the same preset JSON is shared across projects or imported multiple times.
+                addEditorRow(root, preset.copy(id = java.util.UUID.randomUUID().toString()), presetsInner)
                 importedCount++
             }
             presetsContainer.revalidate()

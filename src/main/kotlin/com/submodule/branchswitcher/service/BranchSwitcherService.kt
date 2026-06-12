@@ -126,13 +126,17 @@ class BranchSwitcherService(
     // -- Switch history for undo support (max 5 entries, persisted across restarts) --
 
     private val maxHistory = 5
-    /** Records a completed switch: preset name + timestamp. */
-    data class SwitchHistoryEntry(val presetName: String = "", val timestamp: Long = 0)
+    /** Records a completed switch: preset name, stable id (for rename survival), and timestamp. */
+    data class SwitchHistoryEntry(
+        val presetName: String = "",
+        val presetId: String? = null,
+        val timestamp: Long = 0,
+    )
 
     @Synchronized
-    fun addHistory(name: String) {
+    fun addHistory(name: String, id: String? = null) {
         val list = options.history
-        list.add(0, SwitchHistoryEntry(name, System.currentTimeMillis()))
+        list.add(0, SwitchHistoryEntry(name, id, System.currentTimeMillis()))
         if (list.size > maxHistory) {
             options.history = list.take(maxHistory).toMutableList()
         }

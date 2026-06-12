@@ -106,7 +106,7 @@ class SwitchController(
             invokeLaterIfProjectAlive {
                 setSwitchInProgress(false)
                 if (ok) {
-                    service.addHistory(preset.name)
+                    service.addHistory(preset.name, preset.id)
                     Notifier.info(project, Bundle.msg("switch.complete"), Bundle.msg("notify.switch.complete.msg", preset.name))
                 } else {
                     val executor = rollbackExecutor
@@ -190,10 +190,15 @@ class SwitchController(
             Messages.showInfoMessage(project, Bundle.msg("no.undo.history"), Bundle.msg("dialog.undo"))
             return
         }
-        val previousName = history[1].presetName
-        val preset = allPresets.find { it.name == previousName }
+        val entry = history[1]
+        // Prefer stable id (survives renames), fall back to name for old history entries
+        val preset: Preset? = if (entry.presetId != null) {
+            allPresets.find { it.id == entry.presetId } ?: allPresets.find { it.name == entry.presetName }
+        } else {
+            allPresets.find { it.name == entry.presetName }
+        }
         if (preset == null) {
-            Messages.showInfoMessage(project, "${Bundle.msg("undo.not.found")}「$previousName」", Bundle.msg("dialog.undo"))
+            Messages.showInfoMessage(project, "${Bundle.msg("undo.not.found")}「${entry.presetName}」", Bundle.msg("dialog.undo"))
             return
         }
         runSwitch(preset)
