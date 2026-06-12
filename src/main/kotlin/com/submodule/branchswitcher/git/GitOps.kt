@@ -1,9 +1,9 @@
 package com.submodule.branchswitcher.git
 
-import com.intellij.execution.configurations.GeneralCommandLine
-import com.intellij.execution.process.CapturingProcessHandler
 import java.io.File
 import java.nio.charset.StandardCharsets
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 
 fun selectRemoteName(remotes: List<String>): String = when {
     remotes.isEmpty() -> "origin"
@@ -14,25 +14,72 @@ fun selectRemoteName(remotes: List<String>): String = when {
 fun safeTimeoutMillis(timeoutSeconds: Int): Int = timeoutSeconds.coerceIn(1, 3600) * 1000
 
 /**
- * CLI-based [GitClient] implementation using IntelliJ's [GeneralCommandLine] + [CapturingProcessHandler].
+ * CLI-based [GitClient] implementation using [ProcessBuilder] with cancellable polling.
  * All git commands inherit [timeoutSeconds] (default 60s).
+ *
+ * Cancellation: [cancel] sets a flag that causes the currently running command
+ * to be destroyed via [Process.destroyForcibly] within ~100ms.
  */
 class GitOps(
     private val timeoutSeconds: Int = 60,
 ) : GitClient {
-    /** Executes `git [args]` in [workDir] with a configurable timeout (clamped to 1-3600s). */
+
+    private val cancelled = AtomicBoolean(false)
+
+    override fun cancel() {
+        cancelled.set(true)
+    }
+
+    /** Executes `git [args]` in [workDir], polling for cancellation and timeout every 100ms. */
     private fun run(workDir: File, vararg args: String): GitResult {
-        val cmd = GeneralCommandLine("git", *args)
-            .withWorkDirectory(workDir)
-            .withCharset(StandardCharsets.UTF_8)
-        val handler = CapturingProcessHandler(cmd)
-        val out = handler.runProcess(safeTimeoutMillis(timeoutSeconds))
-        return GitResult(
-            cmd = "git ${args.joinToString(" ")}",
-            exitCode = out.exitCode,
-            stdout = out.stdoutLines.joinToString("\n"),
-            stderr = out.stderrLines.joinToString("\n"),
-        )
+        cancelled.set(false)
+        val cmdLabel = "git ${args.joinToString(" ")}"
+        val pb = ProcessBuilder("git", *args)
+            .directory(workDir)
+            .redirectErrorStream(false)
+        val process: Process = try {
+            pb.start()
+        } catch (e: Exception) {
+            return GitResult(cmdLabel, -1, "", "failed to start: ${e.message}")
+        }
+
+        // Read stdout/stderr on background threads so the pipe buffers don't block the process
+        val stdoutFuture = java.util.concurrent.CompletableFuture.supplyAsync {
+            process.inputStream.bufferedReader(StandardCharsets.UTF_8).use { it.readText() }
+        }
+        val stderrFuture = java.util.concurrent.CompletableFuture.supplyAsync {
+            process.errorStream.bufferedReader(StandardCharsets.UTF_8).use { it.readText() }
+        }
+
+        val deadline = System.currentTimeMillis() + safeTimeoutMillis(timeoutSeconds)
+        var exitCode: Int
+        while (true) {
+            val finished = try {
+                process.waitFor(100, TimeUnit.MILLISECONDS)
+            } catch (_: InterruptedException) {
+                Thread.currentThread().interrupt()
+                false
+            }
+            if (finished) {
+                exitCode = process.exitValue()
+                break
+            }
+            if (cancelled.get()) {
+                process.destroyForcibly()
+                process.waitFor(5, TimeUnit.SECONDS)
+                return GitResult(cmdLabel, -1, "", "cancelled")
+            }
+            if (System.currentTimeMillis() > deadline) {
+                process.destroyForcibly()
+                process.waitFor(5, TimeUnit.SECONDS)
+                return GitResult(cmdLabel, -1, "", "timeout after ${timeoutSeconds}s")
+            }
+        }
+
+        val stdout = runCatching { stdoutFuture.get(5, TimeUnit.SECONDS) }.getOrDefault("")
+        val stderr = runCatching { stderrFuture.get(5, TimeUnit.SECONDS) }.getOrDefault("")
+
+        return GitResult(cmdLabel, exitCode, stdout.trim(), stderr.trim())
     }
 
     override fun currentBranch(workDir: File): String? {

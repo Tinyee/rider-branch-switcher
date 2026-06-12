@@ -92,6 +92,10 @@ class SwitchController(
                                 progressBar.isIndeterminate = indeterminate
                             }
                         }
+                        override fun cancel() {
+                            service.gitClient.cancel() // terminate in-flight git command
+                            indicator.cancel()
+                        }
                     }
                     val executor = SwitchExecutor(root, log, service.gitClient, wrapped)
                     rollbackExecutor = executor
