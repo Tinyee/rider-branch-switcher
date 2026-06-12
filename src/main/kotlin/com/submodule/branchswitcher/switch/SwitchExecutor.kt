@@ -64,6 +64,7 @@ class SwitchExecutor(
             context.indicator?.text = step.name
             context.indicator?.checkCanceled()
             if (context.cancelled()) {
+                git.cancel() // terminate in-flight command if any
                 log.info("[cancelled] before step: ${step.name}")
                 overallSuccess = false
                 break
