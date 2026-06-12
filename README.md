@@ -2,7 +2,7 @@
 
 **Rider plugin** — one-click switch the main repo and all submodules to a preset branch combination.
 
-![version](https://img.shields.io/badge/version-0.5.0-blue)
+![version](https://img.shields.io/badge/version-0.6.0-blue)
 ![tests](https://img.shields.io/badge/tests-150-green)
 ![Rider](https://img.shields.io/badge/Rider-2026.1-purple)
 
@@ -70,7 +70,7 @@ Presets are stored as JSON in `.idea/branch-presets.json` (auto-created on first
 
 ## Options
 
-Configured in the tool window (bottom) or via `Settings → Version Control → Submodule Branch Switcher`:
+Configured via `Settings → Version Control → Submodule Branch Switcher`:
 
 | Option | Default | Description |
 |--------|---------|-------------|
@@ -83,7 +83,7 @@ Configured in the tool window (bottom) or via `Settings → Version Control → 
 ## Dev
 
 ```bash
-# Run tests (150 tests, no IDE runtime needed)
+# Run tests (JUnit 4 + Kotest, no IDE runtime needed)
 ./gradlew test
 
 # Build plugin zip

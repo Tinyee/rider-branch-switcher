@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.6.0] — 2026-06-13
+
+### Architecture
+- Structured logging: `AppLogger` interface (info/warn/error/debug/activity) replaces `(String) -> Unit`
+- `ToolWindowLogger` routes to both IntelliJ diagnostic log and tool window panel
+- `LogEntry.Level` enum replaces string-prefix color matching
+- `Activity` level restores blue color for switch/rollback/derive operations
+- `jButton()` factory in `UiUtil.kt` eliminates scattered `.noFocusRing()` calls
+
+### Quality
+- `error()` uses `ideaLogger.warn()` to avoid triggering Rider Fatal Errors for business failures
+- Log levels assigned by semantics: failures → warn, diagnostics → debug, activities → activity
+- Review fixes: 3 rounds of log-level migration corrections
+
+### Docs
+- README, ROADMAP, CHANGELOG synchronized to 0.6.0
+- `plugin.xml` vendor updated to match GitHub remote (Tinyee)
+- Historical review docs (`code-review-2026-06-08.md`, `ui-redesign-plan-2026-06-09.md`) marked archived
+
 ## [0.5.0] — 2026-06-07
 
 ### Architecture

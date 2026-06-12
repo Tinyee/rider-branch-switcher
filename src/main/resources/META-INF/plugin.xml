@@ -1,11 +1,24 @@
 <idea-plugin>
     <id>com.submodule.branchswitcher</id>
     <name>Submodule Branch Switcher</name>
-    <vendor url="https://github.com/jty75/rider-branch-switcher" email="jty75@users.noreply.github.com">jty75</vendor>
+    <vendor url="https://github.com/Tinyee/rider-branch-switcher" email="tinyee@users.noreply.github.com">Tinyee</vendor>
     <resource-bundle>messages.BranchSwitcherBundle</resource-bundle>
     <description><![CDATA[
-        One-click switch the main repo and all its submodules to a preset branch combo.
-        Reads branch presets from .idea/branch-presets.json (auto-created on first run).
+        One-click switch the main repo and all its submodules to a preset branch combination.
+        <br><br>
+        <b>Features:</b>
+        <ul>
+            <li>Save branch combinations (main + submodules) as named presets</li>
+            <li>Preflight preview: dry-run table per repo before switching</li>
+            <li>Dirty working tree strategies: stash / skip / force</li>
+            <li>Auto stash pop when switching back to the original branch</li>
+            <li>Derive feature branches on all repos simultaneously</li>
+            <li>Rollback to pre-switch state on failure</li>
+            <li>Ctrl+Alt+B shortcut for quick preset picker</li>
+        </ul>
+        Presets are stored in <code>.idea/branch-presets.json</code> — team members can share via git.
+        <br><br>
+        Settings at <i>File → Settings → Version Control → Submodule Branch Switcher</i>.
     ]]></description>
 
     <depends>com.intellij.modules.platform</depends>
