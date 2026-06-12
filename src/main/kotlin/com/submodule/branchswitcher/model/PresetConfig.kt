@@ -10,6 +10,10 @@ data class RepoTarget(
  * A named branch preset — the central data model.
  * [targets()] returns main first (".") followed by submodules in order,
  * which is the required processing order for the switch pipeline.
+ *
+ * [id] is a stable UUID that survives renames. Generated automatically for new presets
+ * and auto-filled when loading old JSON that lacks an id field. History and future features
+ * (shortcut bindings, color tags) reference presets by [id] rather than [name].
  */
 data class Preset(
     val name: String,
@@ -17,6 +21,7 @@ data class Preset(
     val submodules: Map<String, String> = emptyMap(),
     @com.google.gson.annotations.SerializedName("pull")
     val pullEnabled: Boolean = true,
+    val id: String = java.util.UUID.randomUUID().toString(),
 ) {
     /** Returns all targets: main (".") first, then submodules. Main-first ordering is critical for submodule init. */
     fun targets(): List<RepoTarget> {
@@ -28,10 +33,13 @@ data class Preset(
 
 /**
  * Gson-safe DTO for [Preset]. All fields are nullable so Gson doesn't silently
- * set Kotlin defaults to JVM zero-values (null/false) via UnsafeAllocator.
+ * set Kotlin defaults to JVM zero-values (via UnsafeAllocator).
  * Always convert to [Preset] via [toPreset] before use.
+ *
+ * If [id] is missing (old JSON), [toPreset] auto-generates one.
  */
 data class PresetDto(
+    val id: String? = null,
     val name: String? = null,
     val main: String? = null,
     val submodules: Map<String, String>? = null,
@@ -39,6 +47,7 @@ data class PresetDto(
     val pull: Boolean? = null,
 ) {
     fun toPreset(): Preset = Preset(
+        id = id ?: java.util.UUID.randomUUID().toString(),
         name = name ?: error("preset.name is required"),
         main = main ?: error("preset.main is required"),
         submodules = submodules ?: emptyMap(),
