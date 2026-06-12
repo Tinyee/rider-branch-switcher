@@ -58,7 +58,7 @@ class CheckoutStep : SwitchStep {
                     context.log.info("dir missing, trying: git submodule update --init -- ${target.path}")
                     val r = context.git.submoduleInitPath(context.projectRoot.toFile(), target.path)
                     if (!r.ok) {
-                        context.log.info("[skip] submodule init failed: ${r.stderr.lines().firstOrNull() ?: ""}")
+                        context.log.warn("[skip] submodule init failed: ${r.stderr.lines().firstOrNull() ?: ""}")
                         failures[target.path] = "submodule init failed"
                         continue
                     }
