@@ -1,6 +1,6 @@
 # Submodule Branch Switcher — 需求 / 路线图
 
-**当前版本 0.5.0**，已具备：
+**当前版本 0.6.0**，已具备：
 
 - 多 preset 持久化（JSON），UI 内增删 preset 与子模块行（基于 `.gitmodules`）
 - 一键切换主仓 + 子模块；脏工作区三策略（stash / skip / force）；切换前 fetch；切换后 pull --ff-only；切换后 VCS 自动刷新
@@ -153,7 +153,7 @@
 | P1 | `GitOps` 用 CLI fork 而非 git4idea API | 慢 + 不响应 cancel + 依赖 PATH | — |
 | P2 | 包结构扁平（`com.submodule.branchswitcher` 全平铺，11 个文件） | 加新功能继续平铺会变难找 | ✅ v0.2.2 |
 | P2 | 中英文硬编码，无 `BundleMessage` | i18n 时机械迁移 | ✅ v0.5 ResourceBundle(en/zh) + Bundle.kt |
-| P2 | `noFocusRing()` 每个按钮手动调，容易漏 | 应该工厂化或全局 LAF | — |
+| P2 | `noFocusRing()` 每个按钮手动调，容易漏 | 应该工厂化或全局 LAF | ✅ v0.6 `jButton()` 工厂 |
 | — | `TaskBridge` 底层仍用 `Task.Backgroundable` | 见下方决策记录 | ✅ 有意保留 |
 
 ### TaskBridge 决策记录 (2026-06-07)
@@ -331,7 +331,7 @@ com.submodule.branchswitcher/
 | # | 事项 | 工作量 | 说明 |
 |---|------|--------|------|
 | M8 | Settings Configurable | 中 | File→Settings→Version Control 下注册配置页 |
-| M9 | 结构化日志 | 中 | `com.intellij.openapi.diagnostic.Logger` 替代 lambda `log()` |
+| M9 | 结构化日志 | 中 | `com.intellij.openapi.diagnostic.Logger` 替代 lambda `log()` | ✅ v0.6 `AppLogger` |
 | M10 | 动态插件兼容 | 中 | 确保 service.dispose() 取消协程、不泄漏 classloader |
 | M11 | Bundle 加 `@PropertyKey` | 低 | 编译时校验 key 有效性 |
 
@@ -352,7 +352,7 @@ com.submodule.branchswitcher/
 - ✅ 150 测试，15 个测试类，`./gradlew test` 即可跑
 - ✅ `GitClient` 接口 + Fake 实现 → 架构已隔离 IntelliJ 运行时
 - ✅ 真实 git 临时仓库集成测试（`SwitchIntegrationTest`）
-- ⚠ 无 CI/CD，依赖手动跑测试
+- ✅ GitHub Actions CI（ubuntu/macOS/Windows）+ Detekt 静态分析
 - ⚠ 已覆盖 UI 规则与 Swing 几何约束，尚无 Rider fixture / 截图测试
 
 ### 推荐方案（按投入排序）

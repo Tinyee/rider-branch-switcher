@@ -1,3 +1,4 @@
+<!-- ARCHIVED: 历史审查文档。当前代码状态以 ROADMAP.md 和 CHANGELOG.md 为准。 -->
 # 代码审查 — 2026-06-08
 
 **审查范围**: `4710589^...HEAD`(工具栏 + 卡片新布局重构, 4 次 commit, 仅 `BranchSwitcherPanel.kt`, +105 / -95)
