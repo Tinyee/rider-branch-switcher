@@ -6,6 +6,7 @@ import com.intellij.openapi.application.ModalityState
 import com.intellij.openapi.progress.ProgressIndicator
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.Messages
+import com.submodule.branchswitcher.log.AppLogger
 import com.submodule.branchswitcher.Notifier
 import com.submodule.branchswitcher.Bundle
 import com.submodule.branchswitcher.TaskBridge
@@ -28,7 +29,7 @@ class SwitchController(
     private val project: Project,
     private val service: BranchSwitcherService,
     private val gitRoot: () -> Path?,
-    private val log: (String) -> Unit,
+    private val log: AppLogger,
     private val editors: () -> List<PresetEditor>,
     private val onStateChanged: () -> Unit,
     private val progressBar: JProgressBar,
@@ -97,7 +98,7 @@ class SwitchController(
                     ok = executor.execute(preset, opts)
                 }
             } catch (e: Exception) {
-                log("[error] switch: ${e.javaClass.simpleName}: ${e.message}")
+                log.error("switch: ${e.javaClass.simpleName}: ${e.message}")
                 ok = false
             }
             // Resumed on EDT via TaskBridge.onFinished, but continuation dispatcher is Default
@@ -133,7 +134,7 @@ class SwitchController(
                     rollbackOk = executor.rollback()
                 }
             } catch (e: Exception) {
-                log("[error] rollback: ${e.javaClass.simpleName}: ${e.message}")
+                log.error("rollback: ${e.javaClass.simpleName}: ${e.message}")
                 rollbackOk = false
             }
             // Wrap UI ops in invokeLater to avoid EDT violations
@@ -163,14 +164,14 @@ class SwitchController(
                         indicator.text2 = if (target.path == ".") root.fileName.toString() else target.path
                         val dir = if (target.path == ".") root.toFile() else root.resolve(target.path).toFile()
                         if (!dir.exists() || !java.io.File(dir, ".git").exists()) {
-                            log("[derive] skip ${target.path} — not a git repo")
+                            log.debug("[derive] skip ${target.path} — not a git repo")
                             continue
                         }
                         val r = service.gitClient.checkoutNewBranch(dir, branchName)
                         if (r.ok) {
-                            log("[derive] ${target.path}: created branch $branchName")
+                            log.activity("[derive] ${target.path}: created branch $branchName")
                         } else {
-                            log("[derive] ${target.path}: FAILED — ${r.stderr.lines().firstOrNull() ?: ""}")
+                            log.warn("[derive] ${target.path}: FAILED — ${r.stderr.lines().firstOrNull() ?: ""}")
                         }
                     }
                 }
@@ -203,12 +204,12 @@ class SwitchController(
             try {
                 refreshVcsRepos(project, root, preset.submodules.keys)
                 invokeLaterIfProjectAlive {
-                    log("[vcs] refreshed ${preset.submodules.size + 1} repo(s)")
+                    log.debug("[vcs] refreshed ${preset.submodules.size + 1} repo(s)")
                     onStateChanged()
                 }
             } catch (t: Throwable) {
                 invokeLaterIfProjectAlive {
-                    log("[error] refreshVcs failed: ${t.javaClass.simpleName}: ${t.message}")
+                    log.error("refreshVcs failed: ${t.javaClass.simpleName}: ${t.message}")
                     Notifier.warn(project, Bundle.msg("rollback.partial"), "${t.javaClass.simpleName}: ${t.message}")
                     onStateChanged()
                 }

@@ -6,6 +6,7 @@ import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.NamedColorUtil
 import com.submodule.branchswitcher.Bundle
 import com.submodule.branchswitcher.git.GitClient
+import com.submodule.branchswitcher.log.AppLogger
 import com.submodule.branchswitcher.model.Preset
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
@@ -48,7 +49,7 @@ import javax.swing.border.Border
 class PresetEditor(
     private val gitRoot: Path,
     initial: Preset,
-    private val log: (String) -> Unit,
+    private val log: AppLogger,
     private val onSwitch: (Preset) -> Unit,
     private val onSave: (Preset) -> Unit,
     private val onDelete: () -> Unit,
@@ -61,11 +62,9 @@ class PresetEditor(
     private var original: Preset = initial
 
     private val mainCombo = makeBranchCombo(::updateDirty)
-    private val saveBtn = JButton(Bundle.msg("action.save"), AllIcons.Actions.MenuSaveall)
-        .apply { isEnabled = false }.noFocusRing()
-    private val revertBtn = JButton(Bundle.msg("action.discard"), AllIcons.Actions.Rollback)
-        .apply { isEnabled = false }.noFocusRing()
-    private val addSubBtn = JButton(Bundle.msg("action.add.submodule"), AllIcons.General.Add).noFocusRing()
+    private val saveBtn = jButton(Bundle.msg("action.save"), AllIcons.Actions.MenuSaveall) { isEnabled = false }
+    private val revertBtn = jButton(Bundle.msg("action.discard"), AllIcons.Actions.Rollback) { isEnabled = false }
+    private val addSubBtn = jButton(Bundle.msg("action.add.submodule"), AllIcons.General.Add)
     private val arrow = JLabel(AllIcons.General.ArrowRight)
     private val nameLabel = JLabel(initial.name).apply {
         toolTipText = Bundle.msg("label.rename.tip")
@@ -87,8 +86,8 @@ class PresetEditor(
         isVisible = false
         border = JBUI.Borders.empty(1, 0, 0, 0)
     }
-    private val switchBtn = JButton(Bundle.msg("action.switch"), AllIcons.Actions.Execute).noFocusRing()
-    private val deriveBtn = JButton(Bundle.msg("action.derive"), AllIcons.Vcs.Branch).noFocusRing().apply {
+    private val switchBtn = jButton(Bundle.msg("action.switch"), AllIcons.Actions.Execute)
+    private val deriveBtn = jButton(Bundle.msg("action.derive"), AllIcons.Vcs.Branch) {
         toolTipText = Bundle.msg("action.derive.tip")
         addActionListener { deriveBranch() }
     }
@@ -195,7 +194,7 @@ class PresetEditor(
                 body.revalidate()
                 body.repaint()
             } catch (e: Exception) {
-                log("[error] save failed: ${e.message}")
+                log.error("save failed: ${e.message}")
             }
             updateDirty()
         }
@@ -232,7 +231,7 @@ class PresetEditor(
 
     /** Creates the "..." more-actions button for this preset card. */
     private fun createPresetMoreButton(): JButton {
-        return JButton(AllIcons.Actions.MoreHorizontal).apply {
+        return jButton(icon = AllIcons.Actions.MoreHorizontal) {
             margin = JBUI.insets(0, 4, 0, 4)
             preferredSize = Dimension(JBUI.scale(32), JBUI.scale(24))
             maximumSize = preferredSize
@@ -250,9 +249,9 @@ class PresetEditor(
                         foreground = NamedColorUtil.getErrorForeground()
                         addActionListener { onDelete() }
                     })
-                }.show(this@apply, 0, height)
+                }.show(this, 0, height)
             }
-        }.noFocusRing()
+        }
     }
 
     private fun applyOriginalToUI() {
@@ -418,7 +417,7 @@ class PresetEditor(
             onSave(renamed)
             updatePresetName(newName)
         } catch (e: Exception) {
-            log("[error] rename failed: ${e.message}")
+            log.error("rename failed: ${e.message}")
         }
     }
 

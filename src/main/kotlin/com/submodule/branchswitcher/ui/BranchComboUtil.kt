@@ -2,6 +2,7 @@ package com.submodule.branchswitcher.ui
 
 import com.intellij.openapi.application.ApplicationManager
 import com.submodule.branchswitcher.git.GitClient
+import com.submodule.branchswitcher.log.AppLogger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import java.awt.event.KeyAdapter
@@ -89,7 +90,7 @@ fun loadComboBranches(
     current: String,
     gitClient: GitClient,
     scope: CoroutineScope,
-    log: (String) -> Unit,
+    log: AppLogger,
     onLoadStart: () -> Unit,
     onLoadEnd: () -> Unit,
 ) {
@@ -101,7 +102,7 @@ fun loadComboBranches(
         val branches = try {
             if (dir.exists()) gitClient.listAllBranches(dir) else emptyList()
         } catch (e: Exception) {
-            log("loadBranches failed for ${dir.name}: ${e.message}")
+            log.warn("loadBranches failed for ${dir.name}: ${e.message}")
             emptyList()
         }
         ApplicationManager.getApplication().invokeLater {

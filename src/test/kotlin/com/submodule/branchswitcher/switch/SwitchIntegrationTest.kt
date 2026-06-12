@@ -3,6 +3,7 @@ package com.submodule.branchswitcher.switch
 import com.submodule.branchswitcher.git.GitOps
 import com.submodule.branchswitcher.model.DirtyAction
 import com.submodule.branchswitcher.model.Preset
+import com.submodule.branchswitcher.log.createStringAppender
 import com.submodule.branchswitcher.model.SwitchOptions
 import org.junit.After
 import org.junit.Assert.*
@@ -90,7 +91,7 @@ class SwitchIntegrationTest {
     /** Execute a switch and return (success, log lines). */
     private fun runSwitch(root: File, preset: Preset, opts: SwitchOptions): Pair<Boolean, List<String>> {
         log.clear()
-        val executor = SwitchExecutor(root.toPath(), { log += it }, git)
+        val executor = SwitchExecutor(root.toPath(), createStringAppender { log += it }, git)
         val ok = executor.execute(preset, opts)
         return ok to log.toList()
     }
@@ -132,7 +133,7 @@ class SwitchIntegrationTest {
         val (ok, logs) = runSwitch(root, Preset("test", "no-such-branch"),
             SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false))
         assertFalse("Switch to missing branch should fail", ok)
-        val hasFail = logs.any { it.contains("[fail]") || it.contains("[fatal]") }
+        val hasFail = logs.any { it.contains("[fail]") || it.contains("[fatal]") || it.contains("[error]") || it.contains("[warn]") }
         assertTrue("Log should contain failure diagnostic, got: $logs", hasFail)
     }
 
@@ -230,7 +231,7 @@ class SwitchIntegrationTest {
         val root = createRepo(tmpDir, "project")
         createBranch(root, "dev")
 
-        val executor = SwitchExecutor(root.toPath(), { log += it }, git)
+        val executor = SwitchExecutor(root.toPath(), createStringAppender { log += it }, git)
         executor.execute(Preset("test", "dev"), SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false))
         assertEquals("dev", git.currentBranch(root))
 
@@ -242,7 +243,7 @@ class SwitchIntegrationTest {
     @Test
     fun `rollback without checkpoint returns false`() {
         val root = createRepo(tmpDir, "project")
-        val executor = SwitchExecutor(root.toPath(), { log += it }, git)
+        val executor = SwitchExecutor(root.toPath(), createStringAppender { log += it }, git)
         assertFalse("Rollback without checkpoint should return false", executor.rollback())
     }
 
@@ -301,10 +302,10 @@ class SwitchIntegrationTest {
     fun `cancelled context reports true when cancelled flag is set`() {
         val root = createRepo(tmpDir, "project")
         val opts = SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false)
-        val ctx = SwitchContext(root.toPath(), Preset("test", "dev"), opts, git, { log += it }, cancelled = { true })
+        val ctx = SwitchContext(root.toPath(), Preset("test", "dev"), opts, git, createStringAppender { log += it }, cancelled = { true })
         assertTrue("cancelled should be true", ctx.cancelled())
 
-        val ctx2 = SwitchContext(root.toPath(), Preset("test", "dev"), opts, git, { log += it }, cancelled = { false })
+        val ctx2 = SwitchContext(root.toPath(), Preset("test", "dev"), opts, git, createStringAppender { log += it }, cancelled = { false })
         assertFalse("cancelled should be false", ctx2.cancelled())
     }
 
@@ -349,7 +350,7 @@ class SwitchIntegrationTest {
         val preset = Preset("missing-branch", "main", mapOf("SubA" to "no-branch"), pullEnabled = false)
         val (ok, logs) = runSwitch(root, preset, SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false))
         assertFalse("Switch should fail when submodule branch doesn't exist", ok)
-        val hasSubFail = logs.any { it.contains("[fail]") && it.contains("SubA") }
+        val hasSubFail = logs.any { (it.contains("[fail]") || it.contains("[error]") || it.contains("[warn]")) && it.contains("SubA") }
         assertTrue("Log should contain SubA failure, got: $logs", hasSubFail)
     }
 
@@ -362,7 +363,7 @@ class SwitchIntegrationTest {
         addSubmodule(root, subA, "SubA")
         gitOk(root, "submodule", "update", "--init", "--recursive")
 
-        val executor = SwitchExecutor(root.toPath(), { log += it }, git)
+        val executor = SwitchExecutor(root.toPath(), createStringAppender { log += it }, git)
         val preset = Preset("ck-test", "main", mapOf("SubA" to "main"), pullEnabled = false)
         executor.execute(preset, SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false))
 
