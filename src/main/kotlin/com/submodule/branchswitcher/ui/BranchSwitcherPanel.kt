@@ -13,6 +13,9 @@ import com.intellij.util.Alarm
 import com.intellij.util.ui.JBUI
 import com.submodule.branchswitcher.BranchSwitchListener
 import com.submodule.branchswitcher.Bundle
+import com.submodule.branchswitcher.log.AppLogger
+import com.submodule.branchswitcher.log.LogEntry
+import com.submodule.branchswitcher.log.ToolWindowLogger
 import com.submodule.branchswitcher.service.BranchSwitcherService
 import com.submodule.branchswitcher.settings.BranchSwitcherConfigurable
 import kotlinx.coroutines.launch
@@ -102,9 +105,12 @@ class BranchSwitcherPanel(
     private lateinit var logScroll: JBScrollPane
     private val stateRefreshAlarm = Alarm(Alarm.ThreadToUse.SWING_THREAD, this)
 
+    // ── Logger ──────────────────────────────────────────────────
+    private val logger: AppLogger = ToolWindowLogger(::appendStructured)
+
     // ── Delegates (after UI fields to resolve init order) ──────
     private val presetManager = PresetListManager(
-        project, service, ::gitRoot, ::append,
+        project, service, ::gitRoot, logger,
         onSwitch = { preset -> switchController.runSwitch(preset) },
         onDerive = { root, preset, name -> switchController.derivePresetBranch(root, preset, name) },
     )
@@ -114,7 +120,7 @@ class BranchSwitcherPanel(
 
     init {
         switchController = SwitchController(
-            project, service, ::gitRoot, ::append,
+            project, service, ::gitRoot, logger,
             editors = { presetManager.editors },
             onStateChanged = ::detectCurrentState,
             progressBar = progressBar,
@@ -159,20 +165,21 @@ class BranchSwitcherPanel(
         return CompactHeightPanel().apply {
             layout = BoxLayout(this, BoxLayout.X_AXIS)
             isOpaque = false
-            add(JButton(Bundle.msg("action.from.current"), AllIcons.Vcs.Branch).noFocusRing().also {
-                it.toolTipText = Bundle.msg("action.from.current.tip")
-                it.addActionListener { presetManager.addPresetFromCurrent(presetsInner) }
+            add(jButton(Bundle.msg("action.from.current"), AllIcons.Vcs.Branch) {
+                toolTipText = Bundle.msg("action.from.current.tip")
+                addActionListener { presetManager.addPresetFromCurrent(presetsInner) }
             })
             add(Box.createHorizontalStrut(4))
-            add(JButton(Bundle.msg("action.add.preset"), AllIcons.General.Add).noFocusRing()
-                .also { it.addActionListener { presetManager.addPreset(presetsInner) } })
+            add(jButton(Bundle.msg("action.add.preset"), AllIcons.General.Add) {
+                addActionListener { presetManager.addPreset(presetsInner) }
+            })
             add(Box.createHorizontalGlue())
             add(strategyLabel)
         }
     }
 
     private fun createMoreActionsButton(): JButton {
-        return JButton(AllIcons.Actions.MoreHorizontal).apply {
+        return jButton(icon = AllIcons.Actions.MoreHorizontal) {
             margin = JBUI.insets(0, 4, 0, 4)
             preferredSize = Dimension(JBUI.scale(32), JBUI.scale(24))
             maximumSize = preferredSize
@@ -181,7 +188,7 @@ class BranchSwitcherPanel(
             addActionListener {
                 createMoreMenu().show(this, 0, height)
             }
-        }.noFocusRing()
+        }
     }
 
     private fun createMoreMenu(): JPopupMenu {
@@ -336,7 +343,7 @@ class BranchSwitcherPanel(
             if (java.nio.file.Files.exists(dotGit)) {
                 if (!java.nio.file.Files.isDirectory(dotGit) && !worktreeInfoLogged) {
                     worktreeInfoLogged = true
-                    append("[info] detected git worktree — .git is a file, not a directory")
+                    logger.debug("[info] detected git worktree — .git is a file, not a directory")
                 }
                 return cur
             }
@@ -389,21 +396,13 @@ class BranchSwitcherPanel(
         } else {
             currentBranchLabel.foreground = JBUI.CurrentTheme.Link.Foreground.ENABLED
         }
-        append("[detect] main=$main${if (mainDirty) " (dirty)" else ""}, matched=${matched ?: "<none>"}")
+        logger.debug("[detect] main=$main${if (mainDirty) " (dirty)" else ""}, matched=${matched ?: "<none>"}")
     }
 
-    /**
-     * Appends a line to the log with color coding:
-     * - ERROR/FAIL/FATAL → red
-     * - WARN → orange
-     * - DETECT/SAVED/ADDED/EXPORTED/IMPORTED → gray
-     * - DERIVE/ROLLBACK → blue
-     * - default → theme foreground
-     */
-    private fun append(line: String) {
+    /** Receives structured [LogEntry] from [ToolWindowLogger] and renders to the log pane. */
+    private fun appendStructured(entry: LogEntry) {
         com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater {
             val doc = log.styledDocument
-            // Cap log at ~5000 lines to prevent unbounded memory growth
             val root = doc.defaultRootElement
             if (root.elementCount > 5000) {
                 try {
@@ -412,16 +411,16 @@ class BranchSwitcherPanel(
                     doc.remove(0, endOffset)
                 } catch (_: Exception) {}
             }
-            val color = when {
-                line.contains("[error]") || line.contains("[fail]") || line.contains("[fatal]") || line.startsWith("ERROR") -> JBColor.RED
-                line.contains("[warn]") || line.startsWith("WARN") -> JBColor(0xE07B00, 0xFFA726)
-                line.contains("[detect]") || line.contains("[saved]") || line.contains("[added]") || line.contains("[exported]") || line.contains("[imported]") -> JBColor.GRAY
-                line.contains("[derive]") || line.contains("[rollback]") -> JBColor(0x1565C0, 0x42A5F5)
-                else -> log.foreground
+            val color = when (entry.level) {
+                LogEntry.Level.ERROR    -> JBColor.RED
+                LogEntry.Level.WARN     -> JBColor(0xE07B00, 0xFFA726)
+                LogEntry.Level.DEBUG    -> JBColor.GRAY
+                LogEntry.Level.ACTIVITY -> JBColor(0x1565C0, 0x42A5F5)
+                LogEntry.Level.INFO     -> log.foreground
             }
             val attrs = javax.swing.text.SimpleAttributeSet()
             javax.swing.text.StyleConstants.setForeground(attrs, color)
-            try { doc.insertString(doc.length, line + "\n", attrs) } catch (_: Exception) {}
+            try { doc.insertString(doc.length, entry.message + "\n", attrs) } catch (_: Exception) {}
             log.caretPosition = doc.length
         }
     }

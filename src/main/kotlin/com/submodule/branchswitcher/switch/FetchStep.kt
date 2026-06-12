@@ -20,7 +20,7 @@ class FetchStep : SwitchStep {
 
             val f = context.git.fetch(dir)
             if (!f.ok) {
-                context.log("fetch warn: ${f.stderr} (${target.path})")
+                context.log.warn("fetch warn: ${f.stderr} (${target.path})")
                 failures[target.path] = "fetch had warnings"
             }
         }

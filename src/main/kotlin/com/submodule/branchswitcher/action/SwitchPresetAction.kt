@@ -10,6 +10,7 @@ import com.submodule.branchswitcher.BranchSwitchListener
 import com.submodule.branchswitcher.Bundle
 import com.submodule.branchswitcher.Notifier
 import com.submodule.branchswitcher.TaskBridge
+import com.submodule.branchswitcher.log.createStringAppender
 import com.submodule.branchswitcher.model.Preset
 import com.submodule.branchswitcher.model.SwitchOptions
 import com.submodule.branchswitcher.service.BranchSwitcherService
@@ -88,7 +89,8 @@ class SwitchPresetAction : AnAction() {
                             return@runBackground
                         }
                     }
-                    val executor = SwitchExecutor(root, { logLines += it }, service.gitClient, indicator)
+                    val collector = createStringAppender { logLines += it }
+                    val executor = SwitchExecutor(root, collector, service.gitClient, indicator)
                     ok = executor.execute(preset, SwitchOptions(
                         dirty = service.dirtyAction,
                         fetchFirst = service.fetchFirst,

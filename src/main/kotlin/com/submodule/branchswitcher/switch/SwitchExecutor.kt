@@ -1,6 +1,7 @@
 package com.submodule.branchswitcher.switch
 
 import com.submodule.branchswitcher.git.GitClient
+import com.submodule.branchswitcher.log.AppLogger
 import com.submodule.branchswitcher.model.Preset
 import com.submodule.branchswitcher.model.RepoTarget
 import com.submodule.branchswitcher.model.SwitchOptions
@@ -26,7 +27,7 @@ data class CheckpointEntry(
  */
 class SwitchExecutor(
     private val projectRoot: Path,
-    private val log: (String) -> Unit,
+    private val log: AppLogger,
     private val git: GitClient,
     private val indicator: com.intellij.openapi.progress.ProgressIndicator? = null,
     private val steps: List<SwitchStep> = listOf(
@@ -41,7 +42,7 @@ class SwitchExecutor(
     private var lastCheckpoint: Map<String, CheckpointEntry>? = null
 
     fun execute(preset: Preset, options: SwitchOptions): Boolean {
-        log("=== switching to preset: ${preset.name} ===")
+        log.activity("=== switching to preset: ${preset.name} ===")
         val context = SwitchContext(
             projectRoot = projectRoot,
             preset = preset,
@@ -63,28 +64,28 @@ class SwitchExecutor(
             context.indicator?.text = step.name
             context.indicator?.checkCanceled()
             if (context.cancelled()) {
-                log("[cancelled] before step: ${step.name}")
+                log.info("[cancelled] before step: ${step.name}")
                 overallSuccess = false
                 break
             }
-            log("--- ${step.name} ---")
+            log.info("--- ${step.name} ---")
             when (val result = step.execute(context)) {
                 is StepResult.Fatal -> {
-                    log("[fatal] ${result.reason}")
+                    log.error(" ${result.reason}")
                     overallSuccess = false
                     break
                 }
                 is StepResult.Partial -> {
                     result.failures.forEach { (path, msg) ->
-                        log("[fail] $path: $msg")
+                        log.warn("$path: $msg")
                     }
                     overallSuccess = false
                 }
                 is StepResult.Success -> { /* continue */ }
             }
         }
-        log("")
-        log(if (overallSuccess) "=== done ===" else "=== done with errors ===")
+        log.info("")
+        log.activity(if (overallSuccess) "=== done ===" else "=== done with errors ===")
         return overallSuccess
     }
 
@@ -93,49 +94,49 @@ class SwitchExecutor(
     fun rollback(): Boolean {
         val checkpoint = lastCheckpoint
         if (checkpoint == null || checkpoint.isEmpty()) {
-            log("[rollback] no checkpoint available")
+            log.debug("[rollback] no checkpoint available")
             return false
         }
-        log("=== rolling back to pre-switch state ===")
+        log.activity("=== rolling back to pre-switch state ===")
         var allOk = true
         for ((path, entry) in checkpoint) {
             val dir = resolveGitDir(projectRoot, path)
             val label = if (path == ".") projectRoot.fileName.toString() else path
             if (!dir.exists() || !isGitRepo(dir)) {
-                log("[rollback] skip $label — dir missing or not a repo")
+                log.debug("[rollback] skip $label — dir missing or not a repo")
                 continue
             }
             val cur = git.currentBranch(dir)
             // Already on the same branch as checkpoint — nothing to roll back
             if (entry.branch != null && entry.branch == cur) {
-                log("$label: still on ${entry.branch}, skip")
+                log.debug("$label: still on ${entry.branch}, skip")
                 continue
             }
             // Try to restore the original branch
             if (entry.branch != null) {
-                log("$label: checking out branch ${entry.branch} (was ${cur ?: "(detached)"})")
+                log.activity("$label: checking out branch ${entry.branch} (was ${cur ?: "(detached)"})")
                 val br = git.checkoutExisting(dir, entry.branch)
                 if (!br.ok) {
-                    log("[rollback] $label branch checkout failed: ${br.stderr}, falling back to SHA")
+                    log.warn("[rollback] $label branch checkout failed: ${br.stderr}, falling back to SHA")
                     val shaR = git.checkoutExisting(dir, entry.sha)
                     if (!shaR.ok) {
-                        log("[rollback] $label SHA checkout also failed: ${shaR.stderr}")
+                        log.warn("[rollback] $label SHA checkout also failed: ${shaR.stderr}")
                         allOk = false
                     }
                 }
             } else {
                 // Was detached HEAD originally — restore to SHA only if different
                 if (cur != entry.sha) {
-                    log("$label: resetting to ${entry.sha} (was on ${cur ?: "(detached)"})")
+                    log.activity("$label: resetting to ${entry.sha} (was on ${cur ?: "(detached)"})")
                     val r = git.checkoutExisting(dir, entry.sha)
                     if (!r.ok) {
-                        log("[rollback] $label checkout failed: ${r.stderr}")
+                        log.warn("[rollback] $label checkout failed: ${r.stderr}")
                         allOk = false
                     }
                 }
             }
         }
-        log(if (allOk) "=== rollback done ===" else "=== rollback done with errors ===")
+        log.activity(if (allOk) "=== rollback done ===" else "=== rollback done with errors ===")
         return allOk
     }
 

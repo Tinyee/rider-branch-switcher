@@ -2,6 +2,7 @@ package com.submodule.branchswitcher.switch
 
 import com.intellij.openapi.progress.ProgressIndicator
 import com.submodule.branchswitcher.git.GitClient
+import com.submodule.branchswitcher.log.AppLogger
 import com.submodule.branchswitcher.model.Preset
 import com.submodule.branchswitcher.model.SwitchOptions
 import java.nio.file.Path
@@ -20,7 +21,7 @@ data class SwitchContext(
     val preset: Preset,
     val options: SwitchOptions,
     val git: GitClient,
-    val log: (String) -> Unit,
+    val log: AppLogger,
     val indicator: ProgressIndicator? = null,
     /** Mutable flag checked between/within steps for cancellation. */
     val cancelled: () -> Boolean = { false },

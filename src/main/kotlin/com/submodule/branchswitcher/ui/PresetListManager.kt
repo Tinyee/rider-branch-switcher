@@ -9,6 +9,7 @@ import com.intellij.util.ui.JBUI
 import com.submodule.branchswitcher.Notifier
 import com.submodule.branchswitcher.PresetLoader
 import com.submodule.branchswitcher.Bundle
+import com.submodule.branchswitcher.log.AppLogger
 import com.submodule.branchswitcher.model.Preset
 import com.submodule.branchswitcher.service.BranchSwitcherService
 import kotlinx.coroutines.Dispatchers
@@ -34,7 +35,7 @@ class PresetListManager(
     private val project: Project,
     private val service: BranchSwitcherService,
     private val gitRoot: () -> Path?,
-    private val log: (String) -> Unit,
+    private val log: AppLogger,
     private val onSwitch: (Preset) -> Unit,
     private val onDerive: (Path, Preset, String) -> Unit,
 ) {
@@ -50,7 +51,7 @@ class PresetListManager(
             .onSuccess { (file, parsed) ->
                 val root = gitRoot()
                 if (root == null) {
-                    log("[error] git root not found")
+                    log.error("git root not found")
                     Notifier.error(project, Bundle.msg("plugin.title"), Bundle.msg("git.root.not.found"))
                     return@onSuccess
                 }
@@ -62,13 +63,13 @@ class PresetListManager(
                 } else {
                     parsed.presets.forEach { addEditorRow(root, it, presetsInner) }
                 }
-                log("loaded ${parsed.presets.size} preset(s) from $file")
+                log.debug("loaded ${parsed.presets.size} preset(s) from $file")
                 presetsInner.revalidate()
                 presetsInner.repaint()
                 onStateChanged?.invoke()
             }
             .onFailure {
-                log("[error] ${it.message}")
+                log.error("${it.message}")
                 Notifier.error(project, Bundle.msg("preset.load.failed"), it.message ?: "unknown error")
             }
     }
@@ -123,7 +124,7 @@ class PresetListManager(
         }
         presetsInner.revalidate()
         presetsInner.repaint()
-        log("[deleted] $name")
+        log.debug("[deleted] $name")
     }
 
     fun saveAll(pendingEditor: PresetEditor? = null, pendingPreset: Preset? = null) {
@@ -131,7 +132,7 @@ class PresetListManager(
             if (it === pendingEditor && pendingPreset != null) pendingPreset else it.currentPreset()
         }
         service.savePresets(presets)
-        log("[saved]")
+        log.debug("[saved]")
         onStateChanged?.invoke()
     }
 
@@ -142,7 +143,7 @@ class PresetListManager(
         if (name.isNullOrEmpty()) return
         // Guard: ensure presets are loaded before using one as template
         if (service.presets.isEmpty() && service.loadPresets().isFailure) {
-            log("[warn] cannot add preset — failed to load existing presets")
+            log.warn("cannot add preset — failed to load existing presets")
             return
         }
         val template = service.presets.firstOrNull()
@@ -157,7 +158,7 @@ class PresetListManager(
         presetsInner.parent?.revalidate()
         presetsInner.parent?.repaint()
         saveAll()
-        log("[added] $name (展开后可编辑各子模块分支)")
+        log.debug("[added] $name (展开后可编辑各子模块分支)")
     }
 
     fun addPresetFromCurrent(presetsInner: JPanel) {
@@ -216,9 +217,9 @@ class PresetListManager(
                 presetsInner.parent?.revalidate()
                 presetsInner.parent?.repaint()
                 saveAll()
-                log("[added from current] $name -> 主仓=$mb, ${result.submodules.size} 个子模块")
+                log.debug("[added from current] $name -> 主仓=$mb, ${result.submodules.size} 个子模块")
                 if (result.skipped.isNotEmpty()) {
-                    log("[skipped] ${result.skipped.joinToString(", ")}")
+                    log.debug("[skipped] ${result.skipped.joinToString(", ")}")
                 }
                 onStateChanged?.invoke()
             })
@@ -246,10 +247,10 @@ class PresetListManager(
             val json = gson.toJson(com.submodule.branchswitcher.model.PresetFile(editors.map { it.currentPreset() }))
             val clipboard = java.awt.Toolkit.getDefaultToolkit().systemClipboard
             clipboard.setContents(java.awt.datatransfer.StringSelection(json), null)
-            log("[exported] ${editors.size} preset(s) 已复制到剪贴板")
+            log.debug("[exported] ${editors.size} preset(s) 已复制到剪贴板")
             Notifier.info(project, Bundle.msg("notify.export.complete"), Bundle.msg("notify.exported", editors.size))
         } catch (e: Exception) {
-            log("[export] failed: ${e.message}")
+            log.error("[export] failed: ${e.message}")
             Notifier.error(project, Bundle.msg("notify.export.complete"), "${Bundle.msg("dialog.import.failed")}: ${e.message}")
         }
     }
@@ -290,14 +291,14 @@ class PresetListManager(
                 return
             }
             if (skipped.isNotEmpty()) {
-                log("[import] skipped ${skipped.size} invalid: ${skipped.joinToString(", ")}")
+                log.debug("[import] skipped ${skipped.size} invalid: ${skipped.joinToString(", ")}")
             }
             val root = gitRoot() ?: return
             val presetsInner = (presetsContainer.getComponent(0) as? JPanel) ?: return
             var importedCount = 0
             validPresets.forEach { preset ->
                 if (editors.any { it.currentPreset().name == preset.name }) {
-                    log("[import] skip ${preset.name} — 名字冲突")
+                    log.debug("[import] skip ${preset.name} — 名字冲突")
                     return@forEach
                 }
                 addEditorRow(root, preset, presetsInner)
@@ -306,10 +307,10 @@ class PresetListManager(
             presetsContainer.revalidate()
             presetsContainer.repaint()
             saveAll()
-            log("[imported] $importedCount preset(s) from clipboard")
+            log.debug("[imported] $importedCount preset(s) from clipboard")
             Notifier.info(project, Bundle.msg("notify.import.complete"), Bundle.msg("notify.imported", importedCount))
         } catch (e: Exception) {
-            log("[import] error: ${e.message}")
+            log.error("[import] error: ${e.message}")
             Messages.showWarningDialog(project, "${Bundle.msg("dialog.import.failed")}: ${e.message}", Bundle.msg("dialog.import"))
         }
     }
@@ -350,11 +351,11 @@ class PresetListManager(
             add(Box.createVerticalStrut(20))
             val cta = JPanel(FlowLayout(FlowLayout.CENTER, 8, 0))
             cta.alignmentX = JPanel.CENTER_ALIGNMENT
-            cta.add(JButton(Bundle.msg("empty.from.current"), AllIcons.Vcs.Branch).noFocusRing().also {
-                it.addActionListener { addPresetFromCurrent(parent) }
+            cta.add(jButton(Bundle.msg("empty.from.current"), AllIcons.Vcs.Branch) {
+                addActionListener { addPresetFromCurrent(parent) }
             })
-            cta.add(JButton(Bundle.msg("empty.manual"), AllIcons.General.Add).noFocusRing().also {
-                it.addActionListener { addPreset(parent) }
+            cta.add(jButton(Bundle.msg("empty.manual"), AllIcons.General.Add) {
+                addActionListener { addPreset(parent) }
             })
             add(cta)
         }

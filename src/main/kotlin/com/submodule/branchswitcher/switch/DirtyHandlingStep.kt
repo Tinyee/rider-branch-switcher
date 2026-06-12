@@ -26,7 +26,7 @@ class DirtyHandlingStep : SwitchStep {
             if (context.git.isDirty(dir)) {
                 when (context.options.dirty) {
                     DirtyAction.Skip -> {
-                        context.log("[skip] working tree dirty — ${target.path}")
+                        context.log.info("[skip] working tree dirty — ${target.path}")
                         failures[target.path] = "working tree dirty"
                         context.skippedPaths.add(target.path)
                         continue
@@ -34,11 +34,15 @@ class DirtyHandlingStep : SwitchStep {
                     DirtyAction.Stash -> {
                         val cur = context.git.currentBranch(dir)
                         if (cur != null && cur == target.branch) {
-                            context.log("already on '${target.branch}', no stash needed")
+                            context.log.info("already on '${target.branch}', no stash needed")
                         } else {
                             val r = context.git.stash(dir, "branch-switcher: before -> ${target.branch}")
-                            context.log("stash: ${if (r.ok) "ok" else "FAIL"} (${target.path})")
-                            if (r.stderr.isNotBlank()) context.log(r.stderr)
+                            if (r.ok) {
+                                context.log.info("stash: ok (${target.path})")
+                            } else {
+                                context.log.warn("stash: FAIL (${target.path})")
+                                if (r.stderr.isNotBlank()) context.log.warn(r.stderr)
+                            }
                             if (!r.ok) {
                                 failures[target.path] = "stash failed"
                                 context.skippedPaths.add(target.path)
@@ -47,7 +51,7 @@ class DirtyHandlingStep : SwitchStep {
                             context.stashedPaths[target.path] = "before -> ${target.branch}"
                         }
                     }
-                    DirtyAction.Force -> context.log("[force] proceeding with dirty tree — ${target.path}")
+                    DirtyAction.Force -> context.log.info("[force] proceeding with dirty tree — ${target.path}")
                 }
             }
         }

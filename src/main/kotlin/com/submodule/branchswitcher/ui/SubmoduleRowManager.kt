@@ -4,6 +4,7 @@ import com.intellij.icons.AllIcons
 import com.intellij.ui.JBColor
 import com.intellij.util.ui.JBUI
 import com.submodule.branchswitcher.Bundle
+import com.submodule.branchswitcher.log.AppLogger
 import com.submodule.branchswitcher.git.GitClient
 import com.submodule.branchswitcher.model.Preset
 import com.submodule.branchswitcher.switch.shortLabel
@@ -34,7 +35,7 @@ class SubmoduleRowManager(
     private val gitClient: GitClient,
     private val scope: CoroutineScope,
     private val body: JPanel,
-    private val log: (String) -> Unit,
+    private val log: AppLogger,
     private val onDirty: () -> Unit,
 ) {
     /** One submodule row: path, branch combo, panel, and tracking state. */
@@ -94,7 +95,7 @@ class SubmoduleRowManager(
                     body.repaint()
                 }
             }
-            val rowMenuBtn = JButton(AllIcons.Actions.MoreHorizontal).apply {
+            val rowMenuBtn = jButton(icon = AllIcons.Actions.MoreHorizontal) {
                 margin = JBUI.insets(0, 4, 0, 4)
                 preferredSize = Dimension(JBUI.scale(32), JBUI.scale(24))
                 maximumSize = Dimension(JBUI.scale(32), JBUI.scale(24))
@@ -107,7 +108,7 @@ class SubmoduleRowManager(
                     })
                     popup.show(this, 0, height)
                 }
-            }.noFocusRing()
+            }
             add(rowMenuBtn, BorderLayout.EAST)
         }
         // Right-click context menu
@@ -127,7 +128,7 @@ class SubmoduleRowManager(
         val current = subRows.values.filter { !it.deleted }.map { it.path }.toSet()
         val available = all.filter { it !in current }
         if (available.isEmpty()) {
-            log(Bundle.msg("log.no.submodules.available", currentPreset.name))
+            log.debug(Bundle.msg("log.no.submodules.available", currentPreset.name))
             return
         }
         val popup = javax.swing.JPopupMenu()
@@ -248,14 +249,14 @@ class SubmoduleRowManager(
                     // Check dirty working tree
                     if (gitClient.isDirty(dir)) {
                         com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater {
-                            log("[switch] $path: working tree dirty, skip")
+                            log.warn("[switch] $path: working tree dirty, skip")
                         }
                         return@launch
                     }
                     val cur = gitClient.currentBranch(dir)
                     if (cur == target) {
                         com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater {
-                            log("[switch] $path already on $target")
+                            log.debug("[switch] $path already on $target")
                         }
                         return@launch
                     }
@@ -265,8 +266,11 @@ class SubmoduleRowManager(
                         else -> com.submodule.branchswitcher.git.GitResult("checkout", 1, "", "branch $target not found")
                     }
                     com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater {
-                        log(if (result.ok) "[switch] $path -> $target ok"
-                            else "[switch] $path fail: ${result.stderr.lines().firstOrNull() ?: ""}")
+                        if (result.ok) {
+                            log.debug("[switch] $path -> $target ok")
+                        } else {
+                            log.warn("[switch] $path fail: ${result.stderr.lines().firstOrNull() ?: ""}")
+                        }
                     }
                 }
             }

@@ -2,6 +2,7 @@ package com.submodule.branchswitcher.switch
 
 import com.submodule.branchswitcher.git.GitClient
 import com.submodule.branchswitcher.git.GitResult
+import com.submodule.branchswitcher.log.createStringAppender
 import com.submodule.branchswitcher.model.DirtyAction
 import com.submodule.branchswitcher.model.Preset
 import com.submodule.branchswitcher.model.SwitchOptions
@@ -38,7 +39,7 @@ class SwitchStepTest {
     }
 
     private fun context(opts: SwitchOptions = SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false)) =
-        SwitchContext(projectRoot, Preset("test", "dev"), opts, fakeGit, { log += it })
+        SwitchContext(projectRoot, Preset("test", "dev"), opts, fakeGit, createStringAppender { log += it })
 
     @Before
     fun setup() {
