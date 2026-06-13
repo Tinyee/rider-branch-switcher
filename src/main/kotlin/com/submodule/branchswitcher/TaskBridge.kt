@@ -160,6 +160,7 @@ object TaskBridge {
                 )
             } catch (e: Exception) {
                 LOG.warn("TaskRunner.run threw synchronously", e)
+                invokeFinishCallback()
                 completeContinuation(Result.failure(e))
             }
         }
