@@ -7,7 +7,7 @@ Rider plugin — one-click switch main repo + all submodules to preset branch co
 - **Stack**: Kotlin 2.3, IntelliJ Platform Gradle Plugin 2.2.1, Gradle 8.13, JUnit 4 + Kotest 5.9
 - **Target**: JetBrains Rider 2026.1 (build 261)
 - **Tests**: 188 tests, `./gradlew test`
-- **Version**: 0.5.0
+- **Version**: 0.6.0
 
 ## Architecture
 
