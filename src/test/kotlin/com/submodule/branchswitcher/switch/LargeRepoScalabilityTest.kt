@@ -116,6 +116,9 @@ class LargeRepoScalabilityTest {
         override fun checkoutNewBranch(workDir: File, branch: String): GitResult {
             count("checkoutNewBranch"); return GitResult("checkout", 0, "", "")
         }
+        override fun deleteBranch(workDir: File, branch: String): GitResult {
+            count("deleteBranch"); return GitResult("branch", 0, "", "")
+        }
     }
 
     @Test

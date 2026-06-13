@@ -1,8 +1,10 @@
 package com.submodule.branchswitcher.switch
 
+import com.submodule.branchswitcher.git.GitClient
 import com.submodule.branchswitcher.git.GitOps
 import com.submodule.branchswitcher.model.DirtyAction
 import com.submodule.branchswitcher.model.Preset
+import com.submodule.branchswitcher.log.AppLogger
 import com.submodule.branchswitcher.log.createStringAppender
 import com.submodule.branchswitcher.model.SwitchOptions
 import org.junit.After
@@ -399,5 +401,352 @@ class SwitchIntegrationTest {
             SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false, confirmBeforeInit = false))
         assertTrue("Switch with auto-init should succeed", ok)
         assertTrue("SubA should be initialized", File(subDir, ".git").exists())
+    }
+
+    // ---- Derive branch (via DeriveBranchExecutor) ------------------------------
+
+    private fun deriveLog(): AppLogger = createStringAppender { log += it }
+
+    @Test
+    fun `derive on all clean repos succeeds`() {
+        val root = createRepo(tmpDir, "project")
+        val subA = createRepo(tmpDir, "subA-src")
+        addSubmodule(root, subA, "SubA")
+        gitOk(root, "submodule", "update", "--init", "--recursive")
+
+        val executor = DeriveBranchExecutor(root.toPath(), deriveLog(), git)
+        val preset = Preset("test", "main", mapOf("SubA" to "main"))
+        val result = executor.execute(preset, "feature")
+
+        assertTrue("derive should be allOk", result.allOk)
+        assertEquals(2, result.actualCreated)
+        assertEquals("feature", git.currentBranch(root))
+        assertEquals("feature", git.currentBranch(File(root, "SubA")))
+    }
+
+    @Test
+    fun `derive skips repos where branch already exists`() {
+        val root = createRepo(tmpDir, "project")
+        gitOk(root, "checkout", "-b", "feature")
+        gitOk(root, "checkout", "main")
+
+        val executor = DeriveBranchExecutor(root.toPath(), deriveLog(), git)
+        val preset = Preset("test", "main")
+        val result = executor.execute(preset, "feature")
+
+        assertFalse("derive must not be allOk when branch exists", result.allOk)
+        assertEquals(0, result.actualCreated)
+        assertEquals(1, result.branchExists.size)
+        assertEquals("main", git.currentBranch(root))
+    }
+
+    @Test
+    fun `derive with missing submodule blocks all repos`() {
+        val root = createRepo(tmpDir, "project")
+
+        val executor = DeriveBranchExecutor(root.toPath(), deriveLog(), git)
+        val preset = Preset("test", "main", mapOf("ghost" to "main"))
+        val result = executor.execute(preset, "feature")
+
+        assertTrue("preflight should block", result.preflightBlocked)
+        assertEquals(0, result.actualCreated)
+        assertEquals(1, result.skipped.size)
+        // Main must NOT be modified
+        assertEquals("main", git.currentBranch(root))
+    }
+
+    @Test
+    fun `derive rollback restores original branch and deletes derived branch`() {
+        val root = createRepo(tmpDir, "project")
+        val subA = createRepo(tmpDir, "subA-src")
+        addSubmodule(root, subA, "SubA")
+        gitOk(root, "submodule", "update", "--init", "--recursive")
+
+        val rootBranch = git.currentBranch(root)
+        val subABranch = git.currentBranch(File(root, "SubA"))
+
+        // Derive on both repos
+        val executor = DeriveBranchExecutor(root.toPath(), deriveLog(), git)
+        val preset = Preset("test", "main", mapOf("SubA" to "main"))
+        val result = executor.execute(preset, "derived")
+
+        assertTrue("derive should succeed", result.allOk)
+        assertEquals("derived", git.currentBranch(root))
+        assertEquals("derived", git.currentBranch(File(root, "SubA")))
+
+        // Rollback
+        val failures = executor.rollbackSucceeded(result, "derived")
+        assertTrue("rollback should have no failures", failures.isEmpty())
+
+        // Verify restored
+        assertEquals(rootBranch, git.currentBranch(root))
+        assertEquals(subABranch, git.currentBranch(File(root, "SubA")))
+
+        // Verify branches were deleted
+        assertFalse("derived branch should be deleted on main", git.localBranchExists(root, "derived"))
+        assertFalse("derived branch should be deleted on SubA", git.localBranchExists(File(root, "SubA"), "derived"))
+    }
+
+    @Test
+    fun `derive blocks detached HEAD because it does not match preset branch`() {
+        val root = createRepo(tmpDir, "project")
+        val sha = git.revParseHead(root)
+        gitOk(root, "checkout", sha!!) // detach HEAD
+
+        val executor = DeriveBranchExecutor(root.toPath(), deriveLog(), git)
+        val preset = Preset("test", "main")
+        val result = executor.execute(preset, "derived-detached")
+
+        assertTrue("detached HEAD should block preflight", result.preflightBlocked)
+        assertEquals(listOf("."), result.branchMismatch)
+        assertEquals(0, result.actualCreated)
+        assertFalse("derived branch should be deleted", git.localBranchExists(root, "derived-detached"))
+    }
+
+    @Test
+    fun `derive blocks all repos when one repo does not match preset base branch`() {
+        val root = createRepo(tmpDir, "project")
+        val subA = createRepo(tmpDir, "subA-src")
+        addSubmodule(root, subA, "SubA")
+        gitOk(root, "submodule", "update", "--init", "--recursive")
+        gitOk(File(root, "SubA"), "checkout", "-b", "feature-x")
+
+        val executor = DeriveBranchExecutor(root.toPath(), deriveLog(), git)
+        val preset = Preset("test", "main", mapOf("SubA" to "main"))
+        val result = executor.execute(preset, "derived")
+
+        assertTrue(result.preflightBlocked)
+        assertEquals(listOf("SubA"), result.branchMismatch)
+        assertEquals("main", git.currentBranch(root))
+        assertFalse(git.localBranchExists(root, "derived"))
+    }
+
+    @Test
+    @Suppress("TooGenericExceptionThrown")
+    fun `derive blocks when current branch probe throws`() {
+        val root = createRepo(tmpDir, "project")
+        val throwingGit = object : GitClient by git {
+            override fun currentBranch(workDir: java.io.File): String? =
+                throw RuntimeException("current branch probe failed")
+        }
+
+        val result = DeriveBranchExecutor(root.toPath(), deriveLog(), throwingGit)
+            .execute(Preset("test", "main"), "derived")
+
+        assertTrue(result.preflightBlocked)
+        assertEquals(listOf("."), result.preflightError)
+        assertFalse(git.localBranchExists(root, "derived"))
+    }
+
+    @Test
+    fun `derive rollback continues after partial failures`() {
+        val root = createRepo(tmpDir, "project")
+        val subA = createRepo(tmpDir, "subA-src")
+        addSubmodule(root, subA, "SubA")
+        gitOk(root, "submodule", "update", "--init", "--recursive")
+
+        val subADir = File(root, "SubA")
+        val rootBranch = git.currentBranch(root)
+
+        val executor = DeriveBranchExecutor(root.toPath(), deriveLog(), git)
+        val preset = Preset("test", "main", mapOf("SubA" to "main"))
+        val result = executor.execute(preset, "derived")
+
+        assertTrue("derive should succeed", result.allOk)
+
+        // Delete the derived branch on root BEFORE rollback, so root rollback fails
+        gitOk(root, "checkout", rootBranch!!)
+        gitOk(root, "branch", "-D", "derived")
+
+        // Rollback — root has no "derived" branch to delete, SubA succeeds
+        val failures = executor.rollbackSucceeded(result, "derived")
+        // Root: checkout to main should work, but delete "derived" fails (already gone)
+        // SubA: both checkout and delete should work
+        assertFalse("rollback should have some failures", failures.isEmpty())
+
+        // SubA should still be restored
+        assertEquals("main", git.currentBranch(subADir))
+        assertFalse("derived branch should be deleted on SubA", git.localBranchExists(subADir, "derived"))
+    }
+
+    @Test
+    fun `derive with invalid submodules blocks and does not modify main`() {
+        val root = createRepo(tmpDir, "project")
+        val executor = DeriveBranchExecutor(root.toPath(), deriveLog(), git)
+        val preset = Preset("test", "main", mapOf("ghost" to "main", "phantom" to "main"))
+        val result = executor.execute(preset, "feature")
+
+        assertTrue("preflight should block when submodules are missing", result.preflightBlocked)
+        assertEquals(0, result.actualCreated)
+        assertEquals(2, result.skipped.size)
+        // Main must NOT be modified — atomic gate
+        assertEquals("main", git.currentBranch(root))
+    }
+
+    @Test
+    fun `derive preflight blocked does not call checkoutNewBranch`() {
+        val root = createRepo(tmpDir, "project")
+        gitOk(root, "checkout", "-b", "existing-branch")
+        gitOk(root, "checkout", "main")
+
+        val executor = DeriveBranchExecutor(root.toPath(), deriveLog(), git)
+        val preset = Preset("test", "main")
+        val result = executor.execute(preset, "existing-branch")
+
+        assertTrue("preflight should block", result.preflightBlocked)
+        assertEquals(1, result.branchExists.size)
+        assertEquals(0, result.actualCreated)
+        // Verify we never left main
+        assertEquals("main", git.currentBranch(root))
+    }
+
+    @Test
+    fun `derive blocks on dirty repo when requireClean is true`() {
+        val root = createRepo(tmpDir, "project")
+        File(root, "dirty.txt").writeText("uncommitted")
+
+        val executor = DeriveBranchExecutor(root.toPath(), deriveLog(), git, requireClean = true)
+        val preset = Preset("test", "main")
+        val result = executor.execute(preset, "feature")
+
+        assertTrue("preflight should block on dirty", result.preflightBlocked)
+        assertEquals(1, result.dirty.size)
+        assertEquals(0, result.actualCreated)
+        assertEquals("main", git.currentBranch(root))
+    }
+
+    @Test
+    fun `derive allows dirty repo when requireClean is false`() {
+        val root = createRepo(tmpDir, "project")
+        File(root, "dirty.txt").writeText("uncommitted")
+
+        val executor = DeriveBranchExecutor(root.toPath(), deriveLog(), git, requireClean = false)
+        val preset = Preset("test", "main")
+        val result = executor.execute(preset, "feature")
+
+        assertTrue("derive should succeed with requireClean=false", result.allOk)
+        assertEquals(1, result.actualCreated)
+        assertEquals("feature", git.currentBranch(root))
+    }
+
+    @Test
+    fun `derive blocks when submodule already has target branch`() {
+        val root = createRepo(tmpDir, "project")
+        val subA = createRepo(tmpDir, "subA-src")
+        addSubmodule(root, subA, "SubA")
+        gitOk(root, "submodule", "update", "--init", "--recursive")
+        // Pre-create the target branch on SubA only
+        val subADir = File(root, "SubA")
+        gitOk(subADir, "checkout", "-b", "feature")
+        gitOk(subADir, "checkout", "main")
+
+        val executor = DeriveBranchExecutor(root.toPath(), deriveLog(), git)
+        val preset = Preset("test", "main", mapOf("SubA" to "main"))
+        val result = executor.execute(preset, "feature")
+
+        assertTrue("preflight should block", result.preflightBlocked)
+        assertEquals(1, result.branchExists.size)
+        assertEquals(0, result.actualCreated)
+        // Main must NOT be modified — atomic gate
+        assertEquals("main", git.currentBranch(root))
+    }
+
+    @Test
+    fun `derive blocks when main has target branch and submodule is valid`() {
+        val root = createRepo(tmpDir, "project")
+        val subA = createRepo(tmpDir, "subA-src")
+        addSubmodule(root, subA, "SubA")
+        gitOk(root, "submodule", "update", "--init", "--recursive")
+        // Pre-create the target branch on main only
+        gitOk(root, "checkout", "-b", "feature")
+        gitOk(root, "checkout", "main")
+
+        val executor = DeriveBranchExecutor(root.toPath(), deriveLog(), git)
+        val preset = Preset("test", "main", mapOf("SubA" to "main"))
+        val result = executor.execute(preset, "feature")
+
+        assertTrue("preflight should block", result.preflightBlocked)
+        assertEquals(1, result.branchExists.size)
+        assertEquals(0, result.actualCreated)
+        // Submodule must NOT be modified
+        assertEquals("main", git.currentBranch(File(root, "SubA")))
+    }
+
+    @Test
+    fun `derive blocks on empty repo with no HEAD`() {
+        val root = tmpDir.resolve("empty-project").toFile().also { it.mkdirs() }
+        gitOk(root, "init")
+        // No commits → no HEAD
+        val defaultBranch = git.currentBranch(root) ?: "main"
+
+        val executor = DeriveBranchExecutor(root.toPath(), deriveLog(), git)
+        val preset = Preset("test", defaultBranch)
+        val result = executor.execute(preset, "feature")
+
+        assertTrue("empty repo should block", result.checkpointBlocked || result.preflightBlocked)
+        assertEquals(0, result.actualCreated)
+    }
+
+    @Test
+    @Suppress("TooGenericExceptionThrown")
+    fun `per-target exception is caught and reported in failed`() {
+        val root = createRepo(tmpDir, "project")
+        val subA = createRepo(tmpDir, "subA-src")
+        addSubmodule(root, subA, "SubA")
+        gitOk(root, "submodule", "update", "--init", "--recursive")
+
+        // Use a custom GitClient that throws on SubA
+        var subACalled = false
+        val throwingGit = ThrowingGitClient(git) { workDir ->
+            if (workDir.name == "SubA") { subACalled = true; true } else false
+        }
+
+        val executor = DeriveBranchExecutor(root.toPath(), deriveLog(), throwingGit)
+        val preset = Preset("test", "main", mapOf("SubA" to "main"))
+        val result = executor.execute(preset, "feature")
+
+        assertEquals("main should succeed", 1, result.succeeded.size)
+        assertTrue("SubA should have been called", subACalled)
+        assertEquals("SubA should be in failed", 1, result.failed.size)
+        assertTrue(result.failed["SubA"]!!.contains("simulated crash"))
+        assertFalse("allOk false when one failed", result.allOk)
+
+        // Rollback: main should be restored, derived branch deleted
+        val failures = executor.rollbackSucceeded(result, "feature")
+        assertTrue("rollback should have no failures", failures.isEmpty())
+        assertEquals("main should be restored to original branch", "main", git.currentBranch(root))
+        assertFalse("derived branch on main should be deleted", git.localBranchExists(root, "feature"))
+    }
+
+    // -- helpers ---------------------------------------------------------------
+
+    /** Delegates to [inner] except where [shouldThrow] returns true for checkoutNewBranch. */
+    @Suppress("TooGenericExceptionThrown")
+    private class ThrowingGitClient(
+        private val inner: GitClient,
+        private val shouldThrow: (java.io.File) -> Boolean,
+    ) : GitClient by inner {
+        override fun checkoutNewBranch(workDir: java.io.File, branch: String) =
+            if (shouldThrow(workDir)) throw RuntimeException("simulated crash on ${workDir.name}")
+            else inner.checkoutNewBranch(workDir, branch)
+
+        // need explicit overrides because delegation can't resolve after override
+        override fun deleteBranch(workDir: java.io.File, branch: String) = inner.deleteBranch(workDir, branch)
+        override fun currentBranch(workDir: java.io.File) = inner.currentBranch(workDir)
+        override fun isDirty(workDir: java.io.File) = inner.isDirty(workDir)
+        override fun dirtyFileCount(workDir: java.io.File) = inner.dirtyFileCount(workDir)
+        override fun stash(workDir: java.io.File, message: String) = inner.stash(workDir, message)
+        override fun fetch(workDir: java.io.File) = inner.fetch(workDir)
+        override fun localBranchExists(workDir: java.io.File, branch: String) = inner.localBranchExists(workDir, branch)
+        override fun remoteBranchExists(workDir: java.io.File, branch: String) = inner.remoteBranchExists(workDir, branch)
+        override fun checkoutExisting(workDir: java.io.File, branch: String) = inner.checkoutExisting(workDir, branch)
+        override fun checkoutFromRemote(workDir: java.io.File, branch: String) = inner.checkoutFromRemote(workDir, branch)
+        override fun pullFf(workDir: java.io.File, branch: String) = inner.pullFf(workDir, branch)
+        override fun submoduleSync(gitRoot: java.io.File) = inner.submoduleSync(gitRoot)
+        override fun submoduleInitPath(gitRoot: java.io.File, path: String) = inner.submoduleInitPath(gitRoot, path)
+        override fun listSubmodulePaths(gitRoot: java.io.File) = inner.listSubmodulePaths(gitRoot)
+        override fun listAllBranches(workDir: java.io.File) = inner.listAllBranches(workDir)
+        override fun revParseHead(workDir: java.io.File) = inner.revParseHead(workDir)
+        override fun stashPop(workDir: java.io.File) = inner.stashPop(workDir)
     }
 }

@@ -8,6 +8,7 @@ import com.submodule.branchswitcher.Bundle
 import com.submodule.branchswitcher.git.GitClient
 import com.submodule.branchswitcher.log.AppLogger
 import com.submodule.branchswitcher.model.Preset
+import com.submodule.branchswitcher.switch.isValidBranchName
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import javax.swing.SwingUtilities
@@ -430,8 +431,16 @@ class PresetEditor(
             null,
         )
         if (result.isNullOrBlank()) return
-        onDerive(result.trim())
+        val name = result.trim()
+        if (!isValidBranchName(name)) {
+            com.intellij.openapi.ui.Messages.showErrorDialog(
+                Bundle.msg("dialog.derive.invalid.name", name),
+                Bundle.msg("dialog.derive"))
+            return
+        }
+        onDerive(name)
     }
+
 
     override fun getMaximumSize(): Dimension =
         Dimension(Short.MAX_VALUE.toInt(), preferredSize.height)

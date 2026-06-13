@@ -35,6 +35,7 @@ class SwitchExecutorTest {
         override fun revParseHead(workDir: File): String? = "abc123"
         override fun stashPop(workDir: File): GitResult = GitResult("pop", 0, "", "")
         override fun checkoutNewBranch(workDir: File, branch: String): GitResult = GitResult("checkout", 0, "", "")
+        override fun deleteBranch(workDir: File, branch: String): GitResult = GitResult("branch", 0, "", "")
     }
 
     private val projectRoot = java.nio.file.Files.createTempDirectory("test-executor")

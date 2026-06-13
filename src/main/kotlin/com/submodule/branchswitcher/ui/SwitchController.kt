@@ -13,8 +13,11 @@ import com.submodule.branchswitcher.TaskBridge
 import com.submodule.branchswitcher.model.Preset
 import com.submodule.branchswitcher.model.SwitchOptions
 import com.submodule.branchswitcher.service.BranchSwitcherService
+import com.submodule.branchswitcher.switch.DeriveBranchExecutor
+import com.submodule.branchswitcher.switch.DeriveNotification
 import com.submodule.branchswitcher.switch.SwitchExecutor
 import com.submodule.branchswitcher.switch.SwitchPreflight
+import com.submodule.branchswitcher.switch.deriveNotification
 import com.submodule.branchswitcher.switch.refreshVcsRepos
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -53,6 +56,10 @@ class SwitchController(
     }
 
     fun executeSwitch(root: Path, preset: Preset) {
+        if (!service.tryStartWrite()) {
+            Notifier.warn(project, Bundle.msg("notify.write.busy"), Bundle.msg("notify.write.busy.msg"))
+            return
+        }
         val opts = SwitchOptions(
             dirty = service.dirtyAction,
             pull = service.pullAfterSwitch,
@@ -62,6 +69,7 @@ class SwitchController(
 
         setSwitchInProgress(true)
         service.scope.launch(Dispatchers.Default) {
+            try {
             var ok = false
             var cancelled = false
             var rollbackExecutor: SwitchExecutor? = null
@@ -136,11 +144,17 @@ class SwitchController(
                 }
                 refreshVcs(root, preset)
             }
+            } finally { service.endWrite() }
         }
     }
 
     fun rollbackSwitch(executor: SwitchExecutor) {
+        if (!service.tryStartWrite()) {
+            Notifier.warn(project, Bundle.msg("notify.write.busy"), Bundle.msg("notify.write.busy.msg"))
+            return
+        }
         service.scope.launch(Dispatchers.Default) {
+            try {
             var rollbackOk = false
             try {
                 TaskBridge.runBackground(project, "Rolling back", true) { indicator ->
@@ -163,36 +177,91 @@ class SwitchController(
                     }
                 }
             }
+            } finally { service.endWrite() }
         }
     }
 
     fun derivePresetBranch(root: Path, preset: Preset, branchName: String) {
+        if (!service.tryStartWrite()) {
+            Notifier.warn(project, Bundle.msg("notify.write.busy"), Bundle.msg("notify.write.busy.msg"))
+            return
+        }
         service.scope.launch(Dispatchers.Default) {
+            val gitClient = service.gitClient
+            var result: DeriveBranchExecutor.DeriveResult? = null
+            var cancelled = false
+            var rollbackFailures = emptyList<String>()
+
             try {
-                TaskBridge.runBackground(project, "Creating branch $branchName", true) { indicator ->
-                    indicator.isIndeterminate = true
-                    indicator.text = "Creating branch on all repos..."
-                    val targets = preset.targets()
-                    for ((idx, target) in targets.withIndex()) {
-                        indicator.fraction = idx.toDouble() / targets.size
-                        indicator.text2 = if (target.path == ".") root.fileName.toString() else target.path
-                        val dir = if (target.path == ".") root.toFile() else root.resolve(target.path).toFile()
-                        if (!dir.exists() || !java.io.File(dir, ".git").exists()) {
-                            log.debug("[derive] skip ${target.path} — not a git repo")
-                            continue
-                        }
-                        val r = service.gitClient.checkoutNewBranch(dir, branchName)
-                        if (r.ok) {
-                            log.activity("[derive] ${target.path}: created branch $branchName")
-                        } else {
-                            log.warn("[derive] ${target.path}: FAILED — ${r.stderr.lines().firstOrNull() ?: ""}")
-                        }
-                    }
+                gitClient.beginOperation()
+                try {
+                    TaskBridge.runBackground(project, "Creating branch $branchName", true,
+                        block = { indicator ->
+                            indicator.isIndeterminate = true
+                            val executor = DeriveBranchExecutor(root, log, gitClient, cancelled = { indicator.isCanceled })
+                            result = executor.execute(preset, branchName)
+                            if (!result!!.allOk && result!!.succeeded.isNotEmpty()) {
+                                log.activity("[derive] rolling back ${result!!.succeeded.size} succeeded repo(s)...")
+                                rollbackFailures = executor.rollbackSucceeded(result!!, branchName)
+                            }
+                        },
+                        onCancel = { gitClient.cancel() },
+                        onFinished = { gitClient.endOperation() },
+                    )
+                } catch (_: CancellationException) {
+                    log.info("[cancelled] derive cancelled by user")
+                    cancelled = true
+                } catch (e: Exception) {
+                    log.error("derive: ${e.javaClass.simpleName}: ${e.message}")
                 }
-            } catch (_: Exception) { /* logged in task */ }
+
+                if (cancelled && result != null && result!!.succeeded.isNotEmpty()) {
+                    gitClient.beginOperation()
+                    try {
+                        val executor = DeriveBranchExecutor(root, log, gitClient)
+                        log.activity("[derive] rolling back ${result!!.succeeded.size} succeeded repo(s) after cancel...")
+                        rollbackFailures = executor.rollbackSucceeded(result!!, branchName)
+                    } catch (e: Exception) {
+                        log.error("derive rollback after cancel: ${e.javaClass.simpleName}: ${e.message}")
+                        rollbackFailures = listOf("(exception)")
+                    }
+                    gitClient.endOperation()
+                }
+            } finally {
+                service.endWrite()
+            }
+
+            val r = result
+            val rfCount = rollbackFailures.size
             invokeLaterIfProjectAlive {
                 onStateChanged()
-                Notifier.info(project, Bundle.msg("notify.derive.complete"), Bundle.msg("notify.derive.created", branchName, preset.targets().size))
+                refreshVcs(root, preset)
+                when (val d = deriveNotification(cancelled, r, rfCount, branchName)) {
+                    is DeriveNotification.Success -> Notifier.info(project,
+                        Bundle.msg("notify.derive.complete"),
+                        Bundle.msg("notify.derive.created", d.branchName, d.repoCount))
+                    is DeriveNotification.Failure -> Notifier.warn(project,
+                        Bundle.msg("notify.derive.partial"),
+                        when (d.reason) {
+                            DeriveNotification.Reason.ROLLBACK_FAILED ->
+                                Bundle.msg("notify.derive.rollback.failed", d.count)
+                            DeriveNotification.Reason.UNEXPECTED ->
+                                Bundle.msg("notify.derive.unexpected")
+                            DeriveNotification.Reason.PARTIAL ->
+                                Bundle.msg("notify.derive.partial.msg", d.branchName)
+                        })
+                    is DeriveNotification.Blocked -> {
+                        val parts = mutableListOf<String>()
+                        if (d.branchExistsCount > 0) parts.add(Bundle.msg("notify.derive.blocked.exists", d.branchExistsCount))
+                        if (d.skippedCount > 0) parts.add(Bundle.msg("notify.derive.blocked.skipped", d.skippedCount))
+                        if (d.dirtyCount > 0) parts.add(Bundle.msg("notify.derive.blocked.dirty", d.dirtyCount))
+                        if (d.branchMismatchCount > 0) parts.add(Bundle.msg("notify.derive.blocked.mismatch", d.branchMismatchCount))
+                        if (d.preflightErrorCount > 0) parts.add(Bundle.msg("notify.derive.blocked.error", d.preflightErrorCount))
+                        if (d.checkpointFailedCount > 0) parts.add(Bundle.msg("notify.derive.blocked.checkpoint", d.checkpointFailedCount))
+                        Notifier.warn(project, Bundle.msg("notify.derive.blocked"), parts.joinToString("\n"))
+                    }
+                    is DeriveNotification.Silent -> {}
+                }
             }
         }
     }

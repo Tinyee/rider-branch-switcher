@@ -106,6 +106,7 @@ object TaskBridge {
             val finishCallbackInvoked = AtomicBoolean(false)
             val continuationCompleted = AtomicBoolean(false)
             val indicatorRef = AtomicReference<ProgressIndicator>(null)
+            val blockFailure = AtomicReference<Throwable>(null)
 
             fun invokeCancelCallback() {
                 if (cancelCallbackInvoked.compareAndSet(false, true)) {
@@ -129,6 +130,16 @@ object TaskBridge {
                 }
             }
 
+            fun cancelContinuation() {
+                if (continuationCompleted.compareAndSet(false, true)) {
+                    try {
+                        cont.cancel()
+                    } catch (_: Exception) {
+                        // Parent cancellation may already have completed the continuation.
+                    }
+                }
+            }
+
             cont.invokeOnCancellation {
                 cancelled.set(true)
                 invokeCancelCallback()
@@ -146,16 +157,22 @@ object TaskBridge {
                         try {
                             block(indicator)
                         } catch (e: Exception) {
-                            completeContinuation(Result.failure(e))
+                            blockFailure.compareAndSet(null, e)
                         }
                     },
                     onFinished = {
                         invokeFinishCallback()
-                        completeContinuation(Result.success(Unit))
+                        if (cancelled.get()) {
+                            cancelContinuation()
+                        } else {
+                            val failure = blockFailure.get()
+                            completeContinuation(if (failure == null) Result.success(Unit) else Result.failure(failure))
+                        }
                     },
                     onCancel = {
+                        cancelled.set(true)
                         invokeCancelCallback()
-                        try { cont.cancel() } catch (_: Exception) {}
+                        indicatorRef.get()?.cancel()
                     },
                 )
             } catch (e: Exception) {

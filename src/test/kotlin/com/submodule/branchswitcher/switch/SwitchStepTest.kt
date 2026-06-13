@@ -30,6 +30,7 @@ class SwitchStepTest {
         override fun checkoutExisting(workDir: File, branch: String): GitResult = GitResult("checkout", 0, "", "")
         override fun checkoutFromRemote(workDir: File, branch: String): GitResult = GitResult("checkout", 0, "", "")
         override fun checkoutNewBranch(workDir: File, branch: String): GitResult = GitResult("checkout", 0, "", "")
+        override fun deleteBranch(workDir: File, branch: String): GitResult = GitResult("branch", 0, "", "")
         override fun pullFf(workDir: File, branch: String): GitResult = GitResult("pull", 0, "", "")
         override fun submoduleSync(gitRoot: File): GitResult = GitResult("sync", 0, "", "")
         override fun submoduleInitPath(gitRoot: File, path: String): GitResult = GitResult("init", 0, "", "")

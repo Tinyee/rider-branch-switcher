@@ -125,6 +125,29 @@ class GitOps(
     override fun localBranchExists(workDir: File, branch: String): Boolean =
         run(workDir, "show-ref", "--verify", "--quiet", "refs/heads/$branch").ok
 
+    /** Tri-state: true=exists, false=not, null=git error. Distinguishes "not found" (exit 1) from errors. */
+    override fun localBranchProbe(workDir: File, branch: String): Boolean? {
+        return try {
+            val r = run(workDir, "show-ref", "--verify", "--quiet", "refs/heads/$branch")
+            when {
+                r.ok -> true
+                r.exitCode == 1 -> false // ref not found
+                else -> null // git error
+            }
+        } catch (_: Exception) { null }
+    }
+
+    /** Tri-state: true=dirty, false=clean, null=git error. */
+    override fun dirtyProbe(workDir: File): Boolean? {
+        return try {
+            val r = run(workDir, "status", "--porcelain")
+            when {
+                r.ok -> r.stdout.isNotBlank()
+                else -> null
+            }
+        } catch (_: Exception) { null }
+    }
+
     /** Cache of remote name per workDir to avoid repeated `git remote` calls. */
     private val remoteCache = java.util.concurrent.ConcurrentHashMap<String, String>()
 
@@ -179,6 +202,9 @@ class GitOps(
 
     override fun checkoutNewBranch(workDir: File, branch: String): GitResult =
         run(workDir, "checkout", "-b", branch)
+
+    override fun deleteBranch(workDir: File, branch: String): GitResult =
+        run(workDir, "branch", "-d", branch)
 
     override fun revParseHead(workDir: File): String? {
         val r = run(workDir, "rev-parse", "HEAD")

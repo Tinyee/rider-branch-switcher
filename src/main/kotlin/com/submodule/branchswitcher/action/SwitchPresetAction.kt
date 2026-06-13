@@ -53,7 +53,9 @@ class SwitchPresetAction : AnAction() {
 
     private fun executeSwitch(project: Project, service: BranchSwitcherService, preset: Preset) {
         val root = project.basePath?.let { java.nio.file.Paths.get(it) } ?: return
+        if (!service.tryStartWrite()) return
         service.scope.launch(Dispatchers.Default) {
+            try {
             val logLines = mutableListOf<String>()
             var ok = false
             var cancelled = false
@@ -131,6 +133,7 @@ class SwitchPresetAction : AnAction() {
                     refreshVcsRepos(project, root, preset.submodules.keys)
                 }
             }
+            } finally { service.endWrite() }
         }
     }
 }

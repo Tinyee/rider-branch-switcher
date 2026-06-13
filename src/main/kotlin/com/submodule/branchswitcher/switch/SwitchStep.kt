@@ -55,8 +55,9 @@ fun isGitRepo(dir: java.io.File): Boolean {
             .directory(dir)
             .redirectErrorStream(true)
             .start()
-        val exit = proc.waitFor()
-        exit == 0
+        val finished = proc.waitFor(10, java.util.concurrent.TimeUnit.SECONDS)
+        if (!finished) { proc.destroyForcibly(); return false }
+        proc.exitValue() == 0
     } catch (_: Exception) {
         false
     }
