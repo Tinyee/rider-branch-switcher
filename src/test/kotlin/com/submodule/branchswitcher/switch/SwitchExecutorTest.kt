@@ -415,7 +415,7 @@ class SwitchExecutorTest {
     // ---- Rollback edge cases ----
 
     @Test
-    fun `rollback skips missing repo`() {
+    fun `rollback reports failure when repo is missing`() {
         val skipGit = object : GitClient by fakeGit {
             override fun currentBranch(workDir: File): String? = "main"
             override fun checkoutExisting(workDir: File, br: String): GitResult =
@@ -427,8 +427,7 @@ class SwitchExecutorTest {
         // Delete the .git dir to simulate missing repo
         File(projectRoot.toFile(), ".git").deleteRecursively()
         val result = executor.rollback()
-        // Should still return true (missing repos are skipped, not fatal)
-        assertTrue("Rollback should skip missing repos and succeed", result)
+        assertFalse("Rollback cannot report success when a repo was not restored", result)
     }
 
     @Test

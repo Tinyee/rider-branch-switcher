@@ -156,11 +156,20 @@ class SwitchController(
         service.scope.launch(Dispatchers.Default) {
             try {
             var rollbackOk = false
+            val gitClient = service.gitClient
+            gitClient.beginOperation()
             try {
-                TaskBridge.runBackground(project, "Rolling back", true) { indicator ->
-                    indicator.isIndeterminate = true
-                    rollbackOk = executor.rollback()
-                }
+                TaskBridge.runBackground(project, "Rolling back", true,
+                    block = { indicator ->
+                        indicator.isIndeterminate = true
+                        rollbackOk = executor.rollback()
+                    },
+                    onCancel = { gitClient.cancel() },
+                    onFinished = { gitClient.endOperation() },
+                )
+            } catch (_: CancellationException) {
+                log.info("[cancelled] rollback cancelled by user")
+                rollbackOk = false
             } catch (e: Exception) {
                 log.error("rollback: ${e.javaClass.simpleName}: ${e.message}")
                 rollbackOk = false
