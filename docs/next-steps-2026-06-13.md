@@ -51,7 +51,6 @@ LICENSE ✅ 已添加（MIT）。
 - README 截图仍是 TODO。
 - 尚未发现自定义 `pluginIcon.svg`。
 - `plugin.xml` 英文描述较短。
-- 尚未发现 `LICENSE` 文件。
 
 建议动作：
 
