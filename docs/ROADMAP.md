@@ -147,7 +147,7 @@
 | P0 | 没有 `BranchSwitcherService`（Project Service） | 状态、CRUD、监听全没地方放 | ✅ v0.2.2 |
 | P1 | `PresetEditor` 是 god view（约 500 行） | 加拖拽/复制/导出/重命名只能继续塞这个文件 | ✅ v0.5 拆分 SubmoduleRowManager(265行), PresetEditor→397行 |
 | P1 | 异步 API 四种混用（Thread / pooledThread / Task.Backgroundable / Task.Modal） | cancel/进度/错误处理语义不一致 | ✅ v0.5 全部统一为 `scope.launch`, TaskBridge 封装底层 |
-| P1 | `Preset` 没有稳定 ID | 重命名后历史 / 快捷键绑定 / 颜色标签都断 | — |
+| P1 | `Preset` 没有稳定 ID | 重命名后历史 / 快捷键绑定 / 颜色标签都断 | ✅ v0.6 Preset.id UUID |
 | P1 | 切换选项（dirty / fetch / pull）不持久化 | IDE 重启重置 | ✅ v0.2.2 |
 | P1 | 没有 EventBus / Listener 模式 | 加任何派生组件都得回头改 Panel | ✅ v0.4 (BranchSwitchListener) |
 | P1 | `GitOps` 用 CLI fork 而非 git4idea API | 慢 + 不响应 cancel + 依赖 PATH | — |

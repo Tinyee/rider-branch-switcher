@@ -59,45 +59,48 @@ class SwitchPresetAction : AnAction() {
             var cancelled = false
             try {
                 // Run preflight + switch as a background task
-                TaskBridge.runBackground(project, "Switching to ${preset.name}", true) { indicator ->
-                    indicator.isIndeterminate = true
-                    val preflight = SwitchPreflight(service.gitClient)
-                    val probeResult = preflight.probe(root, preset, indicator)
-                    val missingDirs = probeResult.filter { !it.exists }
-                    val missingBranches = probeResult.filter { it.branchMissing }
-                    // Show preflight warnings and confirm before proceeding
-                    if (missingDirs.isNotEmpty() || missingBranches.isNotEmpty()) {
-                        val warnings = mutableListOf<String>()
-                        if (missingDirs.isNotEmpty()) {
-                            warnings += "Directory missing: ${missingDirs.joinToString(", ") { it.label }}"
+                TaskBridge.runBackground(project, "Switching to ${preset.name}", true,
+                    block = { indicator ->
+                        indicator.isIndeterminate = true
+                        val preflight = SwitchPreflight(service.gitClient)
+                        val probeResult = preflight.probe(root, preset, indicator)
+                        val missingDirs = probeResult.filter { !it.exists }
+                        val missingBranches = probeResult.filter { it.branchMissing }
+                        // Show preflight warnings and confirm before proceeding
+                        if (missingDirs.isNotEmpty() || missingBranches.isNotEmpty()) {
+                            val warnings = mutableListOf<String>()
+                            if (missingDirs.isNotEmpty()) {
+                                warnings += "Directory missing: ${missingDirs.joinToString(", ") { it.label }}"
+                            }
+                            if (missingBranches.isNotEmpty()) {
+                                warnings += "Branch not found: ${missingBranches.joinToString(", ") { it.label }}"
+                            }
+                            val confirmed = booleanArrayOf(false)
+                            com.intellij.openapi.application.ApplicationManager.getApplication().invokeAndWait {
+                                confirmed[0] = com.intellij.openapi.ui.Messages.showYesNoDialog(
+                                    project,
+                                    warnings.joinToString("\n\n") + "\n\nContinue anyway?",
+                                    Bundle.msg("dialog.switch.title"),
+                                    com.intellij.openapi.ui.Messages.getWarningIcon(),
+                                ) == com.intellij.openapi.ui.Messages.YES
+                            }
+                            if (!confirmed[0]) {
+                                logLines += "[warn] switch cancelled by user due to preflight warnings"
+                                cancelled = true
+                                return@runBackground
+                            }
                         }
-                        if (missingBranches.isNotEmpty()) {
-                            warnings += "Branch not found: ${missingBranches.joinToString(", ") { it.label }}"
-                        }
-                        val confirmed = booleanArrayOf(false)
-                        com.intellij.openapi.application.ApplicationManager.getApplication().invokeAndWait {
-                            confirmed[0] = com.intellij.openapi.ui.Messages.showYesNoDialog(
-                                project,
-                                warnings.joinToString("\n\n") + "\n\nContinue anyway?",
-                                Bundle.msg("dialog.switch.title"),
-                                com.intellij.openapi.ui.Messages.getWarningIcon(),
-                            ) == com.intellij.openapi.ui.Messages.YES
-                        }
-                        if (!confirmed[0]) {
-                            logLines += "[warn] switch cancelled by user due to preflight warnings"
-                            cancelled = true
-                            return@runBackground
-                        }
-                    }
-                    val collector = createStringAppender { logLines += it }
-                    val executor = SwitchExecutor(root, collector, service.gitClient, indicator)
-                    ok = executor.execute(preset, SwitchOptions(
-                        dirty = service.dirtyAction,
-                        fetchFirst = service.fetchFirst,
-                        pull = service.pullAfterSwitch,
-                        confirmBeforeInit = service.confirmBeforeInit,
-                    ))
-                }
+                        val collector = createStringAppender { logLines += it }
+                        val executor = SwitchExecutor(root, collector, service.gitClient, indicator)
+                        ok = executor.execute(preset, SwitchOptions(
+                            dirty = service.dirtyAction,
+                            fetchFirst = service.fetchFirst,
+                            pull = service.pullAfterSwitch,
+                            confirmBeforeInit = service.confirmBeforeInit,
+                        ))
+                    },
+                    onCancel = { service.gitClient.cancel() },
+                )
             } catch (e: CancellationException) {
                 logLines += "[warn] switch cancelled by user"
                 cancelled = true

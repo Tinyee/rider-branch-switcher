@@ -58,7 +58,14 @@ object PresetLoader {
             val file = ensureFile(ideBase)
             val text = Files.readString(file)
             val dto = Gson().fromJson(text, PresetFileDto::class.java) ?: PresetFileDto()
-            file to dto.toPresetFile()
+            val needsMigration = dto.presets.any { it.id == null }
+            val parsed = dto.toPresetFile()
+            // If any preset was auto-assigned an id (old JSON), write back immediately
+            // so that history entries referencing the id survive IDE restarts.
+            if (needsMigration) {
+                save(file, parsed)
+            }
+            file to parsed
         }.recoverCatching { e ->
             when (e) {
                 is JsonSyntaxException -> throw IllegalStateException("preset file parse error: ${e.message}", e)
