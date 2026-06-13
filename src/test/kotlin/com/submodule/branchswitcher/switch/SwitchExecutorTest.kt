@@ -207,17 +207,136 @@ class SwitchExecutorTest {
         assertTrue("Should call checkout for main branch, got: $checkoutCalls", "main" in checkoutCalls)
     }
 
+    @Test
+    fun `rollback falls back to checkpoint sha when branch restore fails`() {
+        var branch = "main"
+        val rollbackCalls = mutableListOf<String>()
+        val rollbackGit = object : GitClient by fakeGit {
+            override fun currentBranch(workDir: File): String? = branch
+            override fun checkoutExisting(workDir: File, target: String): GitResult {
+                if (target == "dev") {
+                    branch = "dev"
+                    return GitResult("checkout", 0, "", "")
+                }
+                rollbackCalls += target
+                return if (target == "abc123") GitResult("checkout", 0, "", "")
+                else GitResult("checkout", 1, "", "branch restore failed")
+            }
+        }
+        val executor = SwitchExecutor(projectRoot, createStringAppender { log += it }, rollbackGit)
+        executor.execute(preset, SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false))
+
+        assertTrue(executor.rollback())
+        assertEquals(listOf("main", "abc123"), rollbackCalls)
+    }
+
+    @Test
+    fun `rollback fails when branch and checkpoint sha restore both fail`() {
+        var branch = "main"
+        val rollbackGit = object : GitClient by fakeGit {
+            override fun currentBranch(workDir: File): String? = branch
+            override fun checkoutExisting(workDir: File, target: String): GitResult {
+                if (target == "dev") {
+                    branch = "dev"
+                    return GitResult("checkout", 0, "", "")
+                }
+                return GitResult("checkout", 1, "", "restore failed")
+            }
+        }
+        val executor = SwitchExecutor(projectRoot, createStringAppender { log += it }, rollbackGit)
+        executor.execute(preset, SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false))
+
+        assertFalse(executor.rollback())
+        assertTrue(log.any { it.contains("SHA checkout also failed") })
+    }
+
+    @Test
+    fun `rollback restores checkpoint sha when original head was detached`() {
+        var branch: String? = null
+        val checkoutCalls = mutableListOf<String>()
+        val detachedGit = object : GitClient by fakeGit {
+            override fun currentBranch(workDir: File): String? = branch
+            override fun checkoutExisting(workDir: File, target: String): GitResult {
+                checkoutCalls += target
+                branch = target
+                return GitResult("checkout", 0, "", "")
+            }
+        }
+        val executor = SwitchExecutor(projectRoot, createStringAppender { log += it }, detachedGit)
+        executor.execute(preset, SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false))
+        checkoutCalls.clear()
+
+        assertTrue(executor.rollback())
+        assertEquals(listOf("abc123"), checkoutCalls)
+    }
+
+    @Test
+    fun `rollback continues other repos after one submodule fails`() {
+        initGitRepo(File(projectRoot.toFile(), "SubA"))
+        initGitRepo(File(projectRoot.toFile(), "SubB"))
+        val branches = mutableMapOf("SubA" to "main", "SubB" to "main")
+        val rollbackCalls = mutableListOf<Pair<String, String>>()
+        val partialGit = object : GitClient by fakeGit {
+            override fun currentBranch(workDir: File): String? = branches[workDir.name] ?: "main"
+            override fun checkoutExisting(workDir: File, target: String): GitResult {
+                if (target == "dev") {
+                    branches[workDir.name] = "dev"
+                    return GitResult("checkout", 0, "", "")
+                }
+                rollbackCalls += workDir.name to target
+                return if (workDir.name == "SubA") GitResult("checkout", 1, "", "restore failed")
+                else GitResult("checkout", 0, "", "")
+            }
+        }
+        val subPreset = Preset("sub-test", "dev", mapOf("SubA" to "dev", "SubB" to "dev"), pullEnabled = false)
+        val executor = SwitchExecutor(projectRoot, createStringAppender { log += it }, partialGit)
+        executor.execute(subPreset, SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false))
+
+        assertFalse(executor.rollback())
+        assertTrue(rollbackCalls.contains("SubB" to "main"))
+    }
+
     // ---- Cancel ----
 
     @Test
-    fun `cancel stops pipeline`() {
-        val executor = SwitchExecutor(projectRoot, createStringAppender { log += it }, fakeGit)
-        val opts = SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false)
-        // cancelled() returns true, steps should be skipped
-        val context = SwitchContext(projectRoot, preset, opts, fakeGit, createStringAppender { log += it }, cancelled = { true })
-        // Check that cancelled flag is respected
-        // The pipeline itself checks cancelled between steps; we test via the context directly
-        assertTrue("cancelled should be true", context.cancelled())
+    fun `cancel after one step stops remaining pipeline and signals git`() {
+        var cancelled = false
+        var cancelCalls = 0
+        val executed = mutableListOf<String>()
+        val trackingGit = object : GitClient by fakeGit {
+            override fun cancel() {
+                cancelCalls++
+            }
+        }
+        val first = object : SwitchStep {
+            override val name = "first"
+            override fun execute(context: SwitchContext): StepResult {
+                executed += name
+                cancelled = true
+                return StepResult.Success
+            }
+        }
+        val second = object : SwitchStep {
+            override val name = "second"
+            override fun execute(context: SwitchContext): StepResult {
+                executed += name
+                return StepResult.Success
+            }
+        }
+        val executor = SwitchExecutor(
+            projectRoot,
+            createStringAppender { log += it },
+            trackingGit,
+            cancelled = { cancelled },
+            steps = listOf(first, second),
+        )
+
+        val result = executor.execute(preset, SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false))
+
+        assertFalse(result)
+        assertEquals(listOf("first"), executed)
+        assertEquals(1, cancelCalls)
+        assertTrue(log.any { it.contains("[cancelled] before step: second") })
     }
 
     @Test

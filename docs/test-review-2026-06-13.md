@@ -13,34 +13,15 @@
 
 ## 建议补充的测试
 
-### P0：取消正在执行的真实 Git 进程
+### 已完成：取消正在执行的 Git 进程
 
-当前 `GitOpsTest` 已覆盖取消后拒绝启动后续命令，以及嵌套操作生命周期，
-但尚未覆盖命令运行期间触发取消的行为。
+`GitOpsTest.cancel terminates running process and allows commands after operation ends` 使用可控假进程
+覆盖运行中取消、强制终止、返回 `cancelled`，以及操作结束后继续执行命令。测试不依赖外网或固定 sleep。
 
-建议验证：
+### 已完成：真正验证 SwitchExecutor 取消流水线
 
-- 长时间运行的进程会在取消后被终止。
-- 取消结果为 `cancelled`，而不是等待到 `timeout`。
-- 取消后不会残留子进程。
-- 操作结束后，后续 Git 命令能够正常执行。
-
-建议先为 `GitOps` 抽取可注入的进程启动或执行边界，再使用可控假进程测试，
-避免依赖真实慢速网络和固定时间等待。
-
-### P0：真正验证 SwitchExecutor 取消流水线
-
-当前以下测试只直接读取 `cancelled()` lambda，并没有执行流水线：
-
-- `SwitchExecutorTest.cancel stops pipeline`
-- `SwitchIntegrationTest.cancelled context reports true when cancelled flag is set`
-
-建议使用两个可控 `SwitchStep`：
-
-1. 第一个 Step 执行后将 indicator 标记为取消。
-2. 断言第二个 Step 没有执行。
-3. 断言执行结果为失败。
-4. 断言 `git.cancel()` 被调用。
+`SwitchExecutorTest.cancel after one step stops remaining pipeline and signals git` 已使用两个可控
+`SwitchStep` 执行真实流水线，并验证第二步不执行、结果失败、`git.cancel()` 被调用。
 
 ### P0：TaskBridge 生命周期
 
@@ -56,37 +37,20 @@
 
 这组测试需要 IntelliJ 测试环境或对 Task 调度边界进行小幅抽象，不建议用 sleep 模拟。
 
-### P1：Preset ID 迁移边界
+### 已完成：Preset ID 迁移边界
 
-当前已覆盖旧预设生成 ID、写回，以及写回失败不影响加载。
+`PresetLoaderTest` 已覆盖缺失、空白和重复 ID 的规范化与写回、有效 ID 不触发保存，
+以及迁移保存失败不阻断加载。规范化逻辑保证返回的内存对象始终使用非空且唯一的 ID。
 
-建议继续补充：
+### 已完成：BranchCombo 异步加载
 
-- 新旧 preset 混合时，仅为缺少 ID 的项生成 ID。
-- 所有 preset 已有 ID 时，不触发迁移保存。
-- 迁移保存失败后，返回的内存对象仍包含生成的 ID。
-- 多个缺少 ID 的 preset 会生成互不相同的 ID。
+`BranchComboUtilTest` 已覆盖成功、异常、组件销毁、占位符过滤、当前分支补入和重复分支。
+组件销毁路径现在也保证调用 `onLoadEnd`，避免外层 loading 计数卡住。
 
-### P1：BranchCombo 异步加载
+### 已完成：真实仓库回滚失败场景
 
-建议为 `loadComboBranches` 补充：
-
-- 加载异常后，combo 恢复 enabled 状态并调用 `onLoadEnd`。
-- 组件已经销毁时，不再修改 UI。
-- `"loading..."` 不会成为可保存的分支值。
-- 当前分支不在 Git 返回列表时，会被补入并选中。
-- Git 返回重复分支时，最终列表行为明确。
-
-如直接测试 `ApplicationManager.invokeLater` 成本较高，可先将“加载结果合并”提取为纯函数测试。
-
-### P2：真实仓库回滚失败场景
-
-建议补充：
-
-- 原分支恢复失败时会回退到 checkpoint SHA。
-- 分支和 SHA 都恢复失败时，rollback 返回失败。
-- 原状态为 detached HEAD 时，能够恢复到原 SHA。
-- 某个子模块回滚失败时，其他仓库仍继续回滚。
+已覆盖原分支恢复失败时回退 checkpoint SHA、分支和 SHA 都失败时返回失败，
+原状态为 detached HEAD 时恢复原 SHA，以及某个子模块回滚失败时其他仓库继续回滚。
 
 ### P2：大仓性能基准
 
@@ -151,17 +115,14 @@
   - 删除只覆盖简单示例、且没有额外契约的重复 round-trip。
 - `SubmoduleRowManagerTest` 与 `SwitchExecutorTest` 都测试了 `shortLabel`。
   建议集中到单一 utility 测试类。
-- 两个取消测试都只读取 `cancelled()` lambda，应合并并替换为真实流水线取消测试。
+- `SwitchIntegrationTest.cancelled context reports true when cancelled flag is set` 仍只验证 lambda，
+  可在补充更完整的跨组件取消测试后删除。
 
 ## 推荐执行顺序
 
-1. 用真实流水线取消测试替换两个无效取消测试。
-2. 补 GitOps 运行中取消测试。
-3. 补 TaskBridge 生命周期测试。
-4. 补 Preset ID 迁移边界测试。
-5. 提取 BranchCombo 纯逻辑并补异步结果测试。
-6. 删除或合并低价值、重复测试。
-7. 最后再评估是否需要引入 PITest 变异测试。
+1. 补 TaskBridge 生命周期测试。
+2. 删除或合并低价值、重复测试。
+3. 最后再评估是否需要引入 PITest 变异测试。
 
 ## 验收标准
 

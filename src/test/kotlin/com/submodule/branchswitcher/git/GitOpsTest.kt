@@ -5,8 +5,15 @@ import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Test
 import java.io.File
+import java.io.ByteArrayInputStream
+import java.io.ByteArrayOutputStream
+import java.io.InputStream
+import java.io.OutputStream
 import java.nio.file.Files
 import java.nio.file.Path
+import java.util.concurrent.CompletableFuture
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 
 /**
  * Unit tests for [GitOps].listSubmodulePaths — parses .gitmodules files.
@@ -223,5 +230,51 @@ class GitOpsTest {
 
         git.endOperation()
         assertNotEquals("cancelled", git.fetch(tmpDir.toFile()).stderr)
+    }
+
+    @Test
+    fun `cancel terminates running process and allows commands after operation ends`() {
+        val runningProcess = ControllableProcess(finished = false)
+        var starts = 0
+        git = GitOps(timeoutSeconds = 10) {
+            starts++
+            if (starts == 1) runningProcess else ControllableProcess(finished = true)
+        }
+        git.beginOperation()
+
+        val resultFuture = CompletableFuture.supplyAsync { git.fetch(tmpDir.toFile()) }
+        assertTrue(runningProcess.waitStarted.await(5, TimeUnit.SECONDS))
+        git.cancel()
+
+        val cancelled = resultFuture.get(5, TimeUnit.SECONDS)
+        assertEquals("cancelled", cancelled.stderr)
+        assertTrue(runningProcess.destroyed)
+
+        git.endOperation()
+        assertTrue(git.fetch(tmpDir.toFile()).ok)
+    }
+
+    private class ControllableProcess(
+        private val finished: Boolean,
+    ) : Process() {
+        val waitStarted = CountDownLatch(1)
+        @Volatile var destroyed = false
+
+        override fun getOutputStream(): OutputStream = ByteArrayOutputStream()
+        override fun getInputStream(): InputStream = ByteArrayInputStream(ByteArray(0))
+        override fun getErrorStream(): InputStream = ByteArrayInputStream(ByteArray(0))
+        override fun waitFor(): Int = 0
+        override fun waitFor(timeout: Long, unit: TimeUnit): Boolean {
+            waitStarted.countDown()
+            return finished || destroyed
+        }
+        override fun exitValue(): Int = 0
+        override fun destroy() {
+            destroyed = true
+        }
+        override fun destroyForcibly(): Process {
+            destroyed = true
+            return this
+        }
     }
 }
