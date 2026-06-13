@@ -84,27 +84,32 @@ Fatal ERROR、Partial WARN、Activity 级别、git init 真实仓库验证。
 
 ## P2：后续增强
 
-### 大仓性能基准
+### 大仓规模调用预算与性能基准
 
-建议为 50+ 子模块场景建立可重复性能测试，重点关注：
+已增加 `LargeRepoScalabilityTest`，在 50 个子模块场景下验证 Switch pipeline 和
+Preflight 的 Git 调用预算，防止重复查询回归。
 
-- Preflight 执行的 Git 命令数量和耗时。
-- 状态探测是否重复执行同一 Git 命令。
-- 多 preset 展开和状态刷新耗时。
+后续真实耗时测量应放入独立 benchmark task，不加入普通 `test`：
+
+- Preflight 和状态刷新真实 Git CLI 耗时。
+- 多 preset 展开耗时。
 - 是否需要限制或引入安全的并发读取。
 
-性能优化应以测量结果为依据，不提前引入复杂并发。
+### TaskBridge 生命周期测试
+
+生产接入已完成，直接生命周期测试仍待补。完整测试矩阵与原因见
+`docs/test-review-2026-06-13.md` 的「TaskBridge 生命周期」章节。
 
 ### 首次安装引导
 
-可增加轻量首次安装提示，说明：
+已在无预设空状态中增加轻量 Quick Start，引导说明：
 
 - 如何从当前状态创建 preset。
 - 如何执行预览和切换。
 - `Ctrl+Alt+B` 快捷键。
 - Preset 文件位置及团队共享方式。
 
-该项适合在 Marketplace 发布物料完成后实施。
+后续仅需在发布检查中验证窄 Tool Window 和中英文布局。
 
 ---
 

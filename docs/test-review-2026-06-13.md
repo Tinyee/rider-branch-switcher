@@ -26,6 +26,9 @@
 ### P0：TaskBridge 生命周期
 
 `TaskBridge.runBackground` 负责连接 IntelliJ Task 和协程，也是 Git 操作生命周期清理的关键边界。
+现有 `SwitchExecutorTest` 和 `GitOpsTest` 只覆盖下游取消与 Git 操作生命周期，
+没有直接执行 `TaskBridge.runBackground`，因此不能替代本节测试。
+当前状态是生产接入已完成，但生命周期测试仍待补。
 
 建议验证：
 
@@ -52,15 +55,18 @@
 已覆盖原分支恢复失败时回退 checkpoint SHA、分支和 SHA 都失败时返回失败，
 原状态为 detached HEAD 时恢复原 SHA，以及某个子模块回滚失败时其他仓库继续回滚。
 
-### P2：大仓性能基准
+### 部分完成：大仓规模调用预算与性能基准
 
-为 50+ 子模块建立可重复性能测试或基准脚本，关注：
+`LargeRepoScalabilityTest` 已在 50 个子模块场景下验证 Switch pipeline 和 Preflight
+对每个仓库的 Git 调用次数，防止重复调用造成线性倍增。
 
-- Preflight 执行的 Git 命令数量。
-- 状态刷新是否重复查询相同仓库。
-- 多 preset 展开和刷新耗时。
+仍建议通过独立 Gradle task 或手工基准脚本测量：
 
-性能测试不建议加入普通 `test` 任务，可作为独立 Gradle task 或手工基准脚本运行。
+- 真实 Git CLI 下的 Preflight 耗时。
+- 多 preset 展开和状态刷新耗时。
+- 不同机器与 Rider 版本下的性能变化。
+
+普通 `test` 不包含墙钟阈值，避免因 CI 和开发机性能差异产生不稳定失败。
 
 ## 建议删除或替换的低价值测试
 
