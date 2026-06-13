@@ -1,5 +1,6 @@
 ﻿package com.submodule.branchswitcher
 
+import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.progress.ProgressIndicator
 import com.intellij.openapi.progress.ProgressManager
 import com.intellij.openapi.progress.Task
@@ -17,6 +18,8 @@ import kotlin.coroutines.resume
  * Zero call sites use Task.Modal or Task.Backgroundable directly after this migration.
  */
 object TaskBridge {
+
+    private val LOG = Logger.getInstance(TaskBridge::class.java)
 
     /**
      * Injectable boundary for Task scheduling.
@@ -106,13 +109,17 @@ object TaskBridge {
 
             fun invokeCancelCallback() {
                 if (cancelCallbackInvoked.compareAndSet(false, true)) {
-                    try { onCancel?.invoke() } catch (_: Exception) {}
+                    try { onCancel?.invoke() } catch (e: Exception) {
+                        LOG.warn("onCancel callback threw", e)
+                    }
                 }
             }
 
             fun invokeFinishCallback() {
                 if (finishCallbackInvoked.compareAndSet(false, true)) {
-                    try { onFinished?.invoke() } catch (_: Exception) {}
+                    try { onFinished?.invoke() } catch (e: Exception) {
+                        LOG.warn("onFinished callback threw", e)
+                    }
                 }
             }
 
@@ -128,28 +135,33 @@ object TaskBridge {
                 indicatorRef.get()?.cancel()
             }
 
-            taskRunner.run(
-                project = project,
-                title = title,
-                canBeCancelled = canBeCancelled,
-                onRun = { indicator ->
-                    indicatorRef.set(indicator)
-                    if (cancelled.get()) return@run
-                    try {
-                        block(indicator)
-                    } catch (e: Exception) {
-                        completeContinuation(Result.failure(e))
-                    }
-                },
-                onFinished = {
-                    invokeFinishCallback()
-                    completeContinuation(Result.success(Unit))
-                },
-                onCancel = {
-                    invokeCancelCallback()
-                    try { cont.cancel() } catch (_: Exception) {}
-                },
-            )
+            try {
+                taskRunner.run(
+                    project = project,
+                    title = title,
+                    canBeCancelled = canBeCancelled,
+                    onRun = { indicator ->
+                        indicatorRef.set(indicator)
+                        if (cancelled.get()) return@run
+                        try {
+                            block(indicator)
+                        } catch (e: Exception) {
+                            completeContinuation(Result.failure(e))
+                        }
+                    },
+                    onFinished = {
+                        invokeFinishCallback()
+                        completeContinuation(Result.success(Unit))
+                    },
+                    onCancel = {
+                        invokeCancelCallback()
+                        try { cont.cancel() } catch (_: Exception) {}
+                    },
+                )
+            } catch (e: Exception) {
+                LOG.warn("TaskRunner.run threw synchronously", e)
+                completeContinuation(Result.failure(e))
+            }
         }
     }
 }

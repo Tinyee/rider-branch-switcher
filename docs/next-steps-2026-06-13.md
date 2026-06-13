@@ -95,10 +95,21 @@ Preflight 的 Git 调用预算，防止重复查询回归。
 - 多 preset 展开耗时。
 - 是否需要限制或引入安全的并发读取。
 
-### TaskBridge 生命周期测试
+### TaskBridge 生命周期测试 ✅ (2026-06-13)
 
-生产接入已完成，直接生命周期测试仍待补。完整测试矩阵与原因见
-`docs/test-review-2026-06-13.md` 的「TaskBridge 生命周期」章节。
+生产接入已完成，直接生命周期测试已补完（`TaskBridgeLifecycleTest`，9 用例）：
+- 正常完成、block 抛异常、用户取消、父协程取消（前/中）、回调幂等。
+- runner 同步抛异常传播、onCancel/onFinished 回调异常已记录日志不传播。
+- 竞态修复：父协程在 Task 启动前取消不再允许 block 执行。
+- 可注入 `TaskRunner` 边界，测试无需 IntelliJ 运行时。
+
+### releaseCheck 自动化
+
+`./gradlew releaseCheck` 聚合：
+- `test` + `detekt` + `buildPlugin` + `verifyPlugin`
+- README 版本 badge + CHANGELOG 最新版本精确校验
+- ZIP 名称、LICENSE 存在性检查
+- 非致命提醒：screenshot TODO、pluginIcon.svg 缺失
 
 ### 首次安装引导
 

@@ -295,4 +295,102 @@ class TaskBridgeLifecycleTest {
 
         job.join()
     }
+
+    // -- Scenario 7: runner throws synchronously ----------------------------
+
+    @Test
+    @Suppress("TooGenericExceptionThrown")
+    fun `runner throws exception propagates to caller`() = runBlocking {
+        val ex = RuntimeException("runner failed")
+        val throwingRunner = object : TaskBridge.TaskRunner {
+            override fun run(
+                project: com.intellij.openapi.project.Project?,
+                title: String,
+                canBeCancelled: Boolean,
+                onRun: (ProgressIndicator) -> Unit,
+                onFinished: () -> Unit,
+                onCancel: () -> Unit,
+            ) {
+                throw ex
+            }
+        }
+
+        var caught: Throwable? = null
+        try {
+            TaskBridge.runBackground(
+                throwingRunner, null, "test", true,
+                onCancel = { cancelCallCount++ },
+                onFinished = { finishCallCount++ },
+            ) { /* never runs */ }
+        } catch (e: Exception) {
+            caught = e
+        }
+
+        assertTrue("runner exception must propagate", caught is RuntimeException && caught.message == "runner failed")
+        assertEquals("onFinished must not fire when runner throws", 0, finishCallCount)
+        assertEquals("onCancel must not fire when runner throws", 0, cancelCallCount)
+    }
+
+    // -- Scenario 8: onCancel callback throws -------------------------------
+
+    @Test
+    @Suppress("TooGenericExceptionThrown")
+    fun `onCancel callback exception is contained and cancellation completes`() = runBlocking {
+        val job = launch {
+            TaskBridge.runBackground(
+                runner, null, "test", true,
+                onCancel = {
+                    cancelCallCount++
+                    throw IllegalStateException("cancel callback failed")
+                },
+                onFinished = { finishCallCount++ },
+            ) { /* no-op */ }
+        }
+
+        yield() // let the launched coroutine enter suspendCancellableCoroutine
+        assertNotNull("onRun should be captured", runner.onRun)
+
+        runner.simulateRun(FakeIndicator())
+        runner.simulateCancel()
+
+        assertEquals("onCancel must fire once despite throwing", 1, cancelCallCount)
+
+        runner.simulateFinish()
+        assertEquals("onFinished must fire once", 1, finishCallCount)
+
+        job.join()
+        assertTrue("job must be cancelled", job.isCancelled)
+    }
+
+    // -- Scenario 9: onFinished callback throws -----------------------------
+
+    @Test
+    @Suppress("TooGenericExceptionThrown")
+    fun `onFinished callback exception is contained and continuation completes`() = runBlocking {
+        var blockRan = false
+        val job = launch {
+            TaskBridge.runBackground(
+                runner, null, "test", true,
+                onCancel = { cancelCallCount++ },
+                onFinished = {
+                    finishCallCount++
+                    throw IllegalStateException("finish callback failed")
+                },
+            ) {
+                blockRan = true
+            }
+        }
+
+        yield() // let the launched coroutine enter suspendCancellableCoroutine
+        assertNotNull("onRun should be captured", runner.onRun)
+
+        runner.simulateRun(FakeIndicator())
+        assertTrue("block should have run", blockRan)
+
+        runner.simulateFinish()
+        assertEquals("onFinished must fire once despite throwing", 1, finishCallCount)
+
+        job.join()
+        assertTrue("job must complete normally", job.isCompleted)
+    }
 }
