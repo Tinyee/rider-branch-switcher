@@ -48,7 +48,8 @@ com.submodule.branchswitcher/
 ## Current Follow-ups
 
 - Keep wall-clock performance measurements in a separate benchmark task; regular tests only enforce Git call budgets.
-- Continue reduced manual release checks: narrow Tool Window, Settings UI, i18n, one switch+cancel from UI, install built ZIP.
+- Continue reduced manual release checks: narrow Tool Window, Settings UI, i18n, install built ZIP.
+- UI cancel verified (2026-06-13): real Rider sandbox, cancelled mid-switch, `[cancelled]` logged, no exceptions, subsequent switches unaffected.
 - Prepare Marketplace screenshots and pluginIcon.svg when ready to publish.
 
 The original 2026-06-08 findings are archived in `docs/code-review-2026-06-08.md`; most have been fixed and the archive must not be treated as the current issue list.
