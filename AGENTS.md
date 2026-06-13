@@ -6,7 +6,7 @@ Rider plugin — one-click switch main repo + all submodules to preset branch co
 
 - **Stack**: Kotlin 2.3, IntelliJ Platform Gradle Plugin 2.2.1, Gradle 8.13, JUnit 4 + Kotest 5.9
 - **Target**: JetBrains Rider 2026.1 (build 261)
-- **Tests**: 190 tests, `./gradlew test`
+- **Tests**: 189 tests, `./gradlew test`
 - **Version**: 0.6.0
 
 ## Architecture
@@ -47,9 +47,9 @@ com.submodule.branchswitcher/
 
 ## Current Follow-ups
 
-- Add direct lifecycle tests for `TaskBridge.runBackground`; downstream cancellation tests do not cover the bridge itself.
 - Keep wall-clock performance measurements in a separate benchmark task; regular tests only enforce Git call budgets.
-- Continue manual release checks for narrow Tool Window layouts, Settings UI, and Chinese/English rendering until Rider fixture or screenshot tests are justified.
+- Continue reduced manual release checks: narrow Tool Window, Settings UI, i18n, one switch+cancel from UI, install built ZIP.
+- Prepare Marketplace screenshots and pluginIcon.svg when ready to publish.
 
 The original 2026-06-08 findings are archived in `docs/code-review-2026-06-08.md`; most have been fixed and the archive must not be treated as the current issue list.
 
@@ -60,5 +60,9 @@ The original 2026-06-08 findings are archived in `docs/code-review-2026-06-08.md
 - Added stable Preset IDs, legacy ID normalization, history lookup by ID, and validated import rules via `PresetDto` / `parsePresetImport`.
 - Added structured `AppLogger`, EDT-safe UI updates, origin-first remote selection, `jButton` factory, and reusable branch combo loading.
 - Added Quick Start empty state and Settings Configurable.
-- Expanded to 190 tests, including real Git integration, cancellation, rollback, import, branch combo lifecycle, and 50-submodule Git call-budget checks.
+- Added `TaskBridgeLifecycleTest` (6 tests) covering normal completion, block exception, user cancel, parent-cancel-before-run, parent-cancel-during-run, and callback idempotency.
+- Fixed `TaskBridge.runBackground` race condition: parent coroutine cancel before `Task.run()` no longer allows block execution.
+- Extracted injectable `TaskRunner` boundary enabling direct lifecycle testing without IntelliJ runtime.
+- Added MIT `LICENSE`, automated `releaseCheck` Gradle task (test + detekt + buildPlugin + verifyPlugin + metadata validation).
+- 189 tests, including real Git integration, cancellation, rollback, import, branch combo lifecycle, and 50-submodule Git call-budget checks.
 - CI covers tests, plugin verification, Detekt, Kotest property tests, and Qodana.

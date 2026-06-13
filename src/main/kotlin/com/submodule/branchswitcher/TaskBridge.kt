@@ -8,7 +8,8 @@ import com.intellij.openapi.util.ThrowableComputable
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
-import javax.swing.SwingUtilities
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
 import kotlin.coroutines.resume
 
 /**
@@ -16,6 +17,41 @@ import kotlin.coroutines.resume
  * Zero call sites use Task.Modal or Task.Backgroundable directly after this migration.
  */
 object TaskBridge {
+
+    /**
+     * Injectable boundary for Task scheduling.
+     * Tests inject a fake that records callbacks; production delegates to [ProgressManager].
+     */
+    interface TaskRunner {
+        fun run(
+            project: Project?,
+            title: String,
+            canBeCancelled: Boolean,
+            onRun: (ProgressIndicator) -> Unit,
+            onFinished: () -> Unit,
+            onCancel: () -> Unit,
+        )
+
+        companion object {
+            val DEFAULT: TaskRunner = object : TaskRunner {
+                override fun run(
+                    project: Project?,
+                    title: String,
+                    canBeCancelled: Boolean,
+                    onRun: (ProgressIndicator) -> Unit,
+                    onFinished: () -> Unit,
+                    onCancel: () -> Unit,
+                ) {
+                    val task = object : Task.Backgroundable(project, title, canBeCancelled) {
+                        override fun run(indicator: ProgressIndicator) = onRun(indicator)
+                        override fun onFinished() = onFinished()
+                        override fun onCancel() = onCancel()
+                    }
+                    ProgressManager.getInstance().run(task)
+                }
+            }
+        }
+    }
 
     /** Runs a blocking modal task that returns [T], suspend-friendly. */
     @Suppress("UNCHECKED_CAST")
@@ -49,34 +85,71 @@ object TaskBridge {
         /** Invoked after the task has fully finished, including cancellation and failure paths. */
         onFinished: (() -> Unit)? = null,
         block: (ProgressIndicator) -> Unit,
+    ) = runBackground(TaskRunner.DEFAULT, project, title, canBeCancelled, onCancel, onFinished, block)
+
+    /** Internal entry-point with injectable [TaskRunner] for testing. Project is nullable for tests. */
+    internal suspend fun runBackground(
+        taskRunner: TaskRunner,
+        project: Project?,
+        title: String,
+        canBeCancelled: Boolean,
+        onCancel: (() -> Unit)?,
+        onFinished: (() -> Unit)?,
+        block: (ProgressIndicator) -> Unit,
     ) {
         suspendCancellableCoroutine<Unit> { cont ->
-            val indicatorRef = java.util.concurrent.atomic.AtomicReference<ProgressIndicator>(null)
-            val task = object : Task.Backgroundable(project, title, canBeCancelled) {
-                override fun run(indicator: ProgressIndicator) {
+            val cancelled = AtomicBoolean(false)
+            val cancelCallbackInvoked = AtomicBoolean(false)
+            val finishCallbackInvoked = AtomicBoolean(false)
+            val continuationCompleted = AtomicBoolean(false)
+            val indicatorRef = AtomicReference<ProgressIndicator>(null)
+
+            fun invokeCancelCallback() {
+                if (cancelCallbackInvoked.compareAndSet(false, true)) {
+                    try { onCancel?.invoke() } catch (_: Exception) {}
+                }
+            }
+
+            fun invokeFinishCallback() {
+                if (finishCallbackInvoked.compareAndSet(false, true)) {
+                    try { onFinished?.invoke() } catch (_: Exception) {}
+                }
+            }
+
+            fun completeContinuation(result: Result<Unit>) {
+                if (continuationCompleted.compareAndSet(false, true)) {
+                    cont.resumeWith(result)
+                }
+            }
+
+            cont.invokeOnCancellation {
+                cancelled.set(true)
+                invokeCancelCallback()
+                indicatorRef.get()?.cancel()
+            }
+
+            taskRunner.run(
+                project = project,
+                title = title,
+                canBeCancelled = canBeCancelled,
+                onRun = { indicator ->
                     indicatorRef.set(indicator)
+                    if (cancelled.get()) return@run
                     try {
                         block(indicator)
                     } catch (e: Exception) {
-                        cont.resumeWith(Result.failure(e))
-                        return
+                        completeContinuation(Result.failure(e))
                     }
-                }
-                override fun onFinished() {
-                    onFinished?.invoke()
-                    com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater {
-                        if (cont.isActive) cont.resume(Unit)
-                    }
-                }
-                override fun onCancel() {
-                    onCancel?.invoke()
-                    cont.cancel()
-                }
-            }
-            cont.invokeOnCancellation {
-                indicatorRef.get()?.cancel()
-            }
-            ProgressManager.getInstance().run(task)
+                },
+                onFinished = {
+                    invokeFinishCallback()
+                    completeContinuation(Result.success(Unit))
+                },
+                onCancel = {
+                    invokeCancelCallback()
+                    try { cont.cancel() } catch (_: Exception) {}
+                },
+            )
         }
     }
 }
