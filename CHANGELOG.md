@@ -20,12 +20,30 @@
 - Log levels assigned by semantics: failures → warn, diagnostics → debug, activities → activity
 - `AppLoggerTest` (13 cases): level contract tests for fetch/checkout/stash/pull failures, Fatal, Partial, Activity
 - `GitOps.run()` uses operation-scoped cancellation that blocks commands reached after cancellation
+- `beginOperation`/`endOperation` lifecycle: nested operations don't clear each other's cancel state
 - Review fixes: 3 rounds of log-level migration corrections
+
+### Refactoring
+- `normalizePresetIds` handles blank/duplicate preset IDs in old JSON
+- `parsePresetImport` pure function extracted from `PresetListManager` → `PresetImportResult.kt`
+- `mergeBranchChoices` pure function in `BranchComboUtil.kt` with testable `scheduleUi` callback
+- `GitOps` constructor accepts injectable `processStarter` for controlled-process testing
+- `SwitchExecutor` constructor accepts injectable `cancelled` lambda (no ProgressIndicator needed in tests)
+
+### Tests
+- 188 tests (JUnit 4 + Kotest property-based), 17 test classes
+- `GitOpsTest`: ControllableProcess for running-process cancel verification
+- `SwitchExecutorTest`: 5 new — rollback SHA fallback, detached HEAD, submodule partial rollback, pipeline cancel
+- `PresetLoaderTest`: 3 new — blank/duplicate ID normalization, valid ID no-op
+- `BranchComboUtilTest`: 6 new — branch choice merging, async load success/exception/disposed
+- `AppLoggerTest`: 13 log-level contract tests
+- `PresetImportRulesTest`: import parsing rules
 
 ### Docs
 - README, ROADMAP, CHANGELOG synchronized to 0.6.0
 - `plugin.xml` vendor updated to match GitHub remote (Tinyee)
 - Historical review docs (`code-review-2026-06-08.md`, `ui-redesign-plan-2026-06-09.md`) marked archived
+- `test-review-2026-06-13.md` tracks test gaps and recommendations
 
 ## [0.5.0] — 2026-06-07
 

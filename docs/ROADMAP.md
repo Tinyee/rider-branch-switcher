@@ -150,7 +150,7 @@
 | P1 | `Preset` 没有稳定 ID | 重命名后历史 / 快捷键绑定 / 颜色标签都断 | ✅ v0.6 Preset.id UUID |
 | P1 | 切换选项（dirty / fetch / pull）不持久化 | IDE 重启重置 | ✅ v0.2.2 |
 | P1 | 没有 EventBus / Listener 模式 | 加任何派生组件都得回头改 Panel | ✅ v0.4 (BranchSwitchListener) |
-| P1 | `GitOps` 用 CLI fork 而非 git4idea API | 慢 + 不响应 cancel + 依赖 PATH | — |
+| P1 | `GitOps` 用 CLI fork 而非 git4idea API | 慢 + 依赖 PATH | ⚡ v0.6 cancel 已解决, git4idea 迁移仍暂缓 |
 | P2 | 包结构扁平（`com.submodule.branchswitcher` 全平铺，11 个文件） | 加新功能继续平铺会变难找 | ✅ v0.2.2 |
 | P2 | 中英文硬编码，无 `BundleMessage` | i18n 时机械迁移 | ✅ v0.5 ResourceBundle(en/zh) + Bundle.kt |
 | P2 | `noFocusRing()` 每个按钮手动调，容易漏 | 应该工厂化或全局 LAF | ✅ v0.6 `jButton()` 工厂 |
