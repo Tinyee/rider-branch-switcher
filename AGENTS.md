@@ -6,7 +6,7 @@ Rider plugin — one-click switch main repo + all submodules to preset branch co
 
 - **Stack**: Kotlin 2.3, IntelliJ Platform Gradle Plugin 2.2.1, Gradle 8.13, JUnit 4 + Kotest 5.9
 - **Target**: JetBrains Rider 2026.1 (build 261)
-- **Tests**: 188 tests, `./gradlew test`
+- **Tests**: 190 tests, `./gradlew test`
 - **Version**: 0.6.0
 
 ## Architecture
@@ -35,7 +35,7 @@ com.submodule.branchswitcher/
 ## Dev Commands
 
 ```bash
-./gradlew test          # 188 tests
+./gradlew test          # 190 tests
 ./gradlew buildPlugin   # → build/distributions/rider-branch-switcher-{version}.zip
 ./gradlew runIde        # Launch sandbox Rider with plugin pre-installed
 ```
@@ -45,51 +45,20 @@ com.submodule.branchswitcher/
 - **No auto push**: Commit and stop. Only push when explicitly asked.
 - **Cleanup stale tasks**: Check TaskList at session start/end; don't track already-completed tasks.
 
-## Known Issues (from 2026-06-08 code review, NOT YET FIXED)
+## Current Follow-ups
 
-### Critical (data loss/corruption risk)
-1. **PullStep runs on failed checkout**: If CheckoutStep fails (dirty conflict), PullStep still runs on old branch — can fast-forward main to dev.
-2. **DirtyHandling Skip doesn't truly skip**: CheckoutStep doesn't know which paths were skipped, still checks out.
-3. **Stash failure doesn't prevent checkout**: Dirty=Stash but stash fails → CheckoutStep still proceeds, dirty changes leak to new branch.
-4. **Stash not popped when target branch doesn't exist**: Branch-not-found path in CheckoutStep skips stashPop.
-5. **Gson + Kotlin defaults unreliable**: `Preset` data class uses Kotlin defaults (`emptyMap()`, `true`) but Gson uses UnsafeAllocator → missing JSON fields become null/false → NPE.
+- Add direct lifecycle tests for `TaskBridge.runBackground`; downstream cancellation tests do not cover the bridge itself.
+- Keep wall-clock performance measurements in a separate benchmark task; regular tests only enforce Git call budgets.
+- Continue manual release checks for narrow Tool Window layouts, Settings UI, and Chinese/English rendering until Rider fixture or screenshot tests are justified.
 
-### High
-6. TaskBridge missing `invokeOnCancellation` — parent coroutine cancel doesn't terminate IDE Task.
-7. EDT violation: SwitchController modifies Swing on `Dispatchers.Default`.
-8. `remoteName` uses alphabetical first remote, not `origin`-first.
-9. User cancel treated as failure in SwitchPresetAction; `CancellationException` swallowed.
-10. `onDerive` captures stale preset reference (constructor-time vs current).
-11. `importPresets` doesn't validate fields.
-12. `loadComboBranches` order: "loading..." string can be saved as branch name.
-13. PresetEditor optimistic save: UI assumes saved before disk write completes.
+The original 2026-06-08 findings are archived in `docs/code-review-2026-06-08.md`; most have been fixed and the archive must not be treated as the current issue list.
 
-### Medium
-14. `detectGen` non-atomic (use AtomicLong).
-15. `history` non-thread-safe + writes on failure.
-16. PresetLoader IO exceptions escape `Result`.
-17. SubmoduleSyncStep runs on failed main repo checkout.
-18. Stash pop before PullStep → dirty working tree during pull.
-19. `invokeLater` callbacks missing disposed guard.
-20. GitOps `timeoutSeconds * 1000` int overflow risk.
+## Recent Changes (v0.6, through 2026-06-13)
 
-### Low / Cleanup
-21. 12 orphan i18n keys in properties files.
-22. SwitchPresetAction missing `update()` / `getActionUpdateThread()`.
-23. BranchSwitcherConfigurable missing `disposeUIResources()`.
-24. `deleteEditor` doesn't remove vertical struts.
-25. Toolbar button construction pattern repeated 7 times (extract helper).
-26. Toolbar row naming chaos (row1/row1b/row2/row3).
-27. Log toggle shows Icon.toString() garbage on initial render.
-28. Dead code in `toggleLog` (both ternary branches identical).
-
-Full details in `docs/code-review-2026-06-08.md`.
-
-## Recent Changes (v0.6, 2026-06-07)
-
-- Fixed 34 of 50 issues from comprehensive code review
-- CI: GitHub Actions (test + verifyPlugin), Kotest property tests
-- Settings Configurable page, dynamic remoteName detection
-- History persistence, Gradle 8.13
-- i18n: @PropertyKey compile-time validation, DynamicBundle
-- Coroutines unification (TaskBridge pattern)
+- Hardened switch safety: failed checkout gating, real Skip/Stash-failure behavior, delayed stash pop, and rollback failure coverage.
+- Unified cancellation lifecycle across `TaskBridge`, `SwitchExecutor`, and `GitOps` with `beginOperation` / `cancel` / `endOperation`.
+- Added stable Preset IDs, legacy ID normalization, history lookup by ID, and validated import rules via `PresetDto` / `parsePresetImport`.
+- Added structured `AppLogger`, EDT-safe UI updates, origin-first remote selection, `jButton` factory, and reusable branch combo loading.
+- Added Quick Start empty state and Settings Configurable.
+- Expanded to 190 tests, including real Git integration, cancellation, rollback, import, branch combo lifecycle, and 50-submodule Git call-budget checks.
+- CI covers tests, plugin verification, Detekt, Kotest property tests, and Qodana.

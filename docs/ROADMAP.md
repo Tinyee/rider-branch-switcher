@@ -23,7 +23,7 @@
 - **动态远端名**：自动检测 remote 名，不再硬编码 origin
 - IntelliJ 原生图标（AllIcons），主题感知色
 - i18n 中英双语（DynamicBundle + @PropertyKey 编译时校验）
-- 188 测试（JUnit 4 + Kotest 属性测试）
+- 190 测试（JUnit 4 + Kotest 属性测试）
 - GitHub Actions CI（ubuntu/macOS/Windows）+ Qodana 静态分析
 
 下面按「切换体验 / 状态可视化 / UI / 工作流 / 质量」五块梳理后续要做的功能点，优先级 **P0(致命) / P1(高价值) / P2(锦上添花)**；状态列标记 v0.x 已落地或下阶段候选。
@@ -339,8 +339,8 @@ com.submodule.branchswitcher/
 
 | # | 事项 | 说明 |
 |---|------|------|
-| M12 | 首次安装提示 | 介绍核心功能 + Ctrl+Alt+B 快捷键 |
-| M13 | 大仓性能测试 | 50+ 子模块场景下的 preflight 耗时 |
+| M12 | 首次安装提示 | ✅ 无预设空状态已增加 Quick Start、Ctrl+Alt+B 和团队共享提示 |
+| M13 | 大仓规模测试 | ◐ 已覆盖 50 子模块 Switch/Preflight Git 调用预算；真实耗时基准应使用独立 benchmark task |
 | M14 | 匿名遥测（opt-in） | 按 Marketplace 要求明示同意 |
 
 ---
@@ -349,11 +349,13 @@ com.submodule.branchswitcher/
 
 ### 当前状态
 
-- ✅ 188 测试，17 个测试类，`./gradlew test` 即可跑
+- ✅ 190 测试，18 个测试类，`./gradlew test` 即可跑
 - ✅ `GitClient` 接口 + Fake 实现 → 架构已隔离 IntelliJ 运行时
 - ✅ 真实 git 临时仓库集成测试（`SwitchIntegrationTest`）
+- ✅ 50 子模块 Switch/Preflight Git 调用预算测试（`LargeRepoScalabilityTest`）
 - ✅ GitHub Actions CI（ubuntu/macOS/Windows）+ Detekt 静态分析
 - ⚠ 已覆盖 UI 规则与 Swing 几何约束，尚无 Rider fixture / 截图测试
+- ⚠ `TaskBridge.runBackground` 生命周期尚未直接覆盖；详情见 `docs/test-review-2026-06-13.md`
 
 ### 推荐方案（按投入排序）
 

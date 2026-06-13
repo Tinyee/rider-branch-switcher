@@ -14,14 +14,16 @@ import java.nio.file.Files
 import java.nio.file.Path
 
 /**
- * Performance baseline for large-repo scenarios (50+ submodules).
+ * Git call-budget checks for large-repo scenarios (50+ submodules).
  *
  * Verifies:
  * - Preflight does not issue redundant Git commands per repo.
- * - State detection (currentBranch + isDirty) scales linearly with submodule count.
- * - Switch pipeline completes within a reasonable wall-clock budget.
+ * - Switch pipeline Git calls scale linearly with submodule count.
+ *
+ * Wall-clock performance belongs in a separate benchmark task because it is too
+ * environment-dependent for the regular test suite.
  */
-class LargeRepoPerformanceTest {
+class LargeRepoScalabilityTest {
 
     private lateinit var tmpDir: Path
     private val submoduleCount = 50
@@ -129,17 +131,16 @@ class LargeRepoPerformanceTest {
             git,
         )
 
-        val start = System.currentTimeMillis()
         val ok = executor.execute(preset, SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = true))
-        val elapsed = System.currentTimeMillis() - start
 
         assertTrue("Switch should succeed", ok)
 
-        // Pipeline steps: DirtyHandling + Fetch + Checkout each call currentBranch once per repo
+        // Checkpoint + Fetch + Checkout each call currentBranch once per repo.
         val repos = 1 + submoduleCount // main + submodules
-        val currentBranchCalls = git.calls["currentBranch"] ?: 0
-        assertTrue("currentBranch calls ($currentBranchCalls) should be a multiple of repos ($repos)",
-            currentBranchCalls > 0 && currentBranchCalls % repos == 0)
+        assertEquals("currentBranch calls should match checkpoint + fetch + checkout",
+            repos * 3, git.calls["currentBranch"])
+        assertEquals("revParseHead calls should match checkpoint repo count",
+            repos, git.calls["revParseHead"])
 
         // isDirty: called once per repo by DirtyHandlingStep
         assertEquals("isDirty calls should match repo count",
@@ -150,14 +151,12 @@ class LargeRepoPerformanceTest {
             repos, git.calls["fetch"])
         assertEquals("checkoutExisting calls should match repo count",
             repos, git.calls["checkoutExisting"])
+        assertEquals("localBranchExists calls should match repo count",
+            repos, git.calls["localBranchExists"])
 
         // No stray init calls for existing repos
         assertNull("submoduleInitPath should not be called for existing repos",
             git.calls["submoduleInitPath"])
-
-        // Performance baseline: 50 repos should complete within 10s even with real isGitRepo checks
-        assertTrue("Pipeline with $submoduleCount repos took ${elapsed}ms, expected < 10000ms",
-            elapsed < 10_000)
     }
 
     @Test
@@ -168,9 +167,7 @@ class LargeRepoPerformanceTest {
 
         val preflight = SwitchPreflight(git)
 
-        val start = System.currentTimeMillis()
         val result = preflight.probe(tmpDir, preset, null)
-        val elapsed = System.currentTimeMillis() - start
 
         val repos = 1 + submoduleCount
         assertEquals("Preflight should return one row per repo", repos, result.size)
@@ -178,31 +175,11 @@ class LargeRepoPerformanceTest {
             repos, git.calls["currentBranch"])
         assertEquals("dirtyFileCount calls should match repo count",
             repos, git.calls["dirtyFileCount"])
-        // Preflight uses preset.submodules (data model), not git.listSubmodulePaths (disk I/O)
-
-        assertTrue("Preflight with $submoduleCount repos took ${elapsed}ms, expected < 1000ms",
-            elapsed < 1000)
-    }
-
-    @Test
-    fun `detect current state probes each repo exactly once per generation`() {
-        val git = CountingGitClient(submoduleCount)
-        val submodules = (1..submoduleCount).associate { "sub-$it" to "main" }
-        val preset = Preset("large", "main", submodules, pullEnabled = false)
-
-        // Simulate what detectCurrentState does: probe all repo dirs
-        val repos = 1 + submoduleCount
-        for (i in 0 until repos) {
-            val dir = if (i == 0) tmpDir.toFile() else tmpDir.resolve("sub-$i").toFile()
-            dir.mkdirs()
-            git.currentBranch(dir)
-            git.isDirty(dir)
-        }
-
-        assertEquals("Should probe each repo once for currentBranch",
-            repos, git.calls["currentBranch"])
-        assertEquals("Should probe each repo once for isDirty",
-            repos, git.calls["isDirty"])
-        // listSubmodulePaths not called during state detection (paths come from Preset.submodules)
+        assertEquals("localBranchExists calls should match repo count",
+            repos, git.calls["localBranchExists"])
+        assertEquals("remoteBranchExists calls should match repo count",
+            repos, git.calls["remoteBranchExists"])
+        assertNull("Preflight should use preset targets without listing submodules",
+            git.calls["listSubmodulePaths"])
     }
 }
