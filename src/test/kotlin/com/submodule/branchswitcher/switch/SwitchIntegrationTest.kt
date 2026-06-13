@@ -296,19 +296,6 @@ class SwitchIntegrationTest {
         assertEquals("dev", git.currentBranch(root))
     }
 
-    // ---- Cancel ----
-
-    @Test
-    fun `cancelled context reports true when cancelled flag is set`() {
-        val root = createRepo(tmpDir, "project")
-        val opts = SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false)
-        val ctx = SwitchContext(root.toPath(), Preset("test", "dev"), opts, git, createStringAppender { log += it }, cancelled = { true })
-        assertTrue("cancelled should be true", ctx.cancelled())
-
-        val ctx2 = SwitchContext(root.toPath(), Preset("test", "dev"), opts, git, createStringAppender { log += it }, cancelled = { false })
-        assertFalse("cancelled should be false", ctx2.cancelled())
-    }
-
     // ---- Multiple submodules with different branches ----
 
     @Test

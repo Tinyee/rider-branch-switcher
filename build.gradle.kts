@@ -76,4 +76,59 @@ tasks {
         useJUnitPlatform()
         timeout.set(Duration.ofMinutes(15))
     }
+
+    // -- releaseCheck: aggregate all automated checks + metadata validation -----
+
+    register("releaseCheck") {
+        group = "verification"
+        description = "Run all automated release checks: test, detekt, buildPlugin, verifyPlugin, and metadata validation."
+
+        dependsOn("test", "detekt", "buildPlugin", "verifyPlugin")
+
+        doLast {
+            val projVersion = version.toString()
+            val expectedZip = layout.buildDirectory.file("distributions/rider-branch-switcher-$projVersion.zip").get().asFile
+
+            // --- version consistency -------------------------------------------------
+            fun checkFile(path: String, label: String) {
+                val f = file(path)
+                if (!f.exists()) {
+                    throw GradleException("$label: file not found at $path")
+                }
+                val text = f.readText()
+                if (!text.contains(projVersion)) {
+                    throw GradleException("$label does not contain version $projVersion")
+                }
+            }
+            checkFile("README.md", "README.md")
+            checkFile("CHANGELOG.md", "CHANGELOG.md")
+
+            // --- required artifacts ---------------------------------------------------
+            if (!expectedZip.exists()) {
+                throw GradleException("Plugin ZIP not found: ${expectedZip.absolutePath}")
+            }
+            logger.lifecycle("  ZIP: ${expectedZip.name}")
+
+            val licenseFile = file("LICENSE")
+            if (!licenseFile.exists()) {
+                throw GradleException("LICENSE file is missing — required for Marketplace publication")
+            }
+            logger.lifecycle("  LICENSE: present")
+
+            // --- pre-flight warnings (non-fatal) ---------------------------------------
+            val readme = file("README.md").readText()
+            if (Regex("screenshot.*TODO|TODO.*screenshot", RegexOption.IGNORE_CASE).containsMatchIn(readme)) {
+                logger.warn("  [WARN] README still contains screenshot TODO — replace before Marketplace publish")
+            }
+
+            val iconFile = file("src/main/resources/META-INF/pluginIcon.svg")
+            if (!iconFile.exists()) {
+                logger.warn("  [WARN] pluginIcon.svg not found — required for Marketplace publication")
+            } else {
+                logger.lifecycle("  pluginIcon.svg: present")
+            }
+
+            logger.lifecycle("releaseCheck PASSED for version $projVersion")
+        }
+    }
 }
