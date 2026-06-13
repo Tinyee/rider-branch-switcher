@@ -31,7 +31,7 @@
 - `SwitchExecutor` constructor accepts injectable `cancelled` lambda (no ProgressIndicator needed in tests)
 
 ### Tests
-- 195 tests (JUnit 4 + Kotest property-based), 19 test classes
+- 198 tests (JUnit 4 + Kotest property-based), 19 test classes
 - `GitOpsTest`: ControllableProcess for running-process cancel verification
 - `SwitchExecutorTest`: 5 new — rollback SHA fallback, detached HEAD, submodule partial rollback, pipeline cancel
 - `PresetLoaderTest`: 3 new — blank/duplicate ID normalization, valid ID no-op

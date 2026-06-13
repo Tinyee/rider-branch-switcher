@@ -44,7 +44,9 @@
 
 ### P1：补 Marketplace 发布物料
 
-当前主要发布缺口：
+LICENSE ✅ 已添加（MIT）。
+
+当前主要剩余缺口：
 
 - README 截图仍是 TODO。
 - 尚未发现自定义 `pluginIcon.svg`。
@@ -56,8 +58,7 @@
 - 准备一张 1280x800 左右的英文界面截图，展示 2-3 个 preset、状态点和日志区。
 - 增加符合 Marketplace 要求的插件 SVG 图标。
 - 扩充英文描述，说明目标用户、核心能力、数据存储位置和安全策略。
-- 明确许可证并增加 `LICENSE`。
-- 在发布前执行 `buildPlugin` 和 `verifyPlugin`，检查最终 ZIP。
+- 在发布前执行 `./gradlew releaseCheck`，验证最终 ZIP。
 
 验收标准：
 

@@ -327,7 +327,7 @@ class TaskBridgeLifecycleTest {
         }
 
         assertTrue("runner exception must propagate", caught is RuntimeException && caught.message == "runner failed")
-        assertEquals("onFinished must not fire when runner throws", 0, finishCallCount)
+        assertEquals("onFinished must fire once even when runner throws", 1, finishCallCount)
         assertEquals("onCancel must not fire when runner throws", 0, cancelCallCount)
     }
 

@@ -6,7 +6,7 @@ Rider plugin — one-click switch main repo + all submodules to preset branch co
 
 - **Stack**: Kotlin 2.3, IntelliJ Platform Gradle Plugin 2.2.1, Gradle 8.13, JUnit 4 + Kotest 5.9
 - **Target**: JetBrains Rider 2026.1 (build 261)
-- **Tests**: 195 tests, `./gradlew test`
+- **Tests**: 198 tests, `./gradlew test`
 - **Version**: 0.6.0
 
 ## Architecture
@@ -35,7 +35,7 @@ com.submodule.branchswitcher/
 ## Dev Commands
 
 ```bash
-./gradlew test          # 195 tests
+./gradlew test          # 198 tests
 ./gradlew buildPlugin   # → build/distributions/rider-branch-switcher-{version}.zip
 ./gradlew runIde        # Launch sandbox Rider with plugin pre-installed
 ```
@@ -61,9 +61,9 @@ The original 2026-06-08 findings are archived in `docs/code-review-2026-06-08.md
 - Added stable Preset IDs, legacy ID normalization, history lookup by ID, and validated import rules via `PresetDto` / `parsePresetImport`.
 - Added structured `AppLogger`, EDT-safe UI updates, origin-first remote selection, `jButton` factory, and reusable branch combo loading.
 - Added Quick Start empty state and Settings Configurable.
-- Added `TaskBridgeLifecycleTest` (6 tests) covering normal completion, block exception, user cancel, parent-cancel-before-run, parent-cancel-during-run, and callback idempotency.
+- Added `TaskBridgeLifecycleTest` (9 tests) covering normal completion, block exception, user cancel, parent-cancel-before-run, parent-cancel-during-run, callback idempotency, runner sync throw, and callback exception containment.
 - Fixed `TaskBridge.runBackground` race condition: parent coroutine cancel before `Task.run()` no longer allows block execution.
 - Extracted injectable `TaskRunner` boundary enabling direct lifecycle testing without IntelliJ runtime.
 - Added MIT `LICENSE`, automated `releaseCheck` Gradle task (test + detekt + buildPlugin + verifyPlugin + metadata validation).
-- 195 tests, including real Git integration, cancellation, rollback, import, branch combo lifecycle, and 50-submodule Git call-budget checks.
+- 198 tests, including real Git integration, cancellation, rollback, import, branch combo lifecycle, and 50-submodule Git call-budget checks.
 - CI covers tests, plugin verification, Detekt, Kotest property tests, and Qodana.
