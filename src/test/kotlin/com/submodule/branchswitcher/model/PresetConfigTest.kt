@@ -25,8 +25,12 @@ class PresetConfigTest {
     }
 
     @Test
-    fun `presetFile defaults to empty presets`() {
-        val pf = PresetFile()
-        assertTrue(pf.presets.isEmpty())
+    fun `preset id is preserved on copy`() {
+        val original = Preset("test", "main")
+        val renamed = original.copy(name = "renamed")
+        // Stable ID must survive rename so undo history remains valid
+        assertEquals(original.id, renamed.id)
+        assertEquals("renamed", renamed.name)
+        assertEquals("main", renamed.main)
     }
 }

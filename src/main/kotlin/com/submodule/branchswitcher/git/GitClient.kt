@@ -64,10 +64,14 @@ interface GitClient {
     fun stashPop(workDir: File): GitResult
     /** Creates a new branch from current HEAD and checks it out. */
     fun checkoutNewBranch(workDir: File, branch: String): GitResult
+    /** Starts a cancellable multi-command operation and clears stale cancellation state. */
+    fun beginOperation() {}
     /**
-     * Signals cancellation of the currently running git command (if any).
-     * Implementations should terminate the underlying process promptly.
+     * Cancels the active operation and its currently running git command (if any).
+     * Commands started before [endOperation] should fail without spawning a process.
      * Default is a no-op for test doubles that don't spawn real processes.
      */
     fun cancel() {}
+    /** Ends the active cancellable operation and clears its cancellation state. */
+    fun endOperation() {}
 }

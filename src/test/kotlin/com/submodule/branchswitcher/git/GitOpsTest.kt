@@ -186,4 +186,42 @@ class GitOpsTest {
         assertEquals(60_000, safeTimeoutMillis(60))
         assertEquals(3_600_000, safeTimeoutMillis(Int.MAX_VALUE))
     }
+
+    @Test
+    fun `cancelled operation rejects subsequent commands until operation ends`() {
+        git.beginOperation()
+        git.cancel()
+
+        val cancelled = git.fetch(tmpDir.toFile())
+        assertEquals(-1, cancelled.exitCode)
+        assertEquals("cancelled", cancelled.stderr)
+
+        git.endOperation()
+        val afterEnd = git.fetch(tmpDir.toFile())
+        assertNotEquals("cancelled", afterEnd.stderr)
+    }
+
+    @Test
+    fun `begin operation clears stale cancellation state`() {
+        git.cancel()
+        git.beginOperation()
+
+        val result = git.fetch(tmpDir.toFile())
+
+        assertNotEquals("cancelled", result.stderr)
+    }
+
+    @Test
+    fun `nested operation cannot clear cancellation until all operations end`() {
+        git.beginOperation()
+        git.cancel()
+        git.beginOperation()
+
+        assertEquals("cancelled", git.fetch(tmpDir.toFile()).stderr)
+        git.endOperation()
+        assertEquals("cancelled", git.fetch(tmpDir.toFile()).stderr)
+
+        git.endOperation()
+        assertNotEquals("cancelled", git.fetch(tmpDir.toFile()).stderr)
+    }
 }

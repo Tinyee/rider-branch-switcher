@@ -78,9 +78,9 @@ Fatal ERROR、Partial WARN、Activity 级别、git init 真实仓库验证。
 
 ### 真实取消正在运行的 Git 命令 ✅ (e789848, 后续修订)
 
-已实现：`GitClient.cancel()`、`GitOps` 取消纪元（`AtomicLong` epoch, 无竞态）、
-`TaskBridge.runBackground` 加 `onCancel` 回调、`SwitchPresetAction` 和
-`SwitchController` 双入口均已接入。
+已实现：`GitClient` 操作级取消生命周期、取消后阻止启动后续 Git 命令、
+`TaskBridge.runBackground` 加 `onCancel` / `onFinished` 回调、`SwitchPresetAction`
+和 `SwitchController` 双入口均已接入。
 
 ## P2：后续增强
 
@@ -126,4 +126,3 @@ Fatal ERROR、Partial WARN、Activity 级别、git init 真实仓库验证。
 - 验证 Preset 新建、重命名、导入、导出、删除和撤销。
 - 验证窄 Tool Window、Settings 页面和中英文界面。
 - 验证 README、版本号、CHANGELOG、截图和安装包名称一致。
-

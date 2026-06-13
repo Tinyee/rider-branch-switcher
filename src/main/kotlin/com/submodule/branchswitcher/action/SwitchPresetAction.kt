@@ -57,6 +57,7 @@ class SwitchPresetAction : AnAction() {
             val logLines = mutableListOf<String>()
             var ok = false
             var cancelled = false
+            service.gitClient.beginOperation()
             try {
                 // Run preflight + switch as a background task
                 TaskBridge.runBackground(project, "Switching to ${preset.name}", true,
@@ -100,6 +101,7 @@ class SwitchPresetAction : AnAction() {
                         ))
                     },
                     onCancel = { service.gitClient.cancel() },
+                    onFinished = { service.gitClient.endOperation() },
                 )
             } catch (e: CancellationException) {
                 logLines += "[warn] switch cancelled by user"
