@@ -89,7 +89,12 @@ class DeriveBranchExecutor(
             }
 
             // Branch existence probe (fail-closed: null → error)
-            val probe = git.localBranchProbe(dir, branchName)
+            val probe = try {
+                git.localBranchProbe(dir, branchName)
+            } catch (e: Exception) {
+                log.warn("[derive] $label: branch existence probe failed — ${e.message}")
+                null
+            }
             if (probe == null) {
                 log.warn("[derive] $label: cannot check branch existence — blocked")
                 preflightError.add(target.path)
@@ -103,7 +108,12 @@ class DeriveBranchExecutor(
 
             // Dirty probe (fail-closed when requireClean: null → error)
             if (requireClean) {
-                val dp = git.dirtyProbe(dir)
+                val dp = try {
+                    git.dirtyProbe(dir)
+                } catch (e: Exception) {
+                    log.warn("[derive] $label: dirty probe failed — ${e.message}")
+                    null
+                }
                 if (dp == null) {
                     log.warn("[derive] $label: cannot check dirty status — blocked")
                     preflightError.add(target.path)

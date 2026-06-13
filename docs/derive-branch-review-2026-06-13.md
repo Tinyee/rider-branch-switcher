@@ -795,3 +795,41 @@ execute 阶段在取消时直接 `break`，返回的结果可能是：
 - `./gradlew test`：通过，224 tests / 20 classes / 0 failures / 0 errors。
 - `./gradlew detekt`：通过。
 - `git diff --check`：通过；仅有工作区 LF/CRLF 转换提示。
+
+## 第七轮复审与直接修复（2026-06-13）
+
+### P1：UI 回滚显示可取消，但取消不会传递给 Git → ✅ 已修复
+
+`rollbackSwitch` 原本使用可取消的 `TaskBridge`，但没有调用 GitClient 的
+`beginOperation/cancel/endOperation`。用户点击取消只会取消进度 indicator，正在执行的 Git 命令仍会继续。
+
+现在回滚与切换、派生使用相同的 operation 生命周期；取消会终止当前 Git 命令，结束后清除取消状态。
+
+### P1：派生三态探针抛异常时仍会逃出安全门禁 → ✅ 已修复
+
+三态探针正常返回 `null` 时已经 fail-closed，但自定义 GitClient 实现若直接抛异常，
+`localBranchProbe` 和 `dirtyProbe` 仍会中断执行器。现在两种异常均转为 `preflightError`，
+整个派生操作原子阻止，不修改任何仓库。
+
+### P2：缺失仓库被回滚跳过后仍报告成功 → ✅ 已修复
+
+回滚无法访问 checkpoint 中的仓库时，原实现记录 skip 后继续保持 `allOk=true`。
+这会向用户误报完整回滚成功。现在缺失或无效仓库会让回滚返回失败，同时继续尝试恢复其他仓库。
+
+### P2：新增 stash 集成测试存在弱断言 → ✅ 已修复
+
+“不遗留 stash”测试读取了 stash 列表但没有断言，无法发现孤儿 stash 回归。
+现已明确验证主仓与子模块的脏文件均恢复，并验证所有相关仓库的 stash list 为空。
+
+### 第七轮新增或调整测试
+
+- `localBranchProbe` 抛异常时派生安全阻止。
+- `dirtyProbe` 抛异常时派生安全阻止。
+- 缺失仓库时回滚必须报告失败。
+- 部分失败与 branch-not-found 后，脏文件恢复且不遗留 stash。
+
+### 第七轮验证
+
+- `./gradlew test detekt --no-daemon --console=plain`：通过。
+- 当前测试报告：230 tests / 20 classes / 0 failures / 0 errors。
+- `git diff --check`：通过；仅有工作区 LF/CRLF 转换提示。
