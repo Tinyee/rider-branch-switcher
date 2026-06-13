@@ -3,7 +3,8 @@ package com.submodule.branchswitcher.git
 import java.io.File
 import java.nio.charset.StandardCharsets
 import java.util.concurrent.TimeUnit
-import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 
 fun selectRemoteName(remotes: List<String>): String = when {
     remotes.isEmpty() -> "origin"
@@ -17,27 +18,37 @@ fun safeTimeoutMillis(timeoutSeconds: Int): Int = timeoutSeconds.coerceIn(1, 360
  * CLI-based [GitClient] implementation using [ProcessBuilder] with cancellable polling.
  * All git commands inherit [timeoutSeconds] (default 60s).
  *
- * Cancellation: [cancel] increments a monotonically-increasing epoch.
- * Each [run] captures the epoch at start and destroys the process if the
- * epoch changes during polling — this avoids reset-timing races when
- * [GitOps] is shared across concurrent operations (e.g. state detection
- * and combo loading running alongside a switch).
+ * Cancellation remains active from [cancel] until [endOperation]. This ensures
+ * commands reached after cancellation fail before spawning another process.
  */
 class GitOps(
     private val timeoutSeconds: Int = 60,
 ) : GitClient {
 
-    /** Monotonically-increasing cancellation epoch. [cancel] bumps it; [run] polls against a snapshot. */
-    private val cancelEpoch = AtomicLong(0)
+    private val operationCancelled = AtomicBoolean(false)
+    private val activeOperations = AtomicInteger(0)
 
-    override fun cancel() {
-        cancelEpoch.incrementAndGet()
+    override fun beginOperation() {
+        if (activeOperations.incrementAndGet() == 1) {
+            operationCancelled.set(false)
+        }
+    }
+
+    override fun cancel() = operationCancelled.set(true)
+
+    override fun endOperation() {
+        val remaining = activeOperations.updateAndGet { count -> (count - 1).coerceAtLeast(0) }
+        if (remaining == 0) {
+            operationCancelled.set(false)
+        }
     }
 
     /** Executes `git [args]` in [workDir], polling for cancellation and timeout every 100ms. */
     private fun run(workDir: File, vararg args: String): GitResult {
-        val startEpoch = cancelEpoch.get()
         val cmdLabel = "git ${args.joinToString(" ")}"
+        if (operationCancelled.get()) {
+            return GitResult(cmdLabel, -1, "", "cancelled")
+        }
         val pb = ProcessBuilder("git", *args)
             .directory(workDir)
             .redirectErrorStream(false)
@@ -68,7 +79,7 @@ class GitOps(
                 exitCode = process.exitValue()
                 break
             }
-            if (cancelEpoch.get() != startEpoch) {
+            if (operationCancelled.get()) {
                 process.destroyForcibly()
                 process.waitFor(5, TimeUnit.SECONDS)
                 return GitResult(cmdLabel, -1, "", "cancelled")

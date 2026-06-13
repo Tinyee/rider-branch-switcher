@@ -63,6 +63,7 @@ class SwitchController(
         service.scope.launch(Dispatchers.Default) {
             var ok = false
             var rollbackExecutor: SwitchExecutor? = null
+            service.gitClient.beginOperation()
             try {
                 TaskBridge.runBackground(project, "Switching branches", true,
                     block = { indicator ->
@@ -99,6 +100,7 @@ class SwitchController(
                         ok = executor.execute(preset, opts)
                     },
                     onCancel = { service.gitClient.cancel() },
+                    onFinished = { service.gitClient.endOperation() },
                 )
             } catch (e: Exception) {
                 log.error("switch: ${e.javaClass.simpleName}: ${e.message}")

@@ -151,6 +151,35 @@ class PresetLoaderTest {
     }
 
     @Test
+    fun `load writes generated id back to legacy JSON`() {
+        val ideaDir = Files.createDirectories(tmpDir.resolve(".idea"))
+        val file = ideaDir.resolve("branch-presets.json")
+        Files.writeString(file, """{"presets":[{"name":"legacy","main":"main"}]}""")
+
+        val result = PresetLoader.load(tmpDir)
+
+        assertTrue(result.isSuccess)
+        val generatedId = result.getOrThrow().second.presets.single().id
+        assertTrue(Files.readString(file).contains(generatedId))
+    }
+
+    @Test
+    fun `migration save failure does not prevent loading legacy JSON`() {
+        val ideaDir = Files.createDirectories(tmpDir.resolve(".idea"))
+        Files.writeString(
+            ideaDir.resolve("branch-presets.json"),
+            """{"presets":[{"name":"legacy","main":"main"}]}""",
+        )
+
+        val result = PresetLoader.load(tmpDir) { _, _ ->
+            throw java.io.IOException("read only")
+        }
+
+        assertTrue(result.isSuccess)
+        assertEquals("legacy", result.getOrThrow().second.presets.single().name)
+    }
+
+    @Test
     fun `load rejects preset missing required name`() {
         val id = Files.createDirectories(tmpDir.resolve(".idea"))
         Files.writeString(id.resolve("branch-presets.json"), """

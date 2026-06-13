@@ -19,7 +19,7 @@
 - `error()` uses `ideaLogger.warn()` to avoid triggering Rider Fatal Errors for business failures
 - Log levels assigned by semantics: failures → warn, diagnostics → debug, activities → activity
 - `AppLoggerTest` (13 cases): level contract tests for fetch/checkout/stash/pull failures, Fatal, Partial, Activity
-- `GitOps.run()` uses cancellation epoch (`AtomicLong`) with per-command snapshots — no cross-command race
+- `GitOps.run()` uses operation-scoped cancellation that blocks commands reached after cancellation
 - Review fixes: 3 rounds of log-level migration corrections
 
 ### Docs

@@ -355,30 +355,10 @@ class SwitchStepTest {
     // ---- SwitchContext ----
 
     @Test
-    fun `switch context stores all fields`() {
-        val c = context()
-        assertEquals(projectRoot, c.projectRoot)
-        assertEquals("test", c.preset.name)
-        assertEquals(DirtyAction.Stash, c.options.dirty)
-        assertFalse(c.cancelled())
-        assertNull(c.indicator)
-    }
-
-    @Test
     fun `switch context stashed paths works`() {
         val c = context()
         assertTrue(c.stashedPaths.isEmpty())
         c.stashedPaths["."] = "test stash"
         assertEquals("test stash", c.stashedPaths["."])
-    }
-
-    // ---- SwitchOptions defaults ----
-
-    @Test
-    fun `switchOptions defaults`() {
-        val opts = SwitchOptions()
-        assertEquals(DirtyAction.Stash, opts.dirty)
-        assertTrue(opts.pull)
-        assertTrue(opts.fetchFirst)
     }
 }

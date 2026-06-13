@@ -46,6 +46,8 @@ object TaskBridge {
         canBeCancelled: Boolean,
         /** Invoked when the user cancels the progress dialog, before the coroutine is cancelled. */
         onCancel: (() -> Unit)? = null,
+        /** Invoked after the task has fully finished, including cancellation and failure paths. */
+        onFinished: (() -> Unit)? = null,
         block: (ProgressIndicator) -> Unit,
     ) {
         suspendCancellableCoroutine<Unit> { cont ->
@@ -61,6 +63,7 @@ object TaskBridge {
                     }
                 }
                 override fun onFinished() {
+                    onFinished?.invoke()
                     com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater {
                         if (cont.isActive) cont.resume(Unit)
                     }

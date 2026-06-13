@@ -53,7 +53,10 @@ object PresetLoader {
         return target
     }
 
-    fun load(ideBase: Path): Result<Pair<Path, PresetFile>> {
+    fun load(
+        ideBase: Path,
+        migrationSaver: (Path, PresetFile) -> Unit = ::save,
+    ): Result<Pair<Path, PresetFile>> {
         return runCatching {
             val file = ensureFile(ideBase)
             val text = Files.readString(file)
@@ -63,7 +66,7 @@ object PresetLoader {
             // If any preset was auto-assigned an id (old JSON), write back immediately
             // so that history entries referencing the id survive IDE restarts.
             if (needsMigration) {
-                save(file, parsed)
+                runCatching { migrationSaver(file, parsed) }
             }
             file to parsed
         }.recoverCatching { e ->
