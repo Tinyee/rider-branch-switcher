@@ -90,18 +90,20 @@ tasks {
             val expectedZip = layout.buildDirectory.file("distributions/rider-branch-switcher-$projVersion.zip").get().asFile
 
             // --- version consistency -------------------------------------------------
-            fun checkFile(path: String, label: String) {
-                val f = file(path)
-                if (!f.exists()) {
-                    throw GradleException("$label: file not found at $path")
-                }
-                val text = f.readText()
-                if (!text.contains(projVersion)) {
-                    throw GradleException("$label does not contain version $projVersion")
-                }
+            val readmeText = file("README.md").readText()
+            // Badge must contain the exact version tag
+            if (!readmeText.contains("version-$projVersion-")) {
+                throw GradleException("README version badge missing or wrong version (expected version-$projVersion-*)")
             }
-            checkFile("README.md", "README.md")
-            checkFile("CHANGELOG.md", "CHANGELOG.md")
+            logger.lifecycle("  README badge: version-$projVersion")
+
+            val changelogText = file("CHANGELOG.md").readText()
+            // First ## [...] heading must match current version
+            val firstVersionHeading = Regex("""^##\s*\[([^\]]+)\]""", RegexOption.MULTILINE).find(changelogText)
+            if (firstVersionHeading == null || firstVersionHeading.groupValues[1] != projVersion) {
+                throw GradleException("CHANGELOG first version heading must be ## [$projVersion]")
+            }
+            logger.lifecycle("  CHANGELOG latest: ## [$projVersion]")
 
             // --- required artifacts ---------------------------------------------------
             if (!expectedZip.exists()) {

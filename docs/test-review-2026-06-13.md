@@ -23,22 +23,12 @@
 `SwitchExecutorTest.cancel after one step stops remaining pipeline and signals git` 已使用两个可控
 `SwitchStep` 执行真实流水线，并验证第二步不执行、结果失败、`git.cancel()` 被调用。
 
-### P0：TaskBridge 生命周期
+### ✅ P0：TaskBridge 生命周期 — 已完成 (2026-06-13)
 
-`TaskBridge.runBackground` 负责连接 IntelliJ Task 和协程，也是 Git 操作生命周期清理的关键边界。
-现有 `SwitchExecutorTest` 和 `GitOpsTest` 只覆盖下游取消与 Git 操作生命周期，
-没有直接执行 `TaskBridge.runBackground`，因此不能替代本节测试。
-当前状态是生产接入已完成，但生命周期测试仍待补。
-
-建议验证：
-
-- 正常完成时 `onFinished` 只调用一次。
-- 用户取消时调用 `onCancel`，最终仍调用 `onFinished`。
-- `block` 抛异常时仍调用 `onFinished`，异常传回调用方。
-- 父协程取消时，运行中的 `ProgressIndicator` 被取消。
-- 即使任务在进入 `block` 前取消，`beginOperation` / `endOperation` 仍能配对。
-
-这组测试需要 IntelliJ 测试环境或对 Task 调度边界进行小幅抽象，不建议用 sleep 模拟。
+`TaskBridgeLifecycleTest`（9 用例）已覆盖全部建议场景：
+- 正常完成、block 抛异常、用户取消、父协程取消（Task 启动前/运行中）、回调幂等。
+- 新增防御性覆盖：runner 同步抛异常传播、onCancel/onFinished 回调异常记录日志不传播。
+- 通过可注入 `TaskRunner` 接口实现无 IntelliJ 运行时测试。
 
 ### 已完成：Preset ID 迁移边界
 
@@ -126,7 +116,7 @@
 
 ## 推荐执行顺序
 
-1. 补 TaskBridge 生命周期测试。
+1. ~~补 TaskBridge 生命周期测试。~~ ✅ 已完成
 2. 删除或合并低价值、重复测试。
 3. 最后再评估是否需要引入 PITest 变异测试。
 
