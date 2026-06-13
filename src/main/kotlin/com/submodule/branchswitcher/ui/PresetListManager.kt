@@ -333,6 +333,44 @@ class PresetListManager(
                 addActionListener { addPreset(parent) }
             })
             add(cta)
+            add(Box.createVerticalStrut(24))
+            // First-run quick guide
+            val guide = JPanel().apply {
+                layout = BoxLayout(this, BoxLayout.Y_AXIS)
+                alignmentX = JPanel.CENTER_ALIGNMENT
+                border = JBUI.Borders.compound(
+                    javax.swing.BorderFactory.createLineBorder(JBColor.border()),
+                    JBUI.Borders.empty(12, 16, 12, 16),
+                )
+            }
+            val guideTitle = JLabel(Bundle.msg("empty.guide.title")).apply {
+                font = font.deriveFont(Font.BOLD, 12f)
+                foreground = JBColor.GRAY
+                alignmentX = JPanel.CENTER_ALIGNMENT
+            }
+            guide.add(guideTitle)
+            guide.add(Box.createVerticalStrut(8))
+            listOf(
+                "1" to Bundle.msg("empty.guide.step1"),
+                "2" to Bundle.msg("empty.guide.step2"),
+                "3" to Bundle.msg("empty.guide.step3"),
+            ).forEach { (num, text) ->
+                val step = JLabel("$num. $text").apply {
+                    font = font.deriveFont(Font.PLAIN, 11f)
+                    foreground = JBColor.GRAY
+                    alignmentX = JPanel.CENTER_ALIGNMENT
+                }
+                guide.add(step)
+                guide.add(Box.createVerticalStrut(2))
+            }
+            guide.add(Box.createVerticalStrut(4))
+            val tip = JLabel(Bundle.msg("empty.guide.tip")).apply {
+                font = font.deriveFont(Font.ITALIC, 11f)
+                foreground = JBColor.GRAY
+                alignmentX = JPanel.CENTER_ALIGNMENT
+            }
+            guide.add(tip)
+            add(guide)
         }
     }
 }
