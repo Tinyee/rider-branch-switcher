@@ -106,6 +106,7 @@ class SwitchExecutor(
             val label = if (path == ".") projectRoot.fileName.toString() else path
             if (!dir.exists() || !isGitRepo(dir)) {
                 log.debug("[rollback] skip $label — dir missing or not a repo")
+                allOk = false
                 continue
             }
             val cur = git.currentBranch(dir)

@@ -20,6 +20,7 @@ import java.nio.file.Path
  * Each test creates actual git repos, runs the full SwitchExecutor pipeline via GitOps,
  * and verifies the resulting git state.
  */
+@Suppress("LargeClass")
 class SwitchIntegrationTest {
 
     private lateinit var tmpDir: Path
@@ -539,6 +540,40 @@ class SwitchIntegrationTest {
     }
 
     @Test
+    @Suppress("TooGenericExceptionThrown")
+    fun `derive blocks when branch existence probe throws`() {
+        val root = createRepo(tmpDir, "project")
+        val throwingGit = object : GitClient by git {
+            override fun localBranchProbe(workDir: java.io.File, branch: String): Boolean? =
+                throw RuntimeException("branch probe failed")
+        }
+
+        val result = DeriveBranchExecutor(root.toPath(), deriveLog(), throwingGit)
+            .execute(Preset("test", "main"), "derived")
+
+        assertTrue(result.preflightBlocked)
+        assertEquals(listOf("."), result.preflightError)
+        assertFalse(git.localBranchExists(root, "derived"))
+    }
+
+    @Test
+    @Suppress("TooGenericExceptionThrown")
+    fun `derive blocks when dirty probe throws`() {
+        val root = createRepo(tmpDir, "project")
+        val throwingGit = object : GitClient by git {
+            override fun dirtyProbe(workDir: java.io.File): Boolean? =
+                throw RuntimeException("dirty probe failed")
+        }
+
+        val result = DeriveBranchExecutor(root.toPath(), deriveLog(), throwingGit)
+            .execute(Preset("test", "main"), "derived")
+
+        assertTrue(result.preflightBlocked)
+        assertEquals(listOf("."), result.preflightError)
+        assertFalse(git.localBranchExists(root, "derived"))
+    }
+
+    @Test
     fun `derive rollback continues after partial failures`() {
         val root = createRepo(tmpDir, "project")
         val subA = createRepo(tmpDir, "subA-src")
@@ -748,5 +783,137 @@ class SwitchIntegrationTest {
         override fun listAllBranches(workDir: java.io.File) = inner.listAllBranches(workDir)
         override fun revParseHead(workDir: java.io.File) = inner.revParseHead(workDir)
         override fun stashPop(workDir: java.io.File) = inner.stashPop(workDir)
+    }
+
+    // ---- Stash + Rollback integration ----------------------------------------
+
+    @Test
+    fun `dirty work and stashes are restored after partial failure and rollback`() {
+        val root = createRepo(tmpDir, "project")
+        val subA = createRepo(tmpDir, "subA-src")
+        addSubmodule(root, subA, "SubA")
+        gitOk(root, "submodule", "update", "--init", "--recursive")
+        val subADir = File(root, "SubA")
+        // Configure git user on submodule (needed for createBranch commits)
+        gitOk(subADir, "config", "user.email", "test@test.com")
+        gitOk(subADir, "config", "user.name", "Test")
+        createBranch(root, "dev")
+        createBranch(subADir, "dev")
+
+        // Make both repos dirty
+        File(root, "dirty-main.txt").writeText("main changes\n")
+        File(subADir, "dirty-sub.txt").writeText("sub changes\n")
+
+        // SubA has no "no-branch" target → CheckoutStep will fail on SubA
+        val preset = Preset("stash-test", "dev", mapOf("SubA" to "no-branch"), pullEnabled = false)
+        val opts = SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false)
+        val executor = SwitchExecutor(root.toPath(), createStringAppender { log += it }, git)
+
+        val ok = executor.execute(preset, opts)
+        assertFalse("Switch should fail due to missing branch on SubA", ok)
+
+        // Rollback
+        val rollbackOk = executor.rollback()
+        assertTrue("Rollback should succeed", rollbackOk)
+
+        // Both repos back on original branch
+        assertEquals("main", git.currentBranch(root))
+        assertTrue("SubA should be back on main", git.currentBranch(subADir) == "main" || git.currentBranch(subADir) == null)
+
+        assertTrue("Main dirty file should be restored", File(root, "dirty-main.txt").exists())
+        assertTrue("SubA dirty file should be restored", File(subADir, "dirty-sub.txt").exists())
+        for (dir in listOf(root, subADir)) {
+            val (_, stashList) = runGit(dir, "stash", "list")
+            assertTrue("Stash should be empty in ${dir.name}: $stashList", stashList.isBlank())
+        }
+    }
+
+    @Test
+    fun `rollback after checkout failure does not leave orphaned stashes on main`() {
+        val root = createRepo(tmpDir, "project")
+        createBranch(root, "dev")
+        File(root, "dirty.txt").writeText("unstaged work\n")
+
+        val preset = Preset("stash-fail", "no-branch", pullEnabled = false)
+        val opts = SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false)
+        val executor = SwitchExecutor(root.toPath(), createStringAppender { log += it }, git)
+
+        val ok = executor.execute(preset, opts)
+        assertFalse("Switch should fail", ok)
+
+        val rollbackOk = executor.rollback()
+        assertTrue("Rollback should succeed", rollbackOk)
+        assertEquals("main", git.currentBranch(root))
+
+        val (_, stashList) = runGit(root, "stash", "list")
+        assertTrue("Stash should be empty after branch-not-found recovery: $stashList", stashList.isBlank())
+        assertTrue("Dirty file should exist after rollback", File(root, "dirty.txt").exists())
+    }
+
+    @Test
+    fun `dirty stash with rollback after branch-not-found restores original state`() {
+        val root = createRepo(tmpDir, "project")
+        File(root, "dirty.txt").writeText("unstaged work\n")
+
+        // Target branch doesn't exist → CheckoutStep fails → rollback needed
+        val preset = Preset("stash-rollback", "no-branch", pullEnabled = false)
+        val opts = SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false)
+        val executor = SwitchExecutor(root.toPath(), createStringAppender { log += it }, git)
+
+        val ok = executor.execute(preset, opts)
+        assertFalse("Switch should fail", ok)
+
+        val rollbackOk = executor.rollback()
+        assertTrue("Rollback should succeed", rollbackOk)
+        assertEquals("main", git.currentBranch(root))
+
+        // Dirty file should still exist (stash was created before checkout, then popped or restored)
+        assertTrue("Dirty file should exist after rollback", File(root, "dirty.txt").exists())
+    }
+
+    @Test
+    fun `multi-repo dirty stash all restored on successful switch`() {
+        val root = createRepo(tmpDir, "project")
+        val subA = createRepo(tmpDir, "subA-src")
+        val subB = createRepo(tmpDir, "subB-src")
+        addSubmodule(root, subA, "SubA")
+        addSubmodule(root, subB, "SubB")
+        gitOk(root, "submodule", "update", "--init", "--recursive")
+        val subADir = File(root, "SubA")
+        val subBDir = File(root, "SubB")
+        gitOk(subADir, "config", "user.email", "test@test.com")
+        gitOk(subADir, "config", "user.name", "Test")
+        gitOk(subBDir, "config", "user.email", "test@test.com")
+        gitOk(subBDir, "config", "user.name", "Test")
+        createBranch(root, "dev")
+        createBranch(subADir, "dev")
+        createBranch(subBDir, "dev")
+
+        // Make all three repos dirty
+        File(root, "main-work.txt").writeText("main\n")
+        File(subADir, "suba-work.txt").writeText("suba\n")
+        File(subBDir, "subb-work.txt").writeText("subb\n")
+
+        val preset = Preset("multi-stash", "dev",
+            mapOf("SubA" to "dev", "SubB" to "dev"), pullEnabled = false)
+        val (ok, _) = runSwitch(root, preset,
+            SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false))
+        assertTrue("Multi-repo dirty+stash should succeed", ok)
+
+        // All three repos on dev
+        assertEquals("dev", git.currentBranch(root))
+        assertEquals("dev", git.currentBranch(subADir))
+        assertEquals("dev", git.currentBranch(subBDir))
+
+        // All dirty files restored
+        assertTrue("Main work file should be restored", File(root, "main-work.txt").exists())
+        assertTrue("SubA work file should be restored", File(subADir, "suba-work.txt").exists())
+        assertTrue("SubB work file should be restored", File(subBDir, "subb-work.txt").exists())
+
+        // All stash lists empty
+        for (dir in listOf(root, subADir, subBDir)) {
+            val (_, list) = runGit(dir, "stash", "list")
+            assertTrue("Stash should be empty in ${dir.name}: $list", list.isBlank())
+        }
     }
 }
