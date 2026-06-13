@@ -1,0 +1,26 @@
+#!/bin/bash
+# Pre-push hook: run full release checks before pushing.
+# Runs quickCheck first (fast), then full suite only if quickCheck passes.
+
+set -e
+
+echo "=== quickCheck ==="
+./gradlew quickCheck --quiet 2>&1 | grep -E "FAIL:|PASSED|quickCheck"
+if [ ${PIPESTATUS[0]} -ne 0 ]; then
+    echo ""
+    echo "quickCheck failed. Fix before pushing."
+    exit 1
+fi
+
+echo ""
+echo "=== releaseCheck (test + detekt + buildPlugin + verifyPlugin) ==="
+./gradlew releaseCheck --quiet 2>&1 | grep -E "FAIL:|PASSED|releaseCheck|badge|CHANGELOG|ZIP:|LICENSE|WARN"
+if [ ${PIPESTATUS[0]} -ne 0 ]; then
+    echo ""
+    echo "releaseCheck failed. Fix before pushing."
+    echo "To bypass (not recommended): git push --no-verify"
+    exit 1
+fi
+
+echo ""
+echo "All checks passed. Pushing..."
