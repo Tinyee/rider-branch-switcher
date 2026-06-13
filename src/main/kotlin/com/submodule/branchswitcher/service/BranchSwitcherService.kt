@@ -15,6 +15,7 @@ import kotlinx.coroutines.CoroutineScope
 import com.submodule.branchswitcher.model.Preset
 import com.submodule.branchswitcher.model.PresetFile
 import java.nio.file.Path
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 
 /**
@@ -43,6 +44,15 @@ class BranchSwitcherService(
 
     /** Platform-injected [CoroutineScope] with [SupervisorJob] semantics. */
     val scope = cs
+
+    /** Prevents overlapping write operations (switch, derive, rollback). */
+    private val writeGate = AtomicBoolean(false)
+
+    /** Returns true if a write operation can start (locks the gate). */
+    fun tryStartWrite(): Boolean = writeGate.compareAndSet(false, true)
+
+    /** Releases the write gate. Must be called in finally. */
+    fun endWrite() { writeGate.set(false) }
 
     override fun dispose() {
         // Platform manages injected [cs] lifecycle; nothing else to clean up.

@@ -39,6 +39,10 @@ interface GitClient {
     fun fetch(workDir: File): GitResult
     /** Checks whether refs/heads/<branch> exists (plumbing: show-ref --verify). */
     fun localBranchExists(workDir: File, branch: String): Boolean
+    /** Tri-state probe for safety gates: true=exists, false=not, null=unknown/error. Implementations must opt in. */
+    fun localBranchProbe(workDir: File, branch: String): Boolean? = null
+    /** Tri-state probe for safety gates: true=dirty, false=clean, null=unknown/error. Implementations must opt in. */
+    fun dirtyProbe(workDir: File): Boolean? = null
     /** Checks whether refs/remotes/origin/<branch> exists (plumbing: show-ref --verify). */
     fun remoteBranchExists(workDir: File, branch: String): Boolean
     /** Checks out an existing local branch by name. */
@@ -64,6 +68,8 @@ interface GitClient {
     fun stashPop(workDir: File): GitResult
     /** Creates a new branch from current HEAD and checks it out. */
     fun checkoutNewBranch(workDir: File, branch: String): GitResult
+    /** Safely deletes a local branch (`git branch -d`). Fails if branch has unmerged changes. */
+    fun deleteBranch(workDir: File, branch: String): GitResult
     /** Starts a cancellable multi-command operation and clears stale cancellation state. */
     fun beginOperation() {}
     /**

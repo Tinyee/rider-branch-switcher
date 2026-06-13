@@ -141,8 +141,7 @@ class TaskBridgeLifecycleTest {
         assertNotNull("onRun should be captured", runner.onRun)
 
         runner.simulateRun(FakeIndicator())
-        // Block threw -> completeContinuation(Result.failure(ex)) already called
-        // onFinished() fires next
+        assertFalse("block failure must wait for onFinished before resuming caller", job.isCompleted)
         runner.simulateFinish()
         job.join()
 
@@ -176,6 +175,7 @@ class TaskBridgeLifecycleTest {
 
         runner.simulateCancel()
         assertEquals("onCancel must fire after simulateCancel", 1, cancelCallCount)
+        assertFalse("user cancel must wait for onFinished before resuming caller", job.isCompleted)
 
         runner.simulateFinish()
         assertEquals("onFinished must fire after simulateFinish", 1, finishCallCount)
