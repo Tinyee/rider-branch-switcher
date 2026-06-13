@@ -1,0 +1,18 @@
+#!/bin/bash
+# Pre-commit hook: run lightweight structural checks before every commit.
+# Install: git config core.hooksPath .githooks
+
+set -e
+
+echo "Running quickCheck..."
+./gradlew quickCheck --quiet 2>&1 | grep -E "FAIL:|PASSED|quickCheck"
+
+if [ ${PIPESTATUS[0]} -ne 0 ]; then
+    echo ""
+    echo "quickCheck failed. Fix the issues above before committing."
+    echo "To bypass (not recommended): git commit --no-verify"
+    exit 1
+fi
+
+echo ""
+echo "quickCheck passed."
