@@ -23,6 +23,7 @@ fun safeTimeoutMillis(timeoutSeconds: Int): Int = timeoutSeconds.coerceIn(1, 360
  */
 class GitOps(
     private val timeoutSeconds: Int = 60,
+    private val processStarter: (ProcessBuilder) -> Process = { it.start() },
 ) : GitClient {
 
     private val operationCancelled = AtomicBoolean(false)
@@ -53,7 +54,7 @@ class GitOps(
             .directory(workDir)
             .redirectErrorStream(false)
         val process: Process = try {
-            pb.start()
+            processStarter(pb)
         } catch (e: Exception) {
             return GitResult(cmdLabel, -1, "", "failed to start: ${e.message}")
         }

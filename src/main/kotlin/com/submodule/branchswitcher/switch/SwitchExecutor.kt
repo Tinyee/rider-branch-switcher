@@ -30,6 +30,7 @@ class SwitchExecutor(
     private val log: AppLogger,
     private val git: GitClient,
     private val indicator: com.intellij.openapi.progress.ProgressIndicator? = null,
+    private val cancelled: (() -> Boolean)? = null,
     private val steps: List<SwitchStep> = listOf(
         DirtyHandlingStep(),
         FetchStep(),
@@ -50,7 +51,7 @@ class SwitchExecutor(
             git = git,
             log = log,
             indicator = indicator,
-            cancelled = { indicator?.isCanceled ?: false },
+            cancelled = { cancelled?.invoke() == true || indicator?.isCanceled == true },
             confirmBeforeInit = options.confirmBeforeInit,
         )
 

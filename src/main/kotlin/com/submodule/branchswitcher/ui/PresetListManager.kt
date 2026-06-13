@@ -263,54 +263,27 @@ class PresetListManager(
                 Messages.showInfoMessage(project, Bundle.msg("dialog.import.empty"), Bundle.msg("dialog.import"))
                 return
             }
-            val trimmed = text.trim()
-            val gson = com.google.gson.Gson()
-            // Parse via DTO to avoid Gson Kotlin-defaults issue (#11)
-            val dto = if (trimmed.startsWith("[")) {
-                val presets = gson.fromJson(trimmed, Array<com.submodule.branchswitcher.model.PresetDto>::class.java)
-                com.submodule.branchswitcher.model.PresetFileDto(presets.toList())
-            } else {
-                gson.fromJson(trimmed, com.submodule.branchswitcher.model.PresetFileDto::class.java)
-            }
-            if (dto == null || dto.presets.isEmpty()) {
+            val result = parsePresetImport(text, editors.map { it.currentPreset().name }.toSet())
+            if (result.presets.isEmpty()) {
                 Messages.showWarningDialog(project, Bundle.msg("dialog.import.invalid"), Bundle.msg("dialog.import"))
                 return
             }
-            // Validate and convert, skipping invalid entries
-            val validPresets = mutableListOf<Preset>()
-            val skipped = mutableListOf<String>()
-            for (p in dto.presets) {
-                if (p.name.isNullOrBlank() || p.main.isNullOrBlank()) {
-                    skipped += p.name ?: "(unnamed)"
-                    continue
-                }
-                validPresets += p.toPreset()
+            if (result.invalidNames.isNotEmpty()) {
+                log.debug("[import] skipped ${result.invalidNames.size} invalid: ${result.invalidNames.joinToString(", ")}")
             }
-            if (validPresets.isEmpty()) {
-                Messages.showWarningDialog(project, Bundle.msg("dialog.import.invalid"), Bundle.msg("dialog.import"))
-                return
-            }
-            if (skipped.isNotEmpty()) {
-                log.debug("[import] skipped ${skipped.size} invalid: ${skipped.joinToString(", ")}")
+            if (result.conflictingNames.isNotEmpty()) {
+                log.debug("[import] skipped ${result.conflictingNames.size} conflicts: ${result.conflictingNames.joinToString(", ")}")
             }
             val root = gitRoot() ?: return
             val presetsInner = (presetsContainer.getComponent(0) as? JPanel) ?: return
-            var importedCount = 0
-            validPresets.forEach { preset ->
-                if (editors.any { it.currentPreset().name == preset.name }) {
-                    log.debug("[import] skip ${preset.name} — 名字冲突")
-                    return@forEach
-                }
-                // Generate new id for imported copies — avoids collisions
-                // when the same preset JSON is shared across projects or imported multiple times.
-                addEditorRow(root, preset.copy(id = java.util.UUID.randomUUID().toString()), presetsInner)
-                importedCount++
+            result.presets.forEach { preset ->
+                addEditorRow(root, preset, presetsInner)
             }
             presetsContainer.revalidate()
             presetsContainer.repaint()
             saveAll()
-            log.debug("[imported] $importedCount preset(s) from clipboard")
-            Notifier.info(project, Bundle.msg("notify.import.complete"), Bundle.msg("notify.imported", importedCount))
+            log.debug("[imported] ${result.presets.size} preset(s) from clipboard")
+            Notifier.info(project, Bundle.msg("notify.import.complete"), Bundle.msg("notify.imported", result.presets.size))
         } catch (e: Exception) {
             log.error("[import] error: ${e.message}")
             Messages.showWarningDialog(project, "${Bundle.msg("dialog.import.failed")}: ${e.message}", Bundle.msg("dialog.import"))

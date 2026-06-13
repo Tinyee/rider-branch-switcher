@@ -180,6 +180,62 @@ class PresetLoaderTest {
     }
 
     @Test
+    fun `load replaces blank and duplicate ids with unique ids`() {
+        val ideaDir = Files.createDirectories(tmpDir.resolve(".idea"))
+        Files.writeString(
+            ideaDir.resolve("branch-presets.json"),
+            """{"presets":[
+                {"id":"","name":"blank","main":"main"},
+                {"id":"shared","name":"first","main":"main"},
+                {"id":"shared","name":"duplicate","main":"main"}
+            ]}""",
+        )
+
+        val presets = PresetLoader.load(tmpDir).getOrThrow().second.presets
+
+        assertEquals(3, presets.map { it.id }.distinct().size)
+        assertTrue(presets.none { it.id.isBlank() })
+        assertEquals("shared", presets[1].id)
+        assertNotEquals("shared", presets[2].id)
+    }
+
+    @Test
+    fun `load writes normalized ids back to JSON`() {
+        val ideaDir = Files.createDirectories(tmpDir.resolve(".idea"))
+        val file = ideaDir.resolve("branch-presets.json")
+        Files.writeString(
+            file,
+            """{"presets":[
+                {"id":"same","name":"a","main":"main"},
+                {"id":"same","name":"b","main":"main"}
+            ]}""",
+        )
+
+        val presets = PresetLoader.load(tmpDir).getOrThrow().second.presets
+        val persisted = Files.readString(file)
+
+        assertTrue(persisted.contains(presets[0].id))
+        assertTrue(persisted.contains(presets[1].id))
+        assertNotEquals(presets[0].id, presets[1].id)
+    }
+
+    @Test
+    fun `load does not save when all ids are already valid and unique`() {
+        val ideaDir = Files.createDirectories(tmpDir.resolve(".idea"))
+        Files.writeString(
+            ideaDir.resolve("branch-presets.json"),
+            """{"presets":[{"id":"stable","name":"dev","main":"main"}]}""",
+        )
+        var saveCalls = 0
+
+        val result = PresetLoader.load(tmpDir) { _, _ -> saveCalls++ }
+
+        assertTrue(result.isSuccess)
+        assertEquals(0, saveCalls)
+        assertEquals("stable", result.getOrThrow().second.presets.single().id)
+    }
+
+    @Test
     fun `load rejects preset missing required name`() {
         val id = Files.createDirectories(tmpDir.resolve(".idea"))
         Files.writeString(id.resolve("branch-presets.json"), """

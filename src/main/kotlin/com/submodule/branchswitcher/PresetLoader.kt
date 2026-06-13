@@ -2,6 +2,7 @@ package com.submodule.branchswitcher
 
 import com.google.gson.Gson
 import com.google.gson.JsonSyntaxException
+import com.submodule.branchswitcher.model.Preset
 import com.submodule.branchswitcher.model.PresetFile
 import com.submodule.branchswitcher.model.PresetFileDto
 import java.nio.file.Files
@@ -61,8 +62,7 @@ object PresetLoader {
             val file = ensureFile(ideBase)
             val text = Files.readString(file)
             val dto = Gson().fromJson(text, PresetFileDto::class.java) ?: PresetFileDto()
-            val needsMigration = dto.presets.any { it.id == null }
-            val parsed = dto.toPresetFile()
+            val (parsed, needsMigration) = normalizePresetIds(dto)
             // If any preset was auto-assigned an id (old JSON), write back immediately
             // so that history entries referencing the id survive IDE restarts.
             if (needsMigration) {
@@ -74,6 +74,35 @@ object PresetLoader {
                 is JsonSyntaxException -> throw IllegalStateException("preset file parse error: ${e.message}", e)
                 else -> throw e
             }
+        }
+    }
+
+    private fun normalizePresetIds(dto: PresetFileDto): Pair<PresetFile, Boolean> {
+        val usedIds = mutableSetOf<String>()
+        var changed = false
+        val presets = dto.presets.map { presetDto ->
+            val existingId = presetDto.id?.takeIf { it.isNotBlank() }
+            val id = if (existingId != null && usedIds.add(existingId)) {
+                existingId
+            } else {
+                changed = true
+                generateUniqueId(usedIds)
+            }
+            Preset(
+                id = id,
+                name = presetDto.name ?: error("preset.name is required"),
+                main = presetDto.main ?: error("preset.main is required"),
+                submodules = presetDto.submodules ?: emptyMap(),
+                pullEnabled = presetDto.pull ?: true,
+            )
+        }
+        return PresetFile(presets) to changed
+    }
+
+    private fun generateUniqueId(usedIds: MutableSet<String>): String {
+        while (true) {
+            val id = java.util.UUID.randomUUID().toString()
+            if (usedIds.add(id)) return id
         }
     }
 

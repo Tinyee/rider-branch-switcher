@@ -16,6 +16,19 @@ import javax.swing.event.DocumentListener
 
 /** JComboBox client-property key storing the unfiltered branch list for popup filtering. */
 const val KEY_ALL_BRANCHES = "submodule.branchswitcher.allBranches"
+const val LOADING_BRANCH = "loading..."
+
+/** Normalizes loaded branches and ensures the current branch remains selectable. */
+fun mergeBranchChoices(current: String, branches: List<String>): List<String> {
+    val normalized = branches
+        .filter { it.isNotBlank() && it != LOADING_BRANCH }
+        .distinct()
+    return if (current.isNotBlank() && current != LOADING_BRANCH && current !in normalized) {
+        listOf(current) + normalized
+    } else {
+        normalized
+    }
+}
 
 /**
  * Creates an editable branch-name combo with real-time filtering.
@@ -93,10 +106,13 @@ fun loadComboBranches(
     log: AppLogger,
     onLoadStart: () -> Unit,
     onLoadEnd: () -> Unit,
+    scheduleUi: ((() -> Unit) -> Unit) = { action ->
+        ApplicationManager.getApplication().invokeLater(action)
+    },
 ) {
     onLoadStart()
-    combo.model = DefaultComboBoxModel(arrayOf("loading..."))
-    combo.selectedItem = "loading..."
+    combo.model = DefaultComboBoxModel(arrayOf(LOADING_BRANCH))
+    combo.selectedItem = LOADING_BRANCH
     combo.isEnabled = false
     scope.launch {
         val branches = try {
@@ -105,15 +121,17 @@ fun loadComboBranches(
             log.warn("loadBranches failed for ${dir.name}: ${e.message}")
             emptyList()
         }
-        ApplicationManager.getApplication().invokeLater {
-            if (!combo.isDisplayable) return@invokeLater
-            val list = if (current.isNotEmpty() && !branches.contains(current))
-                listOf(current) + branches else branches
-            combo.model = DefaultComboBoxModel(list.toTypedArray())
-            combo.selectedItem = current
-            combo.putClientProperty(KEY_ALL_BRANCHES, list)
-            combo.isEnabled = true
-            onLoadEnd()
+        scheduleUi {
+            try {
+                if (!combo.isDisplayable) return@scheduleUi
+                val list = mergeBranchChoices(current, branches)
+                combo.model = DefaultComboBoxModel(list.toTypedArray())
+                combo.selectedItem = current
+                combo.putClientProperty(KEY_ALL_BRANCHES, list)
+                combo.isEnabled = true
+            } finally {
+                onLoadEnd()
+            }
         }
     }
 }

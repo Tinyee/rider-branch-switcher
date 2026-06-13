@@ -57,13 +57,14 @@ class SwitchPresetAction : AnAction() {
             val logLines = mutableListOf<String>()
             var ok = false
             var cancelled = false
-            service.gitClient.beginOperation()
+            val gitClient = service.gitClient
+            gitClient.beginOperation()
             try {
                 // Run preflight + switch as a background task
                 TaskBridge.runBackground(project, "Switching to ${preset.name}", true,
                     block = { indicator ->
                         indicator.isIndeterminate = true
-                        val preflight = SwitchPreflight(service.gitClient)
+                        val preflight = SwitchPreflight(gitClient)
                         val probeResult = preflight.probe(root, preset, indicator)
                         val missingDirs = probeResult.filter { !it.exists }
                         val missingBranches = probeResult.filter { it.branchMissing }
@@ -92,7 +93,7 @@ class SwitchPresetAction : AnAction() {
                             }
                         }
                         val collector = createStringAppender { logLines += it }
-                        val executor = SwitchExecutor(root, collector, service.gitClient, indicator)
+                        val executor = SwitchExecutor(root, collector, gitClient, indicator)
                         ok = executor.execute(preset, SwitchOptions(
                             dirty = service.dirtyAction,
                             fetchFirst = service.fetchFirst,
@@ -100,8 +101,8 @@ class SwitchPresetAction : AnAction() {
                             confirmBeforeInit = service.confirmBeforeInit,
                         ))
                     },
-                    onCancel = { service.gitClient.cancel() },
-                    onFinished = { service.gitClient.endOperation() },
+                    onCancel = { gitClient.cancel() },
+                    onFinished = { gitClient.endOperation() },
                 )
             } catch (e: CancellationException) {
                 logLines += "[warn] switch cancelled by user"

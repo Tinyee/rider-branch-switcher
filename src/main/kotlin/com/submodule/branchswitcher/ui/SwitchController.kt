@@ -16,6 +16,7 @@ import com.submodule.branchswitcher.service.BranchSwitcherService
 import com.submodule.branchswitcher.switch.SwitchExecutor
 import com.submodule.branchswitcher.switch.SwitchPreflight
 import com.submodule.branchswitcher.switch.refreshVcsRepos
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import java.nio.file.Path
@@ -62,8 +63,10 @@ class SwitchController(
         setSwitchInProgress(true)
         service.scope.launch(Dispatchers.Default) {
             var ok = false
+            var cancelled = false
             var rollbackExecutor: SwitchExecutor? = null
-            service.gitClient.beginOperation()
+            val gitClient = service.gitClient
+            gitClient.beginOperation()
             try {
                 TaskBridge.runBackground(project, "Switching branches", true,
                     block = { indicator ->
@@ -95,13 +98,16 @@ class SwitchController(
                                 }
                             }
                         }
-                        val executor = SwitchExecutor(root, log, service.gitClient, wrapped)
+                        val executor = SwitchExecutor(root, log, gitClient, wrapped)
                         rollbackExecutor = executor
                         ok = executor.execute(preset, opts)
                     },
-                    onCancel = { service.gitClient.cancel() },
-                    onFinished = { service.gitClient.endOperation() },
+                    onCancel = { gitClient.cancel() },
+                    onFinished = { gitClient.endOperation() },
                 )
+            } catch (_: CancellationException) {
+                log.info("[cancelled] switch cancelled by user")
+                cancelled = true
             } catch (e: Exception) {
                 log.error("switch: ${e.javaClass.simpleName}: ${e.message}")
                 ok = false
@@ -110,7 +116,10 @@ class SwitchController(
             // Wrap UI ops in invokeLater to avoid EDT violations
             invokeLaterIfProjectAlive {
                 setSwitchInProgress(false)
-                if (ok) {
+                if (cancelled) {
+                    refreshVcs(root, preset)
+                    return@invokeLaterIfProjectAlive
+                } else if (ok) {
                     service.addHistory(preset.name, preset.id)
                     Notifier.info(project, Bundle.msg("switch.complete"), Bundle.msg("notify.switch.complete.msg", preset.name))
                 } else {
