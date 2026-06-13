@@ -64,65 +64,25 @@
 - README 和 Marketplace 页面具备图标、截图、完整英文描述和许可证信息。
 - 安装包通过 Plugin Verifier。
 
-### P1：补结构化日志契约测试
+### P1：补结构化日志契约测试 ✅ (2892a6d)
 
-结构化日志已落地，但目前主要测试通过 `createStringAppender` 兼容旧字符串断言，
-缺少对日志级别本身的保护。
+已实现：`AppLoggerTest` 13 用例，覆盖 createStringAppender 格式、Step 失败 WARN、
+Fatal ERROR、Partial WARN、Activity 级别、git init 真实仓库验证。
 
-建议新增测试：
+### P1：为 Preset 增加稳定 ID ✅ (5a9e109)
 
-- `createStringAppender` 对 INFO/WARN/ERROR/DEBUG/ACTIVITY 的输出格式。
-- Fetch、Stash、Checkout、Pull 失败输出 WARN。
-- `StepResult.Fatal` 输出 ERROR。
-- 切换开始/结束、derive 成功、rollback 操作输出 ACTIVITY。
-- 普通业务 `error()` 不调用 IntelliJ `Logger.error()`，避免触发 Rider Fatal Errors。
-
-验收标准：
-
-- 关键失败场景的日志级别发生回退时，自动化测试失败。
-- 日志测试不依赖真实 Rider UI。
-
-### P1：为 Preset 增加稳定 ID
-
-当前历史记录只保存 `presetName`。Preset 重命名后，撤销历史会无法找到原 preset。
-未来如果增加快捷键绑定、颜色标签或其他跨会话引用，也会遇到相同问题。
-
-建议设计：
-
-- 为 `Preset` / `PresetDto` 增加稳定 `id`。
-- 读取旧 JSON 时为缺少 ID 的 preset 自动生成 ID。
-- 保存时回写 ID，确保后续稳定。
-- 历史记录优先保存 ID，同时保留名称用于展示和旧数据兼容。
-- 撤销时优先按 ID 查找，旧历史再按名称回退。
-
-注意：
-
-- 需要设计旧 `.idea/branch-presets.json` 和 `branch-switcher.xml` 的兼容迁移。
-- 导入 preset 时应处理 ID 冲突，通常应为导入副本生成新 ID。
-
-验收标准：
-
-- Preset 重命名后，撤销历史仍能找到正确 preset。
-- 旧配置文件无需用户手工修改即可加载。
-- 导入、导出、复制和重命名均有对应测试。
+已实现：`Preset.id` UUID、`PresetDto` 兼容旧 JSON 自动生成、`SwitchHistoryEntry.presetId`、
+`undoLastSwitch` 按 ID 优先查找、导入生成新 ID、加载旧 JSON 后自动回写。
 
 ---
 
+### 真实取消正在运行的 Git 命令 ✅ (e789848, 后续修订)
+
+已实现：`GitClient.cancel()`、`GitOps` 取消纪元（`AtomicLong` epoch, 无竞态）、
+`TaskBridge.runBackground` 加 `onCancel` 回调、`SwitchPresetAction` 和
+`SwitchController` 双入口均已接入。
+
 ## P2：后续增强
-
-### 真实取消正在运行的 Git 命令
-
-当前取消主要在 pipeline 步骤之间检查。如果 `git fetch` 或其他 Git 命令卡住，
-用户取消后仍可能需要等待命令超时。
-
-建议动作：
-
-- 评估让 `GitOps.run()` 接收取消信号。
-- 取消时终止 `CapturingProcessHandler` 对应进程。
-- 区分用户取消、命令超时和普通 Git 失败。
-- 增加取消期间不继续后续步骤的测试。
-
-该改动会影响 `GitClient` 接口和执行模型，应独立实施，不与发布物料混在同一批。
 
 ### 大仓性能基准
 

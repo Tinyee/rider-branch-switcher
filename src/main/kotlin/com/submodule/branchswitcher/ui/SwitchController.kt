@@ -64,43 +64,42 @@ class SwitchController(
             var ok = false
             var rollbackExecutor: SwitchExecutor? = null
             try {
-                TaskBridge.runBackground(project, "Switching branches", true) { indicator ->
-                    indicator.isIndeterminate = true
-                    val wrapped = object : ProgressIndicator by indicator {
-                        override fun setFraction(fraction: Double) {
-                            indicator.fraction = fraction
-                            invokeLaterIfProjectAlive {
-                                progressBar.isIndeterminate = false
-                                progressBar.value = (fraction * 100).toInt()
+                TaskBridge.runBackground(project, "Switching branches", true,
+                    block = { indicator ->
+                        indicator.isIndeterminate = true
+                        val wrapped = object : ProgressIndicator by indicator {
+                            override fun setFraction(fraction: Double) {
+                                indicator.fraction = fraction
+                                invokeLaterIfProjectAlive {
+                                    progressBar.isIndeterminate = false
+                                    progressBar.value = (fraction * 100).toInt()
+                                }
+                            }
+                            override fun setText2(text: String?) {
+                                indicator.text2 = text
+                                invokeLaterIfProjectAlive {
+                                    progressBar.string = text ?: Bundle.msg("tooltip.progress.switching")
+                                }
+                            }
+                            override fun setText(text: String?) {
+                                indicator.text = text
+                                invokeLaterIfProjectAlive {
+                                    progressBar.string = text ?: Bundle.msg("tooltip.progress.switching")
+                                }
+                            }
+                            override fun setIndeterminate(indeterminate: Boolean) {
+                                indicator.isIndeterminate = indeterminate
+                                invokeLaterIfProjectAlive {
+                                    progressBar.isIndeterminate = indeterminate
+                                }
                             }
                         }
-                        override fun setText2(text: String?) {
-                            indicator.text2 = text
-                            invokeLaterIfProjectAlive {
-                                progressBar.string = text ?: Bundle.msg("tooltip.progress.switching")
-                            }
-                        }
-                        override fun setText(text: String?) {
-                            indicator.text = text
-                            invokeLaterIfProjectAlive {
-                                progressBar.string = text ?: Bundle.msg("tooltip.progress.switching")
-                            }
-                        }
-                        override fun setIndeterminate(indeterminate: Boolean) {
-                            indicator.isIndeterminate = indeterminate
-                            invokeLaterIfProjectAlive {
-                                progressBar.isIndeterminate = indeterminate
-                            }
-                        }
-                        override fun cancel() {
-                            service.gitClient.cancel() // terminate in-flight git command
-                            indicator.cancel()
-                        }
-                    }
-                    val executor = SwitchExecutor(root, log, service.gitClient, wrapped)
-                    rollbackExecutor = executor
-                    ok = executor.execute(preset, opts)
-                }
+                        val executor = SwitchExecutor(root, log, service.gitClient, wrapped)
+                        rollbackExecutor = executor
+                        ok = executor.execute(preset, opts)
+                    },
+                    onCancel = { service.gitClient.cancel() },
+                )
             } catch (e: Exception) {
                 log.error("switch: ${e.javaClass.simpleName}: ${e.message}")
                 ok = false

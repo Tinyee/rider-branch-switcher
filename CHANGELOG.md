@@ -9,9 +9,17 @@
 - `Activity` level restores blue color for switch/rollback/derive operations
 - `jButton()` factory in `UiUtil.kt` eliminates scattered `.noFocusRing()` calls
 
+### Features
+- **Stable Preset ID**: `Preset.id` (UUID) survives renames — undo history works even after renaming
+- **Cancellable Git commands**: user cancel terminates the running `git` process within ~100ms
+- Old JSON auto-generates IDs and writes back immediately on load
+- `onCancel` callback in `TaskBridge.runBackground` for reliable cancel wiring
+
 ### Quality
 - `error()` uses `ideaLogger.warn()` to avoid triggering Rider Fatal Errors for business failures
 - Log levels assigned by semantics: failures → warn, diagnostics → debug, activities → activity
+- `AppLoggerTest` (13 cases): level contract tests for fetch/checkout/stash/pull failures, Fatal, Partial, Activity
+- `GitOps.run()` uses cancellation epoch (`AtomicLong`) with per-command snapshots — no cross-command race
 - Review fixes: 3 rounds of log-level migration corrections
 
 ### Docs

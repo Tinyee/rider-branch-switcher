@@ -44,6 +44,8 @@ object TaskBridge {
         project: Project,
         title: String,
         canBeCancelled: Boolean,
+        /** Invoked when the user cancels the progress dialog, before the coroutine is cancelled. */
+        onCancel: (() -> Unit)? = null,
         block: (ProgressIndicator) -> Unit,
     ) {
         suspendCancellableCoroutine<Unit> { cont ->
@@ -64,6 +66,7 @@ object TaskBridge {
                     }
                 }
                 override fun onCancel() {
+                    onCancel?.invoke()
                     cont.cancel()
                 }
             }
