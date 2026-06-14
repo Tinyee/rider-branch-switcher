@@ -818,7 +818,7 @@ class SwitchIntegrationTest {
 
         // Both repos back on original branch
         assertEquals("main", git.currentBranch(root))
-        assertTrue("SubA should be back on main", git.currentBranch(subADir) == "main" || git.currentBranch(subADir) == null)
+        assertEquals("SubA should be back on main after rollback", "main", git.currentBranch(subADir))
 
         assertTrue("Main dirty file should be restored", File(root, "dirty-main.txt").exists())
         assertTrue("SubA dirty file should be restored", File(subADir, "dirty-sub.txt").exists())

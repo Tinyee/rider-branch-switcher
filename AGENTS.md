@@ -35,11 +35,12 @@ com.submodule.branchswitcher/
 ## 开发命令
 
 ```bash
+git config core.hooksPath .githooks   # 首次 clone 后执行一次，启用自动检查
 ./gradlew test          # 230 tests
 ./gradlew buildPlugin   # → build/distributions/rider-branch-switcher-{version}.zip
 ./gradlew runIde        # 启动沙箱 Rider，插件已预装
-./gradlew quickCheck    # <1 秒，grep 结构检查（pre-commit hook 自动跑）
-./gradlew releaseCheck  # quickCheck + test + detekt + buildPlugin + verifyPlugin（pre-push hook 自动跑）
+./gradlew quickCheck    # <1 秒，grep 结构检查（git commit 时自动跑）
+./gradlew releaseCheck  # quickCheck + test + detekt + buildPlugin + verifyPlugin（git push 时自动跑）
 ```
 
 ## 用户偏好
@@ -54,6 +55,23 @@ com.submodule.branchswitcher/
 - Marketplace 截图和 pluginIcon.svg 等准备发布时再处理。
 
 2026-06-08 的历史审查已归档至 `docs/code-review-2026-06-08.md`；大部分已修复，不应将归档当作当前问题列表。
+
+## 测试资源与低负载规则
+
+- **开发中先跑最小验证，不要默认跑全量。** 顺序为 `./gradlew quickCheck`，再跑最相关的测试类或方法。
+- **重型 Gradle 命令不准并行启动。** 完整 `test`、真实 Git 集成测试、`buildPlugin`、`verifyPlugin`、`releaseCheck` 必须串行；工具支持并行调用也不能并行跑这些任务。
+- **本地广泛验证默认限流。** 使用 `--max-workers=2 --no-parallel`；用户反馈发热、风扇噪音或机器受限时改为 `--max-workers=1 --no-parallel`。
+- **不要靠降低全局测试覆盖率降温。** 不得减少 Kotest 全局迭代次数或跳过测试；应选择目标测试、限流，或增加明确命名的低负载任务。
+- **完成与发布分开。** 声称完成前按改动范围运行相关测试的 `--rerun-tasks`；只有发布/推送前运行 `releaseCheck`，启动前说明它耗时且高负载。
+- 测试结束后仅在用户希望释放资源或会话结束时运行 `./gradlew --stop`，不要每次测试后都停止 daemon。
+
+```bash
+./gradlew quickCheck
+./gradlew test --tests "<ClassOrMethod>" --max-workers=2 --no-parallel
+./gradlew test detekt --max-workers=2 --no-parallel
+./gradlew test detekt --rerun-tasks --max-workers=2 --no-parallel
+./gradlew releaseCheck
+```
 
 ## Recent Changes (v0.6, through 2026-06-14)
 
@@ -75,7 +93,7 @@ com.submodule.branchswitcher/
 
 1. **没过自审清单不准说没问题。** 7 轮审查，每轮都能发现清单能抓到的遗漏。
 2. **用户说"审查在本地文档"先去读文档，不要问里面有什么。**
-3. **最终验证用 `--rerun-tasks`。** 增量缓存会隐藏回归。
+3. **分层验证**：开发中允许增量测试。声称完成前至少跑一次相关测试的 `--rerun-tasks`。发布前跑 `releaseCheck`。
 
 ### 修 bug 时
 
@@ -137,4 +155,4 @@ com.submodule.branchswitcher/
 ```bash
 ./gradlew test detekt && git diff --check
 ```
-`--rerun-tasks` 仅在上次运行已缓存或改了 Gradle 追踪不到的东西时用。
+日常开发用增量 `./gradlew test detekt`。声称完成前 `--rerun-tasks`。发布前 `releaseCheck`。

@@ -820,6 +820,7 @@ execute 阶段在取消时直接 `break`，返回的结果可能是：
 
 “不遗留 stash”测试读取了 stash 列表但没有断言，无法发现孤儿 stash 回归。
 现已明确验证主仓与子模块的脏文件均恢复，并验证所有相关仓库的 stash list 为空。
+子模块分支断言从 `== “main” || == null` 收紧为 `assertEquals(“main”, ...)`，严格验证回到原命名分支。
 
 ### 第七轮新增或调整测试
 
@@ -833,3 +834,146 @@ execute 阶段在取消时直接 `break`，返回的结果可能是：
 - `./gradlew test detekt --no-daemon --console=plain`：通过。
 - 当前测试报告：230 tests / 20 classes / 0 failures / 0 errors。
 - `git diff --check`：通过；仅有工作区 LF/CRLF 转换提示。
+
+## 第八轮：AI 约束系统有效性审查（2026-06-14）
+
+### 审查范围
+
+本轮审查当前 `main` 相对 `origin/main` 的三个未 push 提交：
+
+- `d34de9b`：回滚 operation 生命周期、探针异常安全、缺失仓库回滚结果。
+- `e77b806`：AI 约束系统（`CLAUDE.md`、自动规则、skill、git hooks、`quickCheck`）。
+- `a44cf30`：git hook 输出与退出码处理修复。
+
+工作区在审查开始时干净。本轮目标不是再次审查全部业务功能，而是判断新增规则和自动门禁
+是否真正提高 AI 生成代码的准确性，并通过实际未 push 改动验证规则是否有效。
+
+### 总体结论
+
+新增约束的方向有效，尤其是以下规则能够明显降低本项目反复出现的问题：
+
+- 多阶段操作先列状态机和行为/失败/取消合同。
+- 安全探针采用 tri-state，并对 unknown/error fail-closed。
+- 修复 bug pattern，而不是只修第一个实例。
+- 测试必须经过生产路径，并断言最终状态和副作用。
+- 文档区分当前事实、后续事项和历史审查记录。
+
+但当前自动化门禁仍属于“文字规则强、机器检查弱”。`quickCheck PASSED` 只能说明少量结构性
+启发式检查通过，不能作为生命周期配对、状态机完整或业务行为正确的证明。
+
+### P1：git hooks 在 Linux/macOS 上可能不执行
+
+`.githooks/pre-commit` 和 `.githooks/pre-push` 当前提交模式为 `100644`，没有 executable bit。
+Git for Windows 当前能够执行这些 hook，但 Linux/macOS 通常会忽略不可执行 hook。
+
+同时 CI 当前没有显式执行 `quickCheck` 或 `releaseCheck`。因此非 Windows 环境可能完全绕过
+新增自动门禁，而文档仍宣称 pre-commit / pre-push 会自动运行。
+
+建议：
+
+```bash
+git update-index --chmod=+x .githooks/pre-commit .githooks/pre-push
+```
+
+并在 CI 中显式增加：
+
+```bash
+./gradlew quickCheck
+```
+
+### P1：`quickCheck` 的生命周期配对检查会产生错误安全感
+
+当前取消生命周期检查只统计全仓 token 数：
+
+- `TaskBridge.runBackground` 当前为 4 个。
+- `beginOperation` / `onCancel` / `endOperation` 等 token 当前合计 35 个。
+- 检查只要求 token 数不少于 `runBackground * 3`。
+
+因此，即使新增一个完全没有 operation 生命周期的 `runBackground`，已有 token 仍足以让检查通过。
+write gate 检查同样只比较全仓 `tryStartWrite()` 与 `endWrite()` 数量，无法证明二者属于同一个入口，
+也无法证明 `endWrite()` 位于 `finally`。
+
+建议优先级：
+
+1. 将异步写入口封装为统一 helper，使错误生命周期难以表达。
+2. 或增加自定义 Detekt / Kotlin AST 规则，按函数和控制流检查配对。
+3. 为 `quickCheck` 增加故意构造错误代码的 fixture，证明每条规则确实会失败。
+
+在完成前，文档应将这两项描述为 heuristic，而不是“已强制保证”。
+
+### P2：通知和 Enum 穷尽检查是脆弱的文本启发式
+
+`quickCheck` 通过文件名、字符串和分支数量推断 sealed class / enum 的 `when` 是否穷尽。
+该实现没有把具体 `when` 与对应 subject 关联，也无法正确理解：
+
+- `else` 分支。
+- 多行分支。
+- 同文件多个 enum / sealed class。
+- enum 内方法、注释和其他标识符。
+
+结果是正确代码可能被误报，不完整代码也可能漏报。建议删除这两项文本启发式，改为依赖：
+
+- Kotlin 编译器的 sealed / enum 穷尽检查。
+- Detekt AST 规则。
+- 纯通知决策函数的覆盖测试。
+
+### P2：stash/rollback 集成测试仍允许错误最终状态
+
+`dirty work and stashes are restored after partial failure and rollback` 测试要求主仓和 SubA
+回到原始 `main` 分支，但 SubA 的断言允许：
+
+```kotlin
+git.currentBranch(subADir) == "main" || git.currentBranch(subADir) == null
+```
+
+`null` 表示 detached HEAD，因此即使回滚没有恢复原命名分支，测试仍会通过。
+测试 setup 已保证 SubA 操作前位于 `main`，应严格断言：
+
+```kotlin
+assertEquals("main", git.currentBranch(subADir))
+```
+
+这也是新增“断言所有最终状态”规则的实际反例：文字规则正确，但尚未被现有测试完全执行。
+
+### P2：最终验证规则存在冲突
+
+`AGENTS.md` 一处要求最终验证必须使用 `--rerun-tasks`，另一处又说仅在缓存或 Gradle
+无法追踪的改动时使用。`CLAUDE.md` 同时禁止使用 Gradle 缓存声称最终验证通过。
+
+冲突规则会让 AI 倾向选择更方便的一条。建议统一为：
+
+- 开发过程允许运行增量测试。
+- 声称最终完成前，对相关测试和 Detekt 至少执行一次 `--rerun-tasks`。
+- 发布前执行完整 `releaseCheck`，并保留实际结果。
+
+### P3：异常处理约束过于绝对
+
+自动规则要求所有 `catch (_: Exception) {}` 至少记录日志，但当前生产代码仍存在多种不同语义：
+
+- 安全探针将异常转换为 unknown/null，由调用方 fail-closed。
+- best-effort UI 或文档插入失败可能允许忽略。
+- 取消异常必须传播，不能当作普通错误记录后吞掉。
+
+建议将规则改为分类合同：
+
+- `CancellationException` / `ProcessCanceledException`：必须重新抛出或保持取消语义。
+- 安全探针异常：转换为明确 `Unknown/Error`，由调用方统一记录并阻止写操作。
+- best-effort UI 清理：允许忽略，但必须注释原因。
+- 其他异常：记录或进入结构化结果，禁止无说明静默吞掉。
+
+### 建议修复顺序
+
+1. 修复 hook executable bit，并让 CI 显式执行 `quickCheck`。
+2. 将生命周期和 write gate 检查改为可证明局部配对的机制。
+3. 严格化 SubA 回滚最终分支断言。
+4. 删除或替换通知/Enum 文本穷尽检查。
+5. 统一最终验证与异常处理规则。
+
+### 第八轮验证
+
+- `./gradlew quickCheck`：通过，但仅代表当前 heuristic 检查通过。
+- `git hook run pre-commit`：在当前 Windows 环境通过；不能证明 Linux/macOS hook 可执行。
+- `./gradlew detekt --rerun-tasks`：通过。
+- 当前测试结果 XML：230 tests / 20 classes / 0 failures / 0 errors。
+- `./gradlew test detekt --rerun-tasks`：运行超过 7 分钟后超时，不能报告该组合命令完整通过。
+- `git diff --check origin/main...HEAD`：通过。
