@@ -37,6 +37,20 @@ State before touching code:
 - What is explicitly OUT of scope
 - `git status --short` and `git diff --stat` output
 
+## Design review modes and readiness gate
+
+Use `docs/templates/design-review-checklist.md` for every substantial design.
+
+- **Incremental review** verifies only the previous findings. It may mark individual items fixed, but must never declare the design ready.
+- **Final readiness review** starts from zero and executes the complete checklist: model/input safety, migrations, API-shaped examples, every production entry point, UI/i18n, tests, and cross-document consistency.
+- Only a final readiness review with no `OPEN`, `IN_PROGRESS`, or `FIXED_PENDING_REVIEW` findings may output `PASS — ready to implement`.
+- Bind every `PASS` to `git hash-object <design-file>` in the shared review document. Any later design edit invalidates that PASS and requires another final readiness review.
+- At implementation kickoff, re-read the affected entry points. If relevant source changed after the final review, assess the impact before coding; invalidate PASS when the design assumptions changed.
+- After any architectural replacement, re-run the full checklist. A local fix can create second-order changes in call sites, tests, migration rules, and wording.
+- Classify every pseudocode block used as review evidence as either `COMPILE_SHAPED` or `ILLUSTRATIVE_ONLY`; explicitly label blocks intended for direct implementation. Verify every `COMPILE_SHAPED` receiver, symbol, parameter order, return type, visibility, and nullability against source.
+- For Gson or other external input, explicitly test missing fields, explicit null, empty collections, null collection items, illegal values, and migration write-back.
+- Every final-checklist item needs source/command evidence or an explicit `N/A` reason. Do not copy the full checklist into the shared review document; record only evidence summaries, findings, and the gate result.
+
 ## Self-review (after tests pass)
 
 Before claiming "done," confirm:
