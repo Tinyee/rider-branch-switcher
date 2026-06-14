@@ -58,6 +58,8 @@ class PresetEditor(
     private val nameValidator: (String) -> Boolean = { true },
     private val gitClient: GitClient,
     private val scope: CoroutineScope,
+    /** Fires after [updatePresetName] — enables parent to re-apply active filters. */
+    private val onNameChanged: (() -> Unit)? = null,
 ) : JPanel() {
 
     private var original: Preset = initial
@@ -395,6 +397,7 @@ class PresetEditor(
     fun updatePresetName(newName: String) {
         original = original.copy(name = newName)
         nameLabel.text = newName
+        onNameChanged?.invoke()
     }
 
     private fun rename() {

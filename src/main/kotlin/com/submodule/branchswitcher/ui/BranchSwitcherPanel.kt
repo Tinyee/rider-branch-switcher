@@ -148,6 +148,8 @@ class BranchSwitcherPanel(
             add(createHeaderRow())
             add(Box.createVerticalStrut(4))
             add(createActionRow())
+            add(Box.createVerticalStrut(4))
+            add(presetManager.createSearchRow())
             add(Box.createVerticalStrut(2))
             add(createStatusBar())
         }
