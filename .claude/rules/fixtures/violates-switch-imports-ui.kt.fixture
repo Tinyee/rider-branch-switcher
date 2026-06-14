@@ -1,0 +1,6 @@
+package com.submodule.branchswitcher.switch
+
+import com.submodule.branchswitcher.ui.SwitchController
+
+// QuickCheck rule 3 should catch: switch/ importing ui/
+class BrokenSwitchImport

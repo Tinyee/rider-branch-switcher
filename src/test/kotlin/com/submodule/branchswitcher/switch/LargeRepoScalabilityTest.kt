@@ -5,9 +5,9 @@ import com.submodule.branchswitcher.git.GitResult
 import com.submodule.branchswitcher.model.DirtyAction
 import com.submodule.branchswitcher.model.Preset
 import com.submodule.branchswitcher.model.SwitchOptions
-import org.junit.After
+import org.junit.AfterClass
 import org.junit.Assert.*
-import org.junit.Before
+import org.junit.BeforeClass
 import org.junit.Test
 import java.io.File
 import java.nio.file.Files
@@ -25,33 +25,37 @@ import java.nio.file.Path
  */
 class LargeRepoScalabilityTest {
 
-    private lateinit var tmpDir: Path
-    private val submoduleCount = 50
+    companion object {
+        private lateinit var tmpDir: Path
+        private const val submoduleCount = 50
 
-    @Before
-    fun setUp() {
-        tmpDir = Files.createTempDirectory("large-repo-perf-")
-        val root = tmpDir.toFile()
-        root.mkdirs()
-        // Real git init for main + all submodules so isGitRepo() succeeds
-        fun initGit(dir: File) {
-            dir.mkdirs()
-            val p = ProcessBuilder("git", "init", "-q")
-                .directory(dir)
-                .redirectErrorStream(true)
-                .start()
-            p.inputStream.transferTo(java.io.OutputStream.nullOutputStream())
-            p.waitFor()
+        @BeforeClass
+        @JvmStatic
+        fun setUp() {
+            tmpDir = Files.createTempDirectory("large-repo-perf-")
+            val root = tmpDir.toFile()
+            root.mkdirs()
+            // Real git init for main + all submodules so isGitRepo() succeeds
+            fun initGit(dir: File) {
+                dir.mkdirs()
+                val p = ProcessBuilder("git", "init", "-q")
+                    .directory(dir)
+                    .redirectErrorStream(true)
+                    .start()
+                p.inputStream.transferTo(java.io.OutputStream.nullOutputStream())
+                p.waitFor()
+            }
+            initGit(root)
+            for (i in 1..submoduleCount) {
+                initGit(tmpDir.resolve("sub-$i").toFile())
+            }
         }
-        initGit(root)
-        for (i in 1..submoduleCount) {
-            initGit(tmpDir.resolve("sub-$i").toFile())
-        }
-    }
 
-    @After
-    fun tearDown() {
-        tmpDir.toFile().deleteRecursively()
+        @AfterClass
+        @JvmStatic
+        fun tearDown() {
+            tmpDir.toFile().deleteRecursively()
+        }
     }
 
     // -- Instrumented GitClient that counts calls --

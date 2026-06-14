@@ -42,6 +42,30 @@ Before claiming "done," confirm:
 - [ ] New interface methods have stubs in all implementations (grep for the interface name)
 - [ ] Return paths all pass the same number of positional arguments
 
+## Resource-aware test workflow
+
+Treat test execution as a resource budget, not an all-or-nothing switch:
+
+```bash
+# Lightweight iteration
+./gradlew quickCheck
+./gradlew test --tests "<ClassOrMethod>" --max-workers=2 --no-parallel
+
+# Broader local verification
+./gradlew test detekt --max-workers=2 --no-parallel
+
+# Final verification when the change scope warrants the full suite
+./gradlew test detekt --rerun-tasks --max-workers=2 --no-parallel
+
+# Release/push only; warn the user before starting because it is intentionally heavy
+./gradlew releaseCheck
+```
+
+- Never launch heavy Gradle commands in parallel, even when the agent tool supports parallel calls.
+- Use `--max-workers=1 --no-parallel` when the user reports heat, fan noise, or constrained resources.
+- Do not reduce global property-test iterations or skip coverage merely to cool local runs.
+- Run `./gradlew --stop` only when releasing resources matters or the session is ending; stopping after every command makes later runs slower.
+
 ---
 
 # Part 2: Code Templates — fill these in

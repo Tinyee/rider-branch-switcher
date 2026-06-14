@@ -27,9 +27,16 @@
 
 ```bash
 cd ~/Code/rider-branch-switcher
+
+# 启用提交前自动检查（Windows/macOS/Linux 通用）
+git config core.hooksPath .githooks
+
 ./gradlew buildPlugin
-# 产物：build/distributions/rider-branch-switcher-0.2.1.zip
+# 产物：build/distributions/rider-branch-switcher-0.6.0.zip
 ```
+
+`git config core.hooksPath .githooks` 只需执行一次。之后每次 `git commit` 会自动跑 quickCheck，
+`git push` 会自动跑 releaseCheck。跳过检查：`git commit --no-verify`。
 
 Rider 里 `Settings → Plugins → ⚙ → Install plugin from disk` 选这个 zip。
 
