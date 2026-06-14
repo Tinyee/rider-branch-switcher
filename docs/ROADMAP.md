@@ -23,7 +23,7 @@
 - **动态远端名**：自动检测 remote 名，不再硬编码 origin
 - IntelliJ 原生图标（AllIcons），主题感知色
 - i18n 中英双语（DynamicBundle + @PropertyKey 编译时校验）
-- 230 测试（JUnit 4 + Kotest 属性测试）
+- 241 测试（JUnit 4 + Kotest 属性测试）
 - GitHub Actions CI（ubuntu/macOS/Windows）+ Qodana 静态分析
 
 下面按「切换体验 / 状态可视化 / UI / 工作流 / 质量」五块梳理后续要做的功能点，优先级 **P0(致命) / P1(高价值) / P2(锦上添花)**；状态列标记 v0.x 已落地或下阶段候选。
@@ -80,7 +80,7 @@
 | 优先级 | 需求 | 状态 |
 |---|---|---|
 | P0 | GitOps 60s 超时:子模块多/网络慢会卡 UI。需要可配置 + 真异步(目前 Thread + invokeLater,够用但不可中断) | ✅ v0.3 |
-| P1 | **单元测试**:GitOps / SwitchExecutor 都没有。mock GitOps 跑 SwitchExecutor 至少覆盖「主仓成功子模块失败」的 case | ✅ 61 用例, mock GitClient, cmd 可跑 |
+| P1 | **单元测试**:GitOps / SwitchExecutor 都没有。mock GitOps 跑 SwitchExecutor 至少覆盖「主仓成功子模块失败」的 case | ✅ 241 用例, mock GitClient, cmd 可跑 |
 | P2 | **i18n**:目前中英混杂,要么全中要么走 `Bundle.message()` | ⚡ Strings.kt 68 常量, UI 按钮/标签已接入 |
 | P2 | **git worktree 兼容**:副工作树会失败,需要友好提示 | ✅ v0.5 检测 .git 文件并输出提示 |
 
@@ -186,7 +186,7 @@
 | 新切换动作（rebase / tag / commit） | **低** | SwitchExecutor 构造函数接受 steps 列表 |
 | Tools 菜单 / 快捷键 | **低** | v0.4 已实现 Ctrl+Alt+B + MessageBus |
 | 状态栏 widget | **中** | 同上 |
-| 单元测试 | **低** | 61 用例已配通, `./gradlew test` |
+| 单元测试 | **低** | 241 用例已配通, `./gradlew test` |
 | 多 VCS（hg / p4） | 高 | GitOps 直接绑 git |
 | Per-preset 选项覆盖 | 中 | 数据模型加字段 + UI 改 |
 | 切换历史 / 撤销 | 低 | v0.4 已实现 |
@@ -298,15 +298,15 @@ com.submodule.branchswitcher/
 
 ### 功能缺口
 
-| # | 需求 | 说明 |
-|---|------|------|
-| 26 | Settings 页面 | 用户无法通过 File→Settings 配置超时/策略，只能在面板里改 |
-| 27 | 状态栏 widget | 切换后无常驻指示当前 preset，类似 Git branch widget |
-| 28 | Preset 搜索/过滤 | 20+ preset 时无搜索 |
-| 29 | Per-preset 选项覆盖 | 某个 preset 需要特殊 dirty/fetch/pull 配置时无法覆盖全局设置 |
-| 30 | 嵌套子模块 | `listSubmodulePaths` 只解析根 `.gitmodules`，不递归 |
-| 31 | 无 preset 直接切换 | 想"全部切到 develop"必须建 preset |
-| 32 | git 不在 PATH 的友好提示 | `GeneralCommandLine("git", ...)` 失败时无提示 |
+| # | 需求 | 说明 | 状态 |
+|---|------|------|------|
+| 26 | Settings 页面 | 用户无法通过 File→Settings 配置超时/策略，只能在面板里改 | ✅ v0.6 |
+| 27 | 状态栏 widget | 切换后无常驻指示当前 preset，类似 Git branch widget | ⏸️ SDK 兼容性 |
+| 28 | Preset 搜索/过滤 | 20+ preset 时无搜索 | ◐ |
+| 29 | Per-preset 选项覆盖 | 某个 preset 需要特殊 dirty/fetch/pull 配置时无法覆盖全局设置 | ◐ |
+| 30 | 嵌套子模块 | `listSubmodulePaths` 只解析根 `.gitmodules`，不递归 | ◐ |
+| 31 | 无 preset 直接切换 | 想"全部切到 develop"必须建 preset | ◐ |
+| 32 | git 不在 PATH 的友好提示 | `GeneralCommandLine("git", ...)` 失败时无提示 | ✅ v0.6 |
 
 ---
 
@@ -316,32 +316,32 @@ com.submodule.branchswitcher/
 
 ### P1 — Marketplace 上架必要条件
 
-| # | 事项 | 工作量 | 说明 |
-|---|------|--------|------|
-| M1 | 升级 IntelliJ Platform Gradle Plugin 2.2.1 → 2.10+ | 低 | 新版兼容 Kotlin 2.3.0，自带更严格的 Plugin Verifier |
-| M2 | CI 加 `verifyPlugin` | 低 | 自动检测二进制不兼容和 `@ApiStatus.Internal` 使用 |
-| M3 | 修复 `<vendor>internal</vendor>` | 极低 | 改为真实 vendor（url + email），否则审核不通过 |
-| M4 | 加 Exception Analyzer | 极低 | `plugin.xml` 加一行 `<errorHandler>`，崩溃自动上报 Marketplace |
-| M5 | 插件图标 | 低 | 40×40 SVG，不模仿 JetBrains 产品 logo |
-| M6 | 英文描述 + 截图 | 中 | 1280×800 (16:10)，不带设备边框 |
-| M7 | CI 加 Qodana/InspectCode | 低 | 静态分析在每次 push 自动跑 |
+| # | 事项 | 工作量 | 说明 | 状态 |
+|---|------|--------|------|------|
+| M1 | 升级 IntelliJ Platform Gradle Plugin 2.2.1 → 2.10+ | 低 | 新版兼容 Kotlin 2.3.0，自带更严格的 Plugin Verifier | ⏸️ 与 Rider local SDK 不兼容 |
+| M2 | CI 加 `verifyPlugin` | 低 | 自动检测二进制不兼容和 `@ApiStatus.Internal` 使用 | ✅ v0.6 |
+| M3 | 修复 `<vendor>` 信息 | 极低 | 改为真实 vendor（url + email），否则审核不通过 | ✅ v0.6 |
+| M4 | 加 Exception Analyzer | 极低 | `plugin.xml` 加一行 `<errorHandler>`，崩溃自动上报 Marketplace | ✅ v0.6 |
+| M5 | 插件图标 | 低 | 40×40 SVG，不模仿 JetBrains 产品 logo | ◐ |
+| M6 | 英文描述 + 截图 | 中 | 1280×800 (16:10)，不带设备边框 | ◐ |
+| M7 | CI 加 Qodana/InspectCode | 低 | 静态分析在每次 push 自动跑 | ✅ v0.6 |
 
 ### P2 — 生产级打磨
 
-| # | 事项 | 工作量 | 说明 |
-|---|------|--------|------|
-| M8 | Settings Configurable | 中 | File→Settings→Version Control 下注册配置页 |
+| # | 事项 | 工作量 | 说明 | 状态 |
+|---|------|--------|------|------|
+| M8 | Settings Configurable | 中 | File→Settings→Version Control 下注册配置页 | ✅ v0.6 |
 | M9 | 结构化日志 | 中 | `com.intellij.openapi.diagnostic.Logger` 替代 lambda `log()` | ✅ v0.6 `AppLogger` |
-| M10 | 动态插件兼容 | 中 | 确保 service.dispose() 取消协程、不泄漏 classloader |
-| M11 | Bundle 加 `@PropertyKey` | 低 | 编译时校验 key 有效性 |
+| M10 | 动态插件兼容 | 中 | 确保 service.dispose() 取消协程、不泄漏 classloader | ✅ v0.6 |
+| M11 | Bundle 加 `@PropertyKey` | 低 | 编译时校验 key 有效性 | ✅ v0.6 |
 
 ### P3 — 锦上添花
 
-| # | 事项 | 说明 |
-|---|------|------|
-| M12 | 首次安装提示 | ✅ 无预设空状态已增加 Quick Start、Ctrl+Alt+B 和团队共享提示 |
-| M13 | 大仓规模测试 | ◐ 已覆盖 50 子模块 Switch/Preflight Git 调用预算；真实耗时基准应使用独立 benchmark task |
-| M14 | 匿名遥测（opt-in） | 按 Marketplace 要求明示同意 |
+| # | 事项 | 说明 | 状态 |
+|---|------|------|------|
+| M12 | 首次安装提示 | 无预设空状态已增加 Quick Start、Ctrl+Alt+B 和团队共享提示 | ✅ v0.6 |
+| M13 | 大仓规模测试 | 已覆盖 50 子模块 Switch/Preflight Git 调用预算；真实耗时基准应使用独立 benchmark task | ◐ |
+| M14 | 匿名遥测（opt-in） | 按 Marketplace 要求明示同意 | ◐ |
 
 ---
 
@@ -349,51 +349,36 @@ com.submodule.branchswitcher/
 
 ### 当前状态
 
-- ✅ 230 测试，20 个测试类，`./gradlew test` 即可跑
+- ✅ 241 测试，21 个测试类，`./gradlew test` 即可跑
 - ✅ `GitClient` 接口 + Fake 实现 → 架构已隔离 IntelliJ 运行时
 - ✅ 真实 git 临时仓库集成测试（`SwitchIntegrationTest`）
 - ✅ 50 子模块 Switch/Preflight Git 调用预算测试（`LargeRepoScalabilityTest`）
-- ✅ GitHub Actions CI（ubuntu/macOS/Windows）+ Detekt 静态分析
+- ✅ GitHub Actions CI（ubuntu/macOS/Windows）+ Detekt + quickCheck + checkQuickCheck + verifyPlugin
+- ✅ `quickCheck`：7 条 grep 结构性检查 + `checkQuickCheck` 自测（5 fixture）
 - ⚠ 已覆盖 UI 规则与 Swing 几何约束，尚无 Rider fixture / 截图测试
 - ✅ `TaskBridge.runBackground` 生命周期已覆盖（`TaskBridgeLifecycleTest`，9 用例）
 
 ### 推荐方案（按投入排序）
 
-**1. GitHub Actions CI（30 分钟，免费）**
+**1. GitHub Actions CI** ✅
 
-```yaml
-# .github/workflows/build.yml
-name: Build
-on: [push, pull_request]
-jobs:
-  test:
-    runs-on: ubuntu-latest  # 无需 Rider SDK，Linux runner 免费
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
-        with: { distribution: temurin, java-version: 17 }
-      - run: ./gradlew test
-      - run: ./gradlew buildPlugin
-```
+三平台 CI（ubuntu/macOS/Windows）+ test + buildPlugin + detekt + quickCheck + checkQuickCheck + verifyPlugin + artifact upload。
 
-公共仓库无限免费分钟数。每次 push 自动跑，失败邮件通知。
+**2. Kotest 属性测试** ✅
 
-**2. Kotest 属性测试（1-2 小时）**
+`io.kotest:kotest-runner-junit5:5.9.1` + `io.kotest:kotest-property:5.9.1`
 
-依赖：`io.kotest:kotest-runner-junit5:5.9.1` + `io.kotest:kotest-property:5.9.1`
+5 个不变性：Preset JSON 往返、.gitmodules 解析鲁棒性、GitResult.ok 契约、PreflightRow 可计算属性、子模块路径提取。
 
-用随机生成数据验证 5 个不变性：
-- Preset JSON 序列化往返一致性
-- .gitmodules 解析器在任意合法输入下不崩溃
-- 切换历史 ≤5 条、时间降序
-- PreflightRow 字段一致性
-- GitOps 命令字符串注入防护
+**3. 结构性检查** ✅
 
-**3. PITest 变异测试（一次性，1 小时）**
+`quickCheck`（7 条规则）+ `checkQuickCheck`（5 fixture 自测），pre-commit hook 自动运行。
+
+**4. PITest 变异测试（待定）**
 
 `id("info.solidsoft.pitest") version "1.15.0"` → `./gradlew pitest` → HTML 报告展示哪些测试不充分
 
-**4. 手工 Release Checklist（每次发版 5-10 分钟）**
+**5. 手工 Release Checklist（每次发版 5-10 分钟）**
 
 ```
 □ 切换核心: 创建/切换/回切/三策略(stash/skip/force)

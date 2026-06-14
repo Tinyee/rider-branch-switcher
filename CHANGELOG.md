@@ -31,13 +31,29 @@
 - `SwitchExecutor` constructor accepts injectable `cancelled` lambda (no ProgressIndicator needed in tests)
 
 ### Tests
-- 230 tests (JUnit 4 + Kotest property-based), 20 test classes
+- 241 tests (JUnit 4 + Kotest property-based), 21 test classes
 - `GitOpsTest`: ControllableProcess for running-process cancel verification
 - `SwitchExecutorTest`: 5 new — rollback SHA fallback, detached HEAD, submodule partial rollback, pipeline cancel
 - `PresetLoaderTest`: 3 new — blank/duplicate ID normalization, valid ID no-op
 - `BranchComboUtilTest`: 6 new — branch choice merging, async load success/exception/disposed
 - `AppLoggerTest`: 13 log-level contract tests
 - `PresetImportRulesTest`: import parsing rules
+
+### AI Constraint System
+- `CLAUDE.md`: 16 behavioral rules (不准) + design-first mandate + pre-commit self-audit
+- `.claude/rules/derive-constraints.md`: auto-loaded state matrix template, grep commands, deprecated API list
+- `.claude/skills/intellij-plugin-dev.md`: IntelliJ SDK patterns, operation lifecycle templates, gotchas
+- Git hooks: pre-commit (`quickCheck`), pre-push (`releaseCheck`)
+- `quickCheck` Gradle task: 7 grep-based structural checks (cancel symmetry, write gate, switch/ui boundary, raw git, i18n symmetry, allOk cancelled check, deprecated API)
+- `checkQuickCheck` Gradle task: fixture-based self-test — injects violation fixtures, verifies detection
+- Research-backed: negative constraints > positive directives, "must not" > "try to avoid", 0-50 rules shows no degradation
+- Low-load test rules: `--max-workers=2 --no-parallel` default, fan-down to 1 worker, no Kotest iteration reduction
+
+### Test Cleanup
+- 241 tests (JUnit 4 + Kotest property-based), 21 test classes
+- Removed `HistoryTest` (3 data-class-verification-only tests) and 3 weak tests from `PresetJsonTest`
+- Added `BranchSwitcherServiceTest` (23 tests): write gate, detectGen, history capping, settings persistence, gitClient caching, concurrent contracts
+- All new tests use `Proxy.newProxyInstance` for Project mock — zero mocking framework dependency
 
 ### Docs
 - README, ROADMAP, CHANGELOG synchronized to 0.6.0
