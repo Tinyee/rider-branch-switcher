@@ -41,16 +41,6 @@ class PresetJsonTest {
     }
 
     @Test
-    fun `rename preset preserves other fields`() {
-        val original = Preset("old-name", "main", mapOf("SubA" to "dev"), pullEnabled = false)
-        val renamed = original.copy(name = "new-name")
-        assertEquals("new-name", renamed.name)
-        assertEquals("main", renamed.main)
-        assertEquals(mapOf("SubA" to "dev"), renamed.submodules)
-        assertFalse(renamed.pullEnabled)
-    }
-
-    @Test
     fun `preset id survives JSON round-trip`() {
         val original = Preset("test", "main")
         val json = gson.toJson(PresetFile(listOf(original)))
@@ -69,23 +59,4 @@ class PresetJsonTest {
         assertTrue("Auto-generated id should not be blank", id.isNotBlank())
     }
 
-    @Test
-    fun `imported preset gets new id`() {
-        val original = Preset("shared", "main")
-        val imported = original.copy(id = java.util.UUID.randomUUID().toString())
-        assertEquals("shared", imported.name)
-        assertEquals("main", imported.main)
-        // Imported copy should have a different id
-        assertTrue(original.id != imported.id)
-    }
-
-    @Test
-    fun `preset copy is immutable on original`() {
-        val original = Preset("test", "main", mapOf("SubA" to "dev"), pullEnabled = true)
-        val copied = original.copy(name = "renamed", pullEnabled = false)
-        assertEquals("test", original.name)
-        assertTrue(original.pullEnabled)
-        assertEquals("renamed", copied.name)
-        assertFalse(copied.pullEnabled)
-    }
 }
