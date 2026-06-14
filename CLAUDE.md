@@ -8,7 +8,7 @@
 - **不准静默吞异常，按类型处理**：`CancellationException` 必须重新抛出。安全探针异常 → 转为 Unknown/Error 由调用方处理。best-effort UI 清理 → 可以忽略但必须注释原因。其他 → 至少 `LOG.warn`。
 - **声称完成前不准用 Gradle 缓存声称验证通过。** 开发中增量 OK。声称"没问题"时至少跑一次 `--rerun-tasks`。
 - **不准为了让测试绿而放松安全检查。** tri-state probe 初期设计成 fail-open 就为了让测试过。
-- **不准写只验证 data class 字段或语言特性的测试。** ~17 个这种测试，生产代码坏了它们照样绿。
+- **不准写只验证 data class 字段或语言特性的测试。** 已清理 6 个（HistoryTest 全文件 + PresetJsonTest 3 个），生产代码坏了它们照样绿。
 - **取消操作不准跳过回滚。** 取消了也得在新 operation 里把已改的仓库恢复。
 - **不准只修实例不修模式。** 同一类 bug 被审查抓了 5 轮。
 - **审查指出的验证缺口不准加注释承认就当修完。** 必须补一个会因该缺口而失败的测试。checkQuickCheck 被指出"无法区分规则命中与基础设施失败"，我只加了一句注释承认限制；结果 `gradlew.bat` 路径错误导致全假阳性，quickCheck 一次都没跑到。

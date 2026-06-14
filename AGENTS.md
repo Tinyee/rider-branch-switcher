@@ -6,7 +6,7 @@ Rider 插件 — 一键将主仓库和所有子模块切换到预设的分支组
 
 - **技术栈**: Kotlin 2.3, IntelliJ Platform Gradle Plugin 2.2.1, Gradle 8.13, JUnit 4 + Kotest 5.9
 - **目标**: JetBrains Rider 2026.1 (build 261)
-- **测试**: 230 tests, `./gradlew test`
+- **测试**: 241 tests, `./gradlew test`
 - **版本**: 0.6.0
 
 ## 架构
@@ -36,7 +36,7 @@ com.submodule.branchswitcher/
 
 ```bash
 git config core.hooksPath .githooks   # 首次 clone 后执行一次，启用自动检查
-./gradlew test          # 230 tests
+./gradlew test          # 241 tests
 ./gradlew buildPlugin   # → build/distributions/rider-branch-switcher-{version}.zip
 ./gradlew runIde        # 启动沙箱 Rider，插件已预装
 ./gradlew quickCheck    # <1 秒，grep 结构检查（git commit 时自动跑）
@@ -83,7 +83,7 @@ git config core.hooksPath .githooks   # 首次 clone 后执行一次，启用自
 - `isGitRepo` 增加 10s 超时。
 - 分支名校验 (`isValidBranchName`)。
 - 新增 MIT `LICENSE`、`quickCheck` + `releaseCheck` Gradle task、git pre-commit/pre-push hooks。
-- 230 tests 覆盖：真实 Git 集成、取消、rollback、derive 安全、通知决策、stash+rollback、50 子模块调用预算。
+- 241 tests 覆盖：真实 Git 集成、取消、rollback、derive 安全、通知决策、stash+rollback、50 子模块调用预算。
 
 ## 会话流程规则
 
@@ -110,7 +110,7 @@ git config core.hooksPath .githooks   # 首次 clone 后执行一次，启用自
 ### 写测试时
 
 10. **断言所有副作用，不只主结果。** 操作 stash 了文件 → 验证 stash list 为空。切换了分支 → 验证每个仓库当前分支。不完整的断言让 bug 存活。
-11. **行为覆盖优于数据结构验证。** 只测 data class 字段、`copy()`、Boolean 表达式 → 维护成本换来零回归保护。本项目有 ~17 个低价值测试待清理。
+11. **行为覆盖优于数据结构验证。** 只测 data class 字段、`copy()`、Boolean 表达式 → 维护成本换来零回归保护。本项目已有部分低价值测试被清理（HistoryTest + PresetJsonTest 3 个），剩余约 11 个待清理。
 12. **基础设施也要测。** write gate、probe 方法、通知决策逻辑最初都无测试。
 
 ### 集成时
