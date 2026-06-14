@@ -302,7 +302,7 @@ com.submodule.branchswitcher/
 |---|------|------|------|
 | 26 | Settings 页面 | 用户无法通过 File→Settings 配置超时/策略，只能在面板里改 | ✅ v0.6 |
 | 27 | 状态栏 widget | 切换后无常驻指示当前 preset，类似 Git branch widget | ⏸️ SDK 兼容性 |
-| 28 | Preset 搜索/过滤 | 20+ preset 时无搜索 | ◐ |
+| 28 | Preset 搜索/过滤 | 20+ preset 时无搜索 | ✅ v0.6 |
 | 29 | Per-preset 选项覆盖 | 某个 preset 需要特殊 dirty/fetch/pull 配置时无法覆盖全局设置 | ◐ |
 | 30 | 嵌套子模块 | `listSubmodulePaths` 只解析根 `.gitmodules`，不递归 | ◐ |
 | 31 | 无 preset 直接切换 | 想"全部切到 develop"必须建 preset | ◐ |

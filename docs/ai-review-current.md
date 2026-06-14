@@ -10,16 +10,7 @@
 
 ## Active Findings
 
-### P3-3: onNameChanged KDoc 起始符多余星号
-
-- Status: `FIXED_PENDING_REVIEW`
-- File: `src/main/kotlin/com/submodule/branchswitcher/ui/PresetEditor.kt:61`
-- Evidence: 新增注释以 `/*** Fires after ... */` 开头，而标准 KDoc 起始符为 `/**`。
-- Impact: 无运行时影响，但属于明显的代码整洁问题，可能影响 KDoc 工具识别或代码风格检查。
-- Suggested fix: 将 `/***` 改为 `/**`。
-- Required verification: `./gradlew quickCheck compileKotlin --max-workers=2 --no-parallel`
-- Resolution: `/***` → `/**`
-- Verification result: `./gradlew quickCheck compileKotlin` → BUILD SUCCESSFUL
+当前没有活跃问题。
 
 ## Verified Summary
 
@@ -27,6 +18,7 @@
 - `P3-1` reload/import O(n²) 过滤：已验证，批量操作后仅重应用一次。
 - `P3-2` 遗留临时注释：已验证，已删除。
 - `P2-2` 重命名后重新过滤：已验证，名称更新后触发过滤回调。
+- `P3-3` onNameChanged KDoc 起始符：已验证，已改为标准 `/**`。
 
 ## Maintenance
 
