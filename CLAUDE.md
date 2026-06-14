@@ -57,7 +57,7 @@
 - **看不懂的代码别删。** 如果某个安全检查、模式、守卫存在，默认它是踩过坑才加的。
 - **坏主意要拒绝。** 如果建议会破坏安全、跳过清理、增加未测试复杂度，直接说出来。当应声虫导致了 7 轮审查。
 - **想破例先问。** 问一句的成本 < 改错的成本。
-- **声称完成前跑的是完整门禁，不跑子集。** 本项目 `quickCheck` 和 `detekt` 是两个 task，只跑一个等于没跑——LongParameterList 和 unused `opts` 都是只跑 quickCheck 漏掉的。换别的项目同理：如果门禁是 lint+test，就别只跑 test 说没问题。
+- **声称完成前跑的是完整门禁，不跑子集。** 本项目 `quickCheck` 和 `detekt` 是两个 task，只跑一个等于没跑——LongParameterList 和 unused `opts` 都是只跑 quickCheck 漏掉的。换别的项目同理：如果门禁是 lint+test，就别只跑 test 说没问题。例外：纯文档/注释/重命名不碰逻辑，`quickCheck` 单独够用。
 - **代码写完后对着设计文档/需求描述逐条过。** 不看设计直接写 = 漏 UI 元素、漏交互细节、组件挂到不存在的地方。写完先自查一遍设计里列的东西，实现里全不全。
 - **审查修完一轮再修下一轮前，重读涉及的源代码。** 不能因为 R1 时读过就凭记忆在 R2 接着改。两轮之间文件已经被自己改过，记忆里的调用链、返回类型、已有基础设施都可能是过期的。per-preset 设计 R2 犯了 4 个这类错误——quickCheck 框架没读过就写 bash、`buildSummary()` 实际结构没重读就写伪代码、`needsMigration` 触发条件没追踪调用路径就写死 `pull==false`、漏 import/Loader 端到端测试因为只看纯函数层。
 
@@ -85,17 +85,21 @@
 - 完整 `test`、真实 Git 集成测试、`buildPlugin`、`verifyPlugin`、`releaseCheck` 属于重型任务，禁止并行启动，即使工具支持并行调用。
 - 广泛本地验证默认加 `--max-workers=2 --no-parallel`；用户反馈发热、风扇噪音或机器受限时改为 `--max-workers=1 --no-parallel`。
 - 不得为了降温而减少 Kotest 全局迭代次数或跳过测试；应选择目标测试或限流。
-- 声称完成前按改动范围运行相关测试的 `--rerun-tasks`；发布/推送前才运行 `releaseCheck`，并在启动前告知用户其高负载。
+- 声称完成前跑全量 `test detekt --rerun-tasks`（即 `./gradlew test detekt --rerun-tasks --max-workers=2 --no-parallel`），不只是门禁 + 相关测试。发布/推送前才运行 `releaseCheck`，并在启动前告知用户其高负载。
+- 重型测试类（SwitchIntegrationTest / GitOpsTest / LargeRepoScalabilityTest）只在全量验证或改动触及 git/GitOps/SwitchExecutor 时跑，日常迭代不跑。
 - 仅在用户希望释放资源或会话结束时运行 `./gradlew --stop`。
 
 ```bash
-# 轻量
-./gradlew quickCheck
+# 门禁（任何代码改动必跑，30s）
+./gradlew quickCheck detekt
+
+# 相关测试（逻辑改动，按改动范围选跑）
 ./gradlew test --tests "<ClassOrMethod>" --max-workers=2 --no-parallel
 
-# 广泛 / 最终 / 发布
-./gradlew test detekt --max-workers=2 --no-parallel
+# 全量（push 前 / 声称完成前）
 ./gradlew test detekt --rerun-tasks --max-workers=2 --no-parallel
+
+# 发布
 ./gradlew releaseCheck
 ```
 
