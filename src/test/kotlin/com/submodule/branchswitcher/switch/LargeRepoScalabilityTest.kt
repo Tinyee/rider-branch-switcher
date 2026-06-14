@@ -1,4 +1,6 @@
+
 package com.submodule.branchswitcher.switch
+import com.submodule.branchswitcher.executeTest
 
 import com.submodule.branchswitcher.git.GitClient
 import com.submodule.branchswitcher.git.GitResult
@@ -129,7 +131,7 @@ class LargeRepoScalabilityTest {
     fun `switch pipeline does not issue redundant git commands per repo`() {
         val git = CountingGitClient(submoduleCount)
         val submodules = (1..submoduleCount).associate { "sub-$it" to "dev" }
-        val preset = Preset("large", "dev", submodules, pullEnabled = false)
+        val preset = Preset("large", "dev", submodules)
         val log = mutableListOf<String>()
 
         val executor = SwitchExecutor(
@@ -138,7 +140,7 @@ class LargeRepoScalabilityTest {
             git,
         )
 
-        val ok = executor.execute(preset, SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = true))
+        val ok = executor.executeTest(preset, SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = true))
 
         assertTrue("Switch should succeed", ok)
 
@@ -170,7 +172,7 @@ class LargeRepoScalabilityTest {
     fun `preflight probes each repo once`() {
         val git = CountingGitClient(submoduleCount)
         val submodules = (1..submoduleCount).associate { "sub-$it" to "main" }
-        val preset = Preset("large", "main", submodules, pullEnabled = false)
+        val preset = Preset("large", "main", submodules)
 
         val preflight = SwitchPreflight(git)
 

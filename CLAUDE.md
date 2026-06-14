@@ -2,7 +2,7 @@
 
 ## 不准 — 每条都来自本项目的实际过失
 
-- **没跑 `./gradlew quickCheck` 不准说没问题。** derive 功能 7 轮审查，每轮都有 grep 能发现的低级错误。
+- **没跑 `./gradlew quickCheck detekt` 不准说没问题。** derive 功能 7 轮审查，每轮都有 grep 能发现的低级错误。
 - **在 A 处修了 bug 不准不扫 B/C/D 处。** 缺 try/catch、缺 cancel 检查、缺 operation 生命周期——同一个 bug 在 3+ 个文件里各犯了一遍。
 - **多阶段操作不准先写代码后排状态矩阵。** 7 轮审查因为状态是边做边发现的，不是提前列出来的。
 - **不准静默吞异常，按类型处理**：`CancellationException` 必须重新抛出。安全探针异常 → 转为 Unknown/Error 由调用方处理。best-effort UI 清理 → 可以忽略但必须注释原因。其他 → 至少 `LOG.warn`。
@@ -45,7 +45,7 @@
 
 ## 提交前
 
-1. `./gradlew quickCheck`（git pre-commit hook 也会自动跑）
+1. `./gradlew quickCheck detekt`（git pre-commit hook 也会自动跑）
 2. 确认每个 `TaskBridge.runBackground` 有 `beginOperation`/`onCancel`/`onFinished`/`endOperation`
 3. 确认每个 `tryStartWrite()` 有 `endWrite()` in finally
 4. 新功能：状态矩阵已填，所有格非空
@@ -79,7 +79,7 @@
 
 ## 测试资源与低负载规则
 
-- 开发迭代先运行 `./gradlew quickCheck`，再运行最相关的测试类或方法，不默认跑全量。
+- 开发迭代先运行 `./gradlew quickCheck detekt`，再运行最相关的测试类或方法，不默认跑全量。
 - 完整 `test`、真实 Git 集成测试、`buildPlugin`、`verifyPlugin`、`releaseCheck` 属于重型任务，禁止并行启动，即使工具支持并行调用。
 - 广泛本地验证默认加 `--max-workers=2 --no-parallel`；用户反馈发热、风扇噪音或机器受限时改为 `--max-workers=1 --no-parallel`。
 - 不得为了降温而减少 Kotest 全局迭代次数或跳过测试；应选择目标测试或限流。

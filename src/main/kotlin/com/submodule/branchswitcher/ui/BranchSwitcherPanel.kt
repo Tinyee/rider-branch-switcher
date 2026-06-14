@@ -233,6 +233,7 @@ class BranchSwitcherPanel(
     private fun openSettings() {
         ShowSettingsUtil.getInstance().showSettingsDialog(project, BranchSwitcherConfigurable::class.java)
         refreshStrategySummary()
+        presetManager.refreshAllGlobalLabels()
     }
 
     // ── Status bar: progress + border ──────────────────────────
@@ -380,6 +381,7 @@ class BranchSwitcherPanel(
                 pinnedEditors.forEach { editor ->
                     if (editor in eds) editor.applyCurrentState(branches, dirty)
                 }
+                presetManager.refreshAllGlobalLabels()
                 presetsInner.revalidate()
                 presetsInner.repaint()
                 logDetected(eds.toList(), branches, dirty)

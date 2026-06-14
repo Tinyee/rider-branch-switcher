@@ -1,4 +1,6 @@
+
 package com.submodule.branchswitcher.switch
+import com.submodule.branchswitcher.executeTest
 
 import com.submodule.branchswitcher.git.GitClient
 import com.submodule.branchswitcher.git.GitResult
@@ -39,7 +41,7 @@ class SwitchExecutorTest {
     }
 
     private val projectRoot = java.nio.file.Files.createTempDirectory("test-executor")
-    private val preset = Preset("test", "dev", emptyMap(), pullEnabled = false)
+    private val preset = Preset("test", "dev", emptyMap())
 
     @Before
     fun setup() {
@@ -62,7 +64,7 @@ class SwitchExecutorTest {
     @Test
     fun `switch to existing branch succeeds`() {
         val executor = SwitchExecutor(projectRoot, createStringAppender { log += it }, fakeGit)
-        val result = executor.execute(preset, SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false))
+        val result = executor.executeTest(preset, SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false))
         assertTrue("Switch should succeed", result)
         assertTrue("Checkpoint should be recorded", executor.getCheckpoint()?.isNotEmpty() ?: false)
     }
@@ -74,7 +76,7 @@ class SwitchExecutorTest {
             override fun remoteBranchExists(workDir: File, branch: String): Boolean = false
         }
         val executor = SwitchExecutor(projectRoot, createStringAppender { log += it }, missingGit)
-        val result = executor.execute(Preset("test", "no-branch", emptyMap(), pullEnabled = false),
+        val result = executor.executeTest(Preset("test", "no-branch", emptyMap()),
             SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false))
         assertFalse("Switch should fail when branch doesn't exist", result)
     }
@@ -92,7 +94,7 @@ class SwitchExecutorTest {
             }
         }
         val executor = SwitchExecutor(projectRoot, createStringAppender { log += it }, dirtyGit)
-        val result = executor.execute(preset, SwitchOptions(DirtyAction.Skip, pull = false, fetchFirst = false))
+        val result = executor.executeTest(preset, SwitchOptions(DirtyAction.Skip, pull = false, fetchFirst = false))
         assertFalse("Dirty+Skip should cause failure", result)
         assertEquals("Dirty+Skip must not checkout", 0, checkoutCalls)
     }
@@ -111,7 +113,7 @@ class SwitchExecutorTest {
         }
         val executor = SwitchExecutor(projectRoot, createStringAppender { log += it }, failingGit)
 
-        assertFalse(executor.execute(preset, SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false)))
+        assertFalse(executor.executeTest(preset, SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false)))
         assertEquals("Stash failure must not checkout", 0, checkoutCalls)
     }
 
@@ -126,7 +128,7 @@ class SwitchExecutorTest {
             }
         }
         val executor = SwitchExecutor(projectRoot, createStringAppender { log += it }, dirtyGit)
-        val result = executor.execute(preset, SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false))
+        val result = executor.executeTest(preset, SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false))
         assertTrue("Dirty+Stash should succeed", result)
         assertTrue("Stash pop should be called on checkout", popCalled.isNotEmpty())
     }
@@ -137,7 +139,7 @@ class SwitchExecutorTest {
             override fun isDirty(workDir: File): Boolean = true
         }
         val executor = SwitchExecutor(projectRoot, createStringAppender { log += it }, dirtyGit)
-        val result = executor.execute(preset, SwitchOptions(DirtyAction.Force, pull = false, fetchFirst = false))
+        val result = executor.executeTest(preset, SwitchOptions(DirtyAction.Force, pull = false, fetchFirst = false))
         assertTrue("Dirty+Force should succeed", result)
     }
 
@@ -157,10 +159,10 @@ class SwitchExecutorTest {
                 return GitResult("sync", 0, "", "")
             }
         }
-        val pullPreset = Preset("test", "dev", emptyMap(), pullEnabled = true)
+        val pullPreset = Preset("test", "dev", emptyMap())
         val executor = SwitchExecutor(projectRoot, createStringAppender { log += it }, failingGit)
 
-        assertFalse(executor.execute(pullPreset, SwitchOptions(DirtyAction.Stash, pull = true, fetchFirst = false)))
+        assertFalse(executor.executeTest(pullPreset, SwitchOptions(DirtyAction.Stash, pull = true, fetchFirst = false)))
         assertEquals("Failed checkout must not pull the old branch", 0, pullCalls)
         assertEquals("Failed main checkout must not sync submodules", 0, syncCalls)
     }
@@ -176,7 +178,7 @@ class SwitchExecutorTest {
     @Test
     fun `rollback restores branch from checkpoint`() {
         val executor = SwitchExecutor(projectRoot, createStringAppender { log += it }, fakeGit)
-        executor.execute(preset, SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false))
+        executor.executeTest(preset, SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false))
         val checkpoint = executor.getCheckpoint()
         assertNotNull("Checkpoint should exist", checkpoint)
         assertTrue("Checkpoint should contain main repo", checkpoint!!.containsKey("."))
@@ -199,7 +201,7 @@ class SwitchExecutorTest {
         }
         val executor = SwitchExecutor(projectRoot, createStringAppender { log += it }, trackGit)
         // Execute switch to dev — checkout records branch as "dev"
-        executor.execute(Preset("test", "dev", emptyMap(), pullEnabled = false),
+        executor.executeTest(Preset("test", "dev", emptyMap()),
             SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false))
         checkoutCalls.clear()
         // Now branch = "dev", checkpoint has branch = "main" (recorded before switch)
@@ -225,7 +227,7 @@ class SwitchExecutorTest {
             }
         }
         val executor = SwitchExecutor(projectRoot, createStringAppender { log += it }, rollbackGit)
-        executor.execute(preset, SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false))
+        executor.executeTest(preset, SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false))
 
         assertTrue(executor.rollback())
         assertEquals(listOf("main", "abc123"), rollbackCalls)
@@ -245,7 +247,7 @@ class SwitchExecutorTest {
             }
         }
         val executor = SwitchExecutor(projectRoot, createStringAppender { log += it }, rollbackGit)
-        executor.execute(preset, SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false))
+        executor.executeTest(preset, SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false))
 
         assertFalse(executor.rollback())
         assertTrue(log.any { it.contains("SHA checkout also failed") })
@@ -264,7 +266,7 @@ class SwitchExecutorTest {
             }
         }
         val executor = SwitchExecutor(projectRoot, createStringAppender { log += it }, detachedGit)
-        executor.execute(preset, SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false))
+        executor.executeTest(preset, SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false))
         checkoutCalls.clear()
 
         assertTrue(executor.rollback())
@@ -289,9 +291,9 @@ class SwitchExecutorTest {
                 else GitResult("checkout", 0, "", "")
             }
         }
-        val subPreset = Preset("sub-test", "dev", mapOf("SubA" to "dev", "SubB" to "dev"), pullEnabled = false)
+        val subPreset = Preset("sub-test", "dev", mapOf("SubA" to "dev", "SubB" to "dev"))
         val executor = SwitchExecutor(projectRoot, createStringAppender { log += it }, partialGit)
-        executor.execute(subPreset, SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false))
+        executor.executeTest(subPreset, SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false))
 
         assertFalse(executor.rollback())
         assertTrue(rollbackCalls.contains("SubB" to "main"))
@@ -332,7 +334,7 @@ class SwitchExecutorTest {
             steps = listOf(first, second),
         )
 
-        val result = executor.execute(preset, SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false))
+        val result = executor.executeTest(preset, SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false))
 
         assertFalse(result)
         assertEquals(listOf("first"), executed)
@@ -358,7 +360,7 @@ class SwitchExecutorTest {
             }
         }
         val executor = SwitchExecutor(projectRoot, createStringAppender { log += it }, pullGit)
-        val result = executor.execute(preset, SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false))
+        val result = executor.executeTest(preset, SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false))
         assertTrue("Switch without pull should succeed", result)
     }
 
@@ -372,7 +374,7 @@ class SwitchExecutorTest {
             }
         }
         val executor = SwitchExecutor(projectRoot, createStringAppender { log += it }, fetchGit)
-        val result = executor.execute(preset, SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false))
+        val result = executor.executeTest(preset, SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false))
         assertTrue("Switch without fetch should succeed", result)
     }
 
@@ -384,9 +386,9 @@ class SwitchExecutorTest {
         initGitRepo(File(projectRoot.toFile(), "SubA"))
         initGitRepo(File(projectRoot.toFile(), "SubB"))
 
-        val subPreset = Preset("sub-test", "dev", mapOf("SubA" to "dev", "SubB" to "feature-x"), pullEnabled = false)
+        val subPreset = Preset("sub-test", "dev", mapOf("SubA" to "dev", "SubB" to "feature-x"))
         val executor = SwitchExecutor(projectRoot, createStringAppender { log += it }, fakeGit)
-        val result = executor.execute(subPreset, SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false))
+        val result = executor.executeTest(subPreset, SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false))
         assertTrue("Switch with submodules should succeed", result)
 
         val checkpoint = executor.getCheckpoint()
@@ -423,7 +425,7 @@ class SwitchExecutorTest {
         }
         val executor = SwitchExecutor(projectRoot, createStringAppender { log += it }, skipGit)
         // Execute a switch so checkpoint is recorded
-        executor.execute(preset, SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false))
+        executor.executeTest(preset, SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false))
         // Delete the .git dir to simulate missing repo
         File(projectRoot.toFile(), ".git").deleteRecursively()
         val result = executor.rollback()
@@ -433,7 +435,7 @@ class SwitchExecutorTest {
     @Test
     fun `rollback skips when branch already matches`() {
         val executor = SwitchExecutor(projectRoot, createStringAppender { log += it }, fakeGit)
-        executor.execute(preset, SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false))
+        executor.executeTest(preset, SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false))
         // fakeGit.currentBranch returns "main", checkpoint also has "main"
         // Rollback should skip without calling checkout
         val result = executor.rollback()

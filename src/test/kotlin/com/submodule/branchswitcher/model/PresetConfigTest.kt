@@ -1,8 +1,7 @@
 package com.submodule.branchswitcher.model
 
 import org.junit.Test
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
+import org.junit.Assert.*
 
 class PresetConfigTest {
 
@@ -32,5 +31,54 @@ class PresetConfigTest {
         assertEquals(original.id, renamed.id)
         assertEquals("renamed", renamed.name)
         assertEquals("main", renamed.main)
+    }
+
+    // ── effectiveOptions ──────────────────────────────────────────
+
+    private val globalOpts = SwitchOptions(DirtyAction.Stash, pull = true, fetchFirst = true)
+
+    @Test fun `null overrides returns global unchanged`() {
+        assertEquals(globalOpts, null.effectiveOptions(globalOpts))
+    }
+
+    @Test fun `all overrides set replaces global`() {
+        val ov = PresetOverrides(dirty = DirtyAction.Force, pull = false, fetchFirst = false)
+        val result = ov.effectiveOptions(globalOpts)
+        assertEquals(DirtyAction.Force, result.dirty)
+        assertFalse(result.pull)
+        assertFalse(result.fetchFirst)
+    }
+
+    @Test fun `partial overrides merge with global`() {
+        val ov = PresetOverrides(dirty = DirtyAction.Skip)
+        val result = ov.effectiveOptions(globalOpts)
+        assertEquals(DirtyAction.Skip, result.dirty)
+        assertTrue(result.pull) // from global
+        assertTrue(result.fetchFirst) // from global
+    }
+
+    @Test fun `confirmBeforeInit always from global`() {
+        val ov = PresetOverrides(pull = false)
+        val result = ov.effectiveOptions(SwitchOptions(confirmBeforeInit = true))
+        assertTrue(result.confirmBeforeInit)
+        val result2 = ov.effectiveOptions(SwitchOptions(confirmBeforeInit = false))
+        assertFalse(result2.confirmBeforeInit)
+    }
+
+    // ── ResolvedSwitchRequest ─────────────────────────────────────
+
+    @Test fun `request resolves preset overrides over global`() {
+        val preset = Preset("test", "main", overrides = PresetOverrides(pull = false))
+        val request = ResolvedSwitchRequest.resolve(preset, globalOpts)
+        assertEquals(preset, request.preset)
+        assertFalse(request.options.pull)
+        assertEquals(globalOpts.dirty, request.options.dirty)
+    }
+
+    @Test fun `request snapshot consistent`() {
+        val preset = Preset("test", "main", overrides = PresetOverrides(dirty = DirtyAction.Force))
+        val request = ResolvedSwitchRequest.resolve(preset, globalOpts)
+        assertEquals(DirtyAction.Force, request.options.dirty)
+        assertEquals(preset, request.preset)
     }
 }

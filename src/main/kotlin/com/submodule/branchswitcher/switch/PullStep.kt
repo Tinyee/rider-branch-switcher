@@ -2,12 +2,12 @@ package com.submodule.branchswitcher.switch
 
 import java.io.File
 
-/** If global [SwitchOptions.pull] and per-preset [Preset.pullEnabled] are both enabled, pull --ff-only for each target. */
+/** If resolved [SwitchOptions.pull] is enabled, pull --ff-only for each target. */
 class PullStep : SwitchStep {
     override val name = "pull"
 
     override fun execute(context: SwitchContext): StepResult {
-        if (!context.options.pull || !context.preset.pullEnabled) {
+        if (!context.options.pull) {
             // Still pop stashes even when pull is disabled
             popStashes(context)
             return StepResult.Success

@@ -35,7 +35,8 @@ fun parsePresetImport(
     val presets = mutableListOf<Preset>()
     val invalid = mutableListOf<String>()
     val conflicts = mutableListOf<String>()
-    for (presetDto in dto.presets) {
+    for (presetDto in dto.presets.orEmpty()) {
+        if (presetDto == null) continue
         val name = presetDto.name?.trim()
         val main = presetDto.main?.trim()
         if (name.isNullOrEmpty() || main.isNullOrEmpty()) {
@@ -46,13 +47,7 @@ fun parsePresetImport(
             conflicts += name
             continue
         }
-        presets += Preset(
-            id = idGenerator(),
-            name = name,
-            main = main,
-            submodules = presetDto.submodules ?: emptyMap(),
-            pullEnabled = presetDto.pull ?: true,
-        )
+        presets += presetDto.toPreset(explicitId = idGenerator())
     }
     return PresetImportResult(presets, invalid, conflicts)
 }

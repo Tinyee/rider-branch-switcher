@@ -55,11 +55,26 @@ Use `docs/templates/design-review-checklist.md` for every substantial design.
 
 Before claiming "done," confirm:
 - [ ] `./gradlew quickCheck` passes
+- [ ] `./gradlew detekt` passes; static-gate failures are blocking findings
+- [ ] `./gradlew compileKotlin compileTestKotlin` passes
 - [ ] Every `TaskBridge.runBackground` has `beginOperation`/`onCancel`/`onFinished`/`endOperation`
 - [ ] Every `tryStartWrite()` has `endWrite()` in finally
 - [ ] New i18n keys exist in both locale files
 - [ ] New interface methods have stubs in all implementations (grep for the interface name)
 - [ ] Return paths all pass the same number of positional arguments
+- [ ] The design test plan maps to real test methods; missing tests are explicit findings
+
+## Implementation review and fix verification
+
+Use `docs/templates/implementation-review-checklist.md` after feature code is written.
+
+- Verifying a fix has two required passes: re-check the original finding, then scan for second-order regressions introduced by the fix.
+- Second-order scanning covers new parameters, state, branches, visible text, controls, API migration helpers, and test changes.
+- Run static gates during review. Compilation does not replace `detekt`, and fixing previous findings does not make new gate failures non-blocking.
+- Review UI from the user's perspective: every control must be identifiable without relying on source knowledge or positional guessing.
+- Adjacent controls with similar choices require distinct visible labels or equivalent accessible identification.
+- Reconcile every design test-plan item with an actual test method. Mark missing coverage `OPEN` or explicitly `ACCEPTED`; do not leave it as an informal note.
+- When several related callbacks or constructor parameters are added, prefer a semantic provider/config/value object over growing a long parameter list.
 
 ## Resource-aware test workflow
 
@@ -333,6 +348,7 @@ When adding to an interface, touch ALL test fakes. Submodule repos need `user.em
 - HiDPI: all sizes through `JBUI.scale()`, borders through `JBUI.Borders`
 - Theme: colors through `JBColor(light, dark)`, never hex
 - Layout: `ComponentListener` for responsive narrow/wide tool windows
+- Identifiability: adjacent controls with similar option text need distinct visible labels or accessible names; order alone is not meaning
 - Disposal: `content.setDisposer(panel)`, message bus connections with `busConnection.disconnect()`
 
 ## ToolWindow & Dialogs

@@ -147,6 +147,17 @@ class PresetListManager(
             onNameChanged = { reapplyFilter() },
             gitClient = service.gitClient,
             scope = service.scope,
+            globalLabels = GlobalOptionLabels(
+                dirty = {
+                    when (service.dirtyAction) {
+                        com.submodule.branchswitcher.model.DirtyAction.Stash -> Bundle.msg("option.dirty.stash")
+                        com.submodule.branchswitcher.model.DirtyAction.Skip -> Bundle.msg("option.dirty.skip")
+                        com.submodule.branchswitcher.model.DirtyAction.Force -> Bundle.msg("option.dirty.force")
+                    }
+                },
+                pull = { if (service.pullAfterSwitch) Bundle.msg("option.override.on") else Bundle.msg("option.override.off") },
+                fetch = { if (service.fetchFirst) Bundle.msg("option.override.on") else Bundle.msg("option.override.off") },
+            ),
         )
         editors.add(editor)
         val wrapper = CompactHeightPanel(BorderLayout()).apply {
@@ -210,7 +221,6 @@ class PresetListManager(
         val newPreset = Preset(
             name = name,
             main = name,
-            pullEnabled = true,
             submodules = template?.submodules ?: emptyMap(),
         )
         val root = gitRoot() ?: return
@@ -271,7 +281,6 @@ class PresetListManager(
                 val newPreset = Preset(
                     name = name,
                     main = mb,
-                    pullEnabled = true,
                     submodules = result.submodules,
                 )
                 addEditorRow(root, newPreset, presetsInner)
@@ -286,6 +295,10 @@ class PresetListManager(
                 onStateChanged?.invoke()
             })
         }
+    }
+
+    fun refreshAllGlobalLabels() {
+        editors.forEach { it.refreshGlobalLabels() }
     }
 
     fun openConfig() {

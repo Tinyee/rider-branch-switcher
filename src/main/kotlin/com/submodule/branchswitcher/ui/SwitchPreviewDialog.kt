@@ -7,9 +7,11 @@ import com.intellij.ui.table.JBTable
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.NamedColorUtil
 import com.submodule.branchswitcher.Bundle
+import com.submodule.branchswitcher.model.DirtyAction
 import com.submodule.branchswitcher.model.PreflightRow
-import com.submodule.branchswitcher.model.Preset
+import com.submodule.branchswitcher.model.ResolvedSwitchRequest
 import java.awt.BorderLayout
+import javax.swing.BoxLayout
 import java.awt.Component
 import java.awt.Dimension
 import java.awt.Font
@@ -24,7 +26,7 @@ import javax.swing.table.DefaultTableCellRenderer
 
 class SwitchPreviewDialog(
     project: Project,
-    preset: Preset,
+    private val request: ResolvedSwitchRequest,
     private val rows: List<PreflightRow>,
 ) : DialogWrapper(project) {
 
@@ -33,7 +35,7 @@ class SwitchPreviewDialog(
     private val accentColor get() = JBUI.CurrentTheme.Link.Foreground.ENABLED
 
     init {
-        title = "${Bundle.msg("dialog.switch.title")}「${preset.name}」"
+        title = "${Bundle.msg("dialog.switch.title")}「${request.preset.name}」"
         setOKButtonText(Bundle.msg("dialog.switch.title"))
         setCancelButtonText(Bundle.msg("dialog.cancel"))
         init()
@@ -85,11 +87,24 @@ class SwitchPreviewDialog(
         if (missingBranch > 0) parts += Bundle.msg("summary.missing.branch", missingBranch)
         if (missingDir > 0) parts += Bundle.msg("summary.missing.dir", missingDir)
 
-        val label = JLabel(parts.joinToString("  ·  ")).apply {
+        val summaryLabel = JLabel(parts.joinToString("  ·  ")).apply {
+            alignmentX = Component.LEFT_ALIGNMENT
             border = JBUI.Borders.empty(2, 4, 6, 4)
             if (missingBranch > 0 || missingDir > 0) foreground = warnColor
         }
-        return label
+
+        return JPanel().apply {
+            layout = BoxLayout(this, BoxLayout.Y_AXIS)
+            add(summaryLabel)
+            if (shouldShowForceWarning(request, rows)) {
+                add(JLabel(Bundle.msg("dialog.force.warn")).apply {
+                    alignmentX = Component.LEFT_ALIGNMENT
+                    foreground = warnColor
+                    font = font.deriveFont(Font.BOLD)
+                    border = JBUI.Borders.empty(0, 4, 6, 4)
+                })
+            }
+        }
     }
 
     private inner class PreviewTableModel(val rows: List<PreflightRow>) : AbstractTableModel() {
@@ -204,9 +219,15 @@ class SwitchPreviewDialog(
     }
 
     companion object {
-        fun showAndConfirm(project: Project, preset: Preset, rows: List<PreflightRow>): Boolean {
-            val dialog = SwitchPreviewDialog(project, preset, rows)
+        fun showAndConfirm(project: Project, request: ResolvedSwitchRequest, rows: List<PreflightRow>): Boolean {
+            val dialog = SwitchPreviewDialog(project, request, rows)
             return dialog.showAndGet()
         }
     }
 }
+
+internal fun shouldShowForceWarning(
+    request: ResolvedSwitchRequest,
+    rows: List<PreflightRow>,
+): Boolean = request.options.dirty == DirtyAction.Force
+    && rows.any { it.exists && it.dirtyCount != 0 }

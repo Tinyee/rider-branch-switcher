@@ -4,6 +4,7 @@ import com.submodule.branchswitcher.git.GitClient
 import com.submodule.branchswitcher.log.AppLogger
 import com.submodule.branchswitcher.model.Preset
 import com.submodule.branchswitcher.model.RepoTarget
+import com.submodule.branchswitcher.model.ResolvedSwitchRequest
 import com.submodule.branchswitcher.model.SwitchOptions
 import java.io.File
 import java.nio.file.Path
@@ -42,7 +43,9 @@ class SwitchExecutor(
 
     private var lastCheckpoint: Map<String, CheckpointEntry>? = null
 
-    fun execute(preset: Preset, options: SwitchOptions): Boolean {
+    fun execute(request: ResolvedSwitchRequest): Boolean {
+        val preset = request.preset
+        val options = request.options
         log.activity("=== switching to preset: ${preset.name} ===")
         val context = SwitchContext(
             projectRoot = projectRoot,

@@ -1,4 +1,6 @@
+
 package com.submodule.branchswitcher.switch
+import com.submodule.branchswitcher.executeTest
 
 import com.submodule.branchswitcher.git.GitClient
 import com.submodule.branchswitcher.git.GitOps
@@ -95,7 +97,7 @@ class SwitchIntegrationTest {
     private fun runSwitch(root: File, preset: Preset, opts: SwitchOptions): Pair<Boolean, List<String>> {
         log.clear()
         val executor = SwitchExecutor(root.toPath(), createStringAppender { log += it }, git)
-        val ok = executor.execute(preset, opts)
+        val ok = executor.executeTest(preset, opts)
         return ok to log.toList()
     }
 
@@ -153,7 +155,7 @@ class SwitchIntegrationTest {
         addSubmodule(root, subB, "SubB")
         gitOk(root, "submodule", "update", "--init", "--recursive")
 
-        val preset = Preset("multi", "main", mapOf("SubA" to "release", "SubB" to "feature"), pullEnabled = false)
+        val preset = Preset("multi", "main", mapOf("SubA" to "release", "SubB" to "feature"))
         val (ok, _) = runSwitch(root, preset, SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false))
         assertTrue("Multi-repo switch should succeed", ok)
         assertEquals("main", git.currentBranch(root))
@@ -220,7 +222,7 @@ class SwitchIntegrationTest {
         if (subDir.exists()) subDir.deleteRecursively()
         assertFalse("SubA dir should be missing before switch", subDir.exists())
 
-        val preset = Preset("init-test", "main", mapOf("SubA" to "release"), pullEnabled = false)
+        val preset = Preset("init-test", "main", mapOf("SubA" to "release"))
         val (ok, _) = runSwitch(root, preset, SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false))
         assertTrue("Switch with submodule init should succeed", ok)
         assertTrue("SubA dir should exist after init", subDir.exists())
@@ -235,7 +237,7 @@ class SwitchIntegrationTest {
         createBranch(root, "dev")
 
         val executor = SwitchExecutor(root.toPath(), createStringAppender { log += it }, git)
-        executor.execute(Preset("test", "dev"), SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false))
+        executor.executeTest(Preset("test", "dev"), SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false))
         assertEquals("dev", git.currentBranch(root))
 
         val rbOk = executor.rollback()
@@ -320,7 +322,7 @@ class SwitchIntegrationTest {
         gitOk(File(root, "B"), "checkout", "main")
         gitOk(File(root, "C"), "checkout", "main")
 
-        val preset = Preset("three-subs", "main", mapOf("A" to "v1", "B" to "v2", "C" to "v3"), pullEnabled = false)
+        val preset = Preset("three-subs", "main", mapOf("A" to "v1", "B" to "v2", "C" to "v3"))
         val (ok, _) = runSwitch(root, preset, SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false))
         assertTrue("Switch with 3 submodules should succeed", ok)
         assertEquals("v1", git.currentBranch(File(root, "A")))
@@ -337,7 +339,7 @@ class SwitchIntegrationTest {
         addSubmodule(root, subA, "SubA")
         gitOk(root, "submodule", "update", "--init", "--recursive")
 
-        val preset = Preset("missing-branch", "main", mapOf("SubA" to "no-branch"), pullEnabled = false)
+        val preset = Preset("missing-branch", "main", mapOf("SubA" to "no-branch"))
         val (ok, logs) = runSwitch(root, preset, SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false))
         assertFalse("Switch should fail when submodule branch doesn't exist", ok)
         val hasSubFail = logs.any { (it.contains("[fail]") || it.contains("[error]") || it.contains("[warn]")) && it.contains("SubA") }
@@ -354,8 +356,8 @@ class SwitchIntegrationTest {
         gitOk(root, "submodule", "update", "--init", "--recursive")
 
         val executor = SwitchExecutor(root.toPath(), createStringAppender { log += it }, git)
-        val preset = Preset("ck-test", "main", mapOf("SubA" to "main"), pullEnabled = false)
-        executor.execute(preset, SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false))
+        val preset = Preset("ck-test", "main", mapOf("SubA" to "main"))
+        executor.executeTest(preset, SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false))
 
         val checkpoint = executor.getCheckpoint()
         assertNotNull("Checkpoint should exist", checkpoint)
@@ -397,7 +399,7 @@ class SwitchIntegrationTest {
         val subDir = File(root, "SubA")
         if (subDir.exists()) subDir.deleteRecursively()
 
-        val preset = Preset("auto-init", "main", mapOf("SubA" to "main"), pullEnabled = false)
+        val preset = Preset("auto-init", "main", mapOf("SubA" to "main"))
         val (ok, _) = runSwitch(root, preset,
             SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false, confirmBeforeInit = false))
         assertTrue("Switch with auto-init should succeed", ok)
@@ -805,11 +807,11 @@ class SwitchIntegrationTest {
         File(subADir, "dirty-sub.txt").writeText("sub changes\n")
 
         // SubA has no "no-branch" target → CheckoutStep will fail on SubA
-        val preset = Preset("stash-test", "dev", mapOf("SubA" to "no-branch"), pullEnabled = false)
+        val preset = Preset("stash-test", "dev", mapOf("SubA" to "no-branch"))
         val opts = SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false)
         val executor = SwitchExecutor(root.toPath(), createStringAppender { log += it }, git)
 
-        val ok = executor.execute(preset, opts)
+        val ok = executor.executeTest(preset, opts)
         assertFalse("Switch should fail due to missing branch on SubA", ok)
 
         // Rollback
@@ -834,11 +836,11 @@ class SwitchIntegrationTest {
         createBranch(root, "dev")
         File(root, "dirty.txt").writeText("unstaged work\n")
 
-        val preset = Preset("stash-fail", "no-branch", pullEnabled = false)
+        val preset = Preset("stash-fail", "no-branch")
         val opts = SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false)
         val executor = SwitchExecutor(root.toPath(), createStringAppender { log += it }, git)
 
-        val ok = executor.execute(preset, opts)
+        val ok = executor.executeTest(preset, opts)
         assertFalse("Switch should fail", ok)
 
         val rollbackOk = executor.rollback()
@@ -856,11 +858,11 @@ class SwitchIntegrationTest {
         File(root, "dirty.txt").writeText("unstaged work\n")
 
         // Target branch doesn't exist → CheckoutStep fails → rollback needed
-        val preset = Preset("stash-rollback", "no-branch", pullEnabled = false)
+        val preset = Preset("stash-rollback", "no-branch")
         val opts = SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false)
         val executor = SwitchExecutor(root.toPath(), createStringAppender { log += it }, git)
 
-        val ok = executor.execute(preset, opts)
+        val ok = executor.executeTest(preset, opts)
         assertFalse("Switch should fail", ok)
 
         val rollbackOk = executor.rollback()
@@ -895,7 +897,7 @@ class SwitchIntegrationTest {
         File(subBDir, "subb-work.txt").writeText("subb\n")
 
         val preset = Preset("multi-stash", "dev",
-            mapOf("SubA" to "dev", "SubB" to "dev"), pullEnabled = false)
+            mapOf("SubA" to "dev", "SubB" to "dev"))
         val (ok, _) = runSwitch(root, preset,
             SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false))
         assertTrue("Multi-repo dirty+stash should succeed", ok)

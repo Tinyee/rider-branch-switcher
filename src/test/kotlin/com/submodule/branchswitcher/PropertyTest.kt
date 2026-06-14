@@ -3,6 +3,7 @@ package com.submodule.branchswitcher
 import com.google.gson.Gson
 import com.submodule.branchswitcher.model.Preset
 import com.submodule.branchswitcher.model.PresetFile
+import com.submodule.branchswitcher.model.PresetOverrides
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.property.Arb
 import io.kotest.property.arbitrary.*
@@ -26,7 +27,7 @@ class PropertyTest : StringSpec({
         ) { name, main, paths, branches, pull ->
             val size = minOf(paths.size, branches.size)
             val subs = (0 until size).associate { paths[it] to branches[it] }
-            Preset(name, main, subs.filterKeys { it.isNotEmpty() }, pull)
+            Preset(name, main, subs.filterKeys { it.isNotEmpty() }, overrides = if (pull) null else PresetOverrides(pull = false))
         }
 
         forAll(presetArb) { preset ->
@@ -36,7 +37,7 @@ class PropertyTest : StringSpec({
             p.name == preset.name &&
             p.main == preset.main &&
             p.submodules == preset.submodules &&
-            p.pullEnabled == preset.pullEnabled
+            p.overrides == preset.overrides
         }
     }
 
@@ -45,7 +46,7 @@ class PropertyTest : StringSpec({
             Arb.bind(
                 Arb.string(1..15), Arb.string(1..15), Arb.boolean()
             ) { name, main, pull ->
-                Preset(name, main, pullEnabled = pull)
+                Preset(name, main, overrides = if (pull) null else PresetOverrides(pull = false))
             },
             0..10,
         )
@@ -55,7 +56,7 @@ class PropertyTest : StringSpec({
             val restored = Gson().fromJson(json, PresetFile::class.java)
             restored.presets.size == presets.size &&
             restored.presets.zip(presets).all { (a, b) ->
-                a.name == b.name && a.main == b.main && a.pullEnabled == b.pullEnabled
+                a.name == b.name && a.main == b.main && a.overrides == b.overrides
             }
         }
     }

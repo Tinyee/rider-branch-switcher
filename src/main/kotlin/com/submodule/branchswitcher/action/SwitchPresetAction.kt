@@ -12,7 +12,8 @@ import com.submodule.branchswitcher.Notifier
 import com.submodule.branchswitcher.TaskBridge
 import com.submodule.branchswitcher.log.createStringAppender
 import com.submodule.branchswitcher.model.Preset
-import com.submodule.branchswitcher.model.SwitchOptions
+import com.submodule.branchswitcher.model.ResolvedSwitchRequest
+import com.submodule.branchswitcher.ui.shouldShowForceWarning
 import com.submodule.branchswitcher.service.BranchSwitcherService
 import com.submodule.branchswitcher.switch.SwitchExecutor
 import com.submodule.branchswitcher.switch.SwitchPreflight
@@ -68,6 +69,24 @@ class SwitchPresetAction : AnAction() {
                         indicator.isIndeterminate = true
                         val preflight = SwitchPreflight(gitClient)
                         val probeResult = preflight.probe(root, preset, indicator)
+                        val request = service.resolveSwitchRequest(preset)
+                        // Force confirmation before preflight warnings (P1-1)
+                        if (shouldShowForceWarning(request, probeResult)) {
+                            val forceConfirmed = booleanArrayOf(false)
+                            com.intellij.openapi.application.ApplicationManager.getApplication().invokeAndWait {
+                                forceConfirmed[0] = com.intellij.openapi.ui.Messages.showYesNoDialog(
+                                    project,
+                                    Bundle.msg("dialog.force.confirm.msg", preset.name),
+                                    Bundle.msg("dialog.force.confirm.title"),
+                                    com.intellij.openapi.ui.Messages.getWarningIcon(),
+                                ) == com.intellij.openapi.ui.Messages.YES
+                            }
+                            if (!forceConfirmed[0]) {
+                                logLines += "[warn] switch cancelled by user — Force dirty strategy declined"
+                                cancelled = true
+                                return@runBackground
+                            }
+                        }
                         val missingDirs = probeResult.filter { !it.exists }
                         val missingBranches = probeResult.filter { it.branchMissing }
                         // Show preflight warnings and confirm before proceeding
@@ -96,12 +115,7 @@ class SwitchPresetAction : AnAction() {
                         }
                         val collector = createStringAppender { logLines += it }
                         val executor = SwitchExecutor(root, collector, gitClient, indicator)
-                        ok = executor.execute(preset, SwitchOptions(
-                            dirty = service.dirtyAction,
-                            fetchFirst = service.fetchFirst,
-                            pull = service.pullAfterSwitch,
-                            confirmBeforeInit = service.confirmBeforeInit,
-                        ))
+                        ok = executor.execute(request)
                     },
                     onCancel = { gitClient.cancel() },
                     onFinished = { gitClient.endOperation() },

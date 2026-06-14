@@ -126,6 +126,9 @@ git config core.hooksPath .githooks   # 首次 clone 后执行一次，启用自
 18. **共享文档只保留活跃详情。** `docs/ai-review-current.md` 只详细保留 `OPEN`、`IN_PROGRESS`、`FIXED_PENDING_REVIEW` 和 `ACCEPTED`；复审结束后将 `VERIFIED` 详情压缩为一行摘要。超过 100 行时必须立即压缩。
 19. **不得只修改审查文档状态。** `FIXED_PENDING_REVIEW` 和 `VERIFIED` 必须有对应代码证据与验证命令；非阻塞建议使用 `ACCEPTED` 并写明理由。
 20. **仅重要审查需要归档。** P0/P1、跨模块设计决策或用户明确要求保留时，才将完整内容归档到 `docs/reviews/ai-review-YYYY-MM-DD.md`；普通 UI/P3 问题不归档。开始新的独立审查时覆盖当前文档的摘要和活跃问题。
+21. **实现复审必须检查二阶回归。** 逐项验证旧问题后，还要检查修复新增的参数、状态、分支、文本、控件和测试迁移；运行静态门禁并从用户视角走查 UI。使用 `docs/templates/implementation-review-checklist.md`，不能只把状态改成 `VERIFIED`。
+22. **测试计划必须逐项核销。** 声称功能完成前，将设计测试计划映射到实际测试方法；缺失项必须标为 `OPEN` 或有理由的 `ACCEPTED`，不得只写成非阻塞备注。
+23. **相似控件必须可辨识。** 相邻且选项内容相似的控件必须有独立可见标签或等价的可访问标识，不能依赖排列顺序让用户猜测含义。
 
 ## 提交前自审
 
