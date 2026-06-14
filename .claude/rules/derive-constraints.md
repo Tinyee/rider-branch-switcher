@@ -50,3 +50,12 @@ grep "return.*Result(" Executor.kt | awk -F, '{print NF}' | sort -u
 - 广泛本地验证默认加 `--max-workers=2 --no-parallel`；机器发热或风扇噪音明显时使用 `--max-workers=1 --no-parallel`。
 - 不得通过减少 Kotest 全局迭代次数或跳过测试来降低负载；选择目标测试或限流。
 - 声称完成前按改动范围运行相关测试的 `--rerun-tasks`；发布/推送前才运行 `releaseCheck`，并在启动前告知用户其高负载。
+
+## 共享审查约束
+
+- 共享审查文件固定为 `docs/ai-review-current.md`。
+- “处理共享审查问题”必须先读取该文件，修复 `OPEN` / `IN_PROGRESS` 项并记录验证，将状态改为 `FIXED_PENDING_REVIEW`。
+- “复审共享文档”必须重新核对代码和测试；确认后标记 `VERIFIED`，失败则改回 `OPEN`。
+- 不得仅修改文档状态；每个已修复项必须有代码证据和验证命令。
+- 复审结束后将 `VERIFIED` 详情压缩为一行摘要；共享文档超过 100 行时必须立即压缩，只详细保留活跃状态和 `ACCEPTED`。
+- 仅 P0/P1、跨模块设计决策或用户明确要求时归档完整审查到 `docs/reviews/ai-review-YYYY-MM-DD.md`。

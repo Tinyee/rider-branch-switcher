@@ -118,6 +118,15 @@ git config core.hooksPath .githooks   # 首次 clone 后执行一次，启用自
 13. **每个异步写路径走同一生命周期。** 门禁检查 → 开始操作 → 可取消后台任务 → 结束操作 → finally 释放门禁。本项目的具体链条：`tryStartWrite` → `beginOperation` → `runBackground(onCancel/onFinished)` → `endOperation` → `endWrite`。
 14. **文档更新是功能的一部分，不是事后补的。** 每个 feature 分支批量同步一次文档，不是每次 commit 改一遍。同一个会话里改 5 个文件 8 次 = 流程有问题。
 
+### 共享审查流程
+
+15. **“审查并写共享文档”**：审查当前改动，将可执行问题写入 `docs/ai-review-current.md`。每项必须包含状态、优先级、证据、影响、建议修复和验证方式。
+16. **“处理共享审查问题”**：先读取 `docs/ai-review-current.md`，逐项核对代码后修复 `OPEN` / `IN_PROGRESS` 项；完成后记录实际修改和验证结果，将状态改为 `FIXED_PENDING_REVIEW`。
+17. **复审不信任状态文字。** 收到“复审共享文档”时，必须重新检查对应代码和测试；确认后标记 `VERIFIED`，仍有问题则改回 `OPEN` 并写明原因。
+18. **共享文档只保留活跃详情。** `docs/ai-review-current.md` 只详细保留 `OPEN`、`IN_PROGRESS`、`FIXED_PENDING_REVIEW` 和 `ACCEPTED`；复审结束后将 `VERIFIED` 详情压缩为一行摘要。超过 100 行时必须立即压缩。
+19. **不得只修改审查文档状态。** `FIXED_PENDING_REVIEW` 和 `VERIFIED` 必须有对应代码证据与验证命令；非阻塞建议使用 `ACCEPTED` 并写明理由。
+20. **仅重要审查需要归档。** P0/P1、跨模块设计决策或用户明确要求保留时，才将完整内容归档到 `docs/reviews/ai-review-YYYY-MM-DD.md`；普通 UI/P3 问题不归档。开始新的独立审查时覆盖当前文档的摘要和活跃问题。
+
 ## 提交前自审
 
 两级：轻量（每次改动，秒级 grep）和完整（提交/推送前）。
