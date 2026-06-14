@@ -81,4 +81,5 @@ class PresetConfigTest {
         assertEquals(DirtyAction.Force, request.options.dirty)
         assertEquals(preset, request.preset)
     }
+
 }
