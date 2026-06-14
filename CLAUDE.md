@@ -37,6 +37,9 @@
 - **有迁移逻辑时，先答"迁移后旧 JSON 文件长什么样"。** `pull: false` 迁移到 `overrides.pull: false` 后顶层 `pull` 字段还在不在？`pull: true` 要不要也写回以删除旧字段？没想透这个导致 needsPullMigration 条件写窄了。
 - **引用项目已有基础设施时先 Read 它的实现。** quickCheck 是什么机制（Kotlin task + fixture 自测）没读过就写了 bash 方案。
 - **测试计划分两层：纯逻辑层（无 IDE 运行时）+ 入口接线层（Loader/import/SwitchController 实际调用）。** 纯函数测试全绿 ≠ import 路径正确带入 overrides、≠ Loader 正确触发写回。
+- **加测试是为了防回归，不是凑数。** 写每个测试前问一句"生产代码坏了这个会失败吗"。PresetOverrides 结构相等性测试——生产代码全删了它照样绿。加了还不如不加。
+- **不走轻松的路。** resolver 测试应该调 `service.resolveSwitchRequest()`，但 mock Project 麻烦就绕过去调 `ResolvedSwitchRequest.resolve()`。差一步——service 漏传字段，测试照样绿。
+- **测试沿着调用链走到终点。** 迁移测试验证了 domain model 结果，但没验证文件写回真的发生了——调用链只走了一半。
 - **区分增量复审和最终复审。** 增量复审只确认上一轮问题，不能宣告 `PASS`；最终复审必须从零执行完整模板，检查修复产生的二阶影响。
 - **交审前自己从零通读一遍设计文档。** 不能只看 diff——R5 智能引号、R9 `setItemAt` 参数顺序、R9 硬编码字符串，全是上一轮改动引入的新 bug，增量复审抓不到。
 - **伪代码统一分类为 `COMPILE_SHAPED` 或 `ILLUSTRATIVE_ONLY`。** 计划直接照抄实现的代码块必须在设计中标注；最终复审证据必须分类所有用于证明正确性的代码块。前者逐项对照真实 receiver、符号、参数顺序、返回类型、可见性和 nullability；后者不能证明入口接线正确。
