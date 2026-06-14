@@ -1,4 +1,6 @@
+
 package com.submodule.branchswitcher.log
+import com.submodule.branchswitcher.executeTest
 
 import com.submodule.branchswitcher.git.GitClient
 import com.submodule.branchswitcher.git.GitResult
@@ -120,7 +122,7 @@ class AppLoggerTest {
                     StepResult.Fatal("simulated fatal")
             })
         )
-        executor.execute(Preset("test", "dev"),
+        executor.executeTest(Preset("test", "dev"),
             SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false))
         assertTrue("Fatal should be ERROR level, got: $logCollector",
             logCollector.any { it.startsWith("[error]") && it.contains("simulated fatal") })
@@ -136,7 +138,7 @@ class AppLoggerTest {
         val executor = SwitchExecutor(projectRoot,
             createStringAppender { logCollector += it },
             branchMissingGit)
-        executor.execute(Preset("test", "no-branch"),
+        executor.executeTest(Preset("test", "no-branch"),
             SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false))
         assertTrue("Partial failure should be WARN, got: $logCollector",
             logCollector.any { it.startsWith("[warn]") && it.contains("no-branch") })
@@ -158,7 +160,7 @@ class AppLoggerTest {
                 com.submodule.branchswitcher.switch.FetchStep(),
             )
         )
-        executor.execute(Preset("test", "dev"),
+        executor.executeTest(Preset("test", "dev"),
             SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = true))
         assertTrue("Fetch failure should be WARN, got: $logCollector",
             logCollector.any { it.startsWith("[warn]") && it.contains("fetch warn") })
@@ -176,7 +178,7 @@ class AppLoggerTest {
             stashFailGit,
             steps = listOf(com.submodule.branchswitcher.switch.DirtyHandlingStep())
         )
-        executor.execute(Preset("test", "dev"),
+        executor.executeTest(Preset("test", "dev"),
             SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false))
         assertTrue("Stash failure should be WARN, got: $logCollector",
             logCollector.any { it.startsWith("[warn]") && it.contains("FAIL") })
@@ -198,7 +200,7 @@ class AppLoggerTest {
                 com.submodule.branchswitcher.switch.PullStep(),
             )
         )
-        executor.execute(Preset("test", "dev", pullEnabled = true),
+        executor.executeTest(Preset("test", "dev"),
             SwitchOptions(DirtyAction.Stash, pull = true, fetchFirst = false))
         assertTrue("Pull failure should be WARN, got: $logCollector",
             logCollector.any { it.startsWith("[warn]") && it.contains("pull failed") })
@@ -210,7 +212,7 @@ class AppLoggerTest {
         val executor = SwitchExecutor(projectRoot,
             createStringAppender { logCollector += it },
             okGit)
-        executor.execute(Preset("test", "dev"),
+        executor.executeTest(Preset("test", "dev"),
             SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false))
         assertTrue("Start should be ACTIVITY (bare)",
             logCollector.any { it.startsWith("=== switching to preset:") })
@@ -224,7 +226,7 @@ class AppLoggerTest {
         val executor = SwitchExecutor(projectRoot,
             createStringAppender { logCollector += it },
             okGit)
-        executor.execute(Preset("test", "dev"),
+        executor.executeTest(Preset("test", "dev"),
             SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false))
         logCollector.clear()
         executor.rollback()

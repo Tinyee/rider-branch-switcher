@@ -11,6 +11,7 @@ import com.submodule.branchswitcher.Notifier
 import com.submodule.branchswitcher.Bundle
 import com.submodule.branchswitcher.TaskBridge
 import com.submodule.branchswitcher.model.Preset
+import com.submodule.branchswitcher.model.ResolvedSwitchRequest
 import com.submodule.branchswitcher.model.SwitchOptions
 import com.submodule.branchswitcher.service.BranchSwitcherService
 import com.submodule.branchswitcher.switch.DeriveBranchExecutor
@@ -48,24 +49,20 @@ class SwitchController(
             }
             // Resumed on caller thread after modal closes
             invokeLaterIfProjectAlive {
-                if (SwitchPreviewDialog.showAndConfirm(project, preset, probeResult)) {
-                    executeSwitch(root, preset)
+                val request = service.resolveSwitchRequest(preset)
+                if (SwitchPreviewDialog.showAndConfirm(project, request, probeResult)) {
+                    executeSwitch(root, request)
                 }
             }
         }
     }
 
-    fun executeSwitch(root: Path, preset: Preset) {
+    fun executeSwitch(root: Path, request: ResolvedSwitchRequest) {
         if (!service.tryStartWrite()) {
             Notifier.warn(project, Bundle.msg("notify.write.busy"), Bundle.msg("notify.write.busy.msg"))
             return
         }
-        val opts = SwitchOptions(
-            dirty = service.dirtyAction,
-            pull = service.pullAfterSwitch,
-            fetchFirst = service.fetchFirst,
-            confirmBeforeInit = service.confirmBeforeInit,
-        )
+        val preset = request.preset
 
         setSwitchInProgress(true)
         service.scope.launch(Dispatchers.Default) {
@@ -108,7 +105,7 @@ class SwitchController(
                         }
                         val executor = SwitchExecutor(root, log, gitClient, wrapped)
                         rollbackExecutor = executor
-                        ok = executor.execute(preset, opts)
+                        ok = executor.execute(request)
                     },
                     onCancel = { gitClient.cancel() },
                     onFinished = { gitClient.endOperation() },

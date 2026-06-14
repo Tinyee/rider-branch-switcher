@@ -11,6 +11,8 @@ import com.submodule.branchswitcher.PresetLoader
 import com.submodule.branchswitcher.git.GitClient
 import com.submodule.branchswitcher.git.GitOps
 import com.submodule.branchswitcher.model.DirtyAction
+import com.submodule.branchswitcher.model.ResolvedSwitchRequest
+import com.submodule.branchswitcher.model.SwitchOptions
 import kotlinx.coroutines.CoroutineScope
 import com.submodule.branchswitcher.model.Preset
 import com.submodule.branchswitcher.model.PresetFile
@@ -167,6 +169,17 @@ class BranchSwitcherService(
 
     fun nextDetectGen(): Long = detectGen.incrementAndGet()
     fun getDetectGen(): Long = detectGen.get()
+    fun resolveSwitchRequest(preset: Preset): ResolvedSwitchRequest =
+        ResolvedSwitchRequest.resolve(
+            preset,
+            SwitchOptions(
+                dirty = dirtyAction,
+                pull = pullAfterSwitch,
+                fetchFirst = fetchFirst,
+                confirmBeforeInit = confirmBeforeInit,
+            ),
+        )
+
     companion object {
         fun getInstance(project: Project): BranchSwitcherService =
             project.service()

@@ -237,10 +237,10 @@ class SwitchStepTest {
         val noPullGit = object : GitClient by fakeGit {
             override fun pullFf(workDir: File, branch: String): GitResult = error("should not be called")
         }
-        val noPullPreset = Preset("test", "dev", emptyMap(), pullEnabled = false)
-        val c = context(SwitchOptions(DirtyAction.Stash, pull = true)).copy(git = noPullGit, preset = noPullPreset)
+        val noPullPreset = Preset("test", "dev", emptyMap())
+        val c = context(SwitchOptions(DirtyAction.Stash, pull = false)).copy(git = noPullGit, preset = noPullPreset)
         val step = PullStep()
-        assertTrue(step.execute(c) is StepResult.Success) // Both must be true, preset.pullEnabled is false -> skip
+        assertTrue(step.execute(c) is StepResult.Success) // options.pull = false -> skip
     }
 
     @Test
@@ -253,7 +253,7 @@ class SwitchStepTest {
                 return GitResult("pull", 0, "", "")
             }
         }
-        val pullPreset = Preset("test", "dev", emptyMap(), pullEnabled = true)
+        val pullPreset = Preset("test", "dev", emptyMap())
         val c = context(SwitchOptions(DirtyAction.Stash, pull = true)).copy(git = pullGit, preset = pullPreset)
         c.successfulCheckouts.add(".")
         val step = PullStep()
@@ -271,7 +271,7 @@ class SwitchStepTest {
                 return GitResult("pull", 0, "", "")
             }
         }
-        val pullPreset = Preset("test", "dev", emptyMap(), pullEnabled = true)
+        val pullPreset = Preset("test", "dev", emptyMap())
         val c = context(SwitchOptions(DirtyAction.Stash, pull = true)).copy(git = pullGit, preset = pullPreset)
 
         assertTrue(PullStep().execute(c) is StepResult.Success)

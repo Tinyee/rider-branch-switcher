@@ -2,6 +2,7 @@ package com.submodule.branchswitcher
 
 import com.submodule.branchswitcher.model.Preset
 import com.submodule.branchswitcher.model.PresetFile
+import com.submodule.branchswitcher.model.PresetOverrides
 import org.junit.After
 import org.junit.Assert.*
 import org.junit.Before
@@ -132,7 +133,7 @@ class PresetLoaderTest {
         assertEquals(1, parsed.presets.size)
         assertEquals("dev", parsed.presets[0].name)
         assertEquals("dev", parsed.presets[0].main)
-        assertTrue(parsed.presets[0].pullEnabled)
+        assertTrue(parsed.presets[0].overrides?.pull ?: true)
     }
 
     @Test
@@ -147,7 +148,7 @@ class PresetLoaderTest {
         assertTrue(result.isSuccess)
         val preset = result.getOrThrow().second.presets.single()
         assertTrue(preset.submodules.isEmpty())
-        assertTrue(preset.pullEnabled)
+        assertTrue(preset.overrides?.pull ?: true)
     }
 
     @Test
@@ -276,8 +277,8 @@ class PresetLoaderTest {
     @Test
     fun `save and load round-trip preserves data`() {
         val original = PresetFile(listOf(
-            Preset("a", "main", mapOf("SubA" to "dev"), pullEnabled = false),
-            Preset("b", "dev", mapOf("SubA" to "main", "SubB" to "feature"), pullEnabled = true),
+            Preset("a", "main", mapOf("SubA" to "dev"), overrides = PresetOverrides(pull = false)),
+            Preset("b", "dev", mapOf("SubA" to "main", "SubB" to "feature"), overrides = PresetOverrides(pull = true)),
         ))
         val file = PresetLoader.ensureFile(tmpDir)
         PresetLoader.save(file, original)
@@ -288,10 +289,10 @@ class PresetLoaderTest {
         assertEquals(2, restored.presets.size)
         assertEquals("a", restored.presets[0].name)
         assertEquals(mapOf("SubA" to "dev"), restored.presets[0].submodules)
-        assertFalse(restored.presets[0].pullEnabled)
+        assertFalse(restored.presets[0].overrides?.pull ?: true)
         assertEquals("b", restored.presets[1].name)
         assertEquals(2, restored.presets[1].submodules.size)
-        assertTrue(restored.presets[1].pullEnabled)
+        assertTrue(restored.presets[1].overrides?.pull ?: true)
     }
 
     @Test
