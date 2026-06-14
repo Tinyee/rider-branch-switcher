@@ -81,7 +81,7 @@
 |---|---|---|
 | P0 | GitOps 60s 超时:子模块多/网络慢会卡 UI。需要可配置 + 真异步(目前 Thread + invokeLater,够用但不可中断) | ✅ v0.3 |
 | P1 | **单元测试**:GitOps / SwitchExecutor 都没有。mock GitOps 跑 SwitchExecutor 至少覆盖「主仓成功子模块失败」的 case | ✅ 241 用例, mock GitClient, cmd 可跑 |
-| P2 | **i18n**:目前中英混杂,要么全中要么走 `Bundle.message()` | ⚡ Strings.kt 68 常量, UI 按钮/标签已接入 |
+| P2 | **i18n** | ✅ Strings.kt → Bundle.message() 接入完毕，@PropertyKey 编译时校验，中英 properties 各 ~135 key |
 | P2 | **git worktree 兼容**:副工作树会失败,需要友好提示 | ✅ v0.5 检测 .git 文件并输出提示 |
 
 ## v0.2 已交付（按合入顺序）
@@ -322,7 +322,7 @@ com.submodule.branchswitcher/
 | M2 | CI 加 `verifyPlugin` | 低 | 自动检测二进制不兼容和 `@ApiStatus.Internal` 使用 | ✅ v0.6 |
 | M3 | 修复 `<vendor>` 信息 | 极低 | 改为真实 vendor（url + email），否则审核不通过 | ✅ v0.6 |
 | M4 | 加 Exception Analyzer | 极低 | `plugin.xml` 加一行 `<errorHandler>`，崩溃自动上报 Marketplace | ✅ v0.6 |
-| M5 | 插件图标 | 低 | 40×40 SVG，不模仿 JetBrains 产品 logo | ◐ |
+| M5 | 插件图标 | 低 | 40×40 SVG，不模仿 JetBrains 产品 logo | ✅ v0.6 |
 | M6 | 英文描述 + 截图 | 中 | 1280×800 (16:10)，不带设备边框 | ◐ |
 | M7 | CI 加 Qodana/InspectCode | 低 | 静态分析在每次 push 自动跑 | ✅ v0.6 |
 
