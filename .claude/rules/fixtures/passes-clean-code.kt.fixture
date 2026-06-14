@@ -1,0 +1,7 @@
+package com.submodule.branchswitcher
+
+// This file deliberately violates NO quickCheck rules.
+// checkQuickCheck should verify it does NOT get flagged (tests against false positives).
+class CleanUtility {
+    fun greet() = "hello"
+}

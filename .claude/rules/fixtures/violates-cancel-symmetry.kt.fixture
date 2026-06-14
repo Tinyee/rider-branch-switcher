@@ -1,0 +1,8 @@
+// FIXTURE: deliberately missing onCancel/onFinished/endOperation
+// Verifies quickCheck rule 1: per-file lifecycle complete
+import com.submodule.branchswitcher.TaskBridge
+
+fun brokenCancelSymmetry() {
+    // Missing: beginOperation, onCancel, onFinished, endOperation
+    TaskBridge.runBackground(null, "broken", true, block = { })
+}

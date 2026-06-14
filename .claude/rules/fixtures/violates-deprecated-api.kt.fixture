@@ -1,0 +1,6 @@
+package com.submodule.branchswitcher
+
+// This file deliberately uses a deprecated API pattern.
+// QuickCheck rule 7 should catch: ServiceLevel.PROJECT is deprecated.
+@com.intellij.openapi.components.Service(com.intellij.openapi.components.ServiceLevel.PROJECT)
+class BrokenService

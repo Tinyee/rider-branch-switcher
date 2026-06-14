@@ -1,0 +1,13 @@
+package com.submodule.branchswitcher
+
+import java.util.concurrent.atomic.AtomicBoolean
+
+class BrokenWriteGate {
+    private val gate = AtomicBoolean(false)
+    fun tryStartWrite() = gate.compareAndSet(false, true)
+
+    fun doWork() {
+        tryStartWrite()
+        // no cleanup call present
+    }
+}

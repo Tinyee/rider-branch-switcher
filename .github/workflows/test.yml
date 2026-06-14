@@ -39,6 +39,12 @@ jobs:
       - name: Static analysis (detekt)
         run: ./gradlew detekt
 
+      - name: Quick structural checks
+        run: ./gradlew quickCheck
+
+      - name: Verify structural checks catch violations
+        run: ./gradlew checkQuickCheck
+
       - name: Verify plugin compatibility
         run: ./gradlew verifyPlugin
 

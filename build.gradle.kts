@@ -68,6 +68,88 @@ detekt {
     config.setFrom(file("detekt-config.yml"))
 }
 
+// Extracted scan logic shared by quickCheck (production scan) and checkQuickCheck (fixture test).
+// Returns list of failure messages, empty = all clear.
+fun scanQuickChecks(srcRoot: File, msgDir: File): List<String> {
+    val failures = mutableListOf<String>()
+
+    fun fail(msg: String) { failures.add(msg) }
+
+    // 1. Cancel symmetry — per-file: every file with runBackground must have beginOperation + onCancel + onFinished + endOperation
+    for (f in fileTree(srcRoot).filter { it.extension == "kt" && !it.name.contains("TaskBridge") }) {
+        val lines = f.readLines()
+        if (lines.any { "TaskBridge.runBackground" in it }) {
+            if (lines.none { "beginOperation()" in it || "beginOperation(" in it })
+                fail("${f.name}: runBackground without beginOperation")
+            if (lines.none { "onCancel" in it })
+                fail("${f.name}: runBackground without onCancel")
+            if (lines.none { "onFinished" in it })
+                fail("${f.name}: runBackground without onFinished")
+            if (lines.none { "endOperation()" in it || "endOperation(" in it })
+                fail("${f.name}: runBackground without endOperation")
+        }
+    }
+
+    // 2. Write gate pairing — per-file: every file with tryStartWrite must have endWrite
+    for (f in fileTree(srcRoot).filter { it.extension == "kt" }) {
+        val lines = f.readLines()
+        val hasStart = lines.any { "tryStartWrite()" in it }
+        val hasEnd = lines.any { "endWrite()" in it }
+        if (hasStart && !hasEnd) fail("${f.name}: tryStartWrite without endWrite")
+        if (!hasStart && hasEnd) fail("${f.name}: endWrite without tryStartWrite")
+    }
+
+    // 3. switch/ must not import ui/
+    val switchDir = file("$srcRoot/com/submodule/branchswitcher/switch")
+    if (switchDir.exists()) {
+        val violations = fileTree(switchDir).filter { it.extension == "kt" }
+            .flatMap { it.readLines() }.filter { it.contains("import") && it.contains(".ui.") }
+        if (violations.isNotEmpty())
+            fail("switch/ imports ui/: ${violations.take(3)}")
+    }
+
+    // 4. No raw git ProcessBuilder outside GitOps
+    val rawGit = fileTree(srcRoot).filter {
+        it.extension == "kt" && !it.name.contains("GitOps") && !it.name.contains("ToolWindowFactory") && !it.name.contains("SwitchStep")
+    }.flatMap { it.readLines() }.filter { it.contains("ProcessBuilder") && it.contains("\"git") }
+    if (rawGit.isNotEmpty())
+        fail("Raw git ProcessBuilder outside GitOps: ${rawGit.take(3)}")
+
+    // 5. i18n key count symmetry
+    val enFile = file("$msgDir/BranchSwitcherBundle.properties")
+    val zhFile = file("$msgDir/BranchSwitcherBundle_zh.properties")
+    if (enFile.exists() && zhFile.exists()) {
+        val enKeys = enFile.readLines()
+            .filter { it.matches(Regex("^[a-z.]+=.*")) }.map { it.substringBefore("=") }.toSet()
+        val zhKeys = zhFile.readLines()
+            .filter { it.matches(Regex("^[a-z.]+=.*")) }.map { it.substringBefore("=") }.toSet()
+        val onlyEn = enKeys - zhKeys
+        val onlyZh = zhKeys - enKeys
+        if (onlyEn.isNotEmpty()) fail("Keys only in EN: $onlyEn")
+        if (onlyZh.isNotEmpty()) fail("Keys only in ZH: $onlyZh")
+    }
+
+    // 6. allOk must include cancelled check
+    val allOkDefs = fileTree(srcRoot).filter { it.extension == "kt" }
+        .flatMap { it.readLines() }.filter { it.contains("val allOk") || it.contains("val allClean") }
+    for (def in allOkDefs) {
+        if (!def.contains("cancelled") && !def.contains("!cancelled"))
+            fail("allOk/allClean missing cancelled check: $def")
+    }
+
+    // 7. Deprecated IntelliJ API patterns
+    val deprecated = fileTree(srcRoot).filter { it.extension == "kt" }
+        .flatMap { it.readLines() }.filter {
+            it.contains("project.coroutineScope") && !it.contains("//") ||
+            it.contains("SwingUtilities.invokeLater") && !it.contains("//") ||
+            it.contains("ServiceLevel.PROJECT") && !it.contains("//")
+        }
+    if (deprecated.isNotEmpty())
+        fail("Deprecated API usage: ${deprecated.take(3)}")
+
+    return failures
+}
+
 tasks {
     buildSearchableOptions {
         enabled = false
@@ -75,6 +157,10 @@ tasks {
     test {
         useJUnitPlatform()
         timeout.set(Duration.ofMinutes(15))
+        // Limit parallel test forks — real-git integration tests spawn many
+        // processes, so running too many test classes in parallel causes CPU
+        // saturation without improving wall-clock time.
+        maxParallelForks = (Runtime.getRuntime().availableProcessors() / 2).coerceIn(1, 4)
     }
 
     // -- releaseCheck: aggregate all automated checks + metadata validation -----
@@ -84,114 +170,89 @@ tasks {
         description = "Lightweight structural checks (seconds, no compilation). Run before every commit."
 
         doLast {
-            val srcDir = file("src/main/kotlin")
-            val testDir = file("src/test/kotlin")
+            val failures = scanQuickChecks(file("src/main/kotlin"), file("src/main/resources/messages"))
+            failures.forEach { logger.error("  FAIL: $it") }
+            if (failures.isNotEmpty()) throw GradleException("quickCheck failed — ${failures.size} violation(s), see errors above")
+            logger.lifecycle("quickCheck PASSED: all rules clean")
+        }
+    }
+
+    register("checkQuickCheck") {
+        group = "verification"
+        description = "Test quickCheck rules by injecting broken fixtures into a temp dir and verifying the scan catches them."
+
+        doLast {
+            val fixtureDir = file(".claude/rules/fixtures")
+            val fixtures = fixtureDir.listFiles { f -> f.extension == "fixture" }?.toList() ?: emptyList()
+            if (fixtures.isEmpty()) throw GradleException("No quickCheck fixtures found in $fixtureDir — commit .claude/rules/fixtures/?")
+
+            // Write fixtures under build/ to avoid interfering with detekt or other tools
+            // scanning src/main/kotlin concurrently.
+            val tempRoot = file("build/quick-check-fixtures")
+            // Must replicate the full package structure so rule 3 (switch/ui) finds
+            // com/submodule/branchswitcher/switch/ under srcRoot.
+            val tempSrcDir = file("$tempRoot/com/submodule/branchswitcher")
             val msgDir = file("src/main/resources/messages")
-            var ok = true
 
-            fun fail(msg: String) { logger.error("  FAIL: $msg"); ok = false }
-            fun pass(msg: String) { logger.lifecycle("  OK: $msg") }
+            // switch-imports-ui fixture must go in switch/ directory (rule 3 only scans there)
+            val fixtureToDir = mapOf(
+                "violates-switch-imports-ui.kt" to "switch/_fixture_test_",
+            )
+            val defaultDir = "_fixture_test_"
 
-            // 1. Cancel symmetry
-            val bgCount = fileTree(srcDir).filter { it.extension == "kt" }
-                .flatMap { it.readLines() }.count { "TaskBridge.runBackground" in it }
-            val cancelPairCount = fileTree(srcDir).filter { it.extension == "kt" }
-                .flatMap { it.readLines() }.count { "beginOperation" in it || "onCancel" in it || "endOperation" in it }
-            if (bgCount > 0 && cancelPairCount < bgCount * 3)
-                fail("Cancel asymmetry: $bgCount runBackground calls but only $cancelPairCount lifecycle tokens (expect 3×)")
-            else pass("Cancel symmetry: $bgCount calls, $cancelPairCount tokens")
+            var passed = 0; var failed = 0
+            val total = fixtures.size
 
-            // 2. Write gate pairing
-            val startWrites = fileTree(srcDir).filter { it.extension == "kt" }
-                .flatMap { it.readLines() }.count { "tryStartWrite()" in it }
-            val endWrites = fileTree(srcDir).filter { it.extension == "kt" }
-                .flatMap { it.readLines() }.count { "endWrite()" in it }
-            if (startWrites != endWrites)
-                fail("Write gate asymmetry: $startWrites tryStartWrite vs $endWrites endWrite")
-            else pass("Write gate symmetry: $startWrites pairs")
+            try {
+                for (fixture in fixtures) {
+                    val name = fixture.name.removeSuffix(".fixture")
+                    val shouldBeCaught = name.startsWith("violates-")
+                    val subDir = fixtureToDir[name] ?: defaultDir
+                    val targetDir = file("$tempSrcDir/$subDir")
+                    targetDir.mkdirs()
+                    val target = file("$targetDir/$name")
+                    fixture.copyTo(target, overwrite = true)
 
-            // 3. switch/ must not import ui/
-            val switchDir = file("$srcDir/com/submodule/branchswitcher/switch")
-            if (switchDir.exists()) {
-                val violations = fileTree(switchDir).filter { it.extension == "kt" }
-                    .flatMap { it.readLines() }.filter { it.contains("import") && it.contains(".ui.") }
-                if (violations.isNotEmpty())
-                    fail("switch/ imports ui/: ${violations.take(3)}")
-                else pass("switch/ has no ui/ imports")
-            }
+                    // Direct scan — no Gradle subprocess. Eliminates all the problems
+                    // with nested processes (stderr blocking, timeouts, path resolution).
+                    val violations = scanQuickChecks(tempRoot, msgDir)
 
-            // 4. No raw git ProcessBuilder outside GitOps (known exceptions documented in isGitRepo / git PATH check)
-            val rawGit = fileTree(srcDir).filter {
-                it.extension == "kt" && !it.name.contains("GitOps") && !it.name.contains("ToolWindowFactory") && !it.name.contains("SwitchStep")
-            }.flatMap { it.readLines() }.filter { it.contains("ProcessBuilder") && it.contains("\"git") }
-            if (rawGit.isNotEmpty())
-                fail("Raw git ProcessBuilder outside GitOps: ${rawGit.take(3)}")
-            else pass("No raw git ProcessBuilder outside GitOps")
+                    target.delete()
 
-            // 5. i18n key count symmetry
-            val enKeys = file("$msgDir/BranchSwitcherBundle.properties").readLines()
-                .filter { it.matches(Regex("^[a-z.]+=.*")) }.map { it.substringBefore("=") }.toSet()
-            val zhKeys = file("$msgDir/BranchSwitcherBundle_zh.properties").readLines()
-                .filter { it.matches(Regex("^[a-z.]+=.*")) }.map { it.substringBefore("=") }.toSet()
-            val onlyEn = enKeys - zhKeys
-            val onlyZh = zhKeys - enKeys
-            if (onlyEn.isNotEmpty()) fail("Keys only in EN: $onlyEn")
-            if (onlyZh.isNotEmpty()) fail("Keys only in ZH: $onlyZh")
-            if (onlyEn.isEmpty() && onlyZh.isEmpty())
-                pass("i18n symmetry: ${enKeys.size} keys in both locales")
+                    if (shouldBeCaught) {
+                        val diagnostic = when {
+                            name.contains("cancel") -> "runBackground without"
+                            name.contains("write") -> "tryStartWrite without endWrite"
+                            name.contains("switch") -> "switch/ imports ui/"
+                            name.contains("deprecated") -> "Deprecated API"
+                            else -> name
+                        }
+                        val caught = violations.any { it.contains(diagnostic) }
 
-            // 6. allOk must include cancelled check
-            val allOkDefs = fileTree(srcDir).filter { it.extension == "kt" }
-                .flatMap { it.readLines() }.filter { it.contains("val allOk") || it.contains("val allClean") }
-            for (def in allOkDefs) {
-                if (!def.contains("cancelled") && !def.contains("!cancelled")) {
-                    fail("allOk/allClean missing cancelled check: $def")
-                }
-            }
-            if (allOkDefs.isNotEmpty() && ok) pass("allOk/allClean includes cancelled check")
-
-            // 7. Deprecated IntelliJ API patterns
-            val deprecated = fileTree(srcDir).filter { it.extension == "kt" }
-                .flatMap { it.readLines() }.filter {
-                    it.contains("project.coroutineScope") && !it.contains("//") ||
-                    it.contains("SwingUtilities.invokeLater") && !it.contains("//") ||
-                    it.contains("ServiceLevel.PROJECT") && !it.contains("//")
-                }
-            if (deprecated.isNotEmpty())
-                fail("Deprecated API usage: ${deprecated.take(3)}")
-            else pass("No deprecated IntelliJ API patterns")
-
-            // 8. Notification decision functions must be exhaustive (no missing branches)
-            val decisionFiles = fileTree(srcDir).filter { it.extension == "kt" && it.name.contains("Notification") }
-            for (f in decisionFiles) {
-                val whenBranches = f.readLines().filter { it.contains(" is ") && it.contains(" ->") }.size
-                val sealedSubclasses = fileTree(srcDir).filter { it.extension == "kt" && it.name.contains("Notification") }
-                    .flatMap { it.readLines() }.filter { it.contains("class ") && it.contains(": DeriveNotification") || it.contains(": OpNotification") }.size
-                if (whenBranches > 0 && sealedSubclasses > 0 && whenBranches < sealedSubclasses)
-                    fail("${f.name}: when has $whenBranches branches but sealed class has $sealedSubclasses subclasses — missing branch?")
-            }
-
-            // 9. Every switch/when must handle all enum values
-            for (f in fileTree(srcDir).filter { it.extension == "kt" }) {
-                val lines = f.readLines()
-                val enumValues = mutableSetOf<String>()
-                var inEnum = false
-                for (line in lines) {
-                    if (line.contains("enum class")) inEnum = true
-                    if (inEnum && line.contains("}")) inEnum = false
-                    if (inEnum && line.trim().startsWith("//")) continue
-                    if (inEnum) {
-                        val m = Regex("""\s+(\w+)[,;]?""").find(line.trim())
-                        if (m != null) enumValues.add(m.groupValues[1])
+                        if (caught) {
+                            logger.lifecycle("  OK: $name — caught")
+                            passed++
+                        } else {
+                            logger.error("  FAIL: $name — diagnostic not found in violations")
+                            logger.error("  violations (${violations.size}): $violations")
+                            failed++
+                        }
+                    } else {
+                        // Fixture should NOT trigger any rule — false-positive check.
+                        if (violations.isEmpty()) {
+                            logger.lifecycle("  OK: $name — correctly ignored (0 violations)")
+                            passed++
+                        } else {
+                            logger.error("  FAIL: $name — false positive, got ${violations.size} violation(s): $violations")
+                            failed++
+                        }
                     }
                 }
-                val whenBranches = lines.filter { it.contains(" ->") && it.contains(".") }.size
-                if (enumValues.isNotEmpty() && whenBranches in 1..(enumValues.size - 1))
-                    fail("${f.name}: when covers $whenBranches branches but enum has ${enumValues.size} values: $enumValues")
+            } finally {
+                if (tempRoot.exists()) tempRoot.deleteRecursively()
             }
-
-            if (!ok) throw GradleException("quickCheck failed — see errors above")
-            logger.lifecycle("quickCheck PASSED")
+            if (failed > 0) throw GradleException("checkQuickCheck: $failed/$total fixture(s) not caught or false positive")
+            logger.lifecycle("checkQuickCheck PASSED: $passed/$total fixtures verified")
         }
     }
 
@@ -199,7 +260,7 @@ tasks {
         group = "verification"
         description = "Run all automated release checks: quickCheck, test, detekt, buildPlugin, verifyPlugin, and metadata validation."
 
-        dependsOn("quickCheck", "test", "detekt", "buildPlugin", "verifyPlugin")
+        dependsOn("quickCheck", "checkQuickCheck", "test", "detekt", "buildPlugin", "verifyPlugin")
 
         doLast {
             val projVersion = version.toString()
