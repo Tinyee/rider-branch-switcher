@@ -10,14 +10,14 @@ class PresetJsonTest {
 
     @Test
     fun `round-trip export import single preset`() {
-        val original = PresetFile(listOf(Preset("dev", "dev", mapOf("SubA" to "dev"), pullEnabled = false)))
+        val original = PresetFile(listOf(Preset("dev", "dev", mapOf("SubA" to "dev"), overrides = PresetOverrides(pull = false))))
         val json = gson.toJson(original)
         val restored = gson.fromJson(json, PresetFile::class.java)
         assertEquals(1, restored.presets.size)
         assertEquals("dev", restored.presets[0].name)
         assertEquals("dev", restored.presets[0].main)
         assertEquals(mapOf("SubA" to "dev"), restored.presets[0].submodules)
-        assertFalse(restored.presets[0].pullEnabled)
+        assertFalse(restored.presets[0].overrides?.pull ?: true)
     }
 
     @Test

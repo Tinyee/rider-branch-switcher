@@ -80,7 +80,7 @@ object PresetLoader {
     private fun normalizePresetIds(dto: PresetFileDto): Pair<PresetFile, Boolean> {
         val usedIds = mutableSetOf<String>()
         var changed = false
-        val presets = dto.presets.map { presetDto ->
+        val presets = dto.presets.orEmpty().filterNotNull().map { presetDto ->
             val existingId = presetDto.id?.takeIf { it.isNotBlank() }
             val id = if (existingId != null && usedIds.add(existingId)) {
                 existingId
@@ -88,13 +88,8 @@ object PresetLoader {
                 changed = true
                 generateUniqueId(usedIds)
             }
-            Preset(
-                id = id,
-                name = presetDto.name ?: error("preset.name is required"),
-                main = presetDto.main ?: error("preset.main is required"),
-                submodules = presetDto.submodules ?: emptyMap(),
-                pullEnabled = presetDto.pull ?: true,
-            )
+            if (presetDto.needsPullMigration) changed = true
+            presetDto.toPreset(explicitId = id)
         }
         return PresetFile(presets) to changed
     }
