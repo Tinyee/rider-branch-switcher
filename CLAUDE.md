@@ -57,9 +57,8 @@
 - **看不懂的代码别删。** 如果某个安全检查、模式、守卫存在，默认它是踩过坑才加的。
 - **坏主意要拒绝。** 如果建议会破坏安全、跳过清理、增加未测试复杂度，直接说出来。当应声虫导致了 7 轮审查。
 - **想破例先问。** 问一句的成本 < 改错的成本。
-- **改完跑 `./gradlew quickCheck detekt`，不是只跑 quickCheck。** 项目门禁是两个，差一个等于没跑。per-preset 第一版 LongParameterList 和 unused `opts` 都是只跑了 quickCheck 漏掉的。
-- **UI 代码写完对照设计图逐项核对。** `makeOverrideRow` 漏了三个 label、toggle 挂到不存在的 panel，全是因为写完没回头看一眼设计文档的布局。
-- **修 bug 后扫一遍相邻代码。** 给 combo 加了 label → 改 toggle 时只改了 combo 的 visible，忘了 label。删 `@Suppress` 没先跑 detekt。修一个点，周围一起看。
+- **声称完成前跑的是完整门禁，不跑子集。** 本项目 `quickCheck` 和 `detekt` 是两个 task，只跑一个等于没跑——LongParameterList 和 unused `opts` 都是只跑 quickCheck 漏掉的。换别的项目同理：如果门禁是 lint+test，就别只跑 test 说没问题。
+- **代码写完后对着设计文档/需求描述逐条过。** 不看设计直接写 = 漏 UI 元素、漏交互细节、组件挂到不存在的地方。写完先自查一遍设计里列的东西，实现里全不全。
 - **审查修完一轮再修下一轮前，重读涉及的源代码。** 不能因为 R1 时读过就凭记忆在 R2 接着改。两轮之间文件已经被自己改过，记忆里的调用链、返回类型、已有基础设施都可能是过期的。per-preset 设计 R2 犯了 4 个这类错误——quickCheck 框架没读过就写 bash、`buildSummary()` 实际结构没重读就写伪代码、`needsMigration` 触发条件没追踪调用路径就写死 `pull==false`、漏 import/Loader 端到端测试因为只看纯函数层。
 
 ## 共享审查流程
