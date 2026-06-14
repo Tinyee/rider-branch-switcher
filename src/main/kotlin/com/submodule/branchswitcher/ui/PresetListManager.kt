@@ -5,6 +5,7 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.InputValidator
 import com.intellij.openapi.ui.Messages
 import com.intellij.ui.JBColor
+import com.intellij.ui.components.JBTextField
 import com.intellij.util.ui.JBUI
 import com.submodule.branchswitcher.Notifier
 import com.submodule.branchswitcher.PresetLoader
@@ -17,6 +18,8 @@ import kotlinx.coroutines.launch
 import java.awt.BorderLayout
 import java.awt.FlowLayout
 import java.awt.Font
+import java.awt.event.KeyAdapter
+import java.awt.event.KeyEvent
 import java.io.File
 import java.nio.file.Path
 import javax.swing.Box
@@ -25,6 +28,8 @@ import javax.swing.JButton
 import javax.swing.JLabel
 import javax.swing.JPanel
 import javax.swing.SwingUtilities
+import javax.swing.event.DocumentEvent
+import javax.swing.event.DocumentListener
 
 /**
  * Manages the preset list: loading, saving, CRUD, import/export.
@@ -42,6 +47,58 @@ class PresetListManager(
     val editors = mutableListOf<PresetEditor>()
     private var emptyStatePanel: JPanel? = null
     var onStateChanged: (() -> Unit)? = null
+
+    // ── Search / filter ────────────────────────────────────────────
+    private val searchField = JBTextField().apply {
+        putClientProperty("JTextField.placeholderText", Bundle.msg("label.search.presets"))
+        document.addDocumentListener(object : DocumentListener {
+            override fun insertUpdate(e: DocumentEvent) { applyFilter() }
+            override fun removeUpdate(e: DocumentEvent) { applyFilter() }
+            override fun changedUpdate(e: DocumentEvent) { applyFilter() }
+        })
+        addKeyListener(object : KeyAdapter() {
+            override fun keyPressed(e: KeyEvent) {
+                if (e.keyCode == KeyEvent.VK_ESCAPE) { text = "" }
+            }
+        })
+    }
+
+    private val clearButton = jButton(icon = AllIcons.Actions.Close) {
+        toolTipText = Bundle.msg("label.clear")
+        preferredSize = java.awt.Dimension(JBUI.scale(22), JBUI.scale(22))
+        isVisible = false
+        addActionListener {
+            searchField.text = ""
+        }
+    }
+
+    fun createSearchRow(): JPanel {
+        return JPanel(BorderLayout()).apply {
+            isOpaque = false
+            add(searchField, BorderLayout.CENTER)
+            add(clearButton, BorderLayout.EAST)
+            maximumSize = java.awt.Dimension(Int.MAX_VALUE, searchField.preferredSize.height + JBUI.scale(4))
+        }
+    }
+
+    private fun applyFilter() {
+        val query = searchField.text.trim().lowercase()
+        clearButton.isVisible = query.isNotEmpty()
+        for (editor in editors) {
+            val match = query.isEmpty() || editor.currentPreset().name.lowercase().contains(query)
+            val wrapper = editor.parent
+            if (wrapper != null) {
+                wrapper.isVisible = match
+            }
+        }
+        searchField.rootPane?.contentPane?.revalidate()
+        searchField.rootPane?.contentPane?.repaint()
+    }
+
+    /** Re-applies the current filter (call after presets are added/removed). */
+    private fun reapplyFilter() {
+        if (searchField.text.isNotEmpty()) applyFilter()
+    }
 
     /** Load presets from file and rebuild the editor list. */
     fun reload(presetsInner: JPanel) {
@@ -66,6 +123,7 @@ class PresetListManager(
                 log.debug("loaded ${parsed.presets.size} preset(s) from $file")
                 presetsInner.revalidate()
                 presetsInner.repaint()
+                reapplyFilter()
                 onStateChanged?.invoke()
             }
             .onFailure {
@@ -86,6 +144,7 @@ class PresetListManager(
             onDelete = { deleteEditor(editor, presetsInner) },
             onDerive = { branchName -> onDerive(root, editor.currentPreset(), branchName) },
             nameValidator = { newName -> editors.none { it !== editor && it.currentPreset().name == newName } },
+            onNameChanged = { reapplyFilter() },
             gitClient = service.gitClient,
             scope = service.scope,
         )
@@ -124,6 +183,7 @@ class PresetListManager(
         }
         presetsInner.revalidate()
         presetsInner.repaint()
+        reapplyFilter()
         log.debug("[deleted] $name")
     }
 
@@ -158,6 +218,7 @@ class PresetListManager(
         presetsInner.parent?.revalidate()
         presetsInner.parent?.repaint()
         saveAll()
+        reapplyFilter()
         log.debug("[added] $name (展开后可编辑各子模块分支)")
     }
 
@@ -217,6 +278,7 @@ class PresetListManager(
                 presetsInner.parent?.revalidate()
                 presetsInner.parent?.repaint()
                 saveAll()
+                reapplyFilter()
                 log.debug("[added from current] $name -> 主仓=$mb, ${result.submodules.size} 个子模块")
                 if (result.skipped.isNotEmpty()) {
                     log.debug("[skipped] ${result.skipped.joinToString(", ")}")
@@ -282,6 +344,7 @@ class PresetListManager(
             presetsContainer.revalidate()
             presetsContainer.repaint()
             saveAll()
+            reapplyFilter()
             log.debug("[imported] ${result.presets.size} preset(s) from clipboard")
             Notifier.info(project, Bundle.msg("notify.import.complete"), Bundle.msg("notify.imported", result.presets.size))
         } catch (e: Exception) {
