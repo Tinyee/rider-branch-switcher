@@ -209,9 +209,9 @@ class SwitchController(
                             indicator.isIndeterminate = true
                             val executor = DeriveBranchExecutor(root, log, gitClient, cancelled = { indicator.isCanceled })
                             result = executor.execute(preset, branchName)
-                            if (!result!!.allOk && result!!.succeeded.isNotEmpty()) {
-                                log.activity("[derive] rolling back ${result!!.succeeded.size} succeeded repo(s)...")
-                                rollbackFailures = executor.rollbackSucceeded(result!!, branchName)
+                            if (!result.allOk && result.succeeded.isNotEmpty()) {
+                                log.activity("[derive] rolling back ${result.succeeded.size} succeeded repo(s)...")
+                                rollbackFailures = executor.rollbackSucceeded(result, branchName)
                             }
                         },
                         onCancel = { gitClient.cancel() },

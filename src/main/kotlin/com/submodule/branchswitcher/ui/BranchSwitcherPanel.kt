@@ -114,17 +114,17 @@ class BranchSwitcherPanel(
         onSwitch = { preset -> switchController.runSwitch(preset) },
         onDerive = { root, preset, name -> switchController.derivePresetBranch(root, preset, name) },
     )
-    @Suppress("unused")
-    private lateinit var switchController: SwitchController // lateinit: presetManager captures before init{}
-    private var worktreeInfoLogged = false
-
-    init {
-        switchController = SwitchController(
+    private val switchController: SwitchController by lazy {
+        SwitchController(
             project, service, ::gitRoot, logger,
             editors = { presetManager.editors },
             onStateChanged = ::detectCurrentState,
             progressBar = progressBar,
         )
+    }
+    private var worktreeInfoLogged = false
+
+    init {
         presetManager.onStateChanged = ::detectCurrentState
         border = JBUI.Borders.empty(6, 8, 4, 8)
         minimumSize = Dimension(JBUI.scale(280), minimumSize.height)
