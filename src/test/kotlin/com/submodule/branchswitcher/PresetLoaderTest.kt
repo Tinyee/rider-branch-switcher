@@ -316,4 +316,99 @@ class PresetLoaderTest {
         assertTrue(content.contains(""""name": "new""""))
         assertFalse(content.contains("old content"))
     }
+
+    // ── Legacy pull migration write-back ──────────────────────────
+
+    @Test
+    fun `legacy pull false without overrides migrates and rewrites JSON`() {
+        writePresetFile("""{"presets":[{"name":"old","main":"dev","pull":false}]}""")
+        val result = PresetLoader.load(tmpDir)
+        assertTrue(result.isSuccess)
+        val (_, parsed) = result.getOrThrow()
+        assertEquals(false, parsed.presets[0].overrides?.pull)
+
+        // Verify the JSON was rewritten without top-level legacy "pull" field
+        // (overrides.pull may still contain the string, check that "pull" is not a top-level key)
+        val content = Files.readString(result.getOrThrow().first)
+        // Top-level "pull" key appears as ,"pull": — should not exist after migration
+        assertFalse("rewritten JSON should not contain legacy top-level pull key",
+            content.contains(Regex(""",\s*"pull"\s*:""")))
+    }
+
+    @Test
+    fun `legacy pull true without overrides rewrites to delete legacy field`() {
+        writePresetFile("""{"presets":[{"name":"test","main":"dev","pull":true}]}""")
+        val result = PresetLoader.load(tmpDir)
+        assertTrue(result.isSuccess)
+
+        val content = Files.readString(result.getOrThrow().first)
+        assertFalse("rewritten JSON should delete legacy top-level pull key",
+            content.contains(Regex(""",\s*"pull"\s*:""")))
+    }
+
+    @Test
+    fun `legacy pull false with explicit overrides pull keeps explicit override and rewrites`() {
+        writePresetFile("""{"presets":[{"name":"test","main":"dev","pull":false,"overrides":{"pull":true}}]}""")
+        val result = PresetLoader.load(tmpDir)
+        assertTrue(result.isSuccess)
+        val (_, parsed) = result.getOrThrow()
+        assertEquals(true, parsed.presets[0].overrides?.pull)
+
+        // Explicit override wins AND write-back still triggers to delete legacy top-level pull
+        val content = Files.readString(result.getOrThrow().first)
+        assertFalse("rewritten JSON should delete legacy top-level pull key",
+            content.contains(Regex(""",\s*"pull"\s*:""")))
+    }
+
+    @Test
+    fun `presets with null item in list loads without NPE`() {
+        writePresetFile("""{"presets":[null,{"name":"ok","main":"main"}]}""")
+        val result = PresetLoader.load(tmpDir)
+        assertTrue(result.isSuccess)
+        assertEquals(1, result.getOrThrow().second.presets.size)
+        assertEquals("ok", result.getOrThrow().second.presets[0].name)
+    }
+
+    @Test
+    fun `legacy pull false with overrides dirty only merges fields`() {
+        writePresetFile("""{"presets":[{"name":"test","main":"dev","pull":false,"overrides":{"dirty":"Force"}}]}""")
+        val result = PresetLoader.load(tmpDir)
+        assertTrue(result.isSuccess)
+        val ov = result.getOrThrow().second.presets[0].overrides
+        assertNotNull(ov)
+        assertEquals(com.submodule.branchswitcher.model.DirtyAction.Force, ov!!.dirty)
+        assertEquals(false, ov.pull) // migrated from legacy pull:false
+        assertNull(ov.fetchFirst)
+    }
+
+    @Test
+    fun `load empty JSON object parses without NPE`() {
+        writePresetFile("{}")
+        val result = PresetLoader.load(tmpDir)
+        // {} → PresetFileDto(presets=null) → toPresetFile() gives empty PresetFile
+        // Fallback: ensureFile first writes DEFAULT_JSON → file already exists
+        // Since .idea/branch-presets.json exists (writePresetFile), load reads it.
+        // Write actual {} to override: need to bypass ensureFile.
+        // Use resolveFile + save pattern instead.
+        val ideaDir = Files.createDirectories(tmpDir.resolve(".idea"))
+        val file = ideaDir.resolve("branch-presets.json")
+        Files.writeString(file, "{}")
+        val result2 = PresetLoader.load(tmpDir)
+        // Gson parses {} as PresetFileDto(presets=null)
+        assertTrue("empty JSON with presets=null should load", result2.isSuccess)
+        assertTrue(result2.getOrThrow().second.presets.isEmpty())
+    }
+
+    @Test
+    fun `load JSON with presets null key loads without NPE`() {
+        writePresetFile("""{"presets":null}""")
+        val result = PresetLoader.load(tmpDir)
+        assertTrue(result.isSuccess)
+        assertTrue(result.getOrThrow().second.presets.isEmpty())
+    }
+
+    private fun writePresetFile(json: String) {
+        val ideaDir = Files.createDirectories(tmpDir.resolve(".idea"))
+        Files.writeString(ideaDir.resolve("branch-presets.json"), json.trimIndent())
+    }
 }

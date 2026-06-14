@@ -263,4 +263,34 @@ class BranchSwitcherServiceTest {
             pool.shutdownNow()
         }
     }
+
+    // ── resolveSwitchRequest ───────────────────────────────────────
+
+    @Test
+    fun `resolveSwitchRequest maps all 4 global fields`() {
+        service.dirtyAction = DirtyAction.Skip
+        service.pullAfterSwitch = false
+        service.fetchFirst = false
+        service.confirmBeforeInit = true
+
+        val request = service.resolveSwitchRequest(com.submodule.branchswitcher.model.Preset("test", "main"))
+        assertEquals(DirtyAction.Skip, request.options.dirty)
+        assertFalse(request.options.pull)
+        assertFalse(request.options.fetchFirst)
+        assertTrue(request.options.confirmBeforeInit)
+    }
+
+    @Test
+    fun `resolveSwitchRequest merges preset overrides`() {
+        service.dirtyAction = DirtyAction.Stash
+        service.pullAfterSwitch = true
+
+        val preset = com.submodule.branchswitcher.model.Preset(
+            "test", "main",
+            overrides = com.submodule.branchswitcher.model.PresetOverrides(pull = false),
+        )
+        val request = service.resolveSwitchRequest(preset)
+        assertFalse("override should win over global", request.options.pull)
+        assertEquals(DirtyAction.Stash, request.options.dirty)
+    }
 }
