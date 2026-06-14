@@ -1,3 +1,8 @@
+---
+name: intellij-plugin-dev
+description: IntelliJ SDK patterns, Gradle config, threading model, code templates for Rider plugin development
+---
+
 # IntelliJ Plugin Development (Rider)
 
 Invoke with `/intellij-plugin-dev` when writing or reviewing IntelliJ/Rider plugin code.
