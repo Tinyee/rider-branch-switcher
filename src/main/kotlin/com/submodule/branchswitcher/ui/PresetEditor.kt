@@ -58,7 +58,6 @@ data class GlobalOptionLabels(
     val fetch: () -> String,
 )
 
-@Suppress("LongParameterList") // 12 params equals detekt threshold; GlobalOptionLabels already aggregated
 class PresetEditor(
     private val gitRoot: Path,
     initial: Preset,
