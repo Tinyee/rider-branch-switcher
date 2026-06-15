@@ -2,65 +2,63 @@
 
 ## Review Scope
 
-- Date: 2026-06-14
-- Target: 当前本地未提交修改（PresetEditor 注释 + Loader/Model 测试）
-- Type: 实现审查 R4
+- Date: 2026-06-16
+- Target: `origin/main..HEAD`（3 个未推送提交）
+- Commits: `e653a6b`, `3f077cd`, `165a879`
 - Result: `CHANGES_REQUESTED` — 2 个 P2、2 个 P3
 
 ## Active Findings
 
-### P2-1 新增测试没有覆盖其声称的入口合同
+### P2-1 `CLAUDE.md` 把人工规则误标为自动门禁
 
 - Status: `OPEN`
 - Evidence:
-  - `PresetConfigTest.kt:87-103` 名称和注释声称验证 “Service resolver mapping”，但只调用 `ResolvedSwitchRequest.resolve(preset, global)`；没有调用 `BranchSwitcherService.resolveSwitchRequest()`。如果 service 漏传或错传任一全局字段，这些测试仍会通过。
-  - `PresetLoaderTest.kt:350-355` 验证 explicit `overrides.pull` 优先，但没有验证存在 legacy `pull` 时仍触发 migrationSaver/写回并删除顶层字段。如果 `needsPullMigration` 对显式 override 错误返回 false，该测试仍会通过。
-- Impact: 测试名称制造了入口接线与迁移写回已覆盖的假象，但对应生产路径回归不会被拦截。
-- Required fix:
-  - 将 service 映射测试移到 `BranchSwitcherServiceTest`，设置四个 service 属性后调用 `service.resolveSwitchRequest(preset)`。
-  - 对 legacy pull + explicit override 使用注入的 `migrationSaver` 断言调用次数和保存后的 domain model，或读取写回 JSON 并结构化断言顶层 `pull` 已删除。
-- Verify: 临时破坏 service 字段映射和 `needsPullMigration` 条件时，对应测试应失败；恢复后相关目标测试通过。
+  - `CLAUDE.md:3` 声称本节“每条都有命令/门禁可验证，不过脑也能拦住”，但 `CLAUDE.md:7-9` 的低价值测试、文档数字、接口实现完整性都没有自动门禁，只是人工规则或建议命令。
+  - `CLAUDE.md:6` 声称 detekt 的 `TooGenericExceptionCaught` 会拦截，但 `detekt-config.yml:40-41` 明确配置为 `active: false`。
+  - 本轮 `quickCheck detekt` 全部通过，证明这些声明当前不能被门禁兑现。
+- Impact: AI 或开发者会信任不存在的保护，跳过人工审查；规则文档自身违背“证据必须对应真实入口”的原则。
+- Required fix: 将无法自动拦截的条目移到 lessons-learned；或实现对应门禁后再保留。删除或改正 `TooGenericExceptionCaught` 的错误声明。
+- Verify: 对每条留在“自动门禁”章节的规则，列出实际 task/规则实现和一个能被 `checkQuickCheck` 捕获的坏 fixture。
 
-### P2-2 设计测试计划仍未完成
-
-- Status: `OPEN`
-- Evidence: 本轮补了 legacy pull 基础写回和 null item，但仍缺：
-  - legacy `pull=false` + 仅 `overrides.dirty/fetchFirst` 时合并并保留字段；
-  - 顶层 `{}`、`presets:null` 的 Loader 入口测试；
-  - 快捷键 Force 确认入口、PresetEditor 折叠/指示器/刷新保留交互测试；
-  - 34 个 `executeTest(preset, options)` 仍保留旧调用形状。
-- Impact: 迁移字段保留、UI 二阶回归和入口安全确认仍可能回归。
-- Required fix: 按设计文档 §11 和实现复审模板逐项核销；无法自动化的项目必须明确 `ACCEPTED` 和理由。
-- Verify: 测试计划每项映射到实际测试方法或明确接受风险。
-
-### P3-1 新增 equality 测试没有回归保护价值
+### P2-2 迁移写回测试用文本正则判断 JSON 层级，可能误判正确结果
 
 - Status: `OPEN`
-- Evidence: `PresetConfigTest.kt:105-110` 只验证 `PresetOverrides` data class 的结构相等性，没有调用迁移或任何生产逻辑；生产迁移代码完全损坏时仍会通过。
-- Impact: 增加维护成本并让测试数量产生虚假的覆盖感，违反项目“不测试 data class/语言行为”的规则。
-- Required fix: 删除该测试，替换为 `PresetDto.toPreset()` 的迁移优先级/字段保留测试。
-- Verify: 替换后的测试在破坏迁移逻辑时失败。
+- Evidence: `PresetLoaderTest.kt:334-360` 用 `content.contains(Regex(""",\s*"pull"\s*:"""))` 判断顶层 legacy `pull` 已删除。该正则不理解 JSON 层级；若合法的 `overrides.pull` 排在另一个 override 字段后，也会匹配并错误失败。
+- Impact: 测试依赖 Gson 格式和字段顺序，既可能误报，也没有真正证明“顶层字段不存在、嵌套字段仍保留”的迁移合同。
+- Required fix: 解析写回后的 JSON，逐个获取 preset object，结构化断言 preset 不含 `pull`，并断言需要保留的 `overrides.pull` 值正确。
+- Verify: 使用同时包含 `overrides.dirty` 与 `overrides.pull` 的输入，写回后结构化断言通过；临时保留顶层 `pull` 时测试失败。
 
-### P3-2 LongParameterList suppress 仍未移除
+### P3-1 `LongParameterList` suppress 仍未移除
 
 - Status: `OPEN`
-- Evidence: `PresetEditor.kt:61` 本轮只修改了 suppress 注释，`@Suppress("LongParameterList")` 仍存在；当前构造器为 12 参数且 detekt 在强制重跑时通过。
-- Impact: suppress 会掩盖未来参数数量再次超过阈值的回归；注释修改没有解决上一轮问题。
-- Required fix: 删除 suppress 和对应解释注释，重新运行 detekt。
-- Verify: `./gradlew detekt --rerun-tasks --max-workers=2 --no-parallel` PASS。
+- Evidence: `PresetEditor.kt:61` 仍有 `@Suppress("LongParameterList")`；`detekt-config.yml:27` 的 `constructorThreshold` 是 12，当前构造器正好 12 个参数，不需要 suppress。
+- Impact: suppress 会掩盖未来参数数目超过阈值的回归；本次提交仅修改注释，没有解决上一轮问题。
+- Required fix: 删除 suppress 和对应解释注释。
+- Verify: `./gradlew detekt --rerun-tasks --max-workers=2 --no-parallel` 通过。
 
-## Residual Existing Finding
+### P3-2 空 JSON Loader 测试重复执行且注释与实际行为矛盾
 
-- Override 标签与 combo 已一起折叠，但 override 行仍使用单行 `FlowLayout`；约 280px 窄 Tool Window 的可用性尚未获得组件测试或手工验证证据。
+- Status: `OPEN`
+- Evidence: `PresetLoaderTest.kt:385-399` 先通过 `writePresetFile("{}")` 写入并调用一次 `load`，但结果 `result` 未使用；随后又写入同一文件并第二次调用 `load`。注释声称需要绕过 `ensureFile`，但第一次写入已经保证文件存在。
+- Impact: 测试包含无意义的额外迁移/写盘流程，注释会误导后续维护者理解 Loader 行为。
+- Required fix: 保留一次 `writePresetFile("{}")`、一次 `load` 和对应断言，删除无用变量及错误注释。
+- Verify: 精简后的目标测试通过，临时破坏 `{}` 的 null-safe 转换时测试失败。
+
+## Residual Test Gaps
+
+- 快捷键 Force 确认入口、PresetEditor 折叠/指示器/刷新保留、窄 Tool Window 布局仍缺自动化证据；若本轮不处理，应明确标记 `ACCEPTED` 和理由。
+- 测试 helper 中仍保留较多 `executeTest(preset, options)` 旧调用形状，类型守卫对测试调用链的约束弱于生产入口。
 
 ## Verified Summary
 
-- `PresetLoaderTest` 新增的 legacy `pull=false`、legacy `pull=true` 写回测试会经过真实 Loader 并验证写回文件。
-- null preset item 的 Loader 入口不再仅停留在 DTO 纯逻辑层。
-- 当前本地改动未修改生产行为。
+- `BranchSwitcherServiceTest` 已通过真实 `service.resolveSwitchRequest()` 验证全局选项映射和 preset override 合并。
+- legacy pull + explicit override 已验证会触发写回；legacy false/true、dirty-only 合并、null item、`{}`、`presets:null` 均已有 Loader 入口测试。
+- 低价值 `PresetOverrides` data-class equality 测试已删除。
+- 本轮未修改生产行为；功能相关目标测试全部通过。
 
 ## Validation
 
-- `git diff --check`: PASS（仅现有 LF/CRLF warning）
+- `git diff --check origin/main..HEAD`: PASS
 - `./gradlew quickCheck detekt compileKotlin compileTestKotlin --rerun-tasks --max-workers=2 --no-parallel`: PASS
-- `PresetLoaderTest + PresetConfigTest --rerun-tasks --max-workers=1 --no-parallel`: PASS，38 tests / 0 failures / 0 errors / 0 skipped，4m 55s
+- `PresetLoaderTest + BranchSwitcherServiceTest + PresetConfigTest --rerun-tasks --max-workers=1 --no-parallel`: PASS
+- Existing warnings: IntelliJ Platform Gradle Plugin 版本过旧、Java source compatibility 17 与 Rider 2026.1.1 要求的 21 不一致；非本轮引入。
