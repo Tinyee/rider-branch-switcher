@@ -356,10 +356,11 @@ class PresetLoaderTest {
         val (_, parsed) = result.getOrThrow()
         assertEquals(true, parsed.presets[0].overrides?.pull)
 
-        // Explicit override wins AND write-back still triggers to delete legacy top-level pull
+        // Explicit override wins: overrides.pull=true survives write-back round-trip
+        // Legacy top-level "pull":false was deleted during write-back
         val reloaded = PresetLoader.load(tmpDir)
         assertTrue(reloaded.isSuccess)
-        assertNull(reloaded.getOrThrow().second.presets[0].overrides?.pull)
+        assertEquals(true, reloaded.getOrThrow().second.presets[0].overrides?.pull)
     }
 
     @Test
