@@ -324,7 +324,7 @@ com.submodule.branchswitcher/
 | M3 | 修复 `<vendor>` 信息 | 极低 | 改为真实 vendor（url + email），否则审核不通过 | ✅ v0.6 |
 | M4 | 加 Exception Analyzer | 极低 | `plugin.xml` 加一行 `<errorHandler>`，崩溃自动上报 Marketplace | ✅ v0.6 |
 | M5 | 插件图标 | 低 | 40×40 SVG，不模仿 JetBrains 产品 logo | ✅ v0.6 |
-| M6 | 英文描述 + 截图 | 中 | 1280×800 (16:10)，不带设备边框 | ◐ |
+| M6 | 英文描述 + 截图 | 中 | 1280×800 (16:10)，不带设备边框；描述已更新到 plugin.xml，README 已补截图拍摄指南，截图待手工截取 | ⚡ 描述完成，截图待截 |
 | M7 | CI 加 Qodana/InspectCode | 低 | 静态分析在每次 push 自动跑 | ✅ v0.6 |
 
 ### P2 — 生产级打磨
