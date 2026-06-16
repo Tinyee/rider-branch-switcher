@@ -32,7 +32,7 @@ cd ~/Code/rider-branch-switcher
 git config core.hooksPath .githooks
 
 ./gradlew buildPlugin
-# 产物：build/distributions/rider-branch-switcher-0.6.0.zip
+# 产物：build/distributions/rider-branch-switcher-0.7.0.zip
 ```
 
 `git config core.hooksPath .githooks` 只需执行一次。之后每次 `git commit` 会自动跑 quickCheck，
