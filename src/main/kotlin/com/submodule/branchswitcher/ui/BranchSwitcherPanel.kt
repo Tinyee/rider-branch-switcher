@@ -19,6 +19,8 @@ import com.submodule.branchswitcher.log.LogEntry
 import com.submodule.branchswitcher.log.ToolWindowLogger
 import com.submodule.branchswitcher.model.Preset
 import com.submodule.branchswitcher.service.BranchSwitcherService
+import com.submodule.branchswitcher.switch.isValidBranchName
+import kotlinx.coroutines.Dispatchers
 import com.submodule.branchswitcher.settings.BranchSwitcherConfigurable
 import kotlinx.coroutines.launch
 import java.awt.BorderLayout
@@ -247,19 +249,20 @@ class BranchSwitcherPanel(
     private fun doQuickSwitch() {
         val branch = quickSwitchField.text.trim()
         if (branch.isEmpty()) return
-        val root = gitRoot() ?: return
-        val gitClient = service.gitClient
-        val mainBranch = gitClient.currentBranch(root.toFile())
-        if (mainBranch == branch) {
-            logger.info("[quick-switch] already on $branch")
+        if (!isValidBranchName(branch)) {
+            logger.warn("[quick-switch] invalid branch name: $branch")
             return
         }
-        val subPaths = gitClient.listSubmodulePaths(root.toFile())
-        val subs = LinkedHashMap<String, String>()
-        subPaths.forEach { subs[it] = branch }
-        val tempPreset = Preset(branch, main = branch, submodules = subs)
-        quickSwitchField.text = ""
-        switchController.runSwitch(tempPreset)
+        val root = gitRoot() ?: return
+        service.scope.launch(Dispatchers.IO) {
+            val gitClient = service.gitClient
+            val subPaths = gitClient.listSubmodulePaths(root.toFile())
+            val tempPreset = buildQuickSwitchPreset(branch, subPaths)
+            com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater {
+                quickSwitchField.text = ""
+                switchController.runSwitch(tempPreset)
+            }
+        }
     }
 
     // ── Strategy summary ───────────────────────────────────────
@@ -471,4 +474,11 @@ class BranchSwitcherPanel(
             log.caretPosition = doc.length
         }
     }
+}
+
+/** Pure builder: creates a temporary preset for quick no-preset switch. */
+internal fun buildQuickSwitchPreset(branch: String, submodulePaths: List<String>): Preset {
+    val subs = LinkedHashMap<String, String>()
+    submodulePaths.forEach { subs[it] = branch }
+    return Preset(branch, main = branch, submodules = subs)
 }
