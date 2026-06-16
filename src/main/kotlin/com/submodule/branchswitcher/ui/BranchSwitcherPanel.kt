@@ -9,6 +9,7 @@ import com.intellij.openapi.vcs.FileStatusManager
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.ui.JBColor
 import com.intellij.ui.components.JBScrollPane
+import com.intellij.ui.components.JBTextField
 import com.intellij.util.Alarm
 import com.intellij.util.ui.JBUI
 import com.submodule.branchswitcher.BranchSwitchListener
@@ -16,6 +17,7 @@ import com.submodule.branchswitcher.Bundle
 import com.submodule.branchswitcher.log.AppLogger
 import com.submodule.branchswitcher.log.LogEntry
 import com.submodule.branchswitcher.log.ToolWindowLogger
+import com.submodule.branchswitcher.model.Preset
 import com.submodule.branchswitcher.service.BranchSwitcherService
 import com.submodule.branchswitcher.settings.BranchSwitcherConfigurable
 import kotlinx.coroutines.launch
@@ -108,6 +110,23 @@ class BranchSwitcherPanel(
     // ── Logger ──────────────────────────────────────────────────
     private val logger: AppLogger = ToolWindowLogger(::appendStructured)
 
+    // ── Quick switch (no-preset) ─────────────────────────────────
+    private val quickSwitchField = JBTextField().apply {
+        putClientProperty("JTextField.placeholderText", Bundle.msg("quick.switch.placeholder"))
+        preferredSize = Dimension(JBUI.scale(120), preferredSize.height)
+        maximumSize = preferredSize
+        minimumSize = preferredSize
+        addKeyListener(object : java.awt.event.KeyAdapter() {
+            override fun keyPressed(e: java.awt.event.KeyEvent) {
+                if (e.keyCode == java.awt.event.KeyEvent.VK_ENTER) doQuickSwitch()
+            }
+        })
+    }
+    private val quickSwitchBtn = jButton(Bundle.msg("quick.switch"), AllIcons.Actions.Execute) {
+        toolTipText = Bundle.msg("quick.switch.tip")
+        addActionListener { doQuickSwitch() }
+    }
+
     // ── Delegates (after UI fields to resolve init order) ──────
     private val presetManager = PresetListManager(
         project, service, ::gitRoot, logger,
@@ -175,6 +194,10 @@ class BranchSwitcherPanel(
             add(jButton(Bundle.msg("action.add.preset"), AllIcons.General.Add) {
                 addActionListener { presetManager.addPreset(presetsInner) }
             })
+            add(Box.createHorizontalStrut(4))
+            add(quickSwitchField)
+            add(Box.createHorizontalStrut(4))
+            add(quickSwitchBtn)
             add(Box.createHorizontalGlue())
             add(strategyLabel)
         }
@@ -217,6 +240,26 @@ class BranchSwitcherPanel(
                 addActionListener { openSettings() }
             })
         }
+    }
+
+    // ── Quick switch (no-preset) logic ──────────────────────────
+
+    private fun doQuickSwitch() {
+        val branch = quickSwitchField.text.trim()
+        if (branch.isEmpty()) return
+        val root = gitRoot() ?: return
+        val gitClient = service.gitClient
+        val mainBranch = gitClient.currentBranch(root.toFile())
+        if (mainBranch == branch) {
+            logger.info("[quick-switch] already on $branch")
+            return
+        }
+        val subPaths = gitClient.listSubmodulePaths(root.toFile())
+        val subs = LinkedHashMap<String, String>()
+        subPaths.forEach { subs[it] = branch }
+        val tempPreset = Preset(branch, main = branch, submodules = subs)
+        quickSwitchField.text = ""
+        switchController.runSwitch(tempPreset)
     }
 
     // ── Strategy summary ───────────────────────────────────────
