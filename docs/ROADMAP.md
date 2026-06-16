@@ -24,7 +24,7 @@
 - IntelliJ 原生图标（AllIcons），主题感知色
 - i18n 中英双语（DynamicBundle + @PropertyKey 编译时校验）
 - **Per-preset 选项覆盖**：每个 preset 可独立覆盖全局 dirty/fetch/pull；`ResolvedSwitchRequest` 类型守卫；Force 安全确认
-- 271 测试（JUnit 4 + Kotest 属性测试）
+- 270 测试 / 21 个测试类（JUnit 4 + Kotest 属性测试）
 - GitHub Actions CI（ubuntu/macOS/Windows）+ Qodana 静态分析
 
 下面按「切换体验 / 状态可视化 / UI / 工作流 / 质量」五块梳理后续要做的功能点，优先级 **P0(致命) / P1(高价值) / P2(锦上添花)**；状态列标记 v0.x 已落地或下阶段候选。
