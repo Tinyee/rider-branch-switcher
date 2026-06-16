@@ -327,13 +327,13 @@ class PresetLoaderTest {
         val (_, parsed) = result.getOrThrow()
         assertEquals(false, parsed.presets[0].overrides?.pull)
 
-        // Reload the rewritten file — legacy "pull" field must be gone,
-        // so only overrides.pull survives. Structurally verify via domain model.
-        val reloaded = PresetLoader.load(tmpDir)
-        assertTrue(reloaded.isSuccess)
-        val reloadedPreset = reloaded.getOrThrow().second.presets[0]
-        assertEquals(false, reloadedPreset.overrides?.pull)
-        assertNull(reloadedPreset.overrides?.dirty)
+        // Verify the saved file has no top-level "pull" key.
+        // Second load would re-apply the same migration and pass even if save failed.
+        val savedJson = Files.readString(result.getOrThrow().first)
+        val root = com.google.gson.JsonParser.parseString(savedJson).asJsonObject
+        val presetObj = root.getAsJsonArray("presets").get(0).asJsonObject
+        assertFalse("top-level pull key must be absent from saved file", presetObj.has("pull"))
+        assertEquals(false, presetObj.getAsJsonObject("overrides").get("pull").asBoolean)
     }
 
     @Test
@@ -341,11 +341,12 @@ class PresetLoaderTest {
         writePresetFile("""{"presets":[{"name":"test","main":"dev","pull":true}]}""")
         val result = PresetLoader.load(tmpDir)
         assertTrue(result.isSuccess)
-        // pull:true → no override, legacy field removed on write-back
+        // pull:true → no override
         assertNull(result.getOrThrow().second.presets[0].overrides?.pull)
-        // Reload should see same state (no leftover override)
-        val reloaded = PresetLoader.load(tmpDir)
-        assertNull(reloaded.getOrThrow().second.presets[0].overrides?.pull)
+        // Verify saved file has no top-level "pull" key
+        val savedJson = Files.readString(result.getOrThrow().first)
+        val root = com.google.gson.JsonParser.parseString(savedJson).asJsonObject
+        assertFalse("top-level pull key must be absent", root.getAsJsonArray("presets").get(0).asJsonObject.has("pull"))
     }
 
     @Test
@@ -356,11 +357,12 @@ class PresetLoaderTest {
         val (_, parsed) = result.getOrThrow()
         assertEquals(true, parsed.presets[0].overrides?.pull)
 
-        // Explicit override wins: overrides.pull=true survives write-back round-trip
-        // Legacy top-level "pull":false was deleted during write-back
-        val reloaded = PresetLoader.load(tmpDir)
-        assertTrue(reloaded.isSuccess)
-        assertEquals(true, reloaded.getOrThrow().second.presets[0].overrides?.pull)
+        // Verify saved file: top-level "pull" absent, explicit overrides.pull=true survives
+        val savedJson = Files.readString(result.getOrThrow().first)
+        val root = com.google.gson.JsonParser.parseString(savedJson).asJsonObject
+        val pObj = root.getAsJsonArray("presets").get(0).asJsonObject
+        assertFalse("top-level pull key must be absent", pObj.has("pull"))
+        assertEquals(true, pObj.getAsJsonObject("overrides").get("pull").asBoolean)
     }
 
     @Test
