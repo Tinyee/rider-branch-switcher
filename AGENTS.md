@@ -6,7 +6,7 @@ Rider 插件 — 一键将主仓库和所有子模块切换到预设的分支组
 
 - **技术栈**: Kotlin 2.3, IntelliJ Platform Gradle Plugin 2.2.1, Gradle 8.13, JUnit 4 + Kotest 5.9
 - **目标**: JetBrains Rider 2026.1 (build 261)
-- **测试**: 241 tests, `./gradlew test`
+- **测试**: 270 tests / 21 classes, `./gradlew test`
 - **版本**: 0.6.0
 
 ## 架构
@@ -36,7 +36,7 @@ com.submodule.branchswitcher/
 
 ```bash
 git config core.hooksPath .githooks   # 首次 clone 后执行一次，启用自动检查
-./gradlew test          # 241 tests
+./gradlew test          # 270 tests / 21 classes
 ./gradlew buildPlugin   # → build/distributions/rider-branch-switcher-{version}.zip
 ./gradlew runIde        # 启动沙箱 Rider，插件已预装
 ./gradlew quickCheck    # <1 秒，grep 结构检查（git commit 时自动跑）
@@ -52,7 +52,7 @@ git config core.hooksPath .githooks   # 首次 clone 后执行一次，启用自
 
 - 大仓真实耗时基准测量放入独立 benchmark task，不在普通 test 里设墙钟阈值。
 - 手工发布检查缩减为：窄 Tool Window、Settings UI、i18n、安装构建出的 ZIP。
-- Marketplace 截图和 pluginIcon.svg 等准备发布时再处理。
+- Marketplace 截图准备发布时再处理；`pluginIcon.svg` 已存在。
 
 2026-06-08 的历史审查已归档至 `docs/code-review-2026-06-08.md`；大部分已修复，不应将归档当作当前问题列表。
 
@@ -83,7 +83,7 @@ git config core.hooksPath .githooks   # 首次 clone 后执行一次，启用自
 - `isGitRepo` 增加 10s 超时。
 - 分支名校验 (`isValidBranchName`)。
 - 新增 MIT `LICENSE`、`quickCheck` + `releaseCheck` Gradle task、git pre-commit/pre-push hooks。
-- 241 tests 覆盖：真实 Git 集成、取消、rollback、derive 安全、通知决策、stash+rollback、50 子模块调用预算。
+- 270 tests / 21 classes 覆盖：真实 Git 集成、取消、rollback、derive 安全、通知决策、stash+rollback、50 子模块调用预算。
 
 ## 会话流程规则
 

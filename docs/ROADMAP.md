@@ -23,7 +23,7 @@
 - **动态远端名**：自动检测 remote 名，不再硬编码 origin
 - IntelliJ 原生图标（AllIcons），主题感知色
 - i18n 中英双语（DynamicBundle + @PropertyKey 编译时校验）
-- 241 测试（JUnit 4 + Kotest 属性测试）
+- 270 测试（JUnit 4 + Kotest 属性测试）
 - GitHub Actions CI（ubuntu/macOS/Windows）+ Qodana 静态分析
 
 下面按「切换体验 / 状态可视化 / UI / 工作流 / 质量」五块梳理后续要做的功能点，优先级 **P0(致命) / P1(高价值) / P2(锦上添花)**；状态列标记 v0.x 已落地或下阶段候选。
@@ -80,7 +80,7 @@
 | 优先级 | 需求 | 状态 |
 |---|---|---|
 | P0 | GitOps 60s 超时:子模块多/网络慢会卡 UI。需要可配置 + 真异步(目前 Thread + invokeLater,够用但不可中断) | ✅ v0.3 |
-| P1 | **单元测试**:GitOps / SwitchExecutor 都没有。mock GitOps 跑 SwitchExecutor 至少覆盖「主仓成功子模块失败」的 case | ✅ 241 用例, mock GitClient, cmd 可跑 |
+| P1 | **单元测试**:GitOps / SwitchExecutor 都没有。mock GitOps 跑 SwitchExecutor 至少覆盖「主仓成功子模块失败」的 case | ✅ 270 用例, mock GitClient, cmd 可跑 |
 | P2 | **i18n** | ✅ Strings.kt → Bundle.message() 接入完毕，@PropertyKey 编译时校验，中英 properties 各 ~135 key |
 | P2 | **git worktree 兼容**:副工作树会失败,需要友好提示 | ✅ v0.5 检测 .git 文件并输出提示 |
 
@@ -186,7 +186,7 @@
 | 新切换动作（rebase / tag / commit） | **低** | SwitchExecutor 构造函数接受 steps 列表 |
 | Tools 菜单 / 快捷键 | **低** | v0.4 已实现 Ctrl+Alt+B + MessageBus |
 | 状态栏 widget | **中** | 同上 |
-| 单元测试 | **低** | 241 用例已配通, `./gradlew test` |
+| 单元测试 | **低** | 270 用例已配通, `./gradlew test` |
 | 多 VCS（hg / p4） | 高 | GitOps 直接绑 git |
 | Per-preset 选项覆盖 | 中 | 数据模型加字段 + UI 改 |
 | 切换历史 / 撤销 | 低 | v0.4 已实现 |
@@ -349,7 +349,7 @@ com.submodule.branchswitcher/
 
 ### 当前状态
 
-- ✅ 241 测试，21 个测试类，`./gradlew test` 即可跑
+- ✅ 270 测试，21 个测试类，`./gradlew test` 即可跑
 - ✅ `GitClient` 接口 + Fake 实现 → 架构已隔离 IntelliJ 运行时
 - ✅ 真实 git 临时仓库集成测试（`SwitchIntegrationTest`）
 - ✅ 50 子模块 Switch/Preflight Git 调用预算测试（`LargeRepoScalabilityTest`）

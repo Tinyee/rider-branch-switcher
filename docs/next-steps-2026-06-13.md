@@ -3,12 +3,12 @@
 ## 当前判断
 
 当前核心切换安全问题、UI 重构、设置页、结构化日志、CI、Detekt、Plugin Verifier
-和 241 个自动化测试均已落地。项目下一阶段不应继续进行大规模重构，而应优先补齐：
+和 270 个自动化测试均已落地。项目下一阶段不应继续进行大规模重构，而应优先补齐：
 
-1. 文档和版本信息的一致性。
+1. 文档和版本信息的持续一致性。
 2. Marketplace 发布物料。
 3. 少量高价值回归测试。
-4. 会真实影响用户行为的稳定 Preset ID。
+4. 大仓真实耗时 benchmark 与发布前手工检查。
 
 历史评审文档应视为问题发现记录，不应直接代表当前代码状态。
 
@@ -16,24 +16,20 @@
 
 ## 推荐执行顺序
 
-### P1：同步文档、版本与发布信息
+### P1：同步文档、版本与发布信息 ✅
 
-当前存在的已知不一致：
+已完成：
 
-- `docs/ROADMAP.md` 仍写“无 CI/CD”，实际已有三平台 CI、Detekt 和 `verifyPlugin`。
-- ROADMAP 中部分 Marketplace 和架构事项已完成，但仍显示为待办。
-- ROADMAP 中 `noFocusRing()` 工厂化仍显示未完成。
-- README 仍写设置项位于 Tool Window 底部，与当前 UI 不一致。
-- README Release 链接使用 `Tinyee`，而 `plugin.xml` vendor 地址使用 `jty75`。
-- `build.gradle.kts`、README 和 CHANGELOG 仍停留在 `0.5.0`，未体现近期 UI、
-  测试与结构化日志改动。
+- `build.gradle.kts`、README、CHANGELOG 和 ROADMAP 已同步到 `0.6.0`。
+- README Release 链接和 `plugin.xml` vendor 地址均指向 `Tinyee/rider-branch-switcher`。
+- `docs/code-review-2026-06-08.md` 已标记为历史归档。
+- `noFocusRing()` 工厂化、CI、Detekt、Plugin Verifier、Settings、结构化日志等状态已在 ROADMAP 中反映。
+- 当前测试数量已同步为 270 tests / 21 classes（基于最近一次 `build/test-results/test` 报告）。
 
-建议动作：
+仍需保持：
 
-- 更新 README、ROADMAP、CHANGELOG 和版本号。
-- 将 `docs/code-review-2026-06-08.md`、`docs/ui-redesign-plan-2026-06-09.md`
-  标记为历史/归档文档，并注明完成状态以当前代码和 ROADMAP 为准。
-- 清理 ROADMAP 中已经完成或已经明确暂停的事项。
+- 每次测试数量或版本号变化后，同步 README badge、AGENTS、ROADMAP、CHANGELOG。
+- 历史评审文档只作为问题发现记录，不重新当作当前待办列表。
 
 验收标准：
 
@@ -45,17 +41,16 @@
 ### P1：补 Marketplace 发布物料
 
 LICENSE ✅ 已添加（MIT）。
+`pluginIcon.svg` ✅ 已添加。
 
 当前主要剩余缺口：
 
 - README 截图仍是 TODO。
-- 尚未发现自定义 `pluginIcon.svg`。
 - `plugin.xml` 英文描述较短。
 
 建议动作：
 
 - 准备一张 1280x800 左右的英文界面截图，展示 2-3 个 preset、状态点和日志区。
-- 增加符合 Marketplace 要求的插件 SVG 图标。
 - 扩充英文描述，说明目标用户、核心能力、数据存储位置和安全策略。
 - 在发布前执行 `./gradlew releaseCheck`，验证最终 ZIP。
 
@@ -103,13 +98,13 @@ Preflight 的 Git 调用预算，防止重复查询回归。
 - 竞态修复：父协程在 Task 启动前取消不再允许 block 执行。
 - 可注入 `TaskRunner` 边界，测试无需 IntelliJ 运行时。
 
-### releaseCheck 自动化
+### releaseCheck 自动化 ✅
 
 `./gradlew releaseCheck` 聚合：
 - `test` + `detekt` + `buildPlugin` + `verifyPlugin`
 - README 版本 badge + CHANGELOG 最新版本精确校验
 - ZIP 名称、LICENSE 存在性检查
-- 非致命提醒：screenshot TODO、pluginIcon.svg 缺失
+- 非致命提醒：README screenshot TODO
 
 ### 首次安装引导
 
