@@ -3,6 +3,7 @@
 ## 不准 — 每条都有命令/门禁可验证，不过脑也能拦住
 
 - **没跑 `./gradlew quickCheck detekt` 不准说没问题。** derive 功能 7 轮审查，每轮都有 grep 能发现的低级错误。
+- **不准静默吞异常，按类型处理**：`CancellationException` 必须重新抛出。安全探针异常 → 转为 Unknown/Error 由调用方处理。best-effort UI 清理 → 可以忽略但必须注释原因。其他 → 至少 `LOG.warn`。`TooGenericExceptionCaught` 在 detekt 中已启用，新代码会被拦；现有违规记录在 baseline。
 - **新增写路径不准缺生命周期。** 每个异步写入口（action、快捷键、菜单项）必须走：门禁检查 → 开始操作 → 可取消任务 → 结束操作 → finally 释放。缺一环 = cancel 静默失效。quickCheck 有对应 grep。
 - **声称完成前不准用 Gradle 缓存声称验证通过。** 开发中增量 OK。声称"没问题"时至少跑一次 `--rerun-tasks`。
 
@@ -20,7 +21,7 @@
 - **走了轻松的路。** resolver 测试应该调 `service.resolveSwitchRequest()`，mock Project 麻烦就绕过去了。差一步——service 漏传字段，测试照样绿。
 - **测试没沿着调用链走到终点。** 迁移测试验证了 domain model，没验证文件写回真的发生了。
 - **多阶段操作先写代码后排状态矩阵。** 7 轮审查因为状态是边做边发现的，不是提前列出来的。
-- **静默吞异常。** `catch (_: Exception) {}`——`TooGenericExceptionCaught` 在 detekt 中为 `active: false`，未启用。必须按类型处理：`CancellationException` 重抛、探针异常转 Error、UI 清理可忽略需注释、其他至少 `LOG.warn`。
+- **静默吞异常。** （已启用 `TooGenericExceptionCaught`，detekt baseline 记录现有违规；新代码会被拦。）
 - **写只验证 data class 字段或语言特性的测试。** 已清理 6 个（HistoryTest 全文件 + PresetJsonTest 3 个），生产代码坏了它们照样绿。没有自动门禁能区分"有用测试"和"data class 测试"。
 - **凭感觉改文档数字。** 用 `rg -n`/测试输出枚举证据是手动步骤，没有自动检查。
 - **接口加方法漏更新实现。** `GitClient` 加方法漏了 test fake 发生过多次。`grep -rl "INTERFACE_NAME" src/` 是手动命令，没有自动门禁。
