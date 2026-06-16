@@ -259,6 +259,7 @@ class BranchSwitcherPanel(
             val subPaths = gitClient.listSubmodulePaths(root.toFile())
             val tempPreset = buildQuickSwitchPreset(branch, subPaths)
             com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater {
+                if (project.isDisposed) return@invokeLater
                 quickSwitchField.text = ""
                 switchController.runSwitch(tempPreset)
             }
