@@ -305,7 +305,7 @@ com.submodule.branchswitcher/
 | 27 | 状态栏 widget | 切换后无常驻指示当前 preset，类似 Git branch widget | ⏸️ SDK 兼容性 |
 | 28 | Preset 搜索/过滤 | 20+ preset 时无搜索 | ✅ v0.6 |
 | 29 | Per-preset 选项覆盖 | 每个 preset 可独立覆盖全局 dirty/fetch/pull 设置；`ResolvedSwitchRequest` 类型守卫；Force 安全确认 | ✅ v0.7 |
-| 30 | 嵌套子模块 | `listSubmodulePaths` 只解析根 `.gitmodules`，不递归 | ◐ |
+| 30 | 嵌套子模块 | `listSubmodulePaths` 递归解析嵌套 `.gitmodules`，前缀路径拼接 | ✅ v0.7 |
 | 31 | 无 preset 直接切换 | ToolWindow 顶部"快速切换"输入框+按钮，输入分支名即切所有仓库 | ✅ v0.7 |
 | 32 | git 不在 PATH 的友好提示 | `GeneralCommandLine("git", ...)` 失败时无提示 | ✅ v0.6 |
 
