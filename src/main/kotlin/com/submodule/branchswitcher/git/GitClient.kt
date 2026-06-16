@@ -55,7 +55,7 @@ interface GitClient {
     fun submoduleSync(gitRoot: File): GitResult
     /** Runs `git submodule update --init -- <path>`. */
     fun submoduleInitPath(gitRoot: File, path: String): GitResult
-    /** Parses .gitmodules to list submodule paths. */
+    /** Recursively parses .gitmodules to list all submodule paths, including nested ones. */
     fun listSubmodulePaths(gitRoot: File): List<String>
     /**
      * Lists all branches (local + remote), deduplicated and sorted.

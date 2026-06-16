@@ -167,6 +167,73 @@ class GitOpsTest {
         assertEquals(listOf("lib/external/deep/SubA"), paths)
     }
 
+    // ── Nested submodule discovery ──────────────────────────────────
+
+    @Test
+    fun `flat submodules still work`() {
+        writeGitmodules("""
+            [submodule "SubA"]
+                path = SubA
+            [submodule "SubB"]
+                path = SubB
+        """.trimIndent())
+        val paths = git.listSubmodulePaths(tmpDir.toFile())
+        assertEquals(listOf("SubA", "SubB"), paths)
+    }
+
+    @Test
+    fun `nested submodules are discovered recursively`() {
+        writeGitmodules("""
+            [submodule "SubA"]
+                path = SubA
+        """.trimIndent())
+        // SubA itself has a .gitmodules with nested subs
+        val subADir = java.io.File(tmpDir.toFile(), "SubA")
+        subADir.mkdirs()
+        java.nio.file.Files.writeString(
+            subADir.toPath().resolve(".gitmodules"),
+            """
+            [submodule "SubA1"]
+                path = SubA1
+            [submodule "SubA2"]
+                path = SubA2
+            """.trimIndent()
+        )
+        val paths = git.listSubmodulePaths(tmpDir.toFile())
+        assertEquals(listOf("SubA", "SubA/SubA1", "SubA/SubA2"), paths)
+    }
+
+    @Test
+    fun `nested submodules with deep paths`() {
+        writeGitmodules("""
+            [submodule "lib"]
+                path = lib/common
+        """.trimIndent())
+        val libDir = java.io.File(tmpDir.toFile(), "lib/common")
+        libDir.mkdirs()
+        java.nio.file.Files.writeString(
+            libDir.toPath().resolve(".gitmodules"),
+            """
+            [submodule "nested"]
+                path = nested/SubX
+            """.trimIndent()
+        )
+        val paths = git.listSubmodulePaths(tmpDir.toFile())
+        assertEquals(listOf("lib/common", "lib/common/nested/SubX"), paths)
+    }
+
+    @Test
+    fun `nested submodule without gitmodules is not recursed`() {
+        writeGitmodules("""
+            [submodule "SubA"]
+                path = SubA
+        """.trimIndent())
+        // SubA dir exists but no .gitmodules — no nested discovery
+        java.io.File(tmpDir.toFile(), "SubA").mkdirs()
+        val paths = git.listSubmodulePaths(tmpDir.toFile())
+        assertEquals(listOf("SubA"), paths)
+    }
+
     @Test
     fun `GitResult ok is true when exitCode is zero`() {
         val r = GitResult("test", 0, "", "")
