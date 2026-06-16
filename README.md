@@ -92,3 +92,14 @@ Configured via `Settings → Version Control → Submodule Branch Switcher`:
 ```
 
 Tech stack: Kotlin 2.3, IntelliJ Platform Gradle Plugin 2.2.1, Gradle 8.13, JUnit 4 + Kotest 5.9.
+
+## Screenshots
+
+For the JetBrains Marketplace listing (1280×800, 16:10, no device borders):
+
+1. **Tool window with multiple presets** — Show the Submodule Branches tool window docked in Rider, with 2-3 presets visible, one expanded to show main repo + submodule rows, and the current preset highlighted
+2. **Per-preset overrides** — Gear button expanded on a preset, showing Dirty/Pull/Fetch override combos with the orange indicator active
+3. **Preflight dry-run dialog** — The preview table showing current → target branches, dirty counts, and branch sources before confirming a switch
+4. **Settings page** — File → Settings → Version Control → Submodule Branch Switcher, showing dirty strategy, timeout, fetch/pull checkboxes
+
+Place screenshots in a `screenshots/` directory at the repo root.
