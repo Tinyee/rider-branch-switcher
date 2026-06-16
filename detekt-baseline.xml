@@ -1,0 +1,15 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<SmellBaseline>
+  <ManuallySuppressedIssues/>
+  <CurrentIssues>
+    <ID>TooGenericExceptionCaught:BranchComboUtil.kt$e: Exception</ID>
+    <ID>TooGenericExceptionCaught:DeriveBranchExecutor.kt$DeriveBranchExecutor$e: Exception</ID>
+    <ID>TooGenericExceptionCaught:GitOps.kt$GitOps$e: Exception</ID>
+    <ID>TooGenericExceptionCaught:PresetEditor.kt$PresetEditor$e: Exception</ID>
+    <ID>TooGenericExceptionCaught:PresetListManager.kt$PresetListManager$e: Exception</ID>
+    <ID>TooGenericExceptionCaught:SwitchController.kt$SwitchController$e: Exception</ID>
+    <ID>TooGenericExceptionCaught:SwitchController.kt$SwitchController$t: Throwable</ID>
+    <ID>TooGenericExceptionCaught:SwitchPresetAction.kt$SwitchPresetAction$e: Exception</ID>
+    <ID>TooGenericExceptionCaught:TaskBridge.kt$TaskBridge$e: Exception</ID>
+  </CurrentIssues>
+</SmellBaseline>

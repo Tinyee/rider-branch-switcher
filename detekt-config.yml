@@ -38,7 +38,7 @@ naming:
 
 exceptions:
   TooGenericExceptionCaught:
-    active: false
+    active: true
   SwallowedException:
     active: false
 
