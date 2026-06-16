@@ -26,7 +26,7 @@
             <li>One-click "snapshot from current state" to create a preset</li>
             <li>Rename, import/export (clipboard), and search/filter presets</li>
             <li>Undo last switch from history (last 5 switches)</li>
-            <li>Drag-and-drop reorder with ↑↓ buttons</li>
+            <li>Reorder presets with ↑↓ buttons</li>
         </ul>
         <b>Quality:</b>
         <ul>

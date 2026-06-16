@@ -11,6 +11,11 @@
 - Settings change refreshes "Use global" labels without discarding uncommitted edits
 - `PresetFileDto.presets` made nullable (Gson-safe); all DTO→domain paths unified through `PresetDto.toPreset(explicitId)`
 
+### Quick Switch Without Preset (#31)
+- New text field + button in the tool window action row: type a branch name, press Enter, and all repos switch to it — no preset needed
+- Git submodule discovery runs on background coroutine (not EDT)
+- Branch name validated with existing `isValidBranchName()` rules
+
 ### Quality
 - `PullStep` simplified to single `options.pull` check (legacy `pullEnabled` field removed)
 - 25 new tests: `effectiveOptions` merge matrix, `ResolvedSwitchRequest` contract, Force warning conditions, migration write-back verification, import overrides/malformed/null-entry, service resolver mapping
