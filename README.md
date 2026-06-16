@@ -14,6 +14,8 @@
 - **Auto stash pop**: when switching back to the original branch, stashed changes are automatically restored
 - **Derive feature branches**: create `feature/xxx` on main + all submodules simultaneously from a preset
 - **Rollback**: failed switches record a checkpoint — one-click rollback to pre-switch state
+- **Per-preset overrides**: each preset can override global dirty strategy, pull, and fetch settings
+- **Quick switch**: type a branch name and switch all repos instantly — no preset needed
 - **Keyboard shortcut**: `Ctrl+Alt+B` opens the preset picker from anywhere
 - **i18n**: English + 中文, follows IDE language setting
 - **Persistent settings**: dirty strategy, timeout, fetch/pull preferences survive IDE restarts
