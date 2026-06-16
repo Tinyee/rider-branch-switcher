@@ -55,6 +55,8 @@
 
 ## 提交前
 
+**审查通过后再 commit。** 不要在审查过程中 commit——每一轮修复都 commit 会导致历史里堆满"fix review"提交。审查 PASS 后一次性 commit，message 写清楚改了什么。
+
 **代码写完，交审前，跑一轮实现自检：** 完整清单在 `docs/templates/implementation-review-checklist.md`。下面几条是最常漏的快速核对——不能替代完整清单。
 
 1. `./gradlew quickCheck detekt`（git pre-commit hook 也会自动跑）
