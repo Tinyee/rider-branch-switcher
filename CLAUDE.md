@@ -55,10 +55,13 @@
 
 ## 提交前
 
+**代码写完，交审前，跑一轮实现自检：** 完整清单在 `docs/templates/implementation-review-checklist.md`。下面几条是最常漏的快速核对——不能替代完整清单。
+
 1. `./gradlew quickCheck detekt`（git pre-commit hook 也会自动跑）
 2. 确认每个 `TaskBridge.runBackground` 有 `beginOperation`/`onCancel`/`onFinished`/`endOperation`
 3. 确认每个 `tryStartWrite()` 有 `endWrite()` in finally
 4. 新功能：状态矩阵已填，所有格非空
+5. **交审前至少跑一遍 checklist §3（UI 走查）和 §5（测试核销）。** per-preset 实现 7 轮审查，跑 checklist 能当场抓出一半。
 
 ## 怎么干活
 
@@ -69,6 +72,7 @@
 - **想破例先问。** 问一句的成本 < 改错的成本。
 - **声称完成前跑的是完整门禁，不跑子集。** 本项目 `quickCheck` 和 `detekt` 是两个 task，只跑一个等于没跑——LongParameterList 和 unused `opts` 都是只跑 quickCheck 漏掉的。换别的项目同理：如果门禁是 lint+test，就别只跑 test 说没问题。例外：纯文档/注释/重命名不碰逻辑，`quickCheck` 单独够用。
 - **代码写完后对着设计文档/需求描述逐条过。** 不看设计直接写 = 漏 UI 元素、漏交互细节、组件挂到不存在的地方。写完先自查一遍设计里列的东西，实现里全不全。
+- **改完后跑 `docs/templates/implementation-review-checklist.md` 自检。** 设计有设计自检清单，实现有实现自检清单。per-preset 实现 7 轮审查有一半是 checklist 能当场抓的 bug，但清单从来没被打开过。
 - **审查修完一轮再修下一轮前，重读涉及的源代码。** 不能因为 R1 时读过就凭记忆在 R2 接着改。两轮之间文件已经被自己改过，记忆里的调用链、返回类型、已有基础设施都可能是过期的。per-preset 设计 R2 犯了 4 个这类错误——quickCheck 框架没读过就写 bash、`buildSummary()` 实际结构没重读就写伪代码、`needsMigration` 触发条件没追踪调用路径就写死 `pull==false`、漏 import/Loader 端到端测试因为只看纯函数层。
 
 ## 共享审查流程
