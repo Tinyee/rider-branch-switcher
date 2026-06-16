@@ -7,7 +7,7 @@ Rider 插件 — 一键将主仓库和所有子模块切换到预设的分支组
 - **技术栈**: Kotlin 2.3, IntelliJ Platform Gradle Plugin 2.2.1, Gradle 8.13, JUnit 4 + Kotest 5.9
 - **目标**: JetBrains Rider 2026.1 (build 261)
 - **测试**: 270 tests / 21 classes, `./gradlew test`
-- **版本**: 0.6.0
+- **版本**: 0.7.0
 
 ## 架构
 

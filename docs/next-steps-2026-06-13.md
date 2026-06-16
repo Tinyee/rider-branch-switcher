@@ -20,7 +20,7 @@
 
 已完成：
 
-- `build.gradle.kts`、README、CHANGELOG 和 ROADMAP 已同步到 `0.6.0`。
+- `build.gradle.kts`、README、CHANGELOG 和 ROADMAP 已同步到 `0.7.0`。
 - README Release 链接和 `plugin.xml` vendor 地址均指向 `Tinyee/rider-branch-switcher`。
 - `docs/code-review-2026-06-08.md` 已标记为历史归档。
 - `noFocusRing()` 工厂化、CI、Detekt、Plugin Verifier、Settings、结构化日志等状态已在 ROADMAP 中反映。
