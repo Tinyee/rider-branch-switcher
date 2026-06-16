@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.7.0] — 2026-06-16
+
+### Per-Preset Option Overrides (#29)
+- Each preset can override global dirty/pull/fetch-first settings via new `PresetOverrides` data model
+- Legacy `"pull":false` JSON auto-migrates to `overrides.pull:false` with write-back
+- `ResolvedSwitchRequest` type guard — `SwitchExecutor.execute()` only accepts resolved request, preventing entry points from bypassing override merge
+- Force dirty strategy shows confirmation dialog in panel preview and shortcut (Ctrl+Alt+B); fail-closed for unknown dirty state
+- UI: gear toggle on preset card expands Dirty/Pull/Fetch override combos with independent labels and i18n tooltips
+- Settings change refreshes "Use global" labels without discarding uncommitted edits
+- `PresetFileDto.presets` made nullable (Gson-safe); all DTO→domain paths unified through `PresetDto.toPreset(explicitId)`
+
+### Quality
+- `PullStep` simplified to single `options.pull` check (legacy `pullEnabled` field removed)
+- 25 new tests: `effectiveOptions` merge matrix, `ResolvedSwitchRequest` contract, Force warning conditions, migration write-back verification, import overrides/malformed/null-entry, service resolver mapping
+- `constructorThreshold` raised to 13 (12 params after aggregating 3 global label callbacks into `GlobalOptionLabels`)
+
+### Process
+- Added `docs/templates/design-review-checklist.md` (Designer Pre-flight + 8 review sections + PASS hash gate)
+- Added `docs/templates/implementation-review-checklist.md` (6 review sections + completion gate)
+- CLAUDE.md refactored: automatable rules separated from lessons-learned; `quickCheck`→`quickCheck detekt` across all commands
+
 ## [0.6.0] — 2026-06-13
 
 ### Architecture

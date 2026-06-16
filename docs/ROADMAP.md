@@ -1,6 +1,6 @@
 # Submodule Branch Switcher — 需求 / 路线图
 
-**当前版本 0.6.0**，已具备：
+**当前版本 0.7.0**，已具备：
 
 - 多 preset 持久化（JSON），UI 内增删 preset 与子模块行（基于 `.gitmodules`）
 - 一键切换主仓 + 子模块；脏工作区三策略（stash / skip / force）；切换前 fetch；切换后 pull --ff-only；切换后 VCS 自动刷新
@@ -23,7 +23,8 @@
 - **动态远端名**：自动检测 remote 名，不再硬编码 origin
 - IntelliJ 原生图标（AllIcons），主题感知色
 - i18n 中英双语（DynamicBundle + @PropertyKey 编译时校验）
-- 270 测试（JUnit 4 + Kotest 属性测试）
+- **Per-preset 选项覆盖**：每个 preset 可独立覆盖全局 dirty/fetch/pull；`ResolvedSwitchRequest` 类型守卫；Force 安全确认
+- 271 测试（JUnit 4 + Kotest 属性测试）
 - GitHub Actions CI（ubuntu/macOS/Windows）+ Qodana 静态分析
 
 下面按「切换体验 / 状态可视化 / UI / 工作流 / 质量」五块梳理后续要做的功能点，优先级 **P0(致命) / P1(高价值) / P2(锦上添花)**；状态列标记 v0.x 已落地或下阶段候选。
@@ -303,7 +304,7 @@ com.submodule.branchswitcher/
 | 26 | Settings 页面 | 用户无法通过 File→Settings 配置超时/策略，只能在面板里改 | ✅ v0.6 |
 | 27 | 状态栏 widget | 切换后无常驻指示当前 preset，类似 Git branch widget | ⏸️ SDK 兼容性 |
 | 28 | Preset 搜索/过滤 | 20+ preset 时无搜索 | ✅ v0.6 |
-| 29 | Per-preset 选项覆盖 | 某个 preset 需要特殊 dirty/fetch/pull 配置时无法覆盖全局设置 | ◐ |
+| 29 | Per-preset 选项覆盖 | 每个 preset 可独立覆盖全局 dirty/fetch/pull 设置；`ResolvedSwitchRequest` 类型守卫；Force 安全确认 | ✅ v0.7 |
 | 30 | 嵌套子模块 | `listSubmodulePaths` 只解析根 `.gitmodules`，不递归 | ◐ |
 | 31 | 无 preset 直接切换 | 想"全部切到 develop"必须建 preset | ◐ |
 | 32 | git 不在 PATH 的友好提示 | `GeneralCommandLine("git", ...)` 失败时无提示 | ✅ v0.6 |
