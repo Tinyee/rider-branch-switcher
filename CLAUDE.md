@@ -4,7 +4,7 @@
 
 - **没跑 `./gradlew quickCheck detekt` 不准说没问题。** derive 功能 7 轮审查，每轮都有 grep 能发现的低级错误。
 - **不准静默吞异常，按类型处理**：`CancellationException` 必须重新抛出。安全探针异常 → 转为 Unknown/Error 由调用方处理。best-effort UI 清理 → 可以忽略但必须注释原因。其他 → 至少 `LOG.warn`。`TooGenericExceptionCaught` 在 detekt 中已启用，新代码会被拦；现有违规记录在 baseline。
-- **新增写路径不准缺生命周期。** 每个异步写入口（action、快捷键、菜单项）必须走：门禁检查 → 开始操作 → 可取消任务 → 结束操作 → finally 释放。缺一环 = cancel 静默失效。quickCheck 有对应 grep。
+- **新增异步路径不准缺生命周期。** 每个异步入口（action、快捷键、菜单项、`Dispatchers.IO` 读 git + `invokeLater` 回 UI）必须走：门禁检查 → 开始操作 → 可取消任务 → 结束操作 → finally 释放。`invokeLater` 回调必须检查 `project.isDisposed`。Quick Switch 第一版漏了 disposed guard——shut down 项目时回调会触发已释放的 UI。quickCheck 有对应 grep。
 - **声称完成前不准用 Gradle 缓存声称验证通过。** 开发中增量 OK。声称"没问题"时至少跑一次 `--rerun-tasks`。
 
 ## 没法自动验证，但每次都栽在这些上
