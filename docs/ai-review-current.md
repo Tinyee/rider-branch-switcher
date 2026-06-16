@@ -3,28 +3,78 @@
 ## Review Scope
 
 - Date: 2026-06-16
-- Target: `origin/main..HEAD`（4 个未推送提交）
-- Type: 本地改动复审 + 版本/测试数量一致性核对
-- Result: `PASS` — no blocking findings
+- Target: `origin/main..HEAD` (3 unpushed commits)
+- Type: local unpushed change review
+- Result: `OPEN` — quick switch has behavior/UI-thread issues to fix before treating v0.7 as ready
 
 ## Active Findings
 
-- None.
+### QR-2026-06-16-01 — Quick Switch skips submodules when main repo is already on target branch
+
+- Status: `OPEN`
+- Priority: `P1`
+- Evidence: `src/main/kotlin/com/submodule/branchswitcher/ui/BranchSwitcherPanel.kt:252-256`
+- Impact: If the main repository is already on the typed branch, `doQuickSwitch()` returns before building the temporary preset. Submodules that are still on other branches will not be switched, even though README and tooltip describe quick switch as switching all repos.
+- Suggested fix: Remove the `mainBranch == branch` early return. Quick switch should always build a preset with `main = branch` and every submodule target set to `branch`; existing preflight/checkout logic can decide which repos are already current.
+- Verification: Add/adjust a test for the pure quick-switch preset builder covering `main already target + submodule differs`, then run the targeted test with `./gradlew test --tests "<TestClass>" --max-workers=2 --no-parallel`.
+
+### QR-2026-06-16-02 — Quick Switch runs Git reads on the Swing event thread
+
+- Status: `OPEN`
+- Priority: `P1`
+- Evidence: `src/main/kotlin/com/submodule/branchswitcher/ui/BranchSwitcherPanel.kt:247-262`; `GitOps.currentBranch()` uses `ProcessBuilder("git", ...)` in `src/main/kotlin/com/submodule/branchswitcher/git/GitOps.kt:101-103`.
+- Impact: Clicking Quick Switch or pressing Enter can block the Tool Window while Git CLI commands run. Large repos, slow disks, or hung Git processes can freeze the UI before the existing background switch/preflight flow starts.
+- Suggested fix: Keep only input validation on the EDT. Move submodule discovery / preset construction into a modal or background task, similar to `PresetListManager.addPresetFromCurrent()`, then return to EDT to call `switchController.runSwitch(tempPreset)`.
+- Verification: Add a small test around extracted pure builder logic, and manually/structurally verify no `service.gitClient.currentBranch()` call remains in `doQuickSwitch()` before launching a background/modal task.
+
+### QR-2026-06-16-03 — Quick Switch does not validate branch names
+
+- Status: `OPEN`
+- Priority: `P2`
+- Evidence: `src/main/kotlin/com/submodule/branchswitcher/ui/BranchSwitcherPanel.kt:248-249`; existing validator is `src/main/kotlin/com/submodule/branchswitcher/switch/BranchNameRules.kt:7-21`; derive flow already uses it in `PresetEditor.kt:575-579`.
+- Impact: Invalid input such as whitespace-containing names, `..`, `@{`, or leading `-` can enter preflight/switch flow. That creates noisy Git failures and inconsistent behavior versus derive branch.
+- Suggested fix: Import and call `isValidBranchName(branch)` in quick switch before any Git work. Show an error dialog or log warning using an i18n message, mirroring derive branch behavior.
+- Verification: Add tests for empty/invalid/valid quick-switch branch handling, or at minimum extend existing `BranchNameRules` usage coverage for the new quick-switch path.
+
+### QR-2026-06-16-04 — Quick Switch has no targeted tests
+
+- Status: `OPEN`
+- Priority: `P2`
+- Evidence: `rg "doQuickSwitch|quick\\.switch|Quick Switch" src/test` finds no targeted tests.
+- Impact: The new entry point can regress without test signal, especially around main-already-current behavior, invalid input, and generated submodule targets.
+- Suggested fix: Extract a pure helper such as `buildQuickSwitchPreset(branch, submodulePaths)` or `QuickSwitch.buildPreset(...)`, then test no-submodule, multiple-submodule, invalid branch rejection, and main-already-current scenarios.
+- Verification: Run the new targeted test class with `./gradlew test --tests "<QuickSwitchTestClass>" --max-workers=2 --no-parallel`.
+
+### QR-2026-06-16-05 — Marketplace/plugin description overclaims drag-and-drop reorder
+
+- Status: `OPEN`
+- Priority: `P3`
+- Evidence: `src/main/resources/META-INF/plugin.xml:29` says `Drag-and-drop reorder with ↑↓ buttons`.
+- Impact: Current docs describe reorder as implemented by arrow buttons, not drag-and-drop. Marketplace text would overpromise functionality.
+- Suggested fix: Change the line to `Reorder presets with ↑↓ buttons` or similar.
+- Verification: `git diff --check origin/main..HEAD`; optionally run `./gradlew quickCheck`.
+
+### QR-2026-06-16-06 — CHANGELOG omits Quick Switch from v0.7.0
+
+- Status: `OPEN`
+- Priority: `P3`
+- Evidence: `CHANGELOG.md:3-22` documents per-preset overrides/process updates, while README, ROADMAP, and plugin.xml already advertise quick switch as v0.7 functionality.
+- Impact: Version documentation is inconsistent; release readers may not know quick switch is part of v0.7.
+- Suggested fix: Add a short `Quick Switch (#31)` entry under `0.7.0`, describing the Tool Window branch-name input and no-preset flow.
+- Verification: `rg "Quick Switch|quick switch|#31" CHANGELOG.md README.md docs/ROADMAP.md src/main/resources/META-INF/plugin.xml`.
 
 ## Verified Summary
 
-- 版本号已统一为 `0.7.0`：`build.gradle.kts`、README badge、CHANGELOG 最新 heading、ROADMAP、AGENTS、SETUP 和 next-steps 已同步。
-- 全量测试已实际运行：270 tests / 21 classes / 0 failures / 0 errors / 0 skipped。
-- `docs/ROADMAP.md` 的 `271 测试` 已更正为 `270 测试 / 21 个测试类`。
-- `TestHelpers.executeTest(...)` 内部走 `ResolvedSwitchRequest.resolve(...)`，方向正确。
-- `pluginIcon.svg` 已存在，next-steps 中不再标为缺失。
+- `origin/main..HEAD` currently contains 3 unpushed commits.
+- Quick switch reuses `SwitchController.runSwitch(tempPreset)`, so preflight preview and Force dirty-strategy confirmation are already covered by the existing switch flow.
+- `git diff --check origin/main..HEAD`: PASS.
 
 ## Accepted / Residual Items
 
-- `ACCEPTED`: README 截图仍是 TODO，属于 Marketplace 发布物料，不阻塞当前版本/测试数量同步。
-- `ACCEPTED`: Java source compatibility 17 与 Rider 2026.1.1 要求 21 的警告仍存在，测试通过；后续可单独评估 JDK 21 toolchain。
+- `ACCEPTED`: README screenshot remains TODO. This belongs to Marketplace release materials and does not block the code fixes above.
+- `ACCEPTED`: Full Gradle test was not rerun during this review. After fixing code, run targeted tests first; before claiming completion, run relevant tests with `--rerun-tasks` per project rules.
 
 ## Validation
 
-- `./gradlew test --rerun-tasks --max-workers=1 --no-parallel`: PASS，270 tests / 21 classes / 0 failures / 0 errors / 0 skipped。
-- `git diff --check origin/main..HEAD`: PASS。
+- `git status --short --branch`: `## main...origin/main [ahead 3]`
+- `git diff --check origin/main..HEAD`: PASS
