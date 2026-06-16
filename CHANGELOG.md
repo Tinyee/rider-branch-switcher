@@ -31,7 +31,7 @@
 - `SwitchExecutor` constructor accepts injectable `cancelled` lambda (no ProgressIndicator needed in tests)
 
 ### Tests
-- 241 tests (JUnit 4 + Kotest property-based), 21 test classes
+- 270 tests (JUnit 4 + Kotest property-based), 21 test classes
 - `GitOpsTest`: ControllableProcess for running-process cancel verification
 - `SwitchExecutorTest`: 5 new — rollback SHA fallback, detached HEAD, submodule partial rollback, pipeline cancel
 - `PresetLoaderTest`: 3 new — blank/duplicate ID normalization, valid ID no-op
@@ -50,7 +50,7 @@
 - Low-load test rules: `--max-workers=2 --no-parallel` default, fan-down to 1 worker, no Kotest iteration reduction
 
 ### Test Cleanup
-- 241 tests (JUnit 4 + Kotest property-based), 21 test classes
+- 270 tests (JUnit 4 + Kotest property-based), 21 test classes
 - Removed `HistoryTest` (3 data-class-verification-only tests) and 3 weak tests from `PresetJsonTest`
 - Added `BranchSwitcherServiceTest` (23 tests): write gate, detectGen, history capping, settings persistence, gitClient caching, concurrent contracts
 - All new tests use `Proxy.newProxyInstance` for Project mock — zero mocking framework dependency
