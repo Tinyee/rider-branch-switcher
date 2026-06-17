@@ -234,6 +234,44 @@ class GitOpsTest {
         assertEquals(listOf("SubA"), paths)
     }
 
+    // ── Safety: loop and path-escape rejection ────────────────────
+
+    @Test
+    fun `path equals dot is rejected`() {
+        writeGitmodules("""
+            [submodule "bad"]
+                path = .
+        """.trimIndent())
+        assertEquals(emptyList<String>(), git.listSubmodulePaths(tmpDir.toFile()))
+    }
+
+    @Test
+    fun `path with dotdot is rejected`() {
+        writeGitmodules("""
+            [submodule "escape"]
+                path = ../outside
+        """.trimIndent())
+        assertEquals(emptyList<String>(), git.listSubmodulePaths(tmpDir.toFile()))
+    }
+
+    @Test
+    fun `path with dotdot component is rejected`() {
+        writeGitmodules("""
+            [submodule "bad"]
+                path = SubA/../outside
+        """.trimIndent())
+        assertEquals(emptyList<String>(), git.listSubmodulePaths(tmpDir.toFile()))
+    }
+
+    @Test
+    fun `absolute path is rejected`() {
+        writeGitmodules("""
+            [submodule "bad"]
+                path = /etc/passwd
+        """.trimIndent())
+        assertEquals(emptyList<String>(), git.listSubmodulePaths(tmpDir.toFile()))
+    }
+
     @Test
     fun `GitResult ok is true when exitCode is zero`() {
         val r = GitResult("test", 0, "", "")
