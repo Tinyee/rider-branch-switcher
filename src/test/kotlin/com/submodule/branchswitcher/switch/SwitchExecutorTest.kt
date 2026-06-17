@@ -188,13 +188,13 @@ class SwitchExecutorTest {
 
     @Test
     fun `rollback with branch restores named branch`() {
-        var branch = "main"  // initially main, switches to dev, rollback restores
+        var currentBranch = "main"  // initially main, switches to dev, rollback restores
         val checkoutCalls = mutableListOf<String>()
         val trackGit = object : GitClient by fakeGit {
-            override fun currentBranch(workDir: File): String? = branch
-            override fun checkoutExisting(workDir: File, br: String): GitResult {
-                checkoutCalls += br
-                branch = br  // update after checkout
+            override fun currentBranch(workDir: File): String? = currentBranch
+            override fun checkoutExisting(workDir: File, branch: String): GitResult {
+                checkoutCalls += branch
+                currentBranch = branch  // update after checkout
                 return GitResult("checkout", 0, "", "")
             }
             override fun revParseHead(workDir: File): String? = "abc123"
@@ -212,17 +212,17 @@ class SwitchExecutorTest {
 
     @Test
     fun `rollback falls back to checkpoint sha when branch restore fails`() {
-        var branch = "main"
+        var currentBranch = "main"
         val rollbackCalls = mutableListOf<String>()
         val rollbackGit = object : GitClient by fakeGit {
-            override fun currentBranch(workDir: File): String? = branch
-            override fun checkoutExisting(workDir: File, target: String): GitResult {
-                if (target == "dev") {
-                    branch = "dev"
+            override fun currentBranch(workDir: File): String? = currentBranch
+            override fun checkoutExisting(workDir: File, branch: String): GitResult {
+                if (branch == "dev") {
+                    currentBranch = "dev"
                     return GitResult("checkout", 0, "", "")
                 }
-                rollbackCalls += target
-                return if (target == "abc123") GitResult("checkout", 0, "", "")
+                rollbackCalls += branch
+                return if (branch == "abc123") GitResult("checkout", 0, "", "")
                 else GitResult("checkout", 1, "", "branch restore failed")
             }
         }
@@ -235,12 +235,12 @@ class SwitchExecutorTest {
 
     @Test
     fun `rollback fails when branch and checkpoint sha restore both fail`() {
-        var branch = "main"
+        var currentBranch = "main"
         val rollbackGit = object : GitClient by fakeGit {
-            override fun currentBranch(workDir: File): String? = branch
-            override fun checkoutExisting(workDir: File, target: String): GitResult {
-                if (target == "dev") {
-                    branch = "dev"
+            override fun currentBranch(workDir: File): String? = currentBranch
+            override fun checkoutExisting(workDir: File, branch: String): GitResult {
+                if (branch == "dev") {
+                    currentBranch = "dev"
                     return GitResult("checkout", 0, "", "")
                 }
                 return GitResult("checkout", 1, "", "restore failed")
@@ -255,13 +255,13 @@ class SwitchExecutorTest {
 
     @Test
     fun `rollback restores checkpoint sha when original head was detached`() {
-        var branch: String? = null
+        var currentBranch: String? = null
         val checkoutCalls = mutableListOf<String>()
         val detachedGit = object : GitClient by fakeGit {
-            override fun currentBranch(workDir: File): String? = branch
-            override fun checkoutExisting(workDir: File, target: String): GitResult {
-                checkoutCalls += target
-                branch = target
+            override fun currentBranch(workDir: File): String? = currentBranch
+            override fun checkoutExisting(workDir: File, branch: String): GitResult {
+                checkoutCalls += branch
+                currentBranch = branch
                 return GitResult("checkout", 0, "", "")
             }
         }
@@ -281,12 +281,12 @@ class SwitchExecutorTest {
         val rollbackCalls = mutableListOf<Pair<String, String>>()
         val partialGit = object : GitClient by fakeGit {
             override fun currentBranch(workDir: File): String? = branches[workDir.name] ?: "main"
-            override fun checkoutExisting(workDir: File, target: String): GitResult {
-                if (target == "dev") {
+            override fun checkoutExisting(workDir: File, branch: String): GitResult {
+                if (branch == "dev") {
                     branches[workDir.name] = "dev"
                     return GitResult("checkout", 0, "", "")
                 }
-                rollbackCalls += workDir.name to target
+                rollbackCalls += workDir.name to branch
                 return if (workDir.name == "SubA") GitResult("checkout", 1, "", "restore failed")
                 else GitResult("checkout", 0, "", "")
             }
@@ -420,7 +420,7 @@ class SwitchExecutorTest {
     fun `rollback reports failure when repo is missing`() {
         val skipGit = object : GitClient by fakeGit {
             override fun currentBranch(workDir: File): String? = "main"
-            override fun checkoutExisting(workDir: File, br: String): GitResult =
+            override fun checkoutExisting(workDir: File, branch: String): GitResult =
                 GitResult("checkout", 0, "", "")
         }
         val executor = SwitchExecutor(projectRoot, createStringAppender { log += it }, skipGit)
