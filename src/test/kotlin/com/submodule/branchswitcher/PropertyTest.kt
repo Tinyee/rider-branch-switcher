@@ -79,7 +79,18 @@ class PropertyTest : StringSpec({
     }
 
     "listSubmodulePaths extracts valid path= lines" {
-        // Generate a valid .gitmodules fragment + noise
+        // 生成合法的 .gitmodules 内容，验证 parser 能正确提取所有 path= 行。
+        //
+        // 设计说明：
+        // - [a-z0-9/_-] 仅用大小写无关、无尾部规范化问题的字符。
+        //   Windows 对大小写、尾部 . 和 / 会做文件系统规范化，导致 canonicalFile
+        //   把两条不同路径解析到同一位置，visited 集合将其视为重复而跳过。
+        //   生成阶段避开这些差异，让测试聚焦于 parser 而非平台文件系统语义。
+        // - 生产代码 collectSubmodulePaths 调用 File.canonicalFile 校验路径安全，
+        //   需要子模块目录真实存在于磁盘上，否则 Windows 上 canonicalFile 会抛异常
+        //   导致路径被静默跳过。因此测试中需要 createDirectories。
+        // - 核心边界（SubA、深层嵌套、./、../、绝对路径等）由 GitOpsTest 覆盖，
+        //   本测试是 property-based 补充，不重复那些用例。
         val pathStr = Arb.string(1..15)
             .filter { it.all { c -> c in 'a'..'z' || c in '0'..'9' || c == '/' || c == '-' || c == '_' } }
             .filter { it != "." && it != ".." && !it.startsWith("/") && !it.endsWith("/") && it.split("/").none { c -> c == ".." || c.isEmpty() } }
@@ -95,7 +106,7 @@ class PropertyTest : StringSpec({
             val dir = java.nio.file.Files.createTempDirectory("gm-")
             try {
                 java.nio.file.Files.writeString(dir.resolve(".gitmodules"), content)
-                // Create submodule directories so canonical resolution succeeds (required on Windows)
+                // 创建子模块目录：canonicalFile 在 Windows 上要求路径存在才能解析
                 paths.forEach { p ->
                     java.nio.file.Files.createDirectories(dir.resolve(p))
                 }
