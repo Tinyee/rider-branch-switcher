@@ -1,6 +1,8 @@
 package com.submodule.branchswitcher.ui
 
 import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.application.ModalityState
+import com.intellij.openapi.project.Project
 import java.awt.KeyboardFocusManager
 import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
@@ -36,4 +38,22 @@ internal fun JButton.noFocusRing(): JButton = apply {
 
 private fun releaseFocus() {
     KeyboardFocusManager.getCurrentKeyboardFocusManager().clearGlobalFocusOwner()
+}
+
+/**
+ * Post [action] to the EDT. If [this] project is disposed when the event fires,
+ * the action is silently dropped. This prevents UI operations on a disposed project
+ * (e.g., after IDE shutdown), which would otherwise throw.
+ *
+ * Equivalent to the pattern:
+ *   ApplicationManager.getApplication().invokeLater({
+ *       if (project.isDisposed) return@invokeLater
+ *       action()
+ *   }, ModalityState.any(), project.disposed)
+ */
+fun Project.invokeLaterIfAlive(action: () -> Unit) {
+    ApplicationManager.getApplication().invokeLater({
+        if (isDisposed) return@invokeLater
+        action()
+    }, ModalityState.any(), disposed)
 }

@@ -266,8 +266,7 @@ class PresetListManager(
                 ProbeResult(mb, subs, skipped)
             }
             // Resumed after modal closes
-            com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater({
-                if (project.isDisposed) return@invokeLater
+            project.invokeLaterIfAlive({
                 val mb = result.mainBranch
                 if (mb.isNullOrEmpty()) {
                     Messages.showWarningDialog(project,

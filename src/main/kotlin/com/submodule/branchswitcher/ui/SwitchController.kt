@@ -1,8 +1,7 @@
 ﻿package com.submodule.branchswitcher.ui
 
 import com.intellij.icons.AllIcons
-import com.intellij.openapi.application.ApplicationManager
-import com.intellij.openapi.application.ModalityState
+
 import com.intellij.openapi.progress.ProgressIndicator
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.Messages
@@ -311,12 +310,7 @@ class SwitchController(
         }
     }
 
-    private fun invokeLaterIfProjectAlive(action: () -> Unit) {
-        ApplicationManager.getApplication().invokeLater({
-            if (project.isDisposed) return@invokeLater
-            action()
-        }, ModalityState.any(), project.disposed)
-    }
+    private fun invokeLaterIfProjectAlive(action: () -> Unit) = project.invokeLaterIfAlive(action)
 
     private fun setSwitchInProgress(inProgress: Boolean) {
         val tw = com.intellij.openapi.wm.ToolWindowManager.getInstance(project)
