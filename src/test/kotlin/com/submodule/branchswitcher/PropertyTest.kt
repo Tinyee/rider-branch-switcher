@@ -80,7 +80,9 @@ class PropertyTest : StringSpec({
 
     "listSubmodulePaths extracts valid path= lines" {
         // Generate a valid .gitmodules fragment + noise
-        val pathStr = Arb.string(1..15).filter { it.all { c -> c.isLetterOrDigit() || c == '/' || c == '-' || c == '_' || c == '.' } }
+        val pathStr = Arb.string(1..15)
+            .filter { it.all { c -> c.isLetterOrDigit() || c == '/' || c == '-' || c == '_' || c == '.' } }
+            .filter { it != "." && it != ".." && !it.startsWith("/") && it.split("/").none { c -> c == ".." } }
         val validPaths = Arb.list(pathStr, 1..10).filter { it.distinct().size == it.size }
         forAll(validPaths) { paths ->
             val content = buildString {
