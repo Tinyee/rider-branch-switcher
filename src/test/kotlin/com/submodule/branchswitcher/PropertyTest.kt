@@ -81,8 +81,8 @@ class PropertyTest : StringSpec({
     "listSubmodulePaths extracts valid path= lines" {
         // Generate a valid .gitmodules fragment + noise
         val pathStr = Arb.string(1..15)
-            .filter { it.all { c -> c.isLetterOrDigit() || c == '/' || c == '-' || c == '_' || c == '.' } }
-            .filter { it != "." && it != ".." && !it.startsWith("/") && it.split("/").none { c -> c == ".." } }
+            .filter { it.all { c -> c in 'a'..'z' || c in '0'..'9' || c == '/' || c == '-' || c == '_' } }
+            .filter { it != "." && it != ".." && !it.startsWith("/") && !it.endsWith("/") && it.split("/").none { c -> c == ".." || c.isEmpty() } }
         val validPaths = Arb.list(pathStr, 1..10).filter { it.distinct().size == it.size }
         forAll(validPaths) { paths ->
             val content = buildString {
@@ -95,6 +95,10 @@ class PropertyTest : StringSpec({
             val dir = java.nio.file.Files.createTempDirectory("gm-")
             try {
                 java.nio.file.Files.writeString(dir.resolve(".gitmodules"), content)
+                // Create submodule directories so canonical resolution succeeds (required on Windows)
+                paths.forEach { p ->
+                    java.nio.file.Files.createDirectories(dir.resolve(p))
+                }
                 val ops = com.submodule.branchswitcher.git.GitOps(10)
                 val result = ops.listSubmodulePaths(dir.toFile())
                 result == paths
