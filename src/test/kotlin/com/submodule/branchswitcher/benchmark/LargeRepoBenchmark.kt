@@ -74,9 +74,9 @@ class LargeRepoBenchmark {
             val dir = if (name == ".") parent else parent.resolve(name)
             dir.mkdirs()
 
-            // Two-step init for compatibility with older git
+            // Use standalone ProcessBuilder for setup — GitOps.run is private
+            // and setup doesn't need cancellation/timeout lifecycle.
             gitOk(dir, "init")
-            // Checkout named branch (default "master" may differ)
             runGit(dir, "checkout", "-b", baseBranch)
             gitOk(dir, "config", "user.email", "benchmark@test.com")
             gitOk(dir, "config", "user.name", "Benchmark")
