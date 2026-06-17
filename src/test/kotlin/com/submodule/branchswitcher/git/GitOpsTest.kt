@@ -170,6 +170,22 @@ class GitOpsTest {
     // ── Nested submodule discovery ──────────────────────────────────
 
     @Test
+    fun `path is collected when submodule directory exists`() {
+        // Verify that listSubmodulePaths works when the submodule
+        // directory physically exists on disk.  PropertyTest relies on
+        // this because collectSubmodulePaths resolves canonical paths
+        // (File.canonicalFile) for symlink-safety, and some platforms
+        // require the directory to exist for that resolution.
+        writeGitmodules("""
+            [submodule "SubA"]
+                path = SubA
+        """.trimIndent())
+        java.io.File(tmpDir.toFile(), "SubA").mkdirs()
+        val paths = git.listSubmodulePaths(tmpDir.toFile())
+        assertEquals(listOf("SubA"), paths)
+    }
+
+    @Test
     fun `flat submodules still work`() {
         writeGitmodules("""
             [submodule "SubA"]
