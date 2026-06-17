@@ -286,7 +286,7 @@ com.submodule.branchswitcher/
 | 13 | `PresetListManager.kt:225-228` | 导出剪贴板无异常处理 | wrap try-catch，失败时通知用户 |
 | 14 | `SubmoduleRowManager.kt:251-265` | 右键"仅切此一仓"不检查 dirty、不支持 remote-only 分支 | 加 dirty 检查 + `checkoutFromRemote` 回退 |
 | 15 | `CheckoutStep.kt:37-44` | `invokeAndWait` 弹确认框时取消不生效 | 弹框前检查 `indicator.isCanceled` |
-| 16 | `BranchSwitcherPanel.kt:213-247` | ComboBox 索引用 0/1/2/3 魔法数字 | 改用数据对象（enum / Pair）按值匹配 |
+| 16 | `PresetEditor.kt` | ComboBox 索引用 0/1/2/3 魔法数字 | ✅ 已修复：`triStateFromCombo`/`triStateToCombo` helper 函数 |
 | 17 | `GitOps.kt:58,64,67,109` | 硬编码 `origin` 远端名 | 检测实际 remote 名或使用 `git branch -a` |
 | 18 | `PresetLoader.kt:82-84` | 原子写入的临时文件在非 `AtomicMoveNotSupportedException` 异常时泄漏 | 加 `finally` 清理 |
 | 19 | `BranchSwitcherService.kt:143-144` | `setCurrentBranches`/`getCurrentBranches` 无调用方 | 加调用方或删除死代码 |

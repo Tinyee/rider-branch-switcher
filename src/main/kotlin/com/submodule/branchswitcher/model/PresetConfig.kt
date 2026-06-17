@@ -1,5 +1,7 @@
 package com.submodule.branchswitcher.model
 
+import java.util.logging.Logger
+
 /** A single repository target: its path (or "." for main) and desired branch. */
 data class RepoTarget(
     val path: String,
@@ -50,10 +52,17 @@ data class PresetOverridesDto(
     val pull: Boolean? = null,
     val fetchFirst: Boolean? = null,
 ) {
+    companion object {
+        private val LOG = Logger.getLogger(PresetOverridesDto::class.java.name)
+    }
+
     fun toOverrides(): PresetOverrides? {
         val d = dirty?.let { raw ->
             try { DirtyAction.valueOf(raw) }
-            catch (_: IllegalArgumentException) { null }
+            catch (e: IllegalArgumentException) {
+                LOG.warning("Invalid dirty action '$raw' in preset JSON, treating as null: ${e.message}")
+                null
+            }
         }
         if (d == null && pull == null && fetchFirst == null) return null
         return PresetOverrides(dirty = d, pull = pull, fetchFirst = fetchFirst)
