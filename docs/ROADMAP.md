@@ -341,7 +341,7 @@ com.submodule.branchswitcher/
 | # | 事项 | 说明 | 状态 |
 |---|------|------|------|
 | M12 | 首次安装提示 | 无预设空状态已增加 Quick Start、Ctrl+Alt+B 和团队共享提示 | ✅ v0.6 |
-| M13 | 大仓规模测试 | 已覆盖 50 子模块 Switch/Preflight Git 调用预算；真实耗时基准应使用独立 benchmark task | ◐ |
+| M13 | 大仓规模测试 | 已覆盖 50 目标仓库 Switch/Preflight Git 调用预算（`LargeRepoScalabilityTest`）+ 真实耗时基准（`./gradlew benchmark`，独立 task，51 个预设目标目录真实 GitOps wall-clock） | ✅ v0.7 |
 | M14 | 匿名遥测（opt-in） | 按 Marketplace 要求明示同意 | ◐ |
 
 ---
@@ -353,7 +353,8 @@ com.submodule.branchswitcher/
 - ✅ 270 测试，21 个测试类，`./gradlew test` 即可跑
 - ✅ `GitClient` 接口 + Fake 实现 → 架构已隔离 IntelliJ 运行时
 - ✅ 真实 git 临时仓库集成测试（`SwitchIntegrationTest`）
-- ✅ 50 子模块 Switch/Preflight Git 调用预算测试（`LargeRepoScalabilityTest`）
+- ✅ 50 目标仓库 Switch/Preflight Git 调用预算测试（`LargeRepoScalabilityTest`，counting fake）
+- ✅ 大仓真实耗时基准（`./gradlew benchmark`，独立 Gradle task，51 个独立 git 仓库真实 GitOps wall-clock）
 - ✅ GitHub Actions CI（ubuntu/macOS/Windows）+ Detekt + quickCheck + checkQuickCheck + verifyPlugin
 - ✅ `quickCheck`：7 条 grep 结构性检查 + `checkQuickCheck` 自测（5 fixture）
 - ⚠ 已覆盖 UI 规则与 Swing 几何约束，尚无 Rider fixture / 截图测试

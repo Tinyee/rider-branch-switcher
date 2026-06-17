@@ -161,6 +161,9 @@ tasks {
         // processes, so running too many test classes in parallel causes CPU
         // saturation without improving wall-clock time.
         maxParallelForks = (Runtime.getRuntime().availableProcessors() / 2).coerceIn(1, 4)
+        // Exclude benchmark from normal test runs — the benchmark creates
+        // 50+ real git repos and takes 30–90 seconds.
+        filter { excludeTestsMatching("com.submodule.branchswitcher.benchmark.*") }
     }
 
     // -- releaseCheck: aggregate all automated checks + metadata validation -----
@@ -309,5 +312,17 @@ tasks {
 
             logger.lifecycle("releaseCheck PASSED for version $projVersion")
         }
+    }
+
+    register<Test>("benchmark") {
+        group = "verification"
+        description = "Large-repo wall-clock benchmark (50 submodules, real git). Not part of normal test."
+        useJUnitPlatform {
+            excludeEngines("kotest") // kotest classpath scan OOMs with full IntelliJ classpath
+        }
+        timeout.set(Duration.ofMinutes(10))
+        maxParallelForks = 1 // shared temp dir
+        maxHeapSize = "1g" // 50+ real git repos need headroom
+        filter { includeTestsMatching("com.submodule.branchswitcher.benchmark.*") }
     }
 }
