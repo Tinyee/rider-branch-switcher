@@ -15,6 +15,7 @@
 
 - Previous quick-switch review QR-01..QR-07 remains verified; no active quick-switch findings were re-opened.
 - `VERIFIED` QR-2026-06-17-08: recursive `.gitmodules` parsing now rejects unsafe textual paths (`.`, `..`, `../outside`, `SubA/../outside`, absolute Unix-style paths), enforces canonical root boundaries, seeds `visited` with `rootCanonical`, uses `visited` to prevent duplicate/loop recursion, and has a nesting depth guard.
+- `CLOSED` QR-2026-06-17-08: current implementation is sufficient to pass review; the remaining symlink/junction test idea is accepted as optional future hardening, not an active blocker.
 - `VERIFIED` root loop closure: `GitOps.listSubmodulePaths()` now adds `rootCanonical` to `visited` before recursion and requires resolved submodule directories to be strictly below `rootCanonical`, so paths resolving back to the repository root are skipped before being added to results.
 - `GitOpsTest` covers flat submodules, nested submodules, deep nested paths, missing nested `.gitmodules`, and several unsafe textual paths.
 - `git diff --check origin/main..HEAD`: PASS.
