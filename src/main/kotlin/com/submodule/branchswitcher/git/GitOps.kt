@@ -5,6 +5,7 @@ import java.nio.charset.StandardCharsets
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.logging.Logger
 
 fun selectRemoteName(remotes: List<String>): String = when {
     remotes.isEmpty() -> "origin"
@@ -28,6 +29,10 @@ class GitOps(
 
     private val operationCancelled = AtomicBoolean(false)
     private val activeOperations = AtomicInteger(0)
+
+    companion object {
+        private val LOG = Logger.getLogger(GitOps::class.java.name)
+    }
 
     override fun beginOperation() {
         if (activeOperations.incrementAndGet() == 1) {
@@ -220,7 +225,12 @@ class GitOps(
             val fullPath = if (prefix.isEmpty()) path else "$prefix/$path"
             // Resolve canonical to prevent escape via symlinks or relative tricks
             val subDir = File(baseDir, path)
-            val resolved = try { subDir.canonicalFile.path } catch (_: Exception) { continue }
+            val resolved = try {
+                subDir.canonicalFile.path
+            } catch (e: Exception) {
+                LOG.warning("Cannot resolve canonical path for submodule $fullPath: ${e.message}")
+                continue
+            }
             if (!resolved.startsWith(rootCanonical + File.separator)) continue
             if (!visited.add(resolved)) continue // already visited — prevent loops (root seeded at start)
             result.add(fullPath)

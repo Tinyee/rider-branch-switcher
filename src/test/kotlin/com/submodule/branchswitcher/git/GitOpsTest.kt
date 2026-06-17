@@ -186,6 +186,21 @@ class GitOpsTest {
     }
 
     @Test
+    fun `path is collected even when submodule directory does not exist`() {
+        // canonicalFile resolves paths without requiring existence on
+        // all tested platforms. The catch-branch (with LOG.warning) is
+        // a safety net for exotic filesystem errors (broken symlinks,
+        // path-too-long, etc.).
+        writeGitmodules("""
+            [submodule "GhostDir"]
+                path = GhostDir
+        """.trimIndent())
+        // GhostDir is NOT created — canonicalFile should still succeed
+        val paths = git.listSubmodulePaths(tmpDir.toFile())
+        assertEquals(listOf("GhostDir"), paths)
+    }
+
+    @Test
     fun `flat submodules still work`() {
         writeGitmodules("""
             [submodule "SubA"]
@@ -248,6 +263,33 @@ class GitOpsTest {
         java.io.File(tmpDir.toFile(), "SubA").mkdirs()
         val paths = git.listSubmodulePaths(tmpDir.toFile())
         assertEquals(listOf("SubA"), paths)
+    }
+
+    @Test
+    fun `recursion stops at depth 10`() {
+        // Build a chain of 12 nested .gitmodules, each pointing one level
+        // deeper. Only l1..l11 (11 entries) are discovered; l12 is beyond
+        // the depth-10 guard in collectSubmodulePaths.
+        val root = tmpDir.toFile()
+        var currentDir = root
+        for (i in 1..12) {
+            val dirName = "l$i"
+            java.io.File(currentDir, dirName).mkdirs()
+            // Write .gitmodules in currentDir referencing dirName
+            java.nio.file.Files.writeString(
+                java.io.File(currentDir, ".gitmodules").toPath(),
+                """
+                [submodule "$dirName"]
+                    path = $dirName
+                """.trimIndent()
+            )
+            currentDir = java.io.File(currentDir, dirName)
+        }
+        val paths = git.listSubmodulePaths(root)
+        // l1 through l11 = 11 entries; l12 is cut off at depth 10
+        assertEquals(11, paths.size)
+        assertEquals("l1", paths[0])
+        assertTrue(paths.last().startsWith("l1/l2/"))
     }
 
     // ── Safety: loop and path-escape rejection ────────────────────
