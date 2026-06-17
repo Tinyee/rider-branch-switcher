@@ -3,7 +3,7 @@
 **Rider plugin** — one-click switch the main repo and all submodules to a preset branch combination.
 
 ![version](https://img.shields.io/badge/version-0.7.0-blue)
-![tests](https://img.shields.io/badge/tests-270-green)
+![tests](https://img.shields.io/badge/tests-282-green)
 ![Rider](https://img.shields.io/badge/Rider-2026.1-purple)
 
 ## Features
@@ -91,7 +91,16 @@ Configured via `Settings → Version Control → Submodule Branch Switcher`:
 # Build plugin zip
 ./gradlew buildPlugin
 # → build/distributions/rider-branch-switcher-{version}.zip
+
+# Large-repo wall-clock benchmark (heavy; 51 independent git repos, real GitOps)
+./gradlew benchmark
+# Prints preflight + switch wall-clock timing. Not part of ./gradlew test.
 ```
+
+**Benchmark** (`./gradlew benchmark`) creates 1 main + 50 independent git repos and runs
+preflight probe + full switch pipeline using real `GitOps`. It measures wall-clock time
+and prints results for human review — no thresholds are enforced. The task is gated
+behind a dedicated Gradle task so it never runs as part of normal `./gradlew test`.
 
 Tech stack: Kotlin 2.3, IntelliJ Platform Gradle Plugin 2.2.1, Gradle 8.13, JUnit 4 + Kotest 5.9.
 

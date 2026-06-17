@@ -271,12 +271,12 @@ class PresetListManager(
                 if (mb.isNullOrEmpty()) {
                     Messages.showWarningDialog(project,
                         Bundle.msg("dialog.detached.head"), Bundle.msg("plugin.title"))
-                    return@invokeLater
+                    return@invokeLaterIfAlive
                 }
                 val name = Messages.showInputDialog(project,
                     Bundle.msg("dialog.preset.name.rule"),
                     Bundle.msg("dialog.from.current"), null, mb, newNameValidator())?.trim()
-                if (name.isNullOrEmpty()) return@invokeLater
+                if (name.isNullOrEmpty()) return@invokeLaterIfAlive
                 val newPreset = Preset(
                     name = name,
                     main = mb,
