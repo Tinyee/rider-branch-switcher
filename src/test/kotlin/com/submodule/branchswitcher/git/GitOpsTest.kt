@@ -290,6 +290,31 @@ class GitOpsTest {
     }
 
     @Test
+    fun `symlink to root is rejected via visited guard`() {
+        val root = tmpDir.toFile()
+        writeGitmodules("""
+            [submodule "link"]
+                path = link-to-root
+        """.trimIndent())
+        // Try to create a symlink back to root; skip test cleanly if unsupported
+        val linkDir = java.io.File(root, "link-to-root")
+        val created = try {
+            java.nio.file.Files.createSymbolicLink(linkDir.toPath(), root.toPath())
+            true
+        } catch (_: Exception) { false }
+        try {
+            val paths = git.listSubmodulePaths(root)
+            if (created) {
+                // Symlink resolves to root — visited seed should reject it
+                assertTrue("symlink-to-root must be skipped", paths.isEmpty())
+            }
+            // If symlink creation failed (e.g. Windows without admin), test passes vacuously
+        } finally {
+            if (created) linkDir.delete()
+        }
+    }
+
+    @Test
     fun `GitResult ok is true when exitCode is zero`() {
         val r = GitResult("test", 0, "", "")
         assertTrue(r.ok)
