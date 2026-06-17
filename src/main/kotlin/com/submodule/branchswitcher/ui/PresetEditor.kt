@@ -360,8 +360,8 @@ class PresetEditor(
     private fun applyOverridesToUI() {
         val ov = original.overrides
         dirtyCombo.selectedIndex = if (ov?.dirty != null) dirtyActionToIndex(ov.dirty) + 1 else 0
-        pullCombo.selectedIndex = when (ov?.pull) { true -> 1; false -> 2; else -> 0 }
-        fetchCombo.selectedIndex = when (ov?.fetchFirst) { true -> 1; false -> 2; else -> 0 }
+        pullCombo.selectedIndex = triStateToCombo(ov?.pull)
+        fetchCombo.selectedIndex = triStateToCombo(ov?.fetchFirst)
         updateOverrideIndicator()
     }
 
@@ -501,15 +501,25 @@ class PresetEditor(
         )
     }
 
+    // ── Override combo box mapping ──────────────────────────────────
+    // Combo item order (set in refreshGlobalLabels):
+    //   0 = "Use global" (null)   1 = "On" (true)   2 = "Off" (false)
+    // Dirty combo has 4 items (global/stash/skip/force) and uses
+    // indexToDirtyAction / dirtyActionToIndex for its own mapping.
+
+    private fun triStateFromCombo(index: Int): Boolean? = when (index) {
+        1 -> true; 2 -> false; else -> null
+    }
+
+    private fun triStateToCombo(value: Boolean?): Int = when (value) {
+        true -> 1; false -> 2; else -> 0
+    }
+
     private fun buildOverrides(): PresetOverrides? {
         val d = if (dirtyCombo.selectedIndex > 0)
             indexToDirtyAction(dirtyCombo.selectedIndex - 1) else null
-        val p = when (pullCombo.selectedIndex) {
-            1 -> true; 2 -> false; else -> null
-        }
-        val f = when (fetchCombo.selectedIndex) {
-            1 -> true; 2 -> false; else -> null
-        }
+        val p = triStateFromCombo(pullCombo.selectedIndex)
+        val f = triStateFromCombo(fetchCombo.selectedIndex)
         return if (d != null || p != null || f != null) PresetOverrides(d, p, f) else null
     }
 
