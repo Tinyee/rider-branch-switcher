@@ -179,8 +179,8 @@ class LargeRepoBenchmark {
 
     @Test
     fun `benchmark summary`() {
-        // This test runs last (alphabetical order) and prints the combined summary.
-        // Individual timing values are printed by the tests above.
+        // Prints the combined summary. Individual timing values are printed by the tests above.
+        // (JUnit4 does not guarantee execution order; alphabetical happens to work here.)
         println("╔══ Large-repo benchmark summary ══╗")
         println("║ target repos:  $targetRepoCount (independent git repos, no .gitmodules)")
         println("║ git backend:    real GitOps")
