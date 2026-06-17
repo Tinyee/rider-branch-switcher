@@ -196,6 +196,7 @@ class GitOps(
         val result = mutableListOf<String>()
         val visited = HashSet<String>()
         val rootCanonical = try { gitRoot.canonicalFile.path } catch (_: Exception) { gitRoot.absolutePath }
+        visited.add(rootCanonical) // root itself is never a valid submodule path
         collectSubmodulePaths(gitRoot, "", result, visited, rootCanonical)
         return result
     }
@@ -220,8 +221,8 @@ class GitOps(
             // Resolve canonical to prevent escape via symlinks or relative tricks
             val subDir = File(baseDir, path)
             val resolved = try { subDir.canonicalFile.path } catch (_: Exception) { continue }
-            if (!resolved.startsWith(rootCanonical + File.separator) && resolved != rootCanonical) continue
-            if (!visited.add(resolved)) continue // already visited — prevent loops
+            if (!resolved.startsWith(rootCanonical + File.separator)) continue
+            if (!visited.add(resolved)) continue // already visited — prevent loops (root seeded at start)
             result.add(fullPath)
             collectSubmodulePaths(subDir, fullPath, result, visited, rootCanonical, depth + 1)
         }
