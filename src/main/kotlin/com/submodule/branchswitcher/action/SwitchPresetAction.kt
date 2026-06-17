@@ -13,6 +13,7 @@ import com.submodule.branchswitcher.TaskBridge
 import com.submodule.branchswitcher.log.createStringAppender
 import com.submodule.branchswitcher.model.Preset
 import com.submodule.branchswitcher.model.ResolvedSwitchRequest
+import com.submodule.branchswitcher.ui.invokeLaterIfAlive
 import com.submodule.branchswitcher.ui.shouldShowForceWarning
 import com.submodule.branchswitcher.service.BranchSwitcherService
 import com.submodule.branchswitcher.switch.SwitchExecutor
@@ -128,10 +129,9 @@ class SwitchPresetAction : AnAction() {
                 ok = false
             }
             // Resumed on EDT via TaskBridge.onFinished — wrap UI ops
-            com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater {
-                if (project.isDisposed) return@invokeLater
+            project.invokeLaterIfAlive {
                 if (cancelled) {
-                    return@invokeLater
+                    return@invokeLaterIfAlive
                 }
                 if (ok) {
                     Notifier.info(project, Bundle.msg("switch.complete"), Bundle.msg("notify.switch.complete.msg", preset.name))
