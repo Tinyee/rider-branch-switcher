@@ -335,22 +335,19 @@ class SwitchStepTest {
     // ---- StepResult pipeline behavior ----
 
     @Test
-    fun `Fatal result should abort pipeline`() {
-        assertTrue(StepResult.Fatal("test") is StepResult)
+    fun `Fatal result is distinct from Success`() {
         assertTrue(StepResult.Fatal("test") != StepResult.Success)
     }
 
     @Test
-    fun `Partial result marks non-success but continues`() {
+    fun `Partial result carries failure details`() {
         val partial = StepResult.Partial(mapOf("repo" to "error"))
-        assertTrue(partial is StepResult)
         assertEquals(mapOf("repo" to "error"), partial.failures)
     }
 
     @Test
-    fun `Partial with empty failures is still Partial`() {
-        val partial = StepResult.Partial(emptyMap())
-        assertTrue(partial is StepResult.Partial)
+    fun `Partial result is distinct from Success`() {
+        assertTrue(StepResult.Partial(emptyMap()) != StepResult.Success)
     }
 
     // ---- SwitchContext ----
