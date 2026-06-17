@@ -316,7 +316,7 @@ tasks {
 
     register<Test>("benchmark") {
         group = "verification"
-        description = "Large-repo wall-clock benchmark (50 submodules, real git). Not part of normal test."
+        description = "Large-repo wall-clock benchmark (51 preset target repos, real GitOps; no .gitmodules). Not part of normal test."
         useJUnitPlatform {
             excludeEngines("kotest") // kotest classpath scan OOMs with full IntelliJ classpath
         }
