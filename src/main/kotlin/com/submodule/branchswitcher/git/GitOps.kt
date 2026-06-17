@@ -185,14 +185,27 @@ class GitOps(
     /** Matches `path = <value>` lines in .gitmodules, skipping comments and blank lines. */
     private val pathLineRegex = Regex("""^path\s*=\s*(.+?)\s*$""", RegexOption.IGNORE_CASE)
 
+    private fun isSafeSubmodulePath(path: String): Boolean {
+        if (path.isEmpty() || path == "." || path == "..") return false
+        if (path.startsWith("/") || path.startsWith("\\")) return false
+        return path.split("/", "\\").none { it == ".." }
+    }
+
     /** Recursively parses .gitmodules to list all submodule paths, including nested ones. */
     override fun listSubmodulePaths(gitRoot: File): List<String> {
         val result = mutableListOf<String>()
-        collectSubmodulePaths(gitRoot, "", result)
+        val visited = HashSet<String>()
+        val rootCanonical = try { gitRoot.canonicalFile.path } catch (_: Exception) { gitRoot.absolutePath }
+        collectSubmodulePaths(gitRoot, "", result, visited, rootCanonical)
         return result
     }
 
-    private fun collectSubmodulePaths(baseDir: File, prefix: String, result: MutableList<String>) {
+    private fun collectSubmodulePaths(
+        baseDir: File, prefix: String, result: MutableList<String>,
+        visited: MutableSet<String>, rootCanonical: String,
+        depth: Int = 0,
+    ) {
+        if (depth > 10) return // safety limit: 10 levels of nesting
         val file = File(baseDir, ".gitmodules")
         if (!file.exists()) return
         val paths = file.readLines().mapNotNull { raw ->
@@ -202,9 +215,15 @@ class GitOps(
             v.trim().trim('"').takeIf { it.isNotEmpty() }
         }
         for (path in paths) {
+            if (!isSafeSubmodulePath(path)) continue
             val fullPath = if (prefix.isEmpty()) path else "$prefix/$path"
+            // Resolve canonical to prevent escape via symlinks or relative tricks
+            val subDir = File(baseDir, path)
+            val resolved = try { subDir.canonicalFile.path } catch (_: Exception) { continue }
+            if (!resolved.startsWith(rootCanonical + File.separator) && resolved != rootCanonical) continue
+            if (!visited.add(resolved)) continue // already visited — prevent loops
             result.add(fullPath)
-            collectSubmodulePaths(File(baseDir, path), fullPath, result)
+            collectSubmodulePaths(subDir, fullPath, result, visited, rootCanonical, depth + 1)
         }
     }
 
