@@ -12,8 +12,6 @@
 - PropertyTest Windows canonical-path fix verified (83afe69): character set restriction + createDirectories.
 - LargeRepoBenchmark JUnit4 comment corrected (5cc53de).
 - AGENTS.md test count synced 270→282 (bb0fc3c).
-- `git hash-object docs/ai-review-current.md`: (current — rehash after edit)
-
 ## Validation
 
 - `./gradlew quickCheck detekt`: PASS
