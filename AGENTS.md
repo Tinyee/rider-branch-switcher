@@ -6,7 +6,7 @@ Rider 插件 — 一键将主仓库和所有子模块切换到预设的分支组
 
 - **技术栈**: Kotlin 2.3, IntelliJ Platform Gradle Plugin 2.2.1, Gradle 8.13, JUnit 4 + Kotest 5.9
 - **目标**: JetBrains Rider 2026.1 (build 261)
-- **测试**: 297 tests / 21 classes, `./gradlew test`
+- **测试**: 300 tests / 21 classes, `./gradlew test`
 - **版本**: 0.7.0
 
 ## 架构
@@ -36,7 +36,7 @@ com.submodule.branchswitcher/
 
 ```bash
 git config core.hooksPath .githooks   # 首次 clone 后执行一次，启用自动检查
-./gradlew test          # 297 tests / 21 classes
+./gradlew test          # 300 tests / 21 classes
 ./gradlew buildPlugin   # → build/distributions/rider-branch-switcher-{version}.zip
 ./gradlew runIde        # 启动沙箱 Rider，插件已预装
 ./gradlew quickCheck    # <1 秒，grep 结构检查（git commit 时自动跑）
@@ -83,7 +83,7 @@ git config core.hooksPath .githooks   # 首次 clone 后执行一次，启用自
 - `isGitRepo` 增加 10s 超时。
 - 分支名校验 (`isValidBranchName`)。
 - 新增 MIT `LICENSE`、`quickCheck` + `releaseCheck` Gradle task、git pre-commit/pre-push hooks。
-- 297 tests / 21 classes 覆盖：真实 Git 集成、取消、rollback、derive 安全、通知决策、stash+rollback、50 子模块调用预算。
+- 300 tests / 21 classes 覆盖：真实 Git 集成、取消、rollback、derive 安全、通知决策、stash+rollback、50 子模块调用预算。
 
 ## 会话流程规则
 
