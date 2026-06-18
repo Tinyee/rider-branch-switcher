@@ -148,4 +148,29 @@ class SwitchPreflightTest {
         val rows = preflight.probe(projectRoot, preset)
         assertFalse("needsSwitch should be false", rows[0].needsSwitch)
     }
+
+    @Test
+    fun `probe converts ordinary git exception to fail-closed row`() {
+        val throwingGit = object : GitClient by fakeGit {
+            override fun dirtyFileCount(workDir: File): Int = throw java.io.IOException("git failed")
+        }
+        val preflight = SwitchPreflight(throwingGit)
+        val preset = Preset("test", "main")
+        val rows = preflight.probe(projectRoot, preset)
+        assertEquals(1, rows.size)
+        assertTrue("row should exist", rows[0].exists)
+        assertEquals(-1, rows[0].dirtyCount)
+        assertFalse(rows[0].hasLocal)
+        assertTrue("should be branchMissing", rows[0].branchMissing)
+    }
+
+    @Test(expected = kotlinx.coroutines.CancellationException::class)
+    fun `probe rethrows CancellationException instead of converting to row`() {
+        val cancelGit = object : GitClient by fakeGit {
+            override fun currentBranch(workDir: File): String? =
+                throw kotlinx.coroutines.CancellationException("cancelled")
+        }
+        val preflight = SwitchPreflight(cancelGit)
+        preflight.probe(projectRoot, Preset("test", "main"))
+    }
 }
