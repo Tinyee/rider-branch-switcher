@@ -9,6 +9,7 @@
 - **不准静默吞异常。** `CancellationException` 必须重抛。探针异常 → Unknown/Error。UI 清理 → 可忽略但注释原因。其他 → 至少 `LOG.warn`。
 - **新增异步路径不准缺生命周期。** 每条路径：门禁 → beginOperation → 可取消任务 → endOperation → finally。`invokeLater` 回调检查 `project.isDisposed`。
 - **声称完成前不准用 Gradle 缓存声称通过。** 开发增量 OK，声称"没问题"至少跑一次 `--rerun-tasks`。
+- **`ProcessCanceledException extends RuntimeException`**——`catch (e: RuntimeException)` 和 `catch (e: Exception)` 都会误吞它。取消异常和进程取消异常必须在任何宽 catch 之前单独处理。**改变任何异常传播路径后，必须 `grep -rn "catch.*Exception\|catch.*RuntimeException" src/main` 扫全量上行 catch 块。**
 - **验证分层**：改测试/文档 → L1（testClasses+quickCheck）。改生产代码 → L2（+detekt）。改 GitOps/SwitchExecutor → L3（+相关 test）。push → L4（全量 test detekt --rerun-tasks）。详见 `/handoff` skill。
 
 ## 血泪教训 — 没法自动验证但每次都栽
@@ -26,6 +27,7 @@
 - **写只验证 data class 字段/语言特性的测试。** 已清理 6 个，无自动门禁能区分。
 - **凭感觉改文档数字。** 用 `rg -n`/测试输出枚举证据。
 - **接口加方法漏更新实现。** `GitClient` 加方法漏 test fake 多次。
+- **改了异常传播不扫上游 catch。** `probeOne()` 加了 `throw ProcessCanceledException`，但 TaskBridge/SwitchRunner/SwitchController/PresetListManager 四个上游 `catch (e: RuntimeException)` 全部误吞。改完必须 `grep -rn "catch.*Exception"` 扫全量。`ProcessCanceledException extends RuntimeException` 让宽 catch 特别容易漏。
 
 ## 新功能：先设计再写代码
 
