@@ -28,3 +28,6 @@
 - FULL-02 implementation `git diff --check`: PASS
 - FULL-02 second-order review `./gradlew compileKotlin compileTestKotlin --max-workers=1 --no-parallel`: PASS
 - FULL-02 extra coverage `./gradlew test --tests "com.submodule.branchswitcher.switch.SwitchRunnerTest" --max-workers=1 --no-parallel`: PASS (5 runner tests)
+- FULL-02 extra coverage `./gradlew quickCheck --max-workers=1 --no-parallel`: PASS
+- FULL-02 extra coverage `./gradlew detekt --max-workers=1 --no-parallel`: PASS
+- FULL-02 extra coverage `git diff --check`: PASS
