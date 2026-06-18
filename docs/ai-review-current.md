@@ -3,20 +3,17 @@
 ## Review Scope
 
 - Date: 2026-06-18
-- Target: local telemetry changes (`BranchSwitcherService`, Settings UI, switch/derive/create counters)
-- Result: `PASS` - all 5 findings verified fixed
+- Target: telemetry fix re-review (`faddb34` on top of M14 telemetry)
+- Result: `PASS` - TEL-06 fixed, all telemetry findings verified
 
 ## Verified Summary
 
-- TEL-01 VERIFIED: install ID only generated after opt-in; `telemetryPromptShown` flag prevents re-prompting.
-- TEL-02 VERIFIED: all new UI strings use Bundle.msg() with en/zh properties.
-- TEL-03 VERIFIED: error counter incremented on switch/derive failure paths.
-- TEL-04 VERIFIED: SwitchPresetAction success/failure paths also increment counters.
-- TEL-05 VERIFIED: 8 telemetry tests covering defaults, opt-in gating, counters, loadState.
+- TEL-06 VERIFIED: exportTelemetry() now uses `telemetryInstallId` getter (checks opt-in) instead of raw `options.telemetryInstallId`. Opt-out hides old persisted ID.
+- TEL-01..05 previously verified fixed.
+- 10 telemetry tests cover: defaults, opt-in/opt-out, counter gating, export ID redaction, opt-out scrub, loadState.
 - Previous AR-01 and handoff skill fixes remain verified.
 
 ## Validation
 
-- `./gradlew compileKotlin --rerun-tasks`: PASS (0 warnings, 0 errors)
+- `./gradlew test --tests "BranchSwitcherServiceTest" --rerun-tasks`: PASS (10 telemetry tests, 0 failures)
 - `./gradlew quickCheck detekt`: PASS
-- `./gradlew test --tests "BranchSwitcherServiceTest"`: PASS (8 new telemetry tests)

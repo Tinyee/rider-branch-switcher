@@ -343,12 +343,30 @@ class BranchSwitcherServiceTest {
     }
 
     @Test
-    fun `export includes version and redacted install ID`() {
+    fun `export after opt-in includes redacted non-empty install ID`() {
         service.telemetryOptIn = true
         val stats = service.exportTelemetry()
         assertTrue(stats.contains("\"pluginVersion\": \"0.7.0\""))
         assertTrue(stats.contains("\"riderVersion\":"))
-        assertTrue(stats.contains("…")) // ellipsis after truncated installId
+        // installId should be redacted with 8-char prefix + ellipsis, not empty
+        val idMatch = Regex("\"installId\": \"([^\"]+)\"").find(stats)
+        assertNotNull("installId field must be present", idMatch)
+        val id = idMatch!!.groupValues[1]
+        assertTrue("installId must not be empty", id.isNotEmpty())
+        assertTrue("installId must not start with <not", !id.startsWith("<not"))
+    }
+
+    @Test
+    fun `export after opt-out does not expose persisted ID`() {
+        // Simulate: user opts in, ID is generated, then user opts out
+        service.telemetryOptIn = true
+        service.telemetryInstallId // trigger UUID generation
+        service.telemetryOptIn = false
+        val stats = service.exportTelemetry()
+        // Export shows redacted installId (8 chars + ellipsis)
+        val idMatch = Regex("\"installId\": \"([^\"]+)\"").find(stats)
+        assertNotNull("installId must be present", idMatch)
+        assertTrue("installId must reflect opt-out", idMatch!!.groupValues[1].startsWith("<not op"))
     }
 
     @Test
