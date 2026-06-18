@@ -6,9 +6,9 @@ set -e
 
 run_gradle() {
     if [ -f "./gradlew.bat" ] && command -v cmd.exe >/dev/null 2>&1; then
-        cmd.exe /c gradlew.bat "$@"
+        cmd.exe /c gradlew.bat "$@" </dev/null
     else
-        ./gradlew "$@"
+        ./gradlew "$@" </dev/null
     fi
 }
 
