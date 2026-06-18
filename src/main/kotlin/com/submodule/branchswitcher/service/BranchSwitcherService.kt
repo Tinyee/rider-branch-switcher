@@ -70,6 +70,7 @@ class BranchSwitcherService(
         var history: MutableList<SwitchHistoryEntry> = mutableListOf(),
         // ── Anonymous telemetry ──────────────────────────────────
         var telemetryInstallId: String = "",
+        var telemetryPromptShown: Boolean = false,
         var telemetryOptIn: Boolean = false,
         var telemetrySwitchCount: Int = 0,
         var telemetryCreateCount: Int = 0,
@@ -109,9 +110,15 @@ class BranchSwitcherService(
 
     // ── Anonymous telemetry ──────────────────────────────────────────
 
-    /** Stable anonymous ID, generated once on first access. */
+    /** Whether the user has seen the opt-in dialog (avoids re-prompting). */
+    var telemetryPromptShown: Boolean
+        get() = options.telemetryPromptShown
+        set(value) { options.telemetryPromptShown = value }
+
+    /** Stable anonymous ID, generated only after opt-in consent. */
     val telemetryInstallId: String
         get() {
+            if (!options.telemetryOptIn) return "<not opted in>"
             if (options.telemetryInstallId.isEmpty()) {
                 options.telemetryInstallId = UUID.randomUUID().toString()
             }
@@ -152,14 +159,12 @@ class BranchSwitcherService(
 
     /** Show first-install opt-in dialog (once per install). */
     fun maybeShowTelemetryOptIn() {
-        if (options.telemetryInstallId.isNotEmpty()) return // already initialized
-        telemetryInstallId // trigger UUID generation
+        if (options.telemetryPromptShown) return // already asked
+        options.telemetryPromptShown = true
         val result = com.intellij.openapi.ui.Messages.showYesNoDialog(
             project,
-            "Help improve Branch Switcher by sending anonymous usage statistics?\n\n" +
-                "No personal data, branch names, or repo paths are collected.\n" +
-                "You can turn this off anytime in Settings → Version Control → Submodule Branch Switcher.",
-            "Anonymous Usage Statistics",
+            com.submodule.branchswitcher.Bundle.msg("telemetry.dialog.body"),
+            com.submodule.branchswitcher.Bundle.msg("telemetry.dialog.title"),
             com.intellij.openapi.ui.Messages.getQuestionIcon(),
         )
         options.telemetryOptIn = result == com.intellij.openapi.ui.Messages.YES

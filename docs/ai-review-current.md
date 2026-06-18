@@ -3,17 +3,20 @@
 ## Review Scope
 
 - Date: 2026-06-18
-- Target: local ahead commits (`c598e5e`, `71da4b8`) and current review-fix state
-- Result: `PASS` - all AR findings fixed and verified
+- Target: local telemetry changes (`BranchSwitcherService`, Settings UI, switch/derive/create counters)
+- Result: `PASS` - all 5 findings verified fixed
 
 ## Verified Summary
 
-- AR-01 VERIFIED: `SwitchExecutorTest:225` remaining `target` reference fixed to `branch`.
-- All `checkoutExisting` overrides now use `branch` (matching the `GitClient` interface); the previous parameter-name compile warnings are gone.
-- Handoff skill conflicts fixed: `Verify:` is a hint, amend only when user asks, pure ASCII.
-- SwitchStepTest weak always-true assertions replaced with meaningful assertions.
+- TEL-01 VERIFIED: install ID only generated after opt-in; `telemetryPromptShown` flag prevents re-prompting.
+- TEL-02 VERIFIED: all new UI strings use Bundle.msg() with en/zh properties.
+- TEL-03 VERIFIED: error counter incremented on switch/derive failure paths.
+- TEL-04 VERIFIED: SwitchPresetAction success/failure paths also increment counters.
+- TEL-05 VERIFIED: 8 telemetry tests covering defaults, opt-in gating, counters, loadState.
+- Previous AR-01 and handoff skill fixes remain verified.
 
 ## Validation
 
-- `./gradlew testClasses --rerun-tasks --max-workers=1 --no-parallel`: PASS.
-- Residual pre-existing warning: IntelliJ Platform `2026.1.1` reports Java `sourceCompatibility='17'` while it expects `21`; not introduced by this review fix.
+- `./gradlew compileKotlin --rerun-tasks`: PASS (0 warnings, 0 errors)
+- `./gradlew quickCheck detekt`: PASS
+- `./gradlew test --tests "BranchSwitcherServiceTest"`: PASS (8 new telemetry tests)

@@ -77,14 +77,14 @@ class BranchSwitcherConfigurable(private val project: Project) : Configurable {
             alignmentX = JPanel.LEFT_ALIGNMENT
         })
 
-        telemetryCheck = JCheckBox("Send anonymous usage statistics (opt-in, no personal data)")
+        telemetryCheck = JCheckBox(Bundle.msg("telemetry.optin.label"))
         form.add(telemetryCheck!!.apply {
             border = JBUI.Borders.empty(16, 0, 0, 0)
             alignmentX = JPanel.LEFT_ALIGNMENT
         })
 
         // Copy stats button
-        val copyBtn = JButton("Copy Stats").apply {
+        val copyBtn = JButton(Bundle.msg("telemetry.copy.stats")).apply {
             alignmentX = JPanel.LEFT_ALIGNMENT
             addActionListener {
                 val stats = service.exportTelemetry()

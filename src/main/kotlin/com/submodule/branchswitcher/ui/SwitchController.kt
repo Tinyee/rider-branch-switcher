@@ -128,6 +128,7 @@ class SwitchController(
                     service.addHistory(preset.name, preset.id)
                     Notifier.info(project, Bundle.msg("switch.complete"), Bundle.msg("notify.switch.complete.msg", preset.name))
                 } else {
+                    service.incrementErrorCount()
                     val executor = rollbackExecutor
                     if (executor?.getCheckpoint() != null) {
                         Notifier.rollbackAction(project, Bundle.msg("switch.failed"),
@@ -249,16 +250,19 @@ class SwitchController(
                             Bundle.msg("notify.derive.complete"),
                             Bundle.msg("notify.derive.created", d.branchName, d.repoCount))
                     }
-                    is DeriveNotification.Failure -> Notifier.warn(project,
-                        Bundle.msg("notify.derive.partial"),
-                        when (d.reason) {
-                            DeriveNotification.Reason.ROLLBACK_FAILED ->
-                                Bundle.msg("notify.derive.rollback.failed", d.count)
-                            DeriveNotification.Reason.UNEXPECTED ->
-                                Bundle.msg("notify.derive.unexpected")
-                            DeriveNotification.Reason.PARTIAL ->
-                                Bundle.msg("notify.derive.partial.msg", d.branchName)
-                        })
+                    is DeriveNotification.Failure -> {
+                        service.incrementErrorCount()
+                        Notifier.warn(project,
+                            Bundle.msg("notify.derive.partial"),
+                            when (d.reason) {
+                                DeriveNotification.Reason.ROLLBACK_FAILED ->
+                                    Bundle.msg("notify.derive.rollback.failed", d.count)
+                                DeriveNotification.Reason.UNEXPECTED ->
+                                    Bundle.msg("notify.derive.unexpected")
+                                DeriveNotification.Reason.PARTIAL ->
+                                    Bundle.msg("notify.derive.partial.msg", d.branchName)
+                            })
+                    }
                     is DeriveNotification.Blocked -> {
                         val parts = mutableListOf<String>()
                         if (d.branchExistsCount > 0) parts.add(Bundle.msg("notify.derive.blocked.exists", d.branchExistsCount))
