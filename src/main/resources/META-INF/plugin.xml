@@ -30,7 +30,7 @@
         </ul>
         <b>Quality:</b>
         <ul>
-            <li>304 tests, GitHub Actions CI (ubuntu/macOS/Windows), Qodana static analysis</li>
+            <li>306 tests, GitHub Actions CI (ubuntu/macOS/Windows), Qodana static analysis</li>
             <li>i18n: English and Chinese (中文) via IntelliJ DynamicBundle</li>
             <li>HiDPI-aware, theme-aware (dark/light) UI with IntelliJ native icons</li>
         </ul>
