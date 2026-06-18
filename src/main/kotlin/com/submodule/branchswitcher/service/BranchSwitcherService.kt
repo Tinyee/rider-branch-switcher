@@ -143,10 +143,21 @@ class BranchSwitcherService(
         val counters: Map<String, Int>,
     )
 
+    /** Best-effort plugin version from IDE metadata, falling back to build-time constant. */
+    private fun pluginVersion(): String {
+        // Try the IDE descriptor first (accurate at runtime, reflects actual installed version)
+        return try {
+            com.intellij.ide.plugins.PluginManagerCore.getPlugin(
+                com.intellij.openapi.extensions.PluginId.getId("com.submodule.branchswitcher")
+            )?.version
+        } catch (_: Exception) { null }
+            ?: PLUGIN_VERSION_FALLBACK
+    }
+
     /** Export anonymized telemetry as a JSON string for clipboard sharing. */
     fun exportTelemetry(): String {
         val export = TelemetryExport(
-            pluginVersion = PLUGIN_VERSION,
+            pluginVersion = pluginVersion(),
             riderVersion = try {
                 com.intellij.openapi.application.ApplicationInfo.getInstance().fullVersion
             } catch (_: Exception) { "unknown" },
@@ -258,7 +269,7 @@ class BranchSwitcherService(
         )
 
     companion object {
-        private const val PLUGIN_VERSION = "0.7.0"
+        private const val PLUGIN_VERSION_FALLBACK = "0.7.0"
         fun getInstance(project: Project): BranchSwitcherService =
             project.service()
     }
