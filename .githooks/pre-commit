@@ -6,7 +6,7 @@ set -e
 
 run_gradle() {
     if [ -f "./gradlew.bat" ] && command -v cmd.exe >/dev/null 2>&1; then
-        cmd.exe /Q /C gradlew.bat "$@" </dev/null
+        MSYS2_ARG_CONV_EXCL="*" cmd.exe /Q /C gradlew.bat "$@" </dev/null
     else
         ./gradlew "$@" </dev/null
     fi
