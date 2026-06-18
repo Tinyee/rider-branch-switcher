@@ -269,6 +269,8 @@ class PresetListManager(
             }
             } catch (_: kotlinx.coroutines.CancellationException) {
                 return@launch // non-cancellable modal, but guard for future changes
+            } catch (_: com.intellij.openapi.progress.ProcessCanceledException) {
+                return@launch // IDE modal cancellation
             } catch (e: Exception) {
                 log.error("probe current state failed: ${e.javaClass.simpleName}: ${e.message}")
                 Notifier.warn(project, Bundle.msg("plugin.title"), "${e.javaClass.simpleName}: ${e.message}")

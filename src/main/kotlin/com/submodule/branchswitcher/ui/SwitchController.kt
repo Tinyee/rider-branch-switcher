@@ -50,9 +50,10 @@ class SwitchController(
                 }
             } catch (_: CancellationException) {
                 return@launch // user cancelled modal, nothing to do
+            } catch (_: com.intellij.openapi.progress.ProcessCanceledException) {
+                return@launch // IDE modal cancellation, nothing to do
             } catch (e: Exception) {
                 log.error("preflight probe failed: ${e.javaClass.simpleName}: ${e.message}")
-                // Show empty probe result on error — user can still attempt switch
                 invokeLaterIfProjectAlive {
                     val request = service.resolveSwitchRequest(preset)
                     if (SwitchPreviewDialog.showAndConfirm(project, request, emptyList())) {
