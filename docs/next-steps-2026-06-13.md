@@ -3,12 +3,12 @@
 ## 当前判断
 
 当前核心切换安全问题、UI 重构、设置页、结构化日志、CI、Detekt、Plugin Verifier
-和 270 个自动化测试均已落地。项目下一阶段不应继续进行大规模重构，而应优先补齐：
+和 297 个自动化测试均已落地。项目下一阶段不应继续进行大规模重构，而应优先补齐：
 
 1. 文档和版本信息的持续一致性。
 2. Marketplace 发布物料。
 3. 少量高价值回归测试。
-4. 大仓真实耗时 benchmark 与发布前手工检查。
+4. 发布前手工检查与 Marketplace 截图。
 
 历史评审文档应视为问题发现记录，不应直接代表当前代码状态。
 
@@ -46,12 +46,11 @@ LICENSE ✅ 已添加（MIT）。
 当前主要剩余缺口：
 
 - README 截图仍是 TODO。
-- `plugin.xml` 英文描述较短。
+- `plugin.xml` 英文描述已扩充，覆盖目标用户、核心能力、数据存储位置和安全策略。
 
 建议动作：
 
 - 准备一张 1280x800 左右的英文界面截图，展示 2-3 个 preset、状态点和日志区。
-- 扩充英文描述，说明目标用户、核心能力、数据存储位置和安全策略。
 - 在发布前执行 `./gradlew releaseCheck`，验证最终 ZIP。
 
 验收标准：
@@ -84,11 +83,11 @@ Fatal ERROR、Partial WARN、Activity 级别、git init 真实仓库验证。
 已增加 `LargeRepoScalabilityTest`，在 50 个子模块场景下验证 Switch pipeline 和
 Preflight 的 Git 调用预算，防止重复查询回归。
 
-后续真实耗时测量应放入独立 benchmark task，不加入普通 `test`：
+真实耗时测量已放入独立 `./gradlew benchmark` task，不加入普通 `test`：
 
-- Preflight 和状态刷新真实 Git CLI 耗时。
-- 多 preset 展开耗时。
-- 是否需要限制或引入安全的并发读取。
+- `LargeRepoBenchmark` 创建 51 个独立 git 仓库，测量 Preflight 和完整 Switch pipeline wall-clock。
+- benchmark 只输出耗时供人工判断，不设置墙钟阈值，避免普通测试在慢机器上抖动。
+- 后续如要优化状态刷新或 preset 展开性能，应先用该 task 记录基线。
 
 ### TaskBridge 生命周期测试 ✅ (2026-06-13)
 
@@ -117,13 +116,21 @@ Preflight 的 Git 调用预算，防止重复查询回归。
 
 后续仅需在发布检查中验证窄 Tool Window 和中英文布局。
 
+### 匿名遥测（opt-in）✅
+
+已实现主动选择的匿名统计：
+
+- 默认关闭，不收集个人数据、分支名或仓库路径。
+- Settings 页面可随时开启/关闭，并可复制当前统计数据。
+- 统计字段覆盖 switch、create preset、derive、quick switch 和 error 计数。
+- i18n 文案已补齐，服务层测试覆盖默认关闭、ID 生成、导出和 loadState。
+
 ---
 
 ## 暂不建议
 
 - 迁移到 git4idea API：改动面和兼容风险较大，当前 CLI 实现已可测试且行为清晰。
 - Rider fixture 或 UI 截图测试：基础设施成本高，当前 UI 规则测试和人工发布检查更划算。
-- 匿名遥测：当前用户规模和收益不足以覆盖隐私说明与维护成本。
 - 继续拆分 `PresetEditor`：现有复杂度尚可控，除非新功能再次明显推高职责。
 - 迁移 `TaskBridge` 到不稳定的新进度 API：当前封装已经隔离实现细节，暂时收益有限。
 
@@ -131,7 +138,7 @@ Preflight 的 Git 调用预算，防止重复查询回归。
 
 ## 建议发布检查清单
 
-- `./gradlew test detekt buildPlugin verifyPlugin`
+- `./gradlew releaseCheck`
 - Stash / Skip / Force 三种 dirty 策略各执行一次。
 - 验证目标分支不存在、缺失子模块 init、无 remote 和用户取消。
 - 验证 Preset 新建、重命名、导入、导出、删除和撤销。
