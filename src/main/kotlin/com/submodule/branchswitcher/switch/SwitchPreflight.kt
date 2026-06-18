@@ -39,7 +39,7 @@ class SwitchPreflight(
         val dir = if (target.path == ".") projectRoot.toFile()
                   else projectRoot.resolve(target.path).toFile()
         val label = if (target.path == ".") projectRoot.fileName.toString() else shortLabel(target.path)
-        if (!dir.exists() || !isGitRepo(dir)) {
+        if (!dir.exists() || !git.isGitRepo(dir)) {
             return PreflightRow(
                 label = label,
                 path = target.path,

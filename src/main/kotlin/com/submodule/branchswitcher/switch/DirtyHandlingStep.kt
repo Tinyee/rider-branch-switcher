@@ -21,7 +21,7 @@ class DirtyHandlingStep : SwitchStep {
             }
             val dir = resolveGitDir(context.projectRoot, target.path)
             if (!dir.exists()) continue
-            if (!isGitRepo(dir)) continue
+            if (!context.git.isGitRepo(dir)) continue
 
             if (context.git.isDirty(dir)) {
                 when (context.options.dirty) {

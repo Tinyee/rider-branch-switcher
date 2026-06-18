@@ -37,7 +37,7 @@ class CheckoutStep : SwitchStep {
             context.log.info("--- $label  →  ${target.branch} ---")
 
             // Submodule init for missing directories (after main checkout only)
-            if (!isMain && !isGitRepo(dir)) {
+            if (!isMain && !context.git.isGitRepo(dir)) {
                 if (mainCheckoutOk) {
                     if (context.confirmBeforeInit && context.indicator?.isCanceled != true) {
                         val result = java.util.concurrent.atomic.AtomicInteger(com.intellij.openapi.ui.Messages.NO)
@@ -72,7 +72,7 @@ class CheckoutStep : SwitchStep {
                 failures[target.path] = "dir not found"
                 continue
             }
-            if (!isGitRepo(dir)) {
+            if (!context.git.isGitRepo(dir)) {
                 context.log.info("[skip] not a git repo")
                 failures[target.path] = "not a git repo"
                 continue

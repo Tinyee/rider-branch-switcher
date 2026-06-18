@@ -27,6 +27,8 @@ data class GitResult(
  * - [stash] pushes with -u (includes untracked files)
  */
 interface GitClient {
+    /** True when [workDir] is a usable git repository. */
+    fun isGitRepo(workDir: File): Boolean = File(workDir, ".git").exists()
     /** Returns the current branch name, or null on detached HEAD. */
     fun currentBranch(workDir: File): String?
     /** True if the working tree has uncommitted changes. */

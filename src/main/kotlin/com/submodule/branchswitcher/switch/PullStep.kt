@@ -16,7 +16,7 @@ class PullStep : SwitchStep {
         val failures = LinkedHashMap<String, String>()
         for (target in context.preset.targets()) {
             val dir = resolveGitDir(context.projectRoot, target.path)
-            if (!dir.exists() || !isGitRepo(dir)) continue
+            if (!dir.exists() || !context.git.isGitRepo(dir)) continue
             // Only pull on repos where checkout actually succeeded
             if (target.path !in context.successfulCheckouts) {
                 context.log.info("[skip] pull — checkout did not succeed for ${target.path}")
@@ -43,7 +43,7 @@ class PullStep : SwitchStep {
     private fun popStashes(context: SwitchContext) {
         for ((path, msg) in context.stashedPaths.toMap()) {
             val dir = resolveGitDir(context.projectRoot, path)
-            if (!dir.exists() || !isGitRepo(dir)) {
+            if (!dir.exists() || !context.git.isGitRepo(dir)) {
                 context.log.warn(" stash pop skipped — dir gone for $path ($msg)")
                 context.stashedPaths.remove(path)
                 continue

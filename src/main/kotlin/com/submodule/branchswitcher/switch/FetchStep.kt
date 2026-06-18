@@ -13,7 +13,7 @@ class FetchStep : SwitchStep {
         for (target in context.preset.targets()) {
             context.indicator?.checkCanceled()
             val dir = resolveGitDir(context.projectRoot, target.path)
-            if (!dir.exists() || !isGitRepo(dir)) continue
+            if (!dir.exists() || !context.git.isGitRepo(dir)) continue
             // Skip if already on target (no need to fetch latest)
             val cur = context.git.currentBranch(dir)
             if (cur == target.branch) continue

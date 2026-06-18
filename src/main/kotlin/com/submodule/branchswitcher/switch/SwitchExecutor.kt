@@ -107,7 +107,7 @@ class SwitchExecutor(
         for ((path, entry) in checkpoint) {
             val dir = resolveGitDir(projectRoot, path)
             val label = if (path == ".") projectRoot.fileName.toString() else path
-            if (!dir.exists() || !isGitRepo(dir)) {
+            if (!dir.exists() || !git.isGitRepo(dir)) {
                 log.debug("[rollback] skip $label — dir missing or not a repo")
                 allOk = false
                 continue
@@ -150,7 +150,7 @@ class SwitchExecutor(
         val map = LinkedHashMap<String, CheckpointEntry>()
         for (target in preset.targets()) {
             val dir = resolveGitDir(projectRoot, target.path)
-            if (!dir.exists() || !isGitRepo(dir)) continue
+            if (!dir.exists() || !git.isGitRepo(dir)) continue
             val sha = git.revParseHead(dir) ?: continue
             val branch = git.currentBranch(dir)
             map[target.path] = CheckpointEntry(sha, branch)

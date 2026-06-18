@@ -35,6 +35,22 @@ class GitOpsTest {
         tmpDir.toFile().deleteRecursively()
     }
 
+    @Test
+    fun `isGitRepo returns true only for usable git repositories`() {
+        val plainDir = tmpDir.resolve("plain").toFile().also { it.mkdirs() }
+        assertFalse("plain directory is not a git repo", git.isGitRepo(plainDir))
+
+        val repoDir = tmpDir.resolve("repo").toFile().also { it.mkdirs() }
+        val proc = ProcessBuilder("git", "init")
+            .directory(repoDir)
+            .redirectErrorStream(true)
+            .start()
+        val output = proc.inputStream.bufferedReader().readText()
+        assertEquals("git init should succeed: $output", 0, proc.waitFor())
+
+        assertTrue("initialized directory should be a git repo", git.isGitRepo(repoDir))
+    }
+
     private fun writeGitmodules(content: String): File {
         val f = tmpDir.resolve(".gitmodules").toFile()
         f.writeText(content)

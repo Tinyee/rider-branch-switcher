@@ -3,6 +3,7 @@ package com.submodule.branchswitcher.log
 import com.submodule.branchswitcher.executeTest
 
 import com.submodule.branchswitcher.git.GitClient
+import com.submodule.branchswitcher.git.GitOps
 import com.submodule.branchswitcher.git.GitResult
 import com.submodule.branchswitcher.model.DirtyAction
 import com.submodule.branchswitcher.model.Preset
@@ -105,7 +106,7 @@ class AppLoggerTest {
         assertTrue("projectRoot should exist: $dir", dir.exists())
         assertTrue(".git should exist: $dotGit", dotGit.exists())
         assertTrue(".git should be directory: $dotGit", dotGit.isDirectory)
-        assertTrue("isGitRepo should return true", com.submodule.branchswitcher.switch.isGitRepo(dir))
+        assertTrue("isGitRepo should return true", GitOps(timeoutSeconds = 10).isGitRepo(dir))
     }
 
     // -- Log levels via SwitchExecutor ---------------------------------
