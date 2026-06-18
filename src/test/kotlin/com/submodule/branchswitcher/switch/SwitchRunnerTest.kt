@@ -142,6 +142,28 @@ class SwitchRunnerTest {
         assertEquals(1, git.submoduleSyncCount)
     }
 
+    @Test
+    fun `beforeExecute throwing ProcessCanceledException returns cancelled result`() = runBlocking {
+        val root = Files.createTempDirectory("switch-runner-pce")
+        initGitRepo(root.toFile())
+        val git = RecordingGit()
+        val runner = SwitchRunner(project, root, git, immediateTaskRunner())
+
+        val result = runner.execute(
+            title = "Switching",
+            request = request(fetchFirst = false, pull = false),
+            log = createStringAppender {},
+            beforeExecute = { throw com.intellij.openapi.progress.ProcessCanceledException() },
+        )
+
+        assertTrue("should be cancelled", result.cancelled)
+        assertFalse("should not be ok", result.ok)
+        assertNull("executor should not be created", result.executor)
+        assertEquals("onCancel must fire gitClient.cancel()", 1, git.cancelCount)
+        assertEquals(1, git.beginCount)
+        assertEquals(1, git.endCount)
+    }
+
     private fun request(fetchFirst: Boolean = true, pull: Boolean = true) = ResolvedSwitchRequest.resolve(
         Preset("dev", "main"),
         SwitchOptions(fetchFirst = fetchFirst, pull = pull),

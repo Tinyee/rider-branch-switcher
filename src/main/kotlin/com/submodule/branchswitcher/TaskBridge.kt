@@ -154,9 +154,11 @@ object TaskBridge {
                             block(indicator)
                         } catch (e: kotlinx.coroutines.CancellationException) {
                             cancelled.set(true)
+                            invokeCancelCallback()
                             indicator.cancel()
                         } catch (_: com.intellij.openapi.progress.ProcessCanceledException) {
                             cancelled.set(true)
+                            invokeCancelCallback()
                             indicator.cancel()
                         } catch (e: Exception) {
                             blockFailure.compareAndSet(null, e)

@@ -393,4 +393,31 @@ class TaskBridgeLifecycleTest {
         job.join()
         assertTrue("job must complete normally", job.isCompleted)
     }
+
+    // -- Scenario 9: block throws ProcessCanceledException ---------------------
+
+    @Test
+    fun `block throwing ProcessCanceledException fires onCancel and completes`() = runBlocking {
+        var cancelCallCount = 0
+        var finishCallCount = 0
+
+        val job = launch {
+            TaskBridge.runBackground(
+                runner, null, "test", true,
+                onCancel = { cancelCallCount++ },
+                onFinished = { finishCallCount++ },
+            ) {
+                throw com.intellij.openapi.progress.ProcessCanceledException()
+            }
+        }
+
+        yield() // let the launched coroutine enter suspendCancellableCoroutine
+        runner.simulateRun(FakeIndicator()) // block throws here, caught internally
+        yield()
+        runner.simulateFinish()
+
+        job.join()
+        assertEquals("onCancel must fire when block throws ProcessCanceledException", 1, cancelCallCount)
+        assertEquals("onFinished must fire once", 1, finishCallCount)
+    }
 }
