@@ -27,7 +27,28 @@
 - **写只验证 data class 字段/语言特性的测试。** 已清理 6 个，无自动门禁能区分。
 - **凭感觉改文档数字。** 用 `rg -n`/测试输出枚举证据。
 - **接口加方法漏更新实现。** `GitClient` 加方法漏 test fake 多次。
-- **改了异常传播不扫上游 catch。** `probeOne()` 加了 `throw ProcessCanceledException`，但 TaskBridge/SwitchRunner/SwitchController/PresetListManager 四个上游 `catch (e: RuntimeException)` 全部误吞。改完必须 `grep -rn "catch.*Exception"` 扫全量。`ProcessCanceledException extends RuntimeException` 让宽 catch 特别容易漏。
+- **改了异常传播不扫上游 catch。** `probeOne()` 加了 `throw ProcessCanceledException`，但 TaskBridge/SwitchRunner/SwitchController/PresetListManager 四个上游 `catch (e: RuntimeException)` 全部误吞。改完必须 `grep -rn "catch.*Exception"` 扫全量。
+
+## 提交前自审 — 在审查者发现问题之前自己先找
+
+改完代码后、commit 前，按改动类型跑对应 grep。目的是打断"审查逐层剥"循环——审查只抓当前最浅的问题，自己扫全量才能一次过关。
+
+```bash
+# 改了异常传播 → 扫全量 catch 块
+grep -rn "catch.*Exception\|catch.*RuntimeException" src/main
+
+# 改了参数/方法签名 → 扫全量 override + 调用方
+grep -rn "FUNCTION_NAME" src/
+
+# 改了接口 → 扫全量 implements + test fake
+grep -rn "INTERFACE_NAME" src/
+
+# 加了 Bundle key → 确认两个 locale 文件都有
+grep "NEW_KEY" src/main/resources/messages/*.properties
+
+# 改完跑门禁
+./gradlew quickCheck detekt
+```
 
 ## 新功能：先设计再写代码
 
