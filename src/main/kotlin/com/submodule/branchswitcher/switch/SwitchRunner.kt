@@ -59,6 +59,9 @@ class SwitchRunner(
         } catch (_: CancellationException) {
             log.info("[cancelled] switch cancelled by user")
             cancelled = true
+        } catch (_: com.intellij.openapi.progress.ProcessCanceledException) {
+            log.info("[cancelled] switch cancelled via IDE progress")
+            cancelled = true
         } catch (e: RuntimeException) {
             // Boundary catch: convert unexpected switch failures into a result so UI callers
             // can notify consistently without leaking coroutine failures.
