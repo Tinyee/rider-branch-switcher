@@ -255,7 +255,7 @@ class PresetListManager(
                     indicator.text = path
                     val dir = root.resolve(path).toFile()
                     if (!dir.exists() || (!dir.resolve(".git").exists() && !File(dir, ".git").isFile)) {
-                        skipped += "$path (未 init)"
+                        skipped += "$path (${Bundle.msg("status.tooltip.not.init")})"
                         return@forEach
                     }
                     val br = service.gitClient.currentBranch(dir)

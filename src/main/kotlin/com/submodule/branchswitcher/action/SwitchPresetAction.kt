@@ -60,7 +60,7 @@ class SwitchPresetAction : AnAction() {
             val request = service.resolveSwitchRequest(preset)
             val collector = createStringAppender { logLines += it }
             val result = SwitchRunner(project, root, gitClient).execute(
-                title = "Switching to ${preset.name}",
+                title = Bundle.msg("progress.switching.to", preset.name),
                 request = request,
                 log = collector,
                 beforeExecute = before@ { indicator ->

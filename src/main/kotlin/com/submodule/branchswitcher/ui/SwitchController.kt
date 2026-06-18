@@ -83,7 +83,7 @@ class SwitchController(
             try {
             val gitClient = service.gitClient
             val result = SwitchRunner(project, root, gitClient).execute(
-                title = "Switching branches",
+                title = Bundle.msg("progress.switching"),
                 request = request,
                 log = log,
                 progress = { indicator ->
