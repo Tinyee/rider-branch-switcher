@@ -34,6 +34,7 @@ class SwitchPreflight(
         }
     }
 
+    @Suppress("TooGenericExceptionCaught") // safety probe: isolate per-repo git failures
     private fun probeOne(projectRoot: Path, target: RepoTarget): PreflightRow {
         val dir = if (target.path == ".") projectRoot.toFile()
                   else projectRoot.resolve(target.path).toFile()
@@ -50,16 +51,31 @@ class SwitchPreflight(
                 hasRemote = false,
             )
         }
-        return PreflightRow(
-            label = label,
-            path = target.path,
-            target = target.branch,
-            exists = true,
-            current = git.currentBranch(dir),
-            dirtyCount = git.dirtyFileCount(dir),
-            hasLocal = git.localBranchExists(dir, target.branch),
-            hasRemote = git.remoteBranchExists(dir, target.branch),
-        )
+        return try {
+            PreflightRow(
+                label = label,
+                path = target.path,
+                target = target.branch,
+                exists = true,
+                current = git.currentBranch(dir),
+                dirtyCount = git.dirtyFileCount(dir),
+                hasLocal = git.localBranchExists(dir, target.branch),
+                hasRemote = git.remoteBranchExists(dir, target.branch),
+            )
+        } catch (e: Exception) {
+            // Fail closed per repo: one flaky git command must not abort the whole preflight.
+            // All flags default to blocking/unknown so the user sees this repo as a warning.
+            PreflightRow(
+                label = "$label [probe error]",
+                path = target.path,
+                target = target.branch,
+                exists = true,
+                current = null,
+                dirtyCount = -1,
+                hasLocal = false,
+                hasRemote = false,
+            )
+        }
     }
 
 }
