@@ -145,7 +145,7 @@ class BranchSwitcherService(
             appendLine("{")
             appendLine("  \"pluginVersion\": \"$pluginVersion\",")
             appendLine("  \"riderVersion\": \"$riderVersion\",")
-            appendLine("  \"installId\": \"${options.telemetryInstallId.take(8)}…\",")
+            appendLine("  \"installId\": \"${telemetryInstallId.take(8)}…\",")
             appendLine("  \"counters\": {")
             appendLine("    \"switch\": ${options.telemetrySwitchCount},")
             appendLine("    \"createPreset\": ${options.telemetryCreateCount},")
