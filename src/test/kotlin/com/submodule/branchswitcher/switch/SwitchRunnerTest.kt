@@ -15,6 +15,7 @@ import org.junit.Test
 import java.io.File
 import java.lang.reflect.Proxy
 import java.nio.file.Files
+import java.util.concurrent.atomic.AtomicBoolean
 
 class SwitchRunnerTest {
 
@@ -97,10 +98,63 @@ class SwitchRunnerTest {
         assertEquals(0, git.cancelCount)
     }
 
-    private fun request() = ResolvedSwitchRequest.resolve(
+    @Test
+    fun `execute returns ok when shared runner completes switch pipeline`() = runBlocking {
+        val root = Files.createTempDirectory("switch-runner-ok")
+        initGitRepo(root.toFile())
+        val git = RecordingGit()
+        val runner = SwitchRunner(project, root, git, immediateTaskRunner())
+
+        val result = runner.execute(
+            title = "Switching",
+            request = request(fetchFirst = false, pull = false),
+            log = createStringAppender {},
+        )
+
+        assertTrue(result.ok)
+        assertFalse(result.cancelled)
+        assertNotNull(result.executor)
+        assertEquals(1, git.beginCount)
+        assertEquals(1, git.endCount)
+        assertEquals(1, git.submoduleSyncCount)
+    }
+
+    @Test
+    fun `beforeExecute true runs before switch executor and allows execution`() = runBlocking {
+        val root = Files.createTempDirectory("switch-runner-before-ok")
+        initGitRepo(root.toFile())
+        val git = RecordingGit()
+        val called = AtomicBoolean(false)
+        val runner = SwitchRunner(project, root, git, immediateTaskRunner())
+
+        val result = runner.execute(
+            title = "Switching",
+            request = request(fetchFirst = false, pull = false),
+            log = createStringAppender {},
+            beforeExecute = {
+                called.set(true)
+                true
+            },
+        )
+
+        assertTrue(called.get())
+        assertTrue(result.ok)
+        assertEquals(1, git.submoduleSyncCount)
+    }
+
+    private fun request(fetchFirst: Boolean = true, pull: Boolean = true) = ResolvedSwitchRequest.resolve(
         Preset("dev", "main"),
-        SwitchOptions(),
+        SwitchOptions(fetchFirst = fetchFirst, pull = pull),
     )
+
+    private fun initGitRepo(dir: File) {
+        val proc = ProcessBuilder("git", "init", "-b", "main")
+            .directory(dir)
+            .redirectErrorStream(true)
+            .start()
+        assertTrue("git init should finish", proc.waitFor(10, java.util.concurrent.TimeUnit.SECONDS))
+        assertEquals("git init should succeed", 0, proc.exitValue())
+    }
 
     private fun immediateTaskRunner(): TaskBridge.TaskRunner =
         object : TaskBridge.TaskRunner {
@@ -136,6 +190,7 @@ class SwitchRunnerTest {
         var beginCount = 0
         var cancelCount = 0
         var endCount = 0
+        var submoduleSyncCount = 0
 
         override fun beginOperation() { beginCount++ }
         override fun cancel() { cancelCount++ }
@@ -151,7 +206,10 @@ class SwitchRunnerTest {
         override fun checkoutExisting(workDir: File, branch: String): GitResult = ok("checkout")
         override fun checkoutFromRemote(workDir: File, branch: String): GitResult = ok("checkout")
         override fun pullFf(workDir: File, branch: String): GitResult = ok("pull")
-        override fun submoduleSync(gitRoot: File): GitResult = ok("submodule sync")
+        override fun submoduleSync(gitRoot: File): GitResult {
+            submoduleSyncCount++
+            return ok("submodule sync")
+        }
         override fun submoduleInitPath(gitRoot: File, path: String): GitResult = ok("submodule init")
         override fun listSubmodulePaths(gitRoot: File): List<String> = emptyList()
         override fun listAllBranches(workDir: File): List<String> = listOf("main")
