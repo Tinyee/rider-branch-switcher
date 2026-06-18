@@ -242,11 +242,12 @@ class PresetListManager(
                 val submodules: LinkedHashMap<String, String>,
                 val skipped: List<String>,
             )
-            val result = com.submodule.branchswitcher.TaskBridge.runModal(
-                project, "Reading current branches", false
-            ) { indicator ->
+            val result = try {
+                com.submodule.branchswitcher.TaskBridge.runModal(
+                    project, Bundle.msg("progress.read.current"), false
+                ) { indicator ->
                 indicator.isIndeterminate = true
-                indicator.text = "main repo"
+                indicator.text = Bundle.msg("progress.main.repo")
                 val mb = service.gitClient.currentBranch(rootFile)
                 val subs = LinkedHashMap<String, String>()
                 val skipped = mutableListOf<String>()
@@ -265,6 +266,13 @@ class PresetListManager(
                     subs[path] = br
                 }
                 ProbeResult(mb, subs, skipped)
+            }
+            } catch (_: kotlinx.coroutines.CancellationException) {
+                return@launch // non-cancellable modal, but guard for future changes
+            } catch (e: Exception) {
+                log.error("probe current state failed: ${e.javaClass.simpleName}: ${e.message}")
+                Notifier.warn(project, Bundle.msg("plugin.title"), "${e.javaClass.simpleName}: ${e.message}")
+                return@launch
             }
             // Resumed after modal closes
             project.invokeLaterIfAlive({
