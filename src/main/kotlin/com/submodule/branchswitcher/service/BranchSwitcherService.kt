@@ -135,26 +135,31 @@ class BranchSwitcherService(
     fun incrementQuickSwitchCount() { if (options.telemetryOptIn) options.telemetryQuickSwitchCount++ }
     fun incrementErrorCount() { if (options.telemetryOptIn) options.telemetryErrorCount++ }
 
+    /** Gson-friendly export model — no raw JSON building. */
+    data class TelemetryExport(
+        val pluginVersion: String,
+        val riderVersion: String,
+        val installId: String,
+        val counters: Map<String, Int>,
+    )
+
     /** Export anonymized telemetry as a JSON string for clipboard sharing. */
     fun exportTelemetry(): String {
-        val pluginVersion = "0.7.0"
-        val riderVersion = try {
-            com.intellij.openapi.application.ApplicationInfo.getInstance().fullVersion
-        } catch (_: Exception) { "unknown" }
-        return buildString {
-            appendLine("{")
-            appendLine("  \"pluginVersion\": \"$pluginVersion\",")
-            appendLine("  \"riderVersion\": \"$riderVersion\",")
-            appendLine("  \"installId\": \"${telemetryInstallId.take(8)}…\",")
-            appendLine("  \"counters\": {")
-            appendLine("    \"switch\": ${options.telemetrySwitchCount},")
-            appendLine("    \"createPreset\": ${options.telemetryCreateCount},")
-            appendLine("    \"derive\": ${options.telemetryDeriveCount},")
-            appendLine("    \"quickSwitch\": ${options.telemetryQuickSwitchCount},")
-            appendLine("    \"error\": ${options.telemetryErrorCount}")
-            appendLine("  }")
-            appendLine("}")
-        }
+        val export = TelemetryExport(
+            pluginVersion = PLUGIN_VERSION,
+            riderVersion = try {
+                com.intellij.openapi.application.ApplicationInfo.getInstance().fullVersion
+            } catch (_: Exception) { "unknown" },
+            installId = telemetryInstallId.take(8) + "…",
+            counters = mapOf(
+                "switch" to options.telemetrySwitchCount,
+                "createPreset" to options.telemetryCreateCount,
+                "derive" to options.telemetryDeriveCount,
+                "quickSwitch" to options.telemetryQuickSwitchCount,
+                "error" to options.telemetryErrorCount,
+            ),
+        )
+        return com.google.gson.GsonBuilder().setPrettyPrinting().create().toJson(export)
     }
 
     /** Show first-install opt-in dialog (once per install). */
@@ -253,6 +258,7 @@ class BranchSwitcherService(
         )
 
     companion object {
+        private const val PLUGIN_VERSION = "0.7.0"
         fun getInstance(project: Project): BranchSwitcherService =
             project.service()
     }

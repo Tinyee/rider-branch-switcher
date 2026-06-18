@@ -22,8 +22,7 @@
 
 ## Screenshot
 
-<!-- TODO: add screenshot -->
-<!-- Take a 1280x800 screenshot showing the tool window with 2-3 presets open, status dots, and the log area -->
+See [Screenshots](#screenshots) section below for capture guidelines.
 
 ## Install
 

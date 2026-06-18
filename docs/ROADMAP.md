@@ -342,7 +342,7 @@ com.submodule.branchswitcher/
 |---|------|------|------|
 | M12 | 首次安装提示 | 无预设空状态已增加 Quick Start、Ctrl+Alt+B 和团队共享提示 | ✅ v0.6 |
 | M13 | 大仓规模测试 | 已覆盖 50 目标仓库 Switch/Preflight Git 调用预算（`LargeRepoScalabilityTest`）+ 真实耗时基准（`./gradlew benchmark`，独立 task，51 个预设目标目录真实 GitOps wall-clock） | ✅ v0.7 |
-| M14 | 匿名遥测（opt-in） | 按 Marketplace 要求明示同意 | ◐ |
+| M14 | 匿名遥测（opt-in） | 按 Marketplace 要求明示同意 | ✅ v0.7 |
 
 ---
 
