@@ -15,8 +15,9 @@ import com.submodule.branchswitcher.model.SwitchOptions
 import com.submodule.branchswitcher.service.BranchSwitcherService
 import com.submodule.branchswitcher.switch.DeriveBranchExecutor
 import com.submodule.branchswitcher.switch.DeriveNotification
-import com.submodule.branchswitcher.switch.SwitchExecutor
 import com.submodule.branchswitcher.switch.SwitchPreflight
+import com.submodule.branchswitcher.switch.SwitchExecutor
+import com.submodule.branchswitcher.switch.SwitchRunner
 import com.submodule.branchswitcher.switch.deriveNotification
 import com.submodule.branchswitcher.switch.refreshVcsRepos
 import kotlinx.coroutines.CancellationException
@@ -66,70 +67,55 @@ class SwitchController(
         setSwitchInProgress(true)
         service.scope.launch(Dispatchers.Default) {
             try {
-            var ok = false
-            var cancelled = false
-            var rollbackExecutor: SwitchExecutor? = null
             val gitClient = service.gitClient
-            gitClient.beginOperation()
-            try {
-                TaskBridge.runBackground(project, "Switching branches", true,
-                    block = { indicator ->
-                        indicator.isIndeterminate = true
-                        val wrapped = object : ProgressIndicator by indicator {
-                            override fun setFraction(fraction: Double) {
-                                indicator.fraction = fraction
-                                invokeLaterIfProjectAlive {
-                                    progressBar.isIndeterminate = false
-                                    progressBar.value = (fraction * 100).toInt()
-                                }
-                            }
-                            override fun setText2(text: String?) {
-                                indicator.text2 = text
-                                invokeLaterIfProjectAlive {
-                                    progressBar.string = text ?: Bundle.msg("tooltip.progress.switching")
-                                }
-                            }
-                            override fun setText(text: String?) {
-                                indicator.text = text
-                                invokeLaterIfProjectAlive {
-                                    progressBar.string = text ?: Bundle.msg("tooltip.progress.switching")
-                                }
-                            }
-                            override fun setIndeterminate(indeterminate: Boolean) {
-                                indicator.isIndeterminate = indeterminate
-                                invokeLaterIfProjectAlive {
-                                    progressBar.isIndeterminate = indeterminate
-                                }
+            val result = SwitchRunner(project, root, gitClient).execute(
+                title = "Switching branches",
+                request = request,
+                log = log,
+                progress = { indicator ->
+                    object : ProgressIndicator by indicator {
+                        override fun setFraction(fraction: Double) {
+                            indicator.fraction = fraction
+                            invokeLaterIfProjectAlive {
+                                progressBar.isIndeterminate = false
+                                progressBar.value = (fraction * 100).toInt()
                             }
                         }
-                        val executor = SwitchExecutor(root, log, gitClient, wrapped)
-                        rollbackExecutor = executor
-                        ok = executor.execute(request)
-                    },
-                    onCancel = { gitClient.cancel() },
-                    onFinished = { gitClient.endOperation() },
-                )
-            } catch (_: CancellationException) {
-                log.info("[cancelled] switch cancelled by user")
-                cancelled = true
-            } catch (e: Exception) {
-                log.error("switch: ${e.javaClass.simpleName}: ${e.message}")
-                ok = false
-            }
+                        override fun setText2(text: String?) {
+                            indicator.text2 = text
+                            invokeLaterIfProjectAlive {
+                                progressBar.string = text ?: Bundle.msg("tooltip.progress.switching")
+                            }
+                        }
+                        override fun setText(text: String?) {
+                            indicator.text = text
+                            invokeLaterIfProjectAlive {
+                                progressBar.string = text ?: Bundle.msg("tooltip.progress.switching")
+                            }
+                        }
+                        override fun setIndeterminate(indeterminate: Boolean) {
+                            indicator.isIndeterminate = indeterminate
+                            invokeLaterIfProjectAlive {
+                                progressBar.isIndeterminate = indeterminate
+                            }
+                        }
+                    }
+                },
+            )
             // Resumed on EDT via TaskBridge.onFinished, but continuation dispatcher is Default
             // Wrap UI ops in invokeLater to avoid EDT violations
             invokeLaterIfProjectAlive {
                 setSwitchInProgress(false)
-                if (cancelled) {
+                if (result.cancelled) {
                     refreshVcs(root, preset)
                     return@invokeLaterIfProjectAlive
-                } else if (ok) {
+                } else if (result.ok) {
                     service.incrementSwitchCount()
                     service.addHistory(preset.name, preset.id)
                     Notifier.info(project, Bundle.msg("switch.complete"), Bundle.msg("notify.switch.complete.msg", preset.name))
                 } else {
                     service.incrementErrorCount()
-                    val executor = rollbackExecutor
+                    val executor = result.executor
                     if (executor?.getCheckpoint() != null) {
                         Notifier.rollbackAction(project, Bundle.msg("switch.failed"),
                             Bundle.msg("notify.switch.partial.msg", preset.name) + Bundle.msg("notify.switch.rollback.hint")) {
