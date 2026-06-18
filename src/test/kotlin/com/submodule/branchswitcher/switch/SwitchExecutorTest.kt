@@ -398,22 +398,6 @@ class SwitchExecutorTest {
         assertTrue("Checkpoint should contain SubB", checkpoint.containsKey("SubB"))
     }
 
-    // ---- CheckpointEntry data class ----
-
-    @Test
-    fun `checkpoint entry stores sha and branch`() {
-        val entry = CheckpointEntry("abc123", "main")
-        assertEquals("abc123", entry.sha)
-        assertEquals("main", entry.branch)
-    }
-
-    @Test
-    fun `checkpoint entry with null branch`() {
-        val entry = CheckpointEntry("def456", null)
-        assertEquals("def456", entry.sha)
-        assertNull(entry.branch)
-    }
-
     // ---- Rollback edge cases ----
 
     @Test

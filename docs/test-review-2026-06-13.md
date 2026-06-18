@@ -1,5 +1,14 @@
 # 测试审查与后续建议（2026-06-13）
 
+## Current Cleanup Status
+
+- 2026-06-19: Removed 11 low-value structure tests.
+- Deleted `SubmoduleRowManagerTest` (5 tests: `SubRow` data-class checks plus duplicated `shortLabel` checks).
+- Removed `SwitchStepTest` StepResult/SwitchContext structure checks (4 tests).
+- Removed `SwitchExecutorTest` CheckpointEntry data-class checks (2 tests).
+- Current documented test count after cleanup: 297 tests / 20 classes.
+- The original findings below are historical review notes; items listed there may already be resolved.
+
 ## 当前判断
 
 当前测试对切换流水线、步骤行为、预设 JSON 和文件读写已有较好覆盖。

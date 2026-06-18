@@ -332,31 +332,4 @@ class SwitchStepTest {
         assertEquals(0, syncCalls)
     }
 
-    // ---- StepResult pipeline behavior ----
-
-    @Test
-    fun `Fatal result is distinct from Success`() {
-        assertTrue(StepResult.Fatal("test") != StepResult.Success)
-    }
-
-    @Test
-    fun `Partial result carries failure details`() {
-        val partial = StepResult.Partial(mapOf("repo" to "error"))
-        assertEquals(mapOf("repo" to "error"), partial.failures)
-    }
-
-    @Test
-    fun `Partial result is distinct from Success`() {
-        assertTrue(StepResult.Partial(emptyMap()) != StepResult.Success)
-    }
-
-    // ---- SwitchContext ----
-
-    @Test
-    fun `switch context stashed paths works`() {
-        val c = context()
-        assertTrue(c.stashedPaths.isEmpty())
-        c.stashedPaths["."] = "test stash"
-        assertEquals("test stash", c.stashedPaths["."])
-    }
 }
