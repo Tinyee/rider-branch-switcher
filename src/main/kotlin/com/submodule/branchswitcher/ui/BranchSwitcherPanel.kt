@@ -158,6 +158,8 @@ class BranchSwitcherPanel(
         detectCurrentState()
         refreshStrategySummary()
         wireEventSubscriptions()
+        // Defer telemetry opt-in to after panel is visible
+        project.invokeLaterIfAlive { service.maybeShowTelemetryOptIn() }
     }
 
     // ── Top block: header + action row + status ────────────────
@@ -260,6 +262,7 @@ class BranchSwitcherPanel(
             val tempPreset = buildQuickSwitchPreset(branch, subPaths)
             project.invokeLaterIfAlive {
                 quickSwitchField.text = ""
+                service.incrementQuickSwitchCount()
                 switchController.runSwitch(tempPreset)
             }
         }

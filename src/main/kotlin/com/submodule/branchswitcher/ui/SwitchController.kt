@@ -124,6 +124,7 @@ class SwitchController(
                     refreshVcs(root, preset)
                     return@invokeLaterIfProjectAlive
                 } else if (ok) {
+                    service.incrementSwitchCount()
                     service.addHistory(preset.name, preset.id)
                     Notifier.info(project, Bundle.msg("switch.complete"), Bundle.msg("notify.switch.complete.msg", preset.name))
                 } else {
@@ -242,9 +243,12 @@ class SwitchController(
                 onStateChanged()
                 refreshVcs(root, preset)
                 when (val d = deriveNotification(cancelled, r, rfCount, branchName)) {
-                    is DeriveNotification.Success -> Notifier.info(project,
-                        Bundle.msg("notify.derive.complete"),
-                        Bundle.msg("notify.derive.created", d.branchName, d.repoCount))
+                    is DeriveNotification.Success -> {
+                        service.incrementDeriveCount()
+                        Notifier.info(project,
+                            Bundle.msg("notify.derive.complete"),
+                            Bundle.msg("notify.derive.created", d.branchName, d.repoCount))
+                    }
                     is DeriveNotification.Failure -> Notifier.warn(project,
                         Bundle.msg("notify.derive.partial"),
                         when (d.reason) {

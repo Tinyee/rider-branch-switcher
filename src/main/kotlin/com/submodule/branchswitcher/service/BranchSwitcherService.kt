@@ -17,6 +17,7 @@ import kotlinx.coroutines.CoroutineScope
 import com.submodule.branchswitcher.model.Preset
 import com.submodule.branchswitcher.model.PresetFile
 import java.nio.file.Path
+import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 
@@ -67,6 +68,14 @@ class BranchSwitcherService(
         var timeoutSeconds: Int = 60,
         var confirmBeforeInit: Boolean = false,
         var history: MutableList<SwitchHistoryEntry> = mutableListOf(),
+        // ── Anonymous telemetry ──────────────────────────────────
+        var telemetryInstallId: String = "",
+        var telemetryOptIn: Boolean = false,
+        var telemetrySwitchCount: Int = 0,
+        var telemetryCreateCount: Int = 0,
+        var telemetryDeriveCount: Int = 0,
+        var telemetryQuickSwitchCount: Int = 0,
+        var telemetryErrorCount: Int = 0,
     )
 
     private var options = OptionsState()
@@ -97,6 +106,64 @@ class BranchSwitcherService(
     var confirmBeforeInit: Boolean
         get() = options.confirmBeforeInit
         set(value) { options.confirmBeforeInit = value }
+
+    // ── Anonymous telemetry ──────────────────────────────────────────
+
+    /** Stable anonymous ID, generated once on first access. */
+    val telemetryInstallId: String
+        get() {
+            if (options.telemetryInstallId.isEmpty()) {
+                options.telemetryInstallId = UUID.randomUUID().toString()
+            }
+            return options.telemetryInstallId
+        }
+
+    var telemetryOptIn: Boolean
+        get() = options.telemetryOptIn
+        set(value) { options.telemetryOptIn = value }
+
+    fun incrementSwitchCount() { if (options.telemetryOptIn) options.telemetrySwitchCount++ }
+    fun incrementCreateCount() { if (options.telemetryOptIn) options.telemetryCreateCount++ }
+    fun incrementDeriveCount() { if (options.telemetryOptIn) options.telemetryDeriveCount++ }
+    fun incrementQuickSwitchCount() { if (options.telemetryOptIn) options.telemetryQuickSwitchCount++ }
+    fun incrementErrorCount() { if (options.telemetryOptIn) options.telemetryErrorCount++ }
+
+    /** Export anonymized telemetry as a JSON string for clipboard sharing. */
+    fun exportTelemetry(): String {
+        val pluginVersion = "0.7.0"
+        val riderVersion = try {
+            com.intellij.openapi.application.ApplicationInfo.getInstance().fullVersion
+        } catch (_: Exception) { "unknown" }
+        return buildString {
+            appendLine("{")
+            appendLine("  \"pluginVersion\": \"$pluginVersion\",")
+            appendLine("  \"riderVersion\": \"$riderVersion\",")
+            appendLine("  \"installId\": \"${options.telemetryInstallId.take(8)}…\",")
+            appendLine("  \"counters\": {")
+            appendLine("    \"switch\": ${options.telemetrySwitchCount},")
+            appendLine("    \"createPreset\": ${options.telemetryCreateCount},")
+            appendLine("    \"derive\": ${options.telemetryDeriveCount},")
+            appendLine("    \"quickSwitch\": ${options.telemetryQuickSwitchCount},")
+            appendLine("    \"error\": ${options.telemetryErrorCount}")
+            appendLine("  }")
+            appendLine("}")
+        }
+    }
+
+    /** Show first-install opt-in dialog (once per install). */
+    fun maybeShowTelemetryOptIn() {
+        if (options.telemetryInstallId.isNotEmpty()) return // already initialized
+        telemetryInstallId // trigger UUID generation
+        val result = com.intellij.openapi.ui.Messages.showYesNoDialog(
+            project,
+            "Help improve Branch Switcher by sending anonymous usage statistics?\n\n" +
+                "No personal data, branch names, or repo paths are collected.\n" +
+                "You can turn this off anytime in Settings → Version Control → Submodule Branch Switcher.",
+            "Anonymous Usage Statistics",
+            com.intellij.openapi.ui.Messages.getQuestionIcon(),
+        )
+        options.telemetryOptIn = result == com.intellij.openapi.ui.Messages.YES
+    }
 
     /** Cached [GitOps] instance, recreated only when timeout changes. */
     private var _gitClient: GitClient? = null
