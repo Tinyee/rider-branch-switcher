@@ -43,9 +43,23 @@ class SwitchController(
     fun runSwitch(preset: Preset) {
         val root = gitRoot() ?: return
         service.scope.launch(Dispatchers.Default) {
-            val probeResult = TaskBridge.runModal(project, "Inspecting branches", true) { indicator ->
-                indicator.isIndeterminate = false
-                SwitchPreflight(service.gitClient).probe(root, preset, indicator)
+            val probeResult = try {
+                TaskBridge.runModal(project, Bundle.msg("progress.preflight"), true) { indicator ->
+                    indicator.isIndeterminate = false
+                    SwitchPreflight(service.gitClient).probe(root, preset, indicator)
+                }
+            } catch (_: CancellationException) {
+                return@launch // user cancelled modal, nothing to do
+            } catch (e: Exception) {
+                log.error("preflight probe failed: ${e.javaClass.simpleName}: ${e.message}")
+                // Show empty probe result on error — user can still attempt switch
+                invokeLaterIfProjectAlive {
+                    val request = service.resolveSwitchRequest(preset)
+                    if (SwitchPreviewDialog.showAndConfirm(project, request, emptyList())) {
+                        executeSwitch(root, request)
+                    }
+                }
+                return@launch
             }
             // Resumed on caller thread after modal closes
             invokeLaterIfProjectAlive {
@@ -143,7 +157,7 @@ class SwitchController(
             val gitClient = service.gitClient
             gitClient.beginOperation()
             try {
-                TaskBridge.runBackground(project, "Rolling back", true,
+                TaskBridge.runBackground(project, Bundle.msg("progress.rollback"), true,
                     block = { indicator ->
                         indicator.isIndeterminate = true
                         rollbackOk = executor.rollback()
@@ -188,7 +202,7 @@ class SwitchController(
             try {
                 gitClient.beginOperation()
                 try {
-                    TaskBridge.runBackground(project, "Creating branch $branchName", true,
+                    TaskBridge.runBackground(project, Bundle.msg("progress.derive", branchName), true,
                         block = { indicator ->
                             indicator.isIndeterminate = true
                             val executor = DeriveBranchExecutor(root, log, gitClient, cancelled = { indicator.isCanceled })
@@ -217,8 +231,9 @@ class SwitchController(
                     } catch (e: Exception) {
                         log.error("derive rollback after cancel: ${e.javaClass.simpleName}: ${e.message}")
                         rollbackFailures = listOf("(exception)")
+                    } finally {
+                        gitClient.endOperation()
                     }
-                    gitClient.endOperation()
                 }
             } finally {
                 service.endWrite()
