@@ -130,22 +130,22 @@ git config core.hooksPath .githooks   # 首次 clone 后执行一次，启用自
 
 ### 集成时
 
-13. **每个异步写路径走同一生命周期。** 门禁检查 → 开始操作 → 可取消后台任务 → 结束操作 → finally 释放门禁。本项目的具体链条：`tryStartWrite` → `beginOperation` → `runBackground(onCancel/onFinished)` → `endOperation` → `endWrite`。
-14. **文档更新是功能的一部分，不是事后补的。** 每个 feature 分支批量同步一次文档，不是每次 commit 改一遍。同一个会话里改 5 个文件 8 次 = 流程有问题。
-15. **接口加方法优先给默认实现。** `GitClient.isGitRepo` 加了 `= File(workDir, “.git”).exists()` 默认实现，所有 test fake 自动兼容。日后如果要去掉默认值，先确认所有 fake 已迁移。
+14. **每个异步写路径走同一生命周期。** 门禁检查 → 开始操作 → 可取消后台任务 → 结束操作 → finally 释放门禁。本项目的具体链条：`tryStartWrite` → `beginOperation` → `runBackground(onCancel/onFinished)` → `endOperation` → `endWrite`。
+15. **文档更新是功能的一部分，不是事后补的。** 每个 feature 分支批量同步一次文档，不是每次 commit 改一遍。同一个会话里改 5 个文件 8 次 = 流程有问题。
+16. **接口加方法优先给默认实现。** `GitClient.isGitRepo` 加了 `= File(workDir, ".git").exists()` 默认实现，所有 test fake 自动兼容。日后如果要去掉默认值，先确认所有 fake 已迁移。
 
 ### 共享审查流程
 
-16. **”审查并写共享文档”**：审查当前改动，将可执行问题写入 `docs/ai-review-current.md`。每项必须包含状态、优先级、证据、影响、建议修复和验证方式。
-17. **”处理共享审查问题”**：先读取 `docs/ai-review-current.md`，逐项核对代码后修复 `OPEN` / `IN_PROGRESS` 项；完成后记录实际修改和验证结果，将状态改为 `FIXED_PENDING_REVIEW`。
-18. **复审不信任状态文字。** 收到”复审共享文档”时，必须重新检查对应代码和测试；确认后标记 `VERIFIED`，仍有问题则改回 `OPEN` 并写明原因。
-19. **共享文档只保留活跃详情。** `docs/ai-review-current.md` 只详细保留 `OPEN`、`IN_PROGRESS`、`FIXED_PENDING_REVIEW` 和 `ACCEPTED`；复审结束后将 `VERIFIED` 详情压缩为一行摘要。超过 100 行时必须立即压缩。
-20. **不得只修改审查文档状态。** `FIXED_PENDING_REVIEW` 和 `VERIFIED` 必须有对应代码证据与验证命令；非阻塞建议使用 `ACCEPTED` 并写明理由。
-21. **仅重要审查需要归档。** P0/P1、跨模块设计决策或用户明确要求保留时，才将完整内容归档到 `docs/reviews/ai-review-YYYY-MM-DD.md`；普通 UI/P3 问题不归档。开始新的独立审查时覆盖当前文档的摘要和活跃问题。
-22. **实现复审必须检查二阶回归。** 逐项验证旧问题后，还要检查修复新增的参数、状态、分支、文本、控件和测试迁移；运行静态门禁并从用户视角走查 UI。使用 `docs/templates/implementation-review-checklist.md`，不能只把状态改成 `VERIFIED`。
-23. **测试计划必须逐项核销。** 声称功能完成前，将设计测试计划映射到实际测试方法；缺失项必须标为 `OPEN` 或有理由的 `ACCEPTED`，不得只写成非阻塞备注。
-24. **相似控件必须可辨识。** 相邻且选项内容相似的控件必须有独立可见标签或等价的可访问标识，不能依赖排列顺序让用户猜测含义。
-25. **复审结论必须主动写回共享文档。** 只要用户要求”审查””复审””再审””看改动”且当前已有 `docs/ai-review-current.md` 上下文，必须在同一轮把结论、延期/接受理由、验证命令同步更新到该文档；不要等用户再次提醒”写入文档”。
+17. **“审查并写共享文档”**：审查当前改动，将可执行问题写入 `docs/ai-review-current.md`。每项必须包含状态、优先级、证据、影响、建议修复和验证方式。
+18. **“处理共享审查问题”**：先读取 `docs/ai-review-current.md`，逐项核对代码后修复 `OPEN` / `IN_PROGRESS` 项；完成后记录实际修改和验证结果，将状态改为 `FIXED_PENDING_REVIEW`。
+19. **复审不信任状态文字。** 收到“复审共享文档”时，必须重新检查对应代码和测试；确认后标记 `VERIFIED`，仍有问题则改回 `OPEN` 并写明原因。
+20. **共享文档只保留活跃详情。** `docs/ai-review-current.md` 只详细保留 `OPEN`、`IN_PROGRESS`、`FIXED_PENDING_REVIEW` 和 `ACCEPTED`；复审结束后将 `VERIFIED` 详情压缩为一行摘要。超过 100 行时必须立即压缩。
+21. **不得只修改审查文档状态。** `FIXED_PENDING_REVIEW` 和 `VERIFIED` 必须有对应代码证据与验证命令；非阻塞建议使用 `ACCEPTED` 并写明理由。
+22. **仅重要审查需要归档。** P0/P1、跨模块设计决策或用户明确要求保留时，才将完整内容归档到 `docs/reviews/ai-review-YYYY-MM-DD.md`；普通 UI/P3 问题不归档。开始新的独立审查时覆盖当前文档的摘要和活跃问题。
+23. **实现复审必须检查二阶回归。** 逐项验证旧问题后，还要检查修复新增的参数、状态、分支、文本、控件和测试迁移；运行静态门禁并从用户视角走查 UI。使用 `docs/templates/implementation-review-checklist.md`，不能只把状态改成 `VERIFIED`。
+24. **测试计划必须逐项核销。** 声称功能完成前，将设计测试计划映射到实际测试方法；缺失项必须标为 `OPEN` 或有理由的 `ACCEPTED`，不得只写成非阻塞备注。
+25. **相似控件必须可辨识。** 相邻且选项内容相似的控件必须有独立可见标签或等价的可访问标识，不能依赖排列顺序让用户猜测含义。
+26. **复审结论必须主动写回共享文档。** 只要用户要求“审查”“复审”“再审”“看改动”且当前已有 `docs/ai-review-current.md` 上下文，必须在同一轮把结论、延期/接受理由、验证命令同步更新到该文档；不要等用户再次提醒“写入文档”。
 
 ## 提交前自审
 
