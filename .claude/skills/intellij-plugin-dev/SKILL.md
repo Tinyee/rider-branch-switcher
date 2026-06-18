@@ -100,6 +100,47 @@ Treat test execution as a resource budget, not an all-or-nothing switch:
 - Do not reduce global property-test iterations or skip coverage merely to cool local runs.
 - Run `./gradlew --stop` only when releasing resources matters or the session is ending; stopping after every command makes later runs slower.
 
+## Claude/Codex review-to-test budget
+
+When Claude and Codex review the same diff back and forth, do not rerun Gradle by default. Reuse existing PASS evidence if the relevant code has not changed since that command ran. Escalate only when the current diff changes the risk surface.
+
+Development loop budget:
+- Do not run tests after every small edit. Finish a coherent mini-batch first: production change plus matching test/doc update, or a pure documentation batch.
+- During active editing, prefer static inspection and focused `rg` checks. Save Gradle work for the first stable checkpoint, handoff, review request, or completion claim.
+- If a mini-batch only changes docs, comments, review status, screenshots, or planning text, do not run Gradle; run `git diff --check` only.
+- If a mini-batch changes code but not behavior, run static gates first. Escalate to compile/tests only when signatures, generated resources, test code, or runtime behavior changed.
+- Do not rerun the same target test after every one-line fix unless that line directly changes the failing behavior. Accumulate follow-up fixes, then rerun once.
+- Batch documentation synchronization such as test counts in README/ROADMAP/SETUP/AGENTS/plugin.xml; pure sync changes reuse the latest code-test evidence.
+
+Level 0 - Review only:
+- Use for docs, comments, review-status updates, plans, or evidence compression.
+- Do not run Gradle. Read the diff and record: "tests not run because this round has no code/behavior change."
+
+Level 1 - Static gates only:
+- Use for quickCheck rules, i18n/resource text, build-script guard tweaks, light refactors, or mechanical call-site migration.
+- Run `./gradlew quickCheck --max-workers=1 --no-parallel` and `git diff --check`.
+- Add `compileKotlin compileTestKotlin` only when signatures, imports, constructors, or test code changed.
+
+Level 2 - Targeted tests:
+- Use for production logic, state machines, exception handling, GitClient/GitOps contracts, persistence, import parsing, controller/action entry points.
+- Run the smallest relevant test class or method with `--max-workers=1 --no-parallel`.
+- Record why those tests cover the risk and which broader tests were intentionally not run.
+
+Level 3 - Targeted rerun:
+- Use before marking shared-review findings `VERIFIED`, claiming a feature is complete, or changing cancellation, rollback, persistence, migration, or data-safety paths.
+- Rerun the relevant target tests with `--rerun-tasks`, or explicitly explain why cached results are acceptable.
+
+Level 4 - Broad validation:
+- Use only before commit/merge, after cross-module architecture changes, after test-infrastructure or broad Gradle changes, or when the user explicitly asks for full validation.
+- Prefer `./gradlew test detekt --max-workers=1 --no-parallel`.
+- Reserve `releaseCheck` for release/push preparation and warn the user first.
+
+De-duplication rules:
+- If only docs changed after a PASS, reuse the previous code-test result and run only `git diff --check`.
+- If tests changed, at least run the changed test class; old test results no longer prove the new test code.
+- Never write an unrun test as PASS. Write "not run" plus the reason.
+- Do not start a heavy Gradle task in parallel with another heavy Gradle task.
+
 ---
 
 # Part 2: Code Templates — fill these in

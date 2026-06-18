@@ -194,6 +194,69 @@ Recommended low-load commands:
 git diff --check
 ```
 
+### 9.1 Review-To-Test Budget
+
+用于 Codex 和 Claude 互相审查同一批改动时减少重复测试。默认不要每轮复审都跑 Gradle；先按证据决定本轮需要哪一级验证。
+
+Development loop budget:
+
+- Do not run tests after every small edit. Finish a coherent mini-batch first: production change + matching test/doc update, or a pure documentation batch.
+- During active editing, prefer static inspection and focused `rg` checks. Save Gradle work for the first stable checkpoint, handoff, review request, or completion claim.
+- If a mini-batch only changes docs, comments, review status, screenshots, or planning text, do not run Gradle; run `git diff --check` only.
+- If a mini-batch changes code but not behavior, run static gates first. Escalate to compile/tests only when signatures, generated resources, test code, or runtime behavior changed.
+- Do not rerun the same target test after every one-line fix unless that line directly changes the failing behavior. Accumulate follow-up fixes, then rerun once.
+- Batch documentation synchronization such as test counts in README/ROADMAP/SETUP/AGENTS/plugin.xml; pure sync changes reuse the latest code-test evidence.
+
+Level 0 - No Test, Review Only:
+
+- 适用：只改文档、注释、审查状态、计划、截图说明，或复审者只是在核对上一轮证据。
+- 必做：`git diff --stat`、相关源码/文档读取、必要的 `rg` 静态检索。
+- 禁止：没有新代码风险时重复跑 `test`、`detekt` 或同一个目标测试。
+- 记录：写明“未跑测试，原因是本轮无代码/行为变更”。
+
+Level 1 - Static Gates Only:
+
+- 适用：构建脚本、quickCheck 规则、文案/i18n、轻量重构、调用点迁移但行为不变。
+- 必跑：`./gradlew quickCheck --max-workers=1 --no-parallel` 和 `git diff --check`。
+- 按需：如果 Kotlin 签名、import、构造函数或测试代码改了，再跑 `compileKotlin compileTestKotlin`。
+- 不跑：完整 `test`，除非静态检查发现风险或调用链涉及真实行为。
+
+Level 2 - Targeted Tests:
+
+- 适用：生产逻辑、状态机、异常处理、GitClient/GitOps 合同、持久化、导入解析、UI controller/action 入口发生变化。
+- 必跑：最小相关测试类或方法，使用 `--max-workers=1 --no-parallel`。
+- 示例：改 `GitOps` 跑 `GitOpsTest`；改 derive 跑 `SwitchIntegrationTest` 相关类；改 TaskBridge 跑 `TaskBridgeLifecycleTest`。
+- 记录：写清楚为什么这些测试覆盖本次风险，哪些测试未跑。
+
+Level 3 - Targeted Tests With Rerun:
+
+- 适用：准备把共享审查问题标为 `VERIFIED`、声称功能完成、修复取消/rollback/持久化/数据迁移等容易受缓存影响的路径。
+- 必跑：相关目标测试加 `--rerun-tasks`，或至少说明为什么本轮不需要强制重跑。
+- 不要默认全量：除非改动跨多个核心模块，目标测试无法覆盖风险。
+
+Level 4 - Broad Validation:
+
+- 适用：提交前、合并前、跨模块架构改动、测试基础设施改动、Gradle 配置影响广、用户明确要求“全量验证”。
+- 推荐：`./gradlew test detekt --max-workers=1 --no-parallel`。
+- 发布/推送前：才考虑 `releaseCheck`，启动前说明耗时和负载。
+
+Escalation triggers:
+
+- 新增或修改 `GitClient` 方法。
+- 修改 `TaskBridge`、`SwitchRunner`、`SwitchExecutor`、`DeriveBranchExecutor`、rollback、write gate、operation lifecycle。
+- 修改 DTO/domain 转换、导入/导出、持久化 schema、preset ID/override 解析。
+- 修改 quickCheck/detekt/Gradle task/test fixture。
+- broad `catch (Exception)`、取消异常、unknown/fail-closed 行为发生变化。
+- 用户或另一 AI 声称“已修复”但没有给出对应测试证据。
+
+De-duplication rules:
+
+- 同一个 commit/diff 上，已有 PASS 的命令可以复用，不必每轮重复跑；但必须确认代码没有在该命令之后再次变化。
+- 如果变化只影响文档，复用上一轮代码测试结果，并只跑 `git diff --check`。
+- 如果变化影响测试本身，不能只复用旧测试结果；至少跑被修改的测试类。
+- 如果复审只发现文档状态需要压缩，不跑测试。
+- 任何未运行的测试必须写成“未运行 + 原因”，不能写成 PASS。
+
 ### 10. Documentation And Shared Review
 
 - [ ] `docs/ai-review-current.md` 只保留活跃详情；已验证项压缩为摘要。

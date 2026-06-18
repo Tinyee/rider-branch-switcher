@@ -28,6 +28,10 @@
 - **凭感觉改文档数字。** 用 `rg -n`/测试输出枚举证据。
 - **接口加方法漏更新实现。** `GitClient` 加方法漏 test fake 多次。
 - **改了异常传播不扫上游 catch。** `probeOne()` 加了 `throw ProcessCanceledException`，但 TaskBridge/SwitchRunner/SwitchController/PresetListManager 四个上游 `catch (e: RuntimeException)` 全部误吞。改完必须 `grep -rn "catch.*Exception"` 扫全量。
+- **加了有逻辑的 getter，内部代码绕过它直接用裸字段。** `exportTelemetry()` 用 `options.telemetryInstallId` 绕过了 getter 的 opt-in 检查，空 ID 泄露到了导出 JSON。加了 getter 后 `grep` 确认内部引用只用 getter 不用裸字段。
+- **接口加方法忘了给默认实现。** test fake 炸一片。新方法优先加 `= defaultImpl`，等所有 fake/测试适配完再决定是否去掉默认值。
+- **文档数字凭 `replace_all` 一键改，没确认范围。** `270 tests` 改到了 CHANGELOG 历史记录。先用 `grep -n` 确认范围，再决定 replace_all 还是逐处改。
+- **加测试后文档数字改不全。** 测试 270→282→297→300→302→304→306→308，每次漏改一两个文件。commit 前 `grep` 旧数字确认全替换。
 
 ## 提交前自审 — 在审查者发现问题之前自己先找
 
