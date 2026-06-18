@@ -4,8 +4,16 @@
 
 set -e
 
+run_gradle() {
+    if [ -f "./gradlew.bat" ] && command -v cmd.exe >/dev/null 2>&1; then
+        cmd.exe /c gradlew.bat "$@"
+    else
+        ./gradlew "$@"
+    fi
+}
+
 echo "Running quickCheck..."
-./gradlew quickCheck --quiet  2>&1
+run_gradle quickCheck --quiet 2>&1
 
 if [ $? -ne 0 ]; then
     echo ""

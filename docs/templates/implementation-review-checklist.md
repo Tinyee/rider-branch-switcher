@@ -238,7 +238,7 @@ Level 4 - Broad Validation:
 
 - 适用：提交前、合并前、跨模块架构改动、测试基础设施改动、Gradle 配置影响广、用户明确要求“全量验证”。
 - 推荐：`./gradlew test detekt --max-workers=1 --no-parallel`。
-- 发布/推送前：才考虑 `releaseCheck`，启动前说明耗时和负载。
+- 发布前或 opt-in heavy push：才考虑 `releaseCheck`，启动前说明耗时和负载。
 
 Escalation triggers:
 
