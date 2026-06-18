@@ -3,7 +3,7 @@
 ## Review Scope
 
 - Date: 2026-06-18
-- Target: re-review commit `1e3f4e7` (`fix: 修复审查问题 ARCH-01/03 剩余项`)
+- Target: re-review commit `bfede3b` (`fix: 修复审查问题 ARCH-01A/01B/03A`)
 - Result: `PASS` - ARCH-01A,01B,03A verified fixed
 
 ## Verified Summary
@@ -17,3 +17,7 @@
 
 - `./gradlew quickCheck detekt`: PASS
 - `./gradlew test --tests "SwitchPreflightTest" --rerun-tasks`: PASS (2 new tests)
+- Re-review: `./gradlew quickCheck --max-workers=1 --no-parallel`: PASS
+- Re-review: `git diff --check`: PASS
+- Re-review: `./gradlew test --tests "com.submodule.branchswitcher.switch.SwitchPreflightTest" --max-workers=1 --no-parallel`: PASS after `./gradlew --stop` cleared a Windows test-results file lock
+- Re-review: `./gradlew detekt --max-workers=1 --no-parallel`: PASS
