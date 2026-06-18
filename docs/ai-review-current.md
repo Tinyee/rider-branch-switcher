@@ -2,8 +2,8 @@
 
 ## Review Scope
 
-- Date: 2026-06-18
-- Target: re-review commit `bfede3b` (`fix: 修复审查问题 ARCH-01A/01B/03A`)
+- Date: 2026-06-19
+- Target: re-review commit `9bc8ffd` (`fix: FULL-07A/07B TaskBridge cancel callback + ProcessCanceledException tests`)
 - Result: `PASS` - FULL-07A,07B verified fixed
 
 ## Verified Summary
@@ -16,3 +16,6 @@
 
 - `./gradlew quickCheck detekt`: PASS
 - `./gradlew test --tests "TaskBridgeLifecycleTest.block throwing ProcessCanceledException*" --tests "SwitchRunnerTest.beforeExecute throwing ProcessCanceledException*" --rerun-tasks`: PASS
+- Re-review: `./gradlew quickCheck --max-workers=1 --no-parallel`: PASS
+- Re-review: `git diff --check`: PASS
+- Re-review: `./gradlew test --tests "com.submodule.branchswitcher.TaskBridgeLifecycleTest" --tests "com.submodule.branchswitcher.switch.SwitchRunnerTest" --max-workers=1 --no-parallel`: PASS
