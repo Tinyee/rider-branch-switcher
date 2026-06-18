@@ -39,8 +39,8 @@ git config core.hooksPath .githooks   # 首次 clone 后执行一次，启用自
 ./gradlew test          # 308 tests / 21 classes
 ./gradlew buildPlugin   # → build/distributions/rider-branch-switcher-{version}.zip
 ./gradlew runIde        # 启动沙箱 Rider，插件已预装
-./gradlew quickCheck    # <1 秒，grep 结构检查（git commit 时自动跑）
-./gradlew releaseCheck  # quickCheck + test + detekt + buildPlugin + verifyPlugin（git push 时自动跑）
+./gradlew quickCheck    # <1 秒，grep 结构检查（git commit / git push 时自动跑）
+./gradlew releaseCheck  # quickCheck + test + detekt + buildPlugin + verifyPlugin（发布前手动跑）
 ```
 
 ## 用户偏好
@@ -62,8 +62,9 @@ git config core.hooksPath .githooks   # 首次 clone 后执行一次，启用自
 - **重型 Gradle 命令不准并行启动。** 完整 `test`、真实 Git 集成测试、`buildPlugin`、`verifyPlugin`、`releaseCheck` 必须串行；工具支持并行调用也不能并行跑这些任务。
 - **本地广泛验证默认限流。** 使用 `--max-workers=2 --no-parallel`；用户反馈发热、风扇噪音或机器受限时改为 `--max-workers=1 --no-parallel`。
 - **不要靠降低全局测试覆盖率降温。** 不得减少 Kotest 全局迭代次数或跳过测试；应选择目标测试、限流，或增加明确命名的低负载任务。
-- **完成与发布分开。** 声称完成前按改动范围运行相关测试的 `--rerun-tasks`；只有发布/推送前运行 `releaseCheck`，启动前说明它耗时且高负载。
+- **完成与发布分开。** 声称完成前按改动范围运行相关测试的 `--rerun-tasks`；只有发布前运行 `releaseCheck`，启动前说明它耗时且高负载。
 - 测试结束后仅在用户希望释放资源或会话结束时运行 `./gradlew --stop`，不要每次测试后都停止 daemon。
+- **终端中文乱码不是文件损坏。** PowerShell/Git Bash 读取 Markdown 出现乱码时，先看 `docs/encoding-and-line-endings.md`，不要因为显示问题重写文档。
 
 ### AI 互审测试预算
 
@@ -74,7 +75,7 @@ git config core.hooksPath .githooks   # 首次 clone 后执行一次，启用自
 - **Level 1: 静态门禁。** 构建脚本、quickCheck 规则、i18n、轻量迁移或调用点替换时，跑 `quickCheck` + `git diff --check`；签名/import/构造函数变化时再加 `compileKotlin compileTestKotlin`。
 - **Level 2: 目标测试。** 生产逻辑、状态机、异常处理、GitClient/GitOps、持久化、导入解析、controller/action 入口变化时，只跑最相关测试类或方法。
 - **Level 3: 目标测试强制重跑。** 要把共享审查项标为 `VERIFIED`、声称功能完成、或涉及取消/rollback/迁移/持久化时，相关目标测试加 `--rerun-tasks`，除非写明不需要的理由。
-- **Level 4: 广泛验证。** 仅提交前、跨模块架构改动、测试基础设施改动、Gradle 配置大改或用户明确要求时，跑 `test detekt`；发布/推送前才跑 `releaseCheck`。
+- **Level 4: 广泛验证。** 仅提交前、跨模块架构改动、测试基础设施改动、Gradle 配置大改或用户明确要求时，跑 `test detekt`；发布前才跑 `releaseCheck`。
 - **不要把未运行写成通过。** 任何没跑的测试必须记录为“未运行 + 原因”；共享审查文档只能记录真实执行过的 PASS/FAIL/timeout。
 
 ```bash
@@ -83,6 +84,7 @@ git config core.hooksPath .githooks   # 首次 clone 后执行一次，启用自
 ./gradlew test detekt --max-workers=2 --no-parallel
 ./gradlew test detekt --rerun-tasks --max-workers=2 --no-parallel
 ./gradlew releaseCheck
+RUN_RELEASE_CHECK_ON_PUSH=1 git push  # 需要 push 时同时跑 releaseCheck 才使用
 ```
 
 ## Recent Changes (v0.6, through 2026-06-14)
@@ -94,7 +96,7 @@ git config core.hooksPath .githooks   # 首次 clone 后执行一次，启用自
 - 新增 `DeriveNotification` 纯函数 + 结构化通知决策 + i18n 映射。
 - `isGitRepo` 增加 10s 超时。
 - 分支名校验 (`isValidBranchName`)。
-- 新增 MIT `LICENSE`、`quickCheck` + `releaseCheck` Gradle task、git pre-commit/pre-push hooks。
+- 新增 MIT `LICENSE`、`quickCheck` + `releaseCheck` Gradle task、git pre-commit/pre-push hooks（push 默认只跑 quickCheck，releaseCheck 手动或 opt-in）。
 - 308 tests / 21 classes 覆盖：真实 Git 集成、取消、rollback、derive 安全、通知决策、stash+rollback、50 子模块调用预算。
 
 ## 会话流程规则

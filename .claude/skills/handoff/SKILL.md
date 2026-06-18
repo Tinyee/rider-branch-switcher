@@ -18,7 +18,7 @@ in the commit message.
 | L1 | `./gradlew testClasses quickCheck` | ~20s | Only tests/comments/docs, no production code |
 | L2 | `./gradlew testClasses quickCheck detekt` | ~30s | Refactored production code, no logic change |
 | L3 | L2 + `./gradlew test --tests "<affected>"` | ~2min | Changed business logic in one module |
-| L4 | `./gradlew test detekt --rerun-tasks` | ~7min | Changed GitOps/switch pipeline, or pre-push final |
+| L4 | `./gradlew test detekt --rerun-tasks` | ~7min | Changed GitOps/switch pipeline, release prep, or major milestone |
 
 ## Handoff Commit Convention
 
@@ -50,8 +50,10 @@ not trust status text. Re-run when:
 
 - **Default: append review-fix commits.** Do not amend or rebase unless the user
   explicitly asks. This matches the existing rule.
-- **Accumulate before push:** gather 2-5 commits before `git push` to avoid
-  repeated `releaseCheck` (2 min each).
+- **Normal push is lightweight:** pre-push runs `quickCheck` by default. Run
+  `./gradlew releaseCheck` manually before release, or use
+  `RUN_RELEASE_CHECK_ON_PUSH=1 git push` when push itself should include the
+  heavy release gate.
 - **If user asks:** squash via `rebase -i` or `commit --amend` before pushing.
 
 ## Quick Rules
@@ -60,7 +62,8 @@ not trust status text. Re-run when:
 tests/comments/docs only   -> L1 -> commit
 production code refactor   -> L2 -> commit
 GitOps/SwitchExecutor      -> L3 -> commit
-push / major milestone     -> L4 -> push
+normal push                -> quickCheck pre-push
+release / major milestone  -> L4 -> releaseCheck -> push
 ```
 
 ## Codex-Specific

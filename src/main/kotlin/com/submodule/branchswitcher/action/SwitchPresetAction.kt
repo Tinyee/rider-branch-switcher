@@ -37,12 +37,12 @@ class SwitchPresetAction : AnAction() {
             return
         }
         val names = presets.map { it.name }.toTypedArray()
-        @Suppress("DEPRECATION")
-        val choice = Messages.showChooseDialog(
+        val choice = Messages.showDialog(
+            project,
             Bundle.msg("action.select.preset"),
             Bundle.msg("action.switch.preset"),
             names,
-            names[0],
+            0,
             null,
         )
         if (choice == -1) return

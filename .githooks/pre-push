@@ -1,23 +1,40 @@
 #!/bin/bash
-# Pre-push hook: run full release checks before pushing.
-# Runs quickCheck first (fast), then full suite only if quickCheck passes.
+# Pre-push hook: run lightweight structural checks before pushing.
+#
+# Heavy release verification is opt-in:
+#   RUN_RELEASE_CHECK_ON_PUSH=1 git push
+# or run it explicitly before publishing:
+#   ./gradlew releaseCheck
 
 set -e
 
+run_gradle() {
+    if [ -f "./gradlew.bat" ] && command -v cmd.exe >/dev/null 2>&1; then
+        cmd.exe /c gradlew.bat "$@"
+    else
+        ./gradlew "$@"
+    fi
+}
+
 echo "=== quickCheck ==="
-./gradlew quickCheck --quiet  2>&1
+run_gradle quickCheck --quiet 2>&1
 if [ $? -ne 0 ]; then
     echo "quickCheck failed. Fix before pushing."
     exit 1
 fi
 
-echo ""
-echo "=== releaseCheck ==="
-./gradlew releaseCheck --quiet  2>&1
-if [ $? -ne 0 ]; then
-    echo "releaseCheck failed. Fix before pushing."
-    echo "To bypass (not recommended): git push --no-verify"
-    exit 1
+if [ "${RUN_RELEASE_CHECK_ON_PUSH:-0}" = "1" ]; then
+    echo ""
+    echo "=== releaseCheck ==="
+    run_gradle releaseCheck --quiet 2>&1
+    if [ $? -ne 0 ]; then
+        echo "releaseCheck failed. Fix before pushing."
+        echo "To bypass (not recommended): git push --no-verify"
+        exit 1
+    fi
+else
+    echo "Skipping releaseCheck on normal push."
+    echo "Run RUN_RELEASE_CHECK_ON_PUSH=1 git push, or ./gradlew releaseCheck before release."
 fi
 
 echo "All checks passed. Pushing..."

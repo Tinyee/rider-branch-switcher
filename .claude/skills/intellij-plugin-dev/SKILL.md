@@ -91,7 +91,7 @@ Treat test execution as a resource budget, not an all-or-nothing switch:
 # Final verification when the change scope warrants the full suite
 ./gradlew test detekt --rerun-tasks --max-workers=2 --no-parallel
 
-# Release/push only; warn the user before starting because it is intentionally heavy
+# Release only; warn the user before starting because it is intentionally heavy
 ./gradlew releaseCheck
 ```
 
@@ -133,7 +133,7 @@ Level 3 - Targeted rerun:
 Level 4 - Broad validation:
 - Use only before commit/merge, after cross-module architecture changes, after test-infrastructure or broad Gradle changes, or when the user explicitly asks for full validation.
 - Prefer `./gradlew test detekt --max-workers=1 --no-parallel`.
-- Reserve `releaseCheck` for release/push preparation and warn the user first.
+- Reserve `releaseCheck` for release preparation or opt-in heavy push verification, and warn the user first.
 
 De-duplication rules:
 - If only docs changed after a PASS, reuse the previous code-test result and run only `git diff --check`.

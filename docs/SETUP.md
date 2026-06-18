@@ -35,8 +35,11 @@ git config core.hooksPath .githooks
 # 产物：build/distributions/rider-branch-switcher-0.7.0.zip
 ```
 
-`git config core.hooksPath .githooks` 只需执行一次。之后每次 `git commit` 会自动跑 quickCheck，
-`git push` 会自动跑 releaseCheck。跳过检查：`git commit --no-verify`。
+`git config core.hooksPath .githooks` 只需执行一次。之后每次 `git commit` 和 `git push` 会自动跑 quickCheck。
+发布前手动跑 `./gradlew releaseCheck`；如果希望 push 时同时跑发布检查，用 `RUN_RELEASE_CHECK_ON_PUSH=1 git push`。
+跳过检查：`git commit --no-verify` 或 `git push --no-verify`。
+
+Windows 终端读取中文 Markdown 如果出现乱码，先看 `docs/encoding-and-line-endings.md`。通常是终端编码问题，不是文件损坏。
 
 Rider 里 `Settings → Plugins → ⚙ → Install plugin from disk` 选这个 zip。
 
