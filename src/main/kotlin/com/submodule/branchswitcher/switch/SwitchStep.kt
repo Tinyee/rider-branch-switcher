@@ -46,23 +46,6 @@ interface SwitchStep {
 fun resolveGitDir(root: java.nio.file.Path, path: String): java.io.File =
     if (path == ".") root.toFile() else root.resolve(path).toFile()
 
-/** Check whether [dir] is a git repository (exists + `git rev-parse --git-dir` succeeds). */
-fun isGitRepo(dir: java.io.File): Boolean {
-    if (!java.io.File(dir, ".git").exists()) return false
-    // Quick validation: ensure the .git dir/file is actually usable
-    return try {
-        val proc = ProcessBuilder("git", "rev-parse", "--git-dir")
-            .directory(dir)
-            .redirectErrorStream(true)
-            .start()
-        val finished = proc.waitFor(10, java.util.concurrent.TimeUnit.SECONDS)
-        if (!finished) { proc.destroyForcibly(); return false }
-        proc.exitValue() == 0
-    } catch (_: Exception) {
-        false
-    }
-}
-
 /** Returns the last path segment, stripping trailing `~`. Used for display labels. */
 fun shortLabel(path: String): String {
     return path.substringAfterLast('/').removeSuffix("~")

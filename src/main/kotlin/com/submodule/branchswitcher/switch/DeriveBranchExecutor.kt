@@ -62,7 +62,7 @@ class DeriveBranchExecutor(
             val dir = resolveGitDir(projectRoot, target.path)
             val label = if (target.path == ".") projectRoot.fileName.toString() else target.path
 
-            if (!dir.exists() || !isGitRepo(dir)) {
+            if (!dir.exists() || !git.isGitRepo(dir)) {
                 log.warn("[derive] $label: not a git repo — blocked")
                 skipped.add(target.path)
                 continue
@@ -73,6 +73,7 @@ class DeriveBranchExecutor(
             val current = try {
                 git.currentBranch(dir)
             } catch (e: Exception) {
+                rethrowIfCancellation(e)
                 log.warn("[derive] $label: cannot detect current branch — ${e.message}")
                 preflightError.add(target.path)
                 continue
@@ -92,6 +93,7 @@ class DeriveBranchExecutor(
             val probe = try {
                 git.localBranchProbe(dir, branchName)
             } catch (e: Exception) {
+                rethrowIfCancellation(e)
                 log.warn("[derive] $label: branch existence probe failed — ${e.message}")
                 null
             }
@@ -111,6 +113,7 @@ class DeriveBranchExecutor(
                 val dp = try {
                     git.dirtyProbe(dir)
                 } catch (e: Exception) {
+                    rethrowIfCancellation(e)
                     log.warn("[derive] $label: dirty probe failed — ${e.message}")
                     null
                 }
@@ -157,6 +160,7 @@ class DeriveBranchExecutor(
                     checkpointFailed.add(target.path)
                 }
             } catch (e: Exception) {
+                rethrowIfCancellation(e)
                 log.warn("[derive] $label: checkpoint failed — ${e.message}")
                 checkpointFailed.add(target.path)
             }
@@ -192,6 +196,7 @@ class DeriveBranchExecutor(
                     log.warn("[derive] $label: FAILED — $err")
                 }
             } catch (e: Exception) {
+                rethrowIfCancellation(e)
                 log.warn("[derive] $label: exception — ${e.javaClass.simpleName}: ${e.message}")
                 failed[target.path] = "${e.javaClass.simpleName}: ${e.message}"
             }
@@ -235,11 +240,19 @@ class DeriveBranchExecutor(
                     rollbackFailures.add(path)
                 }
             } catch (e: Exception) {
+                rethrowIfCancellation(e)
                 log.warn("[derive] $path: rollback exception — ${e.javaClass.simpleName}: ${e.message}")
                 rollbackFailures.add(path)
             }
         }
 
         return rollbackFailures
+    }
+}
+
+private fun rethrowIfCancellation(e: Exception) {
+    when (e) {
+        is kotlinx.coroutines.CancellationException -> throw e
+        is com.intellij.openapi.progress.ProcessCanceledException -> throw e
     }
 }

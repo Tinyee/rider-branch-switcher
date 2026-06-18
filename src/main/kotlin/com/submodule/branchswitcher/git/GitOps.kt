@@ -108,6 +108,9 @@ class GitOps(
         return if (r.ok) r.stdout.trim().ifEmpty { null } else null
     }
 
+    override fun isGitRepo(workDir: File): Boolean =
+        workDir.exists() && run(workDir, "rev-parse", "--git-dir").ok
+
     override fun isDirty(workDir: File): Boolean {
         val r = run(workDir, "status", "--porcelain")
         return r.ok && r.stdout.isNotBlank()

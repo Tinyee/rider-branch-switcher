@@ -110,7 +110,7 @@ fun scanQuickChecks(srcRoot: File, msgDir: File): List<String> {
 
     // 4. No raw git ProcessBuilder outside GitOps
     val rawGit = fileTree(srcRoot).filter {
-        it.extension == "kt" && !it.name.contains("GitOps") && !it.name.contains("ToolWindowFactory") && !it.name.contains("SwitchStep")
+        it.extension == "kt" && !it.name.contains("GitOps") && !it.name.contains("ToolWindowFactory")
     }.flatMap { it.readLines() }.filter { it.contains("ProcessBuilder") && it.contains("\"git") }
     if (rawGit.isNotEmpty())
         fail("Raw git ProcessBuilder outside GitOps: ${rawGit.take(3)}")
