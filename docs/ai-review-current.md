@@ -9,10 +9,11 @@
 ## Verified Summary
 
 - AR-01 VERIFIED: `SwitchExecutorTest:225` remaining `target` reference fixed to `branch`.
-- 6 checkoutExisting overrides now all use `branch` (matching GitClient interface), 0 compile warnings.
+- All `checkoutExisting` overrides now use `branch` (matching the `GitClient` interface); the previous parameter-name compile warnings are gone.
 - Handoff skill conflicts fixed: `Verify:` is a hint, amend only when user asks, pure ASCII.
 - SwitchStepTest weak always-true assertions replaced with meaningful assertions.
 
 ## Validation
 
-- `./gradlew testClasses --rerun-tasks --max-workers=1 --no-parallel`: PASS (0 warnings, 0 errors)
+- `./gradlew testClasses --rerun-tasks --max-workers=1 --no-parallel`: PASS.
+- Residual pre-existing warning: IntelliJ Platform `2026.1.1` reports Java `sourceCompatibility='17'` while it expects `21`; not introduced by this review fix.
