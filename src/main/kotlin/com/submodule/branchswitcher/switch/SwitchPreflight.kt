@@ -62,11 +62,15 @@ class SwitchPreflight(
                 hasLocal = git.localBranchExists(dir, target.branch),
                 hasRemote = git.remoteBranchExists(dir, target.branch),
             )
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e // cancellation must propagate, not become a warning row
+        } catch (e: com.intellij.openapi.progress.ProcessCanceledException) {
+            throw e // same for IntelliJ modal cancellation
         } catch (e: Exception) {
             // Fail closed per repo: one flaky git command must not abort the whole preflight.
             // All flags default to blocking/unknown so the user sees this repo as a warning.
             PreflightRow(
-                label = "$label [probe error]",
+                label = "$label ${com.submodule.branchswitcher.Bundle.msg("preflight.probe.error.suffix")}",
                 path = target.path,
                 target = target.branch,
                 exists = true,

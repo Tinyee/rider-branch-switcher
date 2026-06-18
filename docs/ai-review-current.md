@@ -3,16 +3,17 @@
 ## Review Scope
 
 - Date: 2026-06-18
-- Target: re-review architecture/readability fixes on `main` (`39f5916`)
-- Result: `PASS` - ARCH-01,03 now fully fixed
+- Target: re-review commit `1e3f4e7` (`fix: 修复审查问题 ARCH-01/03 剩余项`)
+- Result: `PASS` - ARCH-01A,01B,03A verified fixed
 
 ## Verified Summary
 
-- ARCH-01 VERIFIED: SwitchPreflight.probeOne() now catches per-repo git exceptions, returns blocking PreflightRow with `[probe error]` label instead of aborting whole preflight.
-- ARCH-02 VERIFIED: derive cancel rollback endOperation in finally.
-- ARCH-03 VERIFIED: "Switching branches" / "Switching to {0}" / "未 init" → Bundle.msg. Internal debug logs (log.debug) exempted.
-- ARCH-04,05,06 ACCEPTED.
+- ARCH-01A VERIFIED: probeOne rethrows CancellationException/ProcessCanceledException before converting to fail-closed row.
+- ARCH-01B VERIFIED: 2 new SwitchPreflightTest cases (ordinary exception → fail-closed row; cancellation → rethrows).
+- ARCH-03A VERIFIED: `[probe error]` label changed to Bundle.msg("preflight.probe.error.suffix"), en/zh keys added.
+- ARCH-02 VERIFIED, ARCH-04..06 ACCEPTED.
 
 ## Validation
 
-- `./gradlew compileKotlin quickCheck detekt`: PASS
+- `./gradlew quickCheck detekt`: PASS
+- `./gradlew test --tests "SwitchPreflightTest" --rerun-tasks`: PASS (2 new tests)
