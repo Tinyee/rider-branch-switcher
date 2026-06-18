@@ -132,7 +132,7 @@ class SwitchController(
                     val executor = rollbackExecutor
                     if (executor?.getCheckpoint() != null) {
                         Notifier.rollbackAction(project, Bundle.msg("switch.failed"),
-                            Bundle.msg("notify.switch.partial.msg", preset.name) + "。可回滚到切换前的 HEAD。") {
+                            Bundle.msg("notify.switch.partial.msg", preset.name) + Bundle.msg("notify.switch.rollback.hint")) {
                             rollbackSwitch(executor)
                         }
                     } else {
@@ -294,7 +294,7 @@ class SwitchController(
             allPresets.find { it.name == entry.presetName }
         }
         if (preset == null) {
-            Messages.showInfoMessage(project, "${Bundle.msg("undo.not.found")}「${entry.presetName}」", Bundle.msg("dialog.undo"))
+            Messages.showInfoMessage(project, Bundle.msg("undo.not.found.preset", entry.presetName), Bundle.msg("dialog.undo"))
             return
         }
         runSwitch(preset)

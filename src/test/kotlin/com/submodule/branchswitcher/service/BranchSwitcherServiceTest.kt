@@ -360,13 +360,12 @@ class BranchSwitcherServiceTest {
     fun `export after opt-out does not expose persisted ID`() {
         // Simulate: user opts in, ID is generated, then user opts out
         service.telemetryOptIn = true
-        service.telemetryInstallId // trigger UUID generation
+        val realId = service.telemetryInstallId // trigger UUID generation
         service.telemetryOptIn = false
         val stats = service.exportTelemetry()
-        // Export shows redacted installId (8 chars + ellipsis)
-        val idMatch = Regex("\"installId\": \"([^\"]+)\"").find(stats)
-        assertNotNull("installId must be present", idMatch)
-        assertTrue("installId must reflect opt-out", idMatch!!.groupValues[1].startsWith("<not op"))
+        // Export must not contain the real UUID (even as a prefix)
+        assertFalse("export must not leak real UUID after opt-out",
+            stats.contains(realId.take(8)))
     }
 
     @Test

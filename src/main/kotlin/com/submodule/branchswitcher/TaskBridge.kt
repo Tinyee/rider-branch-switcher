@@ -64,18 +64,14 @@ object TaskBridge {
         canBeCancelled: Boolean,
         block: (ProgressIndicator) -> T,
     ): T = withContext(Dispatchers.Default) {
-        val box = arrayOfNulls<Any?>(1)
         ProgressManager.getInstance().runProcessWithProgressSynchronously(
-            object : ThrowableComputable<Unit, Exception> {
-                override fun compute(): Unit {
-                    box[0] = block(ProgressManager.getInstance().progressIndicator)
-                }
+            object : ThrowableComputable<T, Exception> {
+                override fun compute(): T = block(ProgressManager.getInstance().progressIndicator)
             },
             title,
             canBeCancelled,
             project,
         )
-        box[0] as T
     }
 
     /** Runs a non-blocking background task, resumes on EDT via onFinished. */

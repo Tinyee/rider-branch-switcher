@@ -94,16 +94,18 @@ class SwitchPresetAction : AnAction() {
                         if (missingDirs.isNotEmpty() || missingBranches.isNotEmpty()) {
                             val warnings = mutableListOf<String>()
                             if (missingDirs.isNotEmpty()) {
-                                warnings += "Directory missing: ${missingDirs.joinToString(", ") { it.label }}"
+                                warnings += Bundle.msg("preflight.warn.dir.missing",
+                                    missingDirs.joinToString(", ") { it.label })
                             }
                             if (missingBranches.isNotEmpty()) {
-                                warnings += "Branch not found: ${missingBranches.joinToString(", ") { it.label }}"
+                                warnings += Bundle.msg("preflight.warn.branch.not.found",
+                                    missingBranches.joinToString(", ") { it.label })
                             }
                             val confirmed = booleanArrayOf(false)
                             com.intellij.openapi.application.ApplicationManager.getApplication().invokeAndWait {
                                 confirmed[0] = com.intellij.openapi.ui.Messages.showYesNoDialog(
                                     project,
-                                    warnings.joinToString("\n\n") + "\n\nContinue anyway?",
+                                    warnings.joinToString("\n\n") + "\n\n" + Bundle.msg("preflight.warn.continue"),
                                     Bundle.msg("dialog.switch.title"),
                                     com.intellij.openapi.ui.Messages.getWarningIcon(),
                                 ) == com.intellij.openapi.ui.Messages.YES
