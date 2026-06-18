@@ -134,8 +134,10 @@ class SwitchPresetAction : AnAction() {
                     return@invokeLaterIfAlive
                 }
                 if (ok) {
+                    service.incrementSwitchCount()
                     Notifier.info(project, Bundle.msg("switch.complete"), Bundle.msg("notify.switch.complete.msg", preset.name))
                 } else {
+                    service.incrementErrorCount()
                     val detail = logLines.filter { it.contains("[fail]") || it.contains("[fatal]") || it.contains("[warn]") || it.contains("[error]") }
                         .take(3).joinToString("\n")
                     Notifier.error(project, Bundle.msg("switch.failed"),

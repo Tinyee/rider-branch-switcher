@@ -293,4 +293,82 @@ class BranchSwitcherServiceTest {
         assertFalse("override should win over global", request.options.pull)
         assertEquals(DirtyAction.Stash, request.options.dirty)
     }
+
+    // ── Telemetry ──────────────────────────────────────────────────────
+
+    @Test
+    fun `telemetry is opt-out by default`() {
+        assertFalse("opt-in should default to false", service.telemetryOptIn)
+    }
+
+    @Test
+    fun `counters do not increment when opt-out`() {
+        service.telemetryOptIn = false
+        service.incrementSwitchCount()
+        service.incrementCreateCount()
+        service.incrementDeriveCount()
+        service.incrementErrorCount()
+        val stats = service.exportTelemetry()
+        assertTrue(stats.contains("\"switch\": 0"))
+        assertTrue(stats.contains("\"createPreset\": 0"))
+        assertTrue(stats.contains("\"error\": 0"))
+    }
+
+    @Test
+    fun `counters increment when opt-in`() {
+        service.telemetryOptIn = true
+        service.incrementSwitchCount()
+        service.incrementSwitchCount()
+        service.incrementCreateCount()
+        service.incrementDeriveCount()
+        val stats = service.exportTelemetry()
+        assertTrue(stats.contains("\"switch\": 2"))
+        assertTrue(stats.contains("\"createPreset\": 1"))
+        assertTrue(stats.contains("\"derive\": 1"))
+    }
+
+    @Test
+    fun `install ID is not generated before opt-in`() {
+        service.telemetryOptIn = false
+        assertEquals("<not opted in>", service.telemetryInstallId)
+    }
+
+    @Test
+    fun `install ID is stable after opt-in`() {
+        service.telemetryOptIn = true
+        val id1 = service.telemetryInstallId
+        val id2 = service.telemetryInstallId
+        assertEquals(id1, id2)
+        assertTrue("install ID should be a UUID", id1.length > 30)
+    }
+
+    @Test
+    fun `export includes version and redacted install ID`() {
+        service.telemetryOptIn = true
+        val stats = service.exportTelemetry()
+        assertTrue(stats.contains("\"pluginVersion\": \"0.7.0\""))
+        assertTrue(stats.contains("\"riderVersion\":"))
+        assertTrue(stats.contains("…")) // ellipsis after truncated installId
+    }
+
+    @Test
+    fun `prompt shown flag prevents re-prompting`() {
+        assertFalse("prompt not shown by default", service.telemetryPromptShown)
+        service.telemetryPromptShown = true
+        assertTrue(service.telemetryPromptShown)
+    }
+
+    @Test
+    fun `loadState preserves telemetry fields`() {
+        val state = BranchSwitcherService.OptionsState(
+            telemetryInstallId = "test-id-123",
+            telemetryOptIn = true,
+            telemetrySwitchCount = 42,
+        )
+        service.loadState(state)
+        assertTrue(service.telemetryOptIn)
+        assertEquals("test-id-123", service.telemetryInstallId)
+        val stats = service.exportTelemetry()
+        assertTrue(stats.contains("\"switch\": 42"))
+    }
 }
