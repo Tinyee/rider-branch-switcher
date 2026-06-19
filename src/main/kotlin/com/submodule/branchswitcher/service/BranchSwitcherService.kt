@@ -7,7 +7,6 @@ import com.intellij.openapi.components.State
 import com.intellij.openapi.components.Storage
 import com.intellij.openapi.components.service
 import com.intellij.openapi.project.Project
-import com.submodule.branchswitcher.PresetLoader
 import com.submodule.branchswitcher.git.GitClient
 import com.submodule.branchswitcher.git.GitOps
 import com.submodule.branchswitcher.model.DirtyAction
@@ -17,7 +16,6 @@ import kotlinx.coroutines.CoroutineScope
 import com.submodule.branchswitcher.model.Preset
 import com.submodule.branchswitcher.model.PresetFile
 import java.nio.file.Path
-import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 
@@ -83,6 +81,11 @@ class BranchSwitcherService(
     override fun getState(): OptionsState = options
     override fun loadState(state: OptionsState) { options = state }
 
+    // ── Delegated sub-components ─────────────────────────────────────
+
+    val telemetry = TelemetryStore({ options }, project)
+    val presetRepo = PresetRepository(project)
+
     var dirtyAction: DirtyAction
         get() = when (options.dirtyAction) {
             "Skip" -> DirtyAction.Skip
@@ -107,81 +110,32 @@ class BranchSwitcherService(
         get() = options.confirmBeforeInit
         set(value) { options.confirmBeforeInit = value }
 
-    // ── Anonymous telemetry ──────────────────────────────────────────
+    // ── Telemetry (delegated) ────────────────────────────────────────
 
-    /** Whether the user has seen the opt-in dialog (avoids re-prompting). */
-    var telemetryPromptShown: Boolean
-        get() = options.telemetryPromptShown
-        set(value) { options.telemetryPromptShown = value }
-
-    /** Stable anonymous ID, generated only after opt-in consent. */
-    val telemetryInstallId: String
-        get() {
-            if (!options.telemetryOptIn) return "<not opted in>"
-            if (options.telemetryInstallId.isEmpty()) {
-                options.telemetryInstallId = UUID.randomUUID().toString()
-            }
-            return options.telemetryInstallId
-        }
-
+    @Deprecated("Use service.telemetry.optIn", ReplaceWith("telemetry.optIn"))
     var telemetryOptIn: Boolean
-        get() = options.telemetryOptIn
-        set(value) { options.telemetryOptIn = value }
+        get() = telemetry.optIn
+        set(value) { telemetry.optIn = value }
 
-    fun incrementSwitchCount() { if (options.telemetryOptIn) options.telemetrySwitchCount++ }
-    fun incrementCreateCount() { if (options.telemetryOptIn) options.telemetryCreateCount++ }
-    fun incrementDeriveCount() { if (options.telemetryOptIn) options.telemetryDeriveCount++ }
-    fun incrementErrorCount() { if (options.telemetryOptIn) options.telemetryErrorCount++ }
+    @Deprecated("Use service.telemetry.installId", ReplaceWith("telemetry.installId"))
+    val telemetryInstallId: String get() = telemetry.installId
 
-    /** Gson-friendly export model — no raw JSON building. */
-    data class TelemetryExport(
-        val pluginVersion: String,
-        val riderVersion: String,
-        val installId: String,
-        val counters: Map<String, Int>,
-    )
+    @Deprecated("Use service.telemetry.promptShown", ReplaceWith("telemetry.promptShown"))
+    var telemetryPromptShown: Boolean
+        get() = telemetry.promptShown
+        set(value) { telemetry.promptShown = value }
 
-    /** Best-effort plugin version from IDE metadata, falling back to build-time constant. */
-    private fun pluginVersion(): String {
-        // Try the IDE descriptor first (accurate at runtime, reflects actual installed version)
-        return try {
-            com.intellij.ide.plugins.PluginManagerCore.getPlugin(
-                com.intellij.openapi.extensions.PluginId.getId("com.submodule.branchswitcher")
-            )?.version
-        } catch (_: Exception) { null }
-            ?: PLUGIN_VERSION_FALLBACK
-    }
+    @Deprecated("Use service.telemetry.export()", ReplaceWith("telemetry.export()"))
+    fun exportTelemetry(): String = telemetry.export()
 
-    /** Export anonymized telemetry as a JSON string for clipboard sharing. */
-    fun exportTelemetry(): String {
-        val export = TelemetryExport(
-            pluginVersion = pluginVersion(),
-            riderVersion = try {
-                com.intellij.openapi.application.ApplicationInfo.getInstance().fullVersion
-            } catch (_: Exception) { "unknown" },
-            installId = telemetryInstallId.take(8) + "…",
-            counters = mapOf(
-                "switch" to options.telemetrySwitchCount,
-                "createPreset" to options.telemetryCreateCount,
-                "derive" to options.telemetryDeriveCount,
-                "error" to options.telemetryErrorCount,
-            ),
-        )
-        return com.google.gson.GsonBuilder().setPrettyPrinting().create().toJson(export)
-    }
+    @Deprecated("Use service.telemetry.maybeShowOptIn()", ReplaceWith("telemetry.maybeShowOptIn()"))
+    fun maybeShowTelemetryOptIn() = telemetry.maybeShowOptIn()
 
-    /** Show first-install opt-in dialog (once per install). */
-    fun maybeShowTelemetryOptIn() {
-        if (options.telemetryPromptShown) return // already asked
-        options.telemetryPromptShown = true
-        val result = com.intellij.openapi.ui.Messages.showYesNoDialog(
-            project,
-            com.submodule.branchswitcher.Bundle.msg("telemetry.dialog.body"),
-            com.submodule.branchswitcher.Bundle.msg("telemetry.dialog.title"),
-            com.intellij.openapi.ui.Messages.getQuestionIcon(),
-        )
-        options.telemetryOptIn = result == com.intellij.openapi.ui.Messages.YES
-    }
+    // Convenience accessors for counters (called from flow coordinator)
+    val incrementSwitchCount: () -> Unit get() = telemetry::incrementSwitch
+    val incrementCreateCount: () -> Unit get() = telemetry::incrementCreate
+    val incrementDeriveCount: () -> Unit get() = telemetry::incrementDerive
+    val incrementErrorCount: () -> Unit get() = telemetry::incrementError
 
     /** Cached [GitOps] instance, recreated only when timeout changes. */
     private var _gitClient: GitClient? = null
@@ -195,30 +149,13 @@ class BranchSwitcherService(
         return _gitClient!!
     }
 
-    private var presetFile: PresetFile = PresetFile()
-    private var savedFilePath: Path? = null
-    val presets: List<Preset> get() = presetFile.presets
+    // ── Preset persistence (delegated) ───────────────────────────────
 
-    fun loadPresets(): Result<Pair<Path, PresetFile>> {
-        val base = project.basePath?.let { java.nio.file.Paths.get(it) }
-            ?: return Result.failure(IllegalStateException("project base path is null"))
-        return PresetLoader.load(base).onSuccess { (file, parsed) ->
-            savedFilePath = file
-            presetFile = parsed
-        }
-    }
+    val presets: List<Preset> get() = presetRepo.presets
 
-    fun savePresets(presets: List<Preset>) {
-        val file = savedFilePath ?: run {
-            val base = project.basePath?.let { java.nio.file.Paths.get(it) }
-                ?: throw IllegalStateException("project base path is null — cannot save presets")
-            val resolved = PresetLoader.ensureFile(base)
-            savedFilePath = resolved
-            resolved
-        }
-        presetFile = presetFile.copy(presets = presets)
-        PresetLoader.save(file, presetFile)
-    }
+    fun loadPresets(): Result<Pair<Path, PresetFile>> = presetRepo.load()
+
+    fun savePresets(presets: List<Preset>) = presetRepo.save(presets)
 
     // -- Switch history for undo support (max 5 entries, persisted across restarts) --
 
@@ -266,7 +203,6 @@ class BranchSwitcherService(
         )
 
     companion object {
-        private const val PLUGIN_VERSION_FALLBACK = "0.7.0"
         fun getInstance(project: Project): BranchSwitcherService =
             project.service()
     }

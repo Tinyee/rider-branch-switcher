@@ -3,20 +3,21 @@
 ## Review Scope
 
 - Date: 2026-06-20
-- Target: review local fix for GitHub CI `quickCheck` failure after `SwitchFlowCoordinator` extraction
-- Result: `PASS` - the pushed CI failure and follow-up fallback UI-state issue are fixed locally
+- Target: review local BranchSwitcherService split into TelemetryStore and PresetRepository
+- Result: `FAIL_BLOCKING_REVIEW` - extraction direction is good, but detekt currently fails on a leftover private constant
 
 ## Active Findings
 
-
-### ARCH-02 - P2 - BranchSwitcherService is a broad service object
+### SVC-01 - P1 - BranchSwitcherService keeps unused PLUGIN_VERSION_FALLBACK after telemetry extraction
 
 - Status: `OPEN`
 - Evidence:
-  - `src/main/kotlin/com/submodule/branchswitcher/service/BranchSwitcherService.kt`
-- Impact: The service owns persistent options, preset repository state, `GitClient` lifecycle, write gate, branch-detection generation, history, telemetry, and switch request resolution. This is manageable now but will keep growing as settings, telemetry, and per-preset options expand.
-- Suggested fix: split high-churn responsibilities into smaller collaborators, starting with `PresetRepository`, `TelemetryStore`, and `OperationGate`; keep `BranchSwitcherService` as the project-level composition root.
-- Verification: migrate in small steps with `BranchSwitcherServiceTest` coverage preserved; run service tests and compile.
+  - `src/main/kotlin/com/submodule/branchswitcher/service/BranchSwitcherService.kt:206`
+  - `src/main/kotlin/com/submodule/branchswitcher/service/TelemetryStore.kt:87`
+  - `./gradlew detekt --max-workers=1 --no-parallel`: FAIL, `UnusedPrivateProperty` on `BranchSwitcherService.kt:206`
+- Impact: `TelemetryStore` now owns plugin-version export fallback, but `BranchSwitcherService` still has the old private `PLUGIN_VERSION_FALLBACK`. This is dead code and blocks the normal detekt gate.
+- Suggested fix: remove the unused `companion object` constant from `BranchSwitcherService` if it only contains `PLUGIN_VERSION_FALLBACK`. Keep the fallback constant in `TelemetryStore`.
+- Verification: rerun `./gradlew detekt --max-workers=1 --no-parallel` and `./gradlew quickCheck --max-workers=1 --no-parallel`.
 
 ### ARCH-04 - P3 - SwitchContext carries mutable cross-step state
 
@@ -38,20 +39,14 @@
 
 ## Verified In This Review
 
-- `ARCH-01` verified fixed: `SwitchFlowCoordinator` moved to `ui/`, so `switch/` no longer imports `Messages` or any UI package.
-- `ARCH-01B` verified fixed for busy, cancelled, and normal result paths: `SwitchFlowCoordinator.executeAndNotify` now accepts `onFinished`, and calls it on busy rejection, cancellation, and final success/failure handling.
-- `ARCH-01C` verified fixed: preflight-error fallback now sets `setSwitchInProgress(true)` and passes `onFinished = { setSwitchInProgress(false) }`, matching the normal preflight-confirmed path.
-- `ARCH-03` remains addressed by earlier core cleanup commits; no new core/platform leak was introduced by this CI fix.
-
-## Positive Architecture Notes
-
-- `SwitchFlowCoordinator` is still the right architectural direction for reducing drift between ToolWindow and action entry points.
-- Keeping the coordinator in `ui/` makes the package boundary honest: it owns dialogs, notifications, telemetry dispatch, UI refresh, and platform-facing flow orchestration.
-- `switch/` remains focused on switch execution pipeline primitives and no longer depends on UI APIs.
+- `ARCH-02` implementation direction is sound: telemetry and preset persistence have been extracted into `TelemetryStore` and `PresetRepository`, leaving `BranchSwitcherService` closer to a project-level composition root.
+- `PresetRepository` preserves the previous load/save cache semantics: successful load stores both path and parsed file; first save resolves/creates the preset file before saving.
+- `TelemetryStore` keeps the existing opt-in behavior: counters only increment when opted in, install ID is generated only after opt-in, and export still redacts the ID prefix.
+- Existing service-level compatibility accessors still compile against current call sites.
 
 ## Validation
 
 - `./gradlew quickCheck --max-workers=1 --no-parallel`: PASS
 - `./gradlew compileKotlin --max-workers=1 --no-parallel`: PASS
-- `git diff --check origin/main..HEAD`: PASS
-- `git status -sb`: `## main...origin/main [ahead 2]`
+- `./gradlew :test --tests "com.submodule.branchswitcher.service.BranchSwitcherServiceTest" --max-workers=1 --no-parallel`: PASS (task up-to-date)
+- `./gradlew detekt --max-workers=1 --no-parallel`: FAIL (`UnusedPrivateProperty` at `BranchSwitcherService.kt:206`)
