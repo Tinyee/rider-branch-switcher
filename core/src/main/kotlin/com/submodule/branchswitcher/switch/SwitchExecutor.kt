@@ -23,7 +23,7 @@ data class CheckpointEntry(
  *
  * Records a [CheckpointEntry] before switching for rollback support.
  */
-class SwitchExecutor(
+class SwitchExecutor @JvmOverloads constructor(
     private val projectRoot: Path,
     private val log: AppLogger,
     private val git: GitClient,
