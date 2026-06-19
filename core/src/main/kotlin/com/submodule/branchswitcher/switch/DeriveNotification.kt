@@ -1,6 +1,6 @@
 package com.submodule.branchswitcher.switch
 
-/** Structured notification decision for derive-branch — pure data, no UI dependency. */
+/** Structured notification decision for derive-branch; pure data, no UI dependency. */
 sealed class DeriveNotification {
     /** Show success info. */
     data class Success(val branchName: String, val repoCount: Int) : DeriveNotification()
@@ -25,18 +25,18 @@ sealed class DeriveNotification {
  * Maps (cancelled, result, rollbackFailureCount) to a notification decision.
  *
  * Rules (first match wins):
- * 1. cancelled + rollback failures → Failure(ROLLBACK_FAILED)
- * 2. cancelled + clean rollback → Silent
- * 3. result null → Failure(UNEXPECTED)
- * 4. preflight-blocked → Blocked
- * 5. checkpoint-blocked → Blocked
- * 6. all ok → Success
- * 7. rollback failures → Failure(ROLLBACK_FAILED)
- * 8. partial → Failure(PARTIAL)
+ * 1. cancelled + rollback failures -> Failure(ROLLBACK_FAILED)
+ * 2. cancelled + clean rollback -> Silent
+ * 3. result null -> Failure(UNEXPECTED)
+ * 4. preflight-blocked -> Blocked
+ * 5. checkpoint-blocked -> Blocked
+ * 6. all ok -> Success
+ * 7. rollback failures -> Failure(ROLLBACK_FAILED)
+ * 8. partial -> Failure(PARTIAL)
  */
 fun deriveNotification(
     cancelled: Boolean,
-    result: DeriveBranchExecutor.DeriveResult?,
+    result: DeriveResult?,
     rollbackFailureCount: Int,
     branchName: String,
 ): DeriveNotification {
