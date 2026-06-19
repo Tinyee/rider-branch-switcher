@@ -65,6 +65,17 @@ class TelemetryStore { ... }
 class PresetRepository(private val project: Project) { ... }
 ```
 
+## P2 Items (future)
+
+### Rename root switch/ package
+Root module's switch/SwitchRunner and switch/SwitchAdapters are IntelliJ
+platform adapters, not pure switch pipeline. Consider moving to platform/
+or ui/flow/ to avoid confusion with core/.../switch.
+
+### Rename TelemetryStore
+Now handles state + prompt + plugin version detection. Could be renamed
+to TelemetryService or split further (TelemetryStore / TelemetryEnvironment).
+
 ## P3 Items (defer)
 
 ### 4. SwitchContext → explicit pipeline state

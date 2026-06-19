@@ -22,16 +22,12 @@ import java.util.concurrent.atomic.AtomicLong
 /**
  * Central project-level service for the Branch Switcher plugin.
  *
- * Responsibilities:
- * - Persist switch options to [branch-switcher.xml] via [PersistentStateComponent]
- * - Manage preset loading/saving via [PresetLoader]
- * - Provide a [CoroutineScope] for async operations (background branch detection, combo loading)
- * - Track switch history for undo support (max 5 entries)
- * - Cache current branch state ([currentBranches]) with stale-detection via [detectGen]
+ * Composition root that owns persistent state and delegates to sub-components:
+ * - [PresetRepository] for preset loading/saving/caching
+ * - [TelemetryStore] for opt-in anonymous usage counters
  *
- * The [detectGen] counter is incremented on each [detectCurrentState] call.
- * Async branch probes capture the current generation; when results arrive,
- * they are discarded if a newer detection has started, preventing stale UI updates.
+ * Also manages: write gate, switch history, GitClient cache, detect-gen counter,
+ * and persistent switch options via [PersistentStateComponent].
  */
 @Service(Service.Level.PROJECT)
 @State(
