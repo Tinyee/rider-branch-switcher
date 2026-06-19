@@ -41,6 +41,7 @@ git config core.hooksPath .githooks   # 首次 clone 后执行一次，启用自
 ./gradlew runIde        # 启动沙箱 Rider，插件已预装
 ./gradlew quickCheck    # <1 秒，grep 结构检查（git commit / git push 时自动跑）
 ./gradlew releaseCheck  # quickCheck + test + detekt + buildPlugin + verifyPlugin（发布前手动跑）
+./gradlew pitestCore    # 手动 PITest 变异测试（单线程、纯规则范围，不进 releaseCheck）
 ```
 
 ## 用户偏好
@@ -63,6 +64,7 @@ git config core.hooksPath .githooks   # 首次 clone 后执行一次，启用自
 - **本地广泛验证默认限流。** 使用 `--max-workers=2 --no-parallel`；用户反馈发热、风扇噪音或机器受限时改为 `--max-workers=1 --no-parallel`。
 - **不要靠降低全局测试覆盖率降温。** 不得减少 Kotest 全局迭代次数或跳过测试；应选择目标测试、限流，或增加明确命名的低负载任务。
 - **完成与发布分开。** 声称完成前按改动范围运行相关测试的 `--rerun-tasks`；只有发布前运行 `releaseCheck`，启动前说明它耗时且高负载。
+- **PITest 只作手动诊断。** `pitestCore` 单线程运行，只覆盖纯规则/决策逻辑；不要放进普通 `test`、`releaseCheck`、git hooks 或频繁复审流程。
 - 测试结束后仅在用户希望释放资源或会话结束时运行 `./gradlew --stop`，不要每次测试后都停止 daemon。
 - **终端中文乱码不是文件损坏。** PowerShell/Git Bash 读取 Markdown 出现乱码时，先看 `docs/encoding-and-line-endings.md`，不要因为显示问题重写文档。
 

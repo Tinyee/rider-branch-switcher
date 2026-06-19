@@ -127,7 +127,7 @@
 
 1. ~~补 TaskBridge 生命周期测试。~~ ✅ 已完成
 2. 删除或合并低价值、重复测试。
-3. 最后再评估是否需要引入 PITest 变异测试。
+3. ~~最后再评估是否需要引入 PITest 变异测试。~~ ✅ 已完成
 
 ## 验收标准
 
@@ -136,3 +136,14 @@
 - 关键迁移失败不会阻断正常读取。
 - 删除低价值测试后，关键业务分支覆盖不下降。
 - 普通测试不依赖外网、不使用长时间 sleep，且可在 Windows、Linux、macOS CI 稳定运行。
+
+## PITest 评估结果（2026-06-19）
+
+已接入 `./gradlew pitestCore` 作为手动诊断任务，不进入普通 `test`、`releaseCheck` 或 git hooks。
+
+- 插件：`info.solidsoft.pitest` 1.19.0。
+- 目标：SettingsRules、BranchNameRules、DeriveNotification、PresetImportRules、UiRules。
+- 运行策略：单线程、JUnit 4 原生路径；不启用 JUnit 5 PIT 插件，避免 IntelliJ Platform classpath 下的 Vintage/Kotest 扫描开销。
+- 首次宽范围尝试会超过 5 分钟，并误扫 Swing `BranchSwitcherConfigurable`，因此已收窄为纯规则/决策逻辑。
+- 当前结果：80 mutations / 79 killed / 99%，0 no-coverage；剩余 1 个 `BranchNameRules` Kotlin lambda 等价噪音。
+- 实际收益：发现并推动补强 branch name 边界样例、DeriveNotification 字段断言，并简化了 `BranchNameRules` 冗余组件检查。

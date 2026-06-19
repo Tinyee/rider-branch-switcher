@@ -376,9 +376,13 @@ com.submodule.branchswitcher/
 
 `quickCheck`（7 条规则）+ `checkQuickCheck`（5 fixture 自测），pre-commit hook 自动运行。
 
-**4. PITest 变异测试（待定）**
+**4. PITest 变异测试** ✅
 
-`id("info.solidsoft.pitest") version "1.15.0"` → `./gradlew pitest` → HTML 报告展示哪些测试不充分
+`id("info.solidsoft.pitest") version "1.19.0"` → `./gradlew pitestCore`。
+
+当前只覆盖纯规则/决策逻辑（SettingsRules、BranchNameRules、DeriveNotification、PresetImportRules、UiRules），
+单线程手动运行，不进入 `test` / `releaseCheck`。2026-06-19 结果：80 mutations / 79 killed / 99%，
+剩余 1 个 Kotlin lambda 等价噪音。
 
 **5. 手工 Release Checklist（每次发版 5-10 分钟）**
 

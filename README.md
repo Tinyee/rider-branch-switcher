@@ -94,12 +94,20 @@ Configured via `Settings → Version Control → Submodule Branch Switcher`:
 # Large-repo wall-clock benchmark (heavy; 51 independent git repos, real GitOps)
 ./gradlew benchmark
 # Prints preflight + switch wall-clock timing. Not part of ./gradlew test.
+
+# Scoped mutation testing (heavy; manual diagnostic, not part of releaseCheck)
+./gradlew pitestCore
+# Writes HTML/XML reports to build/reports/pitest.
 ```
 
 **Benchmark** (`./gradlew benchmark`) creates 1 main + 50 independent git repos and runs
 preflight probe + full switch pipeline using real `GitOps`. It measures wall-clock time
 and prints results for human review — no thresholds are enforced. The task is gated
 behind a dedicated Gradle task so it never runs as part of normal `./gradlew test`.
+
+**Mutation testing** (`./gradlew pitestCore`) runs a scoped PIT pass over pure rules
+and notification/import decision logic only. It is intentionally manual and single-threaded:
+the full IntelliJ Platform classpath makes broad mutation runs noisy and expensive.
 
 Tech stack: Kotlin 2.3, IntelliJ Platform Gradle Plugin 2.2.1, Gradle 8.13, JUnit 4 + Kotest 5.9.
 

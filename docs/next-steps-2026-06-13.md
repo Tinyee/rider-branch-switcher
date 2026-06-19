@@ -105,6 +105,15 @@ Preflight 的 Git 调用预算，防止重复查询回归。
 - ZIP 名称、LICENSE 存在性检查
 - 非致命提醒：README screenshot TODO
 
+### PITest 变异测试 ✅
+
+已新增手动诊断任务 `./gradlew pitestCore`：
+
+- 只覆盖纯规则/决策逻辑：SettingsRules、BranchNameRules、DeriveNotification、PresetImportRules、UiRules。
+- 单线程运行，不进入普通 `test`、`releaseCheck` 或 git hooks。
+- 当前基线：80 mutations / 79 killed / 99%，剩余 1 个 Kotlin lambda 等价噪音。
+- 宽范围 mutation 对 IntelliJ Platform classpath 成本过高，后续如要扩展范围应分包小步验证。
+
 ### 首次安装引导
 
 已在无预设空状态中增加轻量 Quick Start，引导说明：

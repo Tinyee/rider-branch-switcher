@@ -23,7 +23,10 @@ class DeriveNotificationTest {
     fun `cancelled with rollback failures returns ROLLBACK_FAILED`() {
         val d = deriveNotification(cancelled = true, result(succeeded = listOf("a")), rollbackFailureCount = 2, "feat")
         assertTrue(d is DeriveNotification.Failure)
-        assertEquals(DeriveNotification.Reason.ROLLBACK_FAILED, (d as DeriveNotification.Failure).reason)
+        d as DeriveNotification.Failure
+        assertEquals(DeriveNotification.Reason.ROLLBACK_FAILED, d.reason)
+        assertEquals("feat", d.branchName)
+        assertEquals(2, d.count)
     }
 
     @Test
@@ -36,7 +39,10 @@ class DeriveNotificationTest {
     fun `null result returns UNEXPECTED`() {
         val d = deriveNotification(cancelled = false, null, rollbackFailureCount = 0, "feat")
         assertTrue(d is DeriveNotification.Failure)
-        assertEquals(DeriveNotification.Reason.UNEXPECTED, (d as DeriveNotification.Failure).reason)
+        d as DeriveNotification.Failure
+        assertEquals(DeriveNotification.Reason.UNEXPECTED, d.reason)
+        assertEquals("feat", d.branchName)
+        assertEquals(0, d.count)
     }
 
     @Test
@@ -47,8 +53,33 @@ class DeriveNotificationTest {
         assertTrue(d is DeriveNotification.Blocked)
         val b = d as DeriveNotification.Blocked
         assertEquals(1, b.branchExistsCount)
-        assertEquals(2, b.dirtyCount)
         assertEquals(0, b.skippedCount)
+        assertEquals(2, b.dirtyCount)
+        assertEquals(0, b.branchMismatchCount)
+        assertEquals(0, b.preflightErrorCount)
+        assertEquals(0, b.checkpointFailedCount)
+    }
+
+    @Test
+    fun `preflight blocked reports every blocked category count`() {
+        val d = deriveNotification(cancelled = false,
+            result(
+                branchExists = listOf("exists"),
+                skipped = listOf("skipped-a", "skipped-b"),
+                dirty = listOf("dirty"),
+                branchMismatch = listOf("mismatch-a", "mismatch-b", "mismatch-c"),
+                preflightError = listOf("error"),
+                checkpointFailed = listOf("checkpoint-a", "checkpoint-b"),
+            ),
+            rollbackFailureCount = 0, "feat")
+        assertTrue(d is DeriveNotification.Blocked)
+        val b = d as DeriveNotification.Blocked
+        assertEquals(1, b.branchExistsCount)
+        assertEquals(2, b.skippedCount)
+        assertEquals(1, b.dirtyCount)
+        assertEquals(3, b.branchMismatchCount)
+        assertEquals(1, b.preflightErrorCount)
+        assertEquals(2, b.checkpointFailedCount)
     }
 
     @Test
@@ -57,7 +88,13 @@ class DeriveNotificationTest {
             result(checkpointFailed = listOf("a", "b")),
             rollbackFailureCount = 0, "feat")
         assertTrue(d is DeriveNotification.Blocked)
-        assertEquals(2, (d as DeriveNotification.Blocked).checkpointFailedCount)
+        val b = d as DeriveNotification.Blocked
+        assertEquals(0, b.branchExistsCount)
+        assertEquals(0, b.skippedCount)
+        assertEquals(0, b.dirtyCount)
+        assertEquals(0, b.branchMismatchCount)
+        assertEquals(0, b.preflightErrorCount)
+        assertEquals(2, b.checkpointFailedCount)
     }
 
     @Test
@@ -65,7 +102,9 @@ class DeriveNotificationTest {
         val r = result(succeeded = listOf("a", "b", "c"))
         val d = deriveNotification(cancelled = false, r, rollbackFailureCount = 0, "feat")
         assertTrue(d is DeriveNotification.Success)
-        assertEquals(3, (d as DeriveNotification.Success).repoCount)
+        d as DeriveNotification.Success
+        assertEquals("feat", d.branchName)
+        assertEquals(3, d.repoCount)
     }
 
     @Test
@@ -74,7 +113,10 @@ class DeriveNotificationTest {
             result(succeeded = listOf("a"), failed = mapOf("b" to "err")),
             rollbackFailureCount = 1, "feat")
         assertTrue(d is DeriveNotification.Failure)
-        assertEquals(DeriveNotification.Reason.ROLLBACK_FAILED, (d as DeriveNotification.Failure).reason)
+        d as DeriveNotification.Failure
+        assertEquals(DeriveNotification.Reason.ROLLBACK_FAILED, d.reason)
+        assertEquals("feat", d.branchName)
+        assertEquals(1, d.count)
     }
 
     @Test
@@ -83,12 +125,15 @@ class DeriveNotificationTest {
             result(succeeded = listOf("a"), failed = mapOf("b" to "err")),
             rollbackFailureCount = 0, "feat")
         assertTrue(d is DeriveNotification.Failure)
-        assertEquals(DeriveNotification.Reason.PARTIAL, (d as DeriveNotification.Failure).reason)
+        d as DeriveNotification.Failure
+        assertEquals(DeriveNotification.Reason.PARTIAL, d.reason)
+        assertEquals("feat", d.branchName)
+        assertEquals(1, d.count)
     }
 
     @Test
     fun `branch name validation accepts valid git branch shorthands`() {
-        listOf("feature/test", "release-1.2", "user_name/topic").forEach {
+        listOf("a", "feature/test", "release-1.2", "user_name/topic", "feature.locked").forEach {
             assertTrue("Expected valid branch name: $it", isValidBranchName(it))
         }
     }
@@ -97,7 +142,8 @@ class DeriveNotificationTest {
     fun `branch name validation rejects invalid git branch shorthands`() {
         listOf("", " ", "-feature", "/feature", "feature/", "feature//test", ".hidden",
             "feature/.hidden", "feature.", "feature.lock/test", "feature/test.lock",
-            "feature..test", "feature@{test", "feature test", "feature\u0001test").forEach {
+            "feature.lock", "feature..test", "feature@{test", "feature test",
+            "feature\u0001test", "feature\u007ftest").forEach {
             assertFalse("Expected invalid branch name: $it", isValidBranchName(it))
         }
     }
