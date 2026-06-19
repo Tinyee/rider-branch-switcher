@@ -15,9 +15,9 @@ class DeriveNotificationTest {
         preflightError: List<String> = emptyList(),
         checkpointFailed: List<String> = emptyList(),
         failed: Map<String, String> = emptyMap(),
-        checkpoint: Map<String, CheckpointEntry> = emptyMap(),
+        checkpoint: Map<String, DeriveCheckpointEntry> = emptyMap(),
         cancelled: Boolean = false,
-    ) = DeriveBranchExecutor.DeriveResult(succeeded, branchExists, skipped, dirty, branchMismatch, preflightError, checkpointFailed, failed, checkpoint, cancelled)
+    ) = DeriveResult(succeeded, branchExists, skipped, dirty, branchMismatch, preflightError, checkpointFailed, failed, checkpoint, cancelled)
 
     @Test
     fun `cancelled with rollback failures returns ROLLBACK_FAILED`() {
@@ -131,20 +131,4 @@ class DeriveNotificationTest {
         assertEquals(1, d.count)
     }
 
-    @Test
-    fun `branch name validation accepts valid git branch shorthands`() {
-        listOf("a", "feature/test", "release-1.2", "user_name/topic", "feature.locked").forEach {
-            assertTrue("Expected valid branch name: $it", isValidBranchName(it))
-        }
-    }
-
-    @Test
-    fun `branch name validation rejects invalid git branch shorthands`() {
-        listOf("", " ", "-feature", "/feature", "feature/", "feature//test", ".hidden",
-            "feature/.hidden", "feature.", "feature.lock/test", "feature/test.lock",
-            "feature.lock", "feature..test", "feature@{test", "feature test",
-            "feature\u0001test", "feature\u007ftest").forEach {
-            assertFalse("Expected invalid branch name: $it", isValidBranchName(it))
-        }
-    }
 }

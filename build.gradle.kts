@@ -34,6 +34,11 @@ dependencies {
         }
         bundledPlugin("Git4Idea")
     }
+    implementation(project(":core"))
+    // IntelliJ Platform provides Gson at runtime; compile only to avoid bundling a duplicate Gson jar.
+    compileOnly("com.google.code.gson:gson:2.11.0")
+
+    testImplementation("com.google.code.gson:gson:2.11.0")
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlin:kotlin-test")
     testImplementation("io.kotest:kotest-runner-junit5:5.9.1")
@@ -77,10 +82,6 @@ pitest {
     // discovery and make the mutation run much heavier than the target scope.
     targetClasses.set(
         setOf(
-            "com.submodule.branchswitcher.settings.SettingsRulesKt",
-            "com.submodule.branchswitcher.switch.BranchNameRulesKt",
-            "com.submodule.branchswitcher.switch.DeriveNotification*",
-            "com.submodule.branchswitcher.ui.PresetImportResultKt",
             "com.submodule.branchswitcher.ui.UiRulesKt",
         )
     )
@@ -101,9 +102,6 @@ pitest {
     )
     targetTests.set(
         setOf(
-            "com.submodule.branchswitcher.settings.*Test",
-            "com.submodule.branchswitcher.switch.DeriveNotificationTest",
-            "com.submodule.branchswitcher.ui.PresetImportRulesTest",
             "com.submodule.branchswitcher.ui.UiRulesTest",
         )
     )
@@ -121,7 +119,7 @@ fun scanQuickChecks(srcRoot: File, msgDir: File): List<String> {
 
     fun fail(msg: String) { failures.add(msg) }
 
-    // 1. Cancel symmetry — per-file: every file with runBackground must have beginOperation + onCancel + onFinished + endOperation
+    // 1. Cancel symmetry - per-file: every file with runBackground must have beginOperation + onCancel + onFinished + endOperation
     for (f in fileTree(srcRoot).filter { it.extension == "kt" && !it.name.contains("TaskBridge") }) {
         val lines = f.readLines()
         if (lines.any { "TaskBridge.runBackground" in it }) {
@@ -136,7 +134,7 @@ fun scanQuickChecks(srcRoot: File, msgDir: File): List<String> {
         }
     }
 
-    // 2. Write gate pairing — per-file: every file with tryStartWrite must have endWrite
+    // 2. Write gate pairing - per-file: every file with tryStartWrite must have endWrite
     for (f in fileTree(srcRoot).filter { it.extension == "kt" }) {
         val lines = f.readLines()
         val hasStart = lines.any { "tryStartWrite()" in it }
@@ -203,15 +201,20 @@ tasks {
     test {
         useJUnitPlatform()
         timeout.set(Duration.ofMinutes(15))
-        // Limit parallel test forks — real-git integration tests spawn many
+        // Limit parallel test forks - real-git integration tests spawn many
         // processes, so running too many test classes in parallel causes CPU
         // saturation without improving wall-clock time.
         maxParallelForks = (Runtime.getRuntime().availableProcessors() / 2).coerceIn(1, 4)
-        // Exclude benchmark from normal test runs — the benchmark creates
+        // Exclude benchmark from normal test runs - the benchmark creates
         // 50+ real git repos and takes 30–90 seconds.
         filter { excludeTestsMatching("com.submodule.branchswitcher.benchmark.*") }
     }
 
+    register("pureTest") {
+        group = "verification"
+        description = "Run core pure JVM tests without the IntelliJ Platform runtime."
+        dependsOn(":core:test")
+    }
     // -- releaseCheck: aggregate all automated checks + metadata validation -----
 
     register("quickCheck") {
@@ -221,7 +224,7 @@ tasks {
         doLast {
             val failures = scanQuickChecks(file("src/main/kotlin"), file("src/main/resources/messages"))
             failures.forEach { logger.error("  FAIL: $it") }
-            if (failures.isNotEmpty()) throw GradleException("quickCheck failed — ${failures.size} violation(s), see errors above")
+            if (failures.isNotEmpty()) throw GradleException("quickCheck failed - ${failures.size} violation(s), see errors above")
             logger.lifecycle("quickCheck PASSED: all rules clean")
         }
     }
@@ -233,7 +236,7 @@ tasks {
         doLast {
             val fixtureDir = file(".claude/rules/fixtures")
             val fixtures = fixtureDir.listFiles { f -> f.extension == "fixture" }?.toList() ?: emptyList()
-            if (fixtures.isEmpty()) throw GradleException("No quickCheck fixtures found in $fixtureDir — commit .claude/rules/fixtures/?")
+            if (fixtures.isEmpty()) throw GradleException("No quickCheck fixtures found in $fixtureDir - commit .claude/rules/fixtures/?")
 
             // Write fixtures under build/ to avoid interfering with detekt or other tools
             // scanning src/main/kotlin concurrently.
@@ -262,7 +265,7 @@ tasks {
                     val target = file("$targetDir/$name")
                     fixture.copyTo(target, overwrite = true)
 
-                    // Direct scan — no Gradle subprocess. Eliminates all the problems
+                    // Direct scan - no Gradle subprocess. Eliminates all the problems
                     // with nested processes (stderr blocking, timeouts, path resolution).
                     val violations = scanQuickChecks(tempRoot, msgDir)
 
@@ -279,20 +282,20 @@ tasks {
                         val caught = violations.any { it.contains(diagnostic) }
 
                         if (caught) {
-                            logger.lifecycle("  OK: $name — caught")
+                            logger.lifecycle("  OK: $name - caught")
                             passed++
                         } else {
-                            logger.error("  FAIL: $name — diagnostic not found in violations")
+                            logger.error("  FAIL: $name - diagnostic not found in violations")
                             logger.error("  violations (${violations.size}): $violations")
                             failed++
                         }
                     } else {
-                        // Fixture should NOT trigger any rule — false-positive check.
+                        // Fixture should NOT trigger any rule - false-positive check.
                         if (violations.isEmpty()) {
-                            logger.lifecycle("  OK: $name — correctly ignored (0 violations)")
+                            logger.lifecycle("  OK: $name - correctly ignored (0 violations)")
                             passed++
                         } else {
-                            logger.error("  FAIL: $name — false positive, got ${violations.size} violation(s): $violations")
+                            logger.error("  FAIL: $name - false positive, got ${violations.size} violation(s): $violations")
                             failed++
                         }
                     }
@@ -307,9 +310,9 @@ tasks {
 
     register("releaseCheck") {
         group = "verification"
-        description = "Run all automated release checks: quickCheck, test, detekt, buildPlugin, verifyPlugin, and metadata validation."
+        description = "Run all automated release checks: quickCheck, core test/detekt, test, detekt, buildPlugin, verifyPlugin, and metadata validation."
 
-        dependsOn("quickCheck", "checkQuickCheck", "test", "detekt", "buildPlugin", "verifyPlugin")
+        dependsOn("quickCheck", "checkQuickCheck", ":core:test", "test", "detekt", ":core:detekt", "buildPlugin", "verifyPlugin")
 
         doLast {
             val projVersion = version.toString()
@@ -339,19 +342,19 @@ tasks {
 
             val licenseFile = file("LICENSE")
             if (!licenseFile.exists()) {
-                throw GradleException("LICENSE file is missing — required for Marketplace publication")
+                throw GradleException("LICENSE file is missing - required for Marketplace publication")
             }
             logger.lifecycle("  LICENSE: present")
 
             // --- pre-flight warnings (non-fatal) ---------------------------------------
             val readme = file("README.md").readText()
             if (Regex("screenshot.*TODO|TODO.*screenshot", RegexOption.IGNORE_CASE).containsMatchIn(readme)) {
-                logger.warn("  [WARN] README still contains screenshot TODO — replace before Marketplace publish")
+                logger.warn("  [WARN] README still contains screenshot TODO - replace before Marketplace publish")
             }
 
             val iconFile = file("src/main/resources/META-INF/pluginIcon.svg")
             if (!iconFile.exists()) {
-                logger.warn("  [WARN] pluginIcon.svg not found — required for Marketplace publication")
+                logger.warn("  [WARN] pluginIcon.svg not found - required for Marketplace publication")
             } else {
                 logger.lifecycle("  pluginIcon.svg: present")
             }
@@ -375,6 +378,6 @@ tasks {
     register("pitestCore") {
         group = "verification"
         description = "Run scoped PIT mutation testing for core pure rules. Heavy; manual only, not part of releaseCheck."
-        dependsOn("pitest")
+        dependsOn("pitest", ":core:pitest")
     }
 }

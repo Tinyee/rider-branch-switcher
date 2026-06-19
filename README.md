@@ -81,7 +81,8 @@ Configured via `Settings → Version Control → Submodule Branch Switcher`:
 ## Dev
 
 ```bash
-# Run tests (JUnit 4 + Kotest, no IDE runtime needed)
+# Run core pure JVM tests first, then platform/integration tests
+./gradlew :core:test
 ./gradlew test
 
 # Build plugin zip

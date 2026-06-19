@@ -10,9 +10,9 @@ import java.nio.file.Path
  * Executes a derive-branch operation across all repos in a preset.
  *
  * State machine:
- * 1. Preflight  — atomic gate: branch mismatch / exists / missing / dirty / probe-error → blocked
- * 2. Checkpoint — atomic gate: every validTarget must have revParseHead
- * 3. Execute    — per-target try/catch so exceptions never lose rollback info
+ * 1. Preflight  - atomic gate: branch mismatch / exists / missing / dirty / probe-error -> blocked
+ * 2. Checkpoint - atomic gate: every validTarget must have revParseHead
+ * 3. Execute    - per-target try/catch so exceptions never lose rollback info
  *
  * [rollbackSucceeded] is a separate call so the caller decides the operation scope.
  *
@@ -26,26 +26,6 @@ class DeriveBranchExecutor(
     private val requireClean: Boolean = true,
 ) {
 
-    data class DeriveResult(
-        val succeeded: List<String>,
-        val branchExists: List<String>,
-        val skipped: List<String>,
-        val dirty: List<String>,
-        val branchMismatch: List<String>,
-        val preflightError: List<String>,
-        val checkpointFailed: List<String>,
-        val failed: Map<String, String>,
-        val checkpoint: Map<String, CheckpointEntry>,
-        val cancelled: Boolean = false,
-    ) {
-        val allOk: Boolean get() = !cancelled && succeeded.isNotEmpty() && failed.isEmpty()
-        val preflightBlocked: Boolean get() = !cancelled && succeeded.isEmpty() && failed.isEmpty() &&
-            (branchExists.isNotEmpty() || skipped.isNotEmpty() || dirty.isNotEmpty() ||
-             branchMismatch.isNotEmpty() || preflightError.isNotEmpty())
-        val checkpointBlocked: Boolean get() = !cancelled && succeeded.isEmpty() && failed.isEmpty() &&
-            !preflightBlocked && checkpointFailed.isNotEmpty()
-        val actualCreated: Int get() = succeeded.size
-    }
 
     fun execute(preset: Preset, branchName: String): DeriveResult {
         val targets = preset.targets()
@@ -63,7 +43,7 @@ class DeriveBranchExecutor(
             val label = if (target.path == ".") projectRoot.fileName.toString() else target.path
 
             if (!dir.exists() || !git.isGitRepo(dir)) {
-                log.warn("[derive] $label: not a git repo — blocked")
+                log.warn("[derive] $label: not a git repo - blocked")
                 skipped.add(target.path)
                 continue
             }
@@ -74,56 +54,56 @@ class DeriveBranchExecutor(
                 git.currentBranch(dir)
             } catch (e: Exception) {
                 rethrowIfCancellation(e)
-                log.warn("[derive] $label: cannot detect current branch — ${e.message}")
+                log.warn("[derive] $label: cannot detect current branch - ${e.message}")
                 preflightError.add(target.path)
                 continue
             }
             if (current == null) {
-                log.warn("[derive] $label: detached HEAD or current branch unavailable — blocked")
+                log.warn("[derive] $label: detached HEAD or current branch unavailable - blocked")
                 branchMismatch.add(target.path)
                 continue
             }
             if (current != expectedBranch) {
-                log.warn("[derive] $label: expected branch '$expectedBranch', actual '$current' — blocked")
+                log.warn("[derive] $label: expected branch '$expectedBranch', actual '$current' - blocked")
                 branchMismatch.add(target.path)
                 continue
             }
 
-            // Branch existence probe (fail-closed: null → error)
+            // Branch existence probe (fail-closed: null -> error)
             val probe = try {
                 git.localBranchProbe(dir, branchName)
             } catch (e: Exception) {
                 rethrowIfCancellation(e)
-                log.warn("[derive] $label: branch existence probe failed — ${e.message}")
+                log.warn("[derive] $label: branch existence probe failed - ${e.message}")
                 null
             }
             if (probe == null) {
-                log.warn("[derive] $label: cannot check branch existence — blocked")
+                log.warn("[derive] $label: cannot check branch existence - blocked")
                 preflightError.add(target.path)
                 continue
             }
             if (probe) {
-                log.warn("[derive] $label: branch '$branchName' already exists — blocked")
+                log.warn("[derive] $label: branch '$branchName' already exists - blocked")
                 branchExists.add(target.path)
                 continue
             }
 
-            // Dirty probe (fail-closed when requireClean: null → error)
+            // Dirty probe (fail-closed when requireClean: null -> error)
             if (requireClean) {
                 val dp = try {
                     git.dirtyProbe(dir)
                 } catch (e: Exception) {
                     rethrowIfCancellation(e)
-                    log.warn("[derive] $label: dirty probe failed — ${e.message}")
+                    log.warn("[derive] $label: dirty probe failed - ${e.message}")
                     null
                 }
                 if (dp == null) {
-                    log.warn("[derive] $label: cannot check dirty status — blocked")
+                    log.warn("[derive] $label: cannot check dirty status - blocked")
                     preflightError.add(target.path)
                     continue
                 }
                 if (dp) {
-                    log.warn("[derive] $label: working tree is dirty — blocked")
+                    log.warn("[derive] $label: working tree is dirty - blocked")
                     dirty.add(target.path)
                     continue
                 }
@@ -139,12 +119,12 @@ class DeriveBranchExecutor(
         val anyPreflightIssue = branchExists.isNotEmpty() || skipped.isNotEmpty() || dirty.isNotEmpty() ||
             branchMismatch.isNotEmpty() || preflightError.isNotEmpty()
         if (anyPreflightIssue) {
-            log.warn("[derive] preflight blocked — no repos modified")
+            log.warn("[derive] preflight blocked - no repos modified")
             return DeriveResult(emptyList(), branchExists, skipped, dirty, branchMismatch, preflightError, emptyList(), emptyMap(), emptyMap())
         }
 
         // -- Phase 2: Checkpoint (atomic gate) ---------------------------------
-        val checkpoint = LinkedHashMap<String, CheckpointEntry>()
+        val checkpoint = LinkedHashMap<String, DeriveCheckpointEntry>()
         val checkpointFailed = mutableListOf<String>()
         for (target in validTargets) {
             if (cancelled?.invoke() == true) break
@@ -154,14 +134,14 @@ class DeriveBranchExecutor(
                 val sha = git.revParseHead(dir)
                 if (sha != null) {
                     val branch = git.currentBranch(dir)
-                    checkpoint[target.path] = CheckpointEntry(sha, branch)
+                    checkpoint[target.path] = DeriveCheckpointEntry(sha, branch)
                 } else {
-                    log.warn("[derive] $label: no HEAD — cannot checkpoint")
+                    log.warn("[derive] $label: no HEAD - cannot checkpoint")
                     checkpointFailed.add(target.path)
                 }
             } catch (e: Exception) {
                 rethrowIfCancellation(e)
-                log.warn("[derive] $label: checkpoint failed — ${e.message}")
+                log.warn("[derive] $label: checkpoint failed - ${e.message}")
                 checkpointFailed.add(target.path)
             }
         }
@@ -171,7 +151,7 @@ class DeriveBranchExecutor(
         }
 
         if (checkpointFailed.isNotEmpty()) {
-            log.warn("[derive] checkpoint incomplete for ${checkpointFailed.size} repo(s) — blocked")
+            log.warn("[derive] checkpoint incomplete for ${checkpointFailed.size} repo(s) - blocked")
             return DeriveResult(emptyList(), emptyList(), emptyList(), emptyList(), emptyList(), emptyList(), checkpointFailed, emptyMap(), emptyMap())
         }
 
@@ -193,11 +173,11 @@ class DeriveBranchExecutor(
                 } else {
                     val err = r.stderr.lines().firstOrNull() ?: "exit ${r.exitCode}"
                     failed[target.path] = err
-                    log.warn("[derive] $label: FAILED — $err")
+                    log.warn("[derive] $label: FAILED - $err")
                 }
             } catch (e: Exception) {
                 rethrowIfCancellation(e)
-                log.warn("[derive] $label: exception — ${e.javaClass.simpleName}: ${e.message}")
+                log.warn("[derive] $label: exception - ${e.javaClass.simpleName}: ${e.message}")
                 failed[target.path] = "${e.javaClass.simpleName}: ${e.message}"
             }
         }
@@ -206,7 +186,7 @@ class DeriveBranchExecutor(
     }
 
     /**
-     * Rolls back succeeded repos: checkout original branch → safe-delete derived branch.
+     * Rolls back succeeded repos: checkout original branch -> safe-delete derived branch.
      * Must be called in a non-cancelled operation for Git commands to execute.
      */
     fun rollbackSucceeded(result: DeriveResult, branchName: String): List<String> {
@@ -222,7 +202,7 @@ class DeriveBranchExecutor(
                     val target = entry.branch ?: entry.sha
                     val co = git.checkoutExisting(dir, target)
                     if (!co.ok) {
-                        log.warn("[derive] $label: checkout rollback FAILED — ${co.stderr.lines().firstOrNull() ?: "exit ${co.exitCode}"}")
+                        log.warn("[derive] $label: checkout rollback FAILED - ${co.stderr.lines().firstOrNull() ?: "exit ${co.exitCode}"}")
                         rollbackFailures.add(path)
                         continue
                     }
@@ -232,7 +212,7 @@ class DeriveBranchExecutor(
                     if (del.ok) {
                         log.activity("[derive] $label: deleted branch $branchName")
                     } else {
-                        log.warn("[derive] $label: could not delete branch $branchName — ${del.stderr.lines().firstOrNull() ?: "exit ${del.exitCode}"}")
+                        log.warn("[derive] $label: could not delete branch $branchName - ${del.stderr.lines().firstOrNull() ?: "exit ${del.exitCode}"}")
                         rollbackFailures.add(path)
                     }
                 } else {
@@ -241,7 +221,7 @@ class DeriveBranchExecutor(
                 }
             } catch (e: Exception) {
                 rethrowIfCancellation(e)
-                log.warn("[derive] $path: rollback exception — ${e.javaClass.simpleName}: ${e.message}")
+                log.warn("[derive] $path: rollback exception - ${e.javaClass.simpleName}: ${e.message}")
                 rollbackFailures.add(path)
             }
         }

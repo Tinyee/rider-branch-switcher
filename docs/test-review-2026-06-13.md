@@ -6,7 +6,7 @@
 - Deleted `SubmoduleRowManagerTest` (5 tests: `SubRow` data-class checks plus duplicated `shortLabel` checks).
 - Removed `SwitchStepTest` StepResult/SwitchContext structure checks (4 tests).
 - Removed `SwitchExecutorTest` CheckpointEntry data-class checks (2 tests).
-- Current documented test count after cleanup: 287 tests / 20 classes.
+- Current documented test count after cleanup: 287 tests / 21 classes total (32 core pure JVM via `:core:test`, 255 platform/integration via `test`).
 - The original findings below are historical review notes; items listed there may already be resolved.
 
 ## 当前判断

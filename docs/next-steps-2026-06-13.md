@@ -24,7 +24,7 @@
 - README Release 链接和 `plugin.xml` vendor 地址均指向 `Tinyee/rider-branch-switcher`。
 - `docs/code-review-2026-06-08.md` 已标记为历史归档。
 - `noFocusRing()` 工厂化、CI、Detekt、Plugin Verifier、Settings、结构化日志等状态已在 ROADMAP 中反映。
-- 当前测试数量已同步为 287 tests / 20 classes（2026-06-19 更新；已清理 11 个低价值结构测试）。
+- 当前测试数量已同步为 287 tests / 21 classes（2026-06-19 更新；32 个 core pure JVM + 255 个平台/集成；已清理 11 个低价值结构测试）。
 
 仍需保持：
 
@@ -100,7 +100,7 @@ Preflight 的 Git 调用预算，防止重复查询回归。
 ### releaseCheck 自动化 ✅
 
 `./gradlew releaseCheck` 聚合：
-- `test` + `detekt` + `buildPlugin` + `verifyPlugin`
+- `:core:test` + `test` + `:core:detekt` + `detekt` + `buildPlugin` + `verifyPlugin`
 - README 版本 badge + CHANGELOG 最新版本精确校验
 - ZIP 名称、LICENSE 存在性检查
 - 非致命提醒：README screenshot TODO

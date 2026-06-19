@@ -8,3 +8,4 @@ pluginManagement {
 }
 
 rootProject.name = "rider-branch-switcher"
+include(":core")

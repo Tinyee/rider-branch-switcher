@@ -163,7 +163,7 @@ class SwitchController(
         }
         service.scope.launch(Dispatchers.Default) {
             val gitClient = service.gitClient
-            var result: DeriveBranchExecutor.DeriveResult? = null
+            var result: com.submodule.branchswitcher.switch.DeriveResult? = null
             var cancelled = false
             var rollbackFailures = emptyList<String>()
 
