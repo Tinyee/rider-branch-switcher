@@ -3,22 +3,30 @@
 ## Review Scope
 
 - Date: 2026-06-20
-- Target: architecture review of current project structure
-- Result: `PASS_WITH_RECOMMENDATIONS` - no blocking architecture defect found; follow-up refactors recommended
-- Validation level: static architecture review only; no Gradle test run for this documentation update
+- Target: architecture review follow-up after `SwitchFlowCoordinator` extraction
+- Result: `FAIL_BLOCKING_REVIEW` - shared flow direction is good, but the latest commit introduces boundary and UI-state regressions
 
 ## Active Findings
 
-### ARCH-01 - P2 - Switch orchestration is duplicated across ToolWindow and action entry points
+### ARCH-01 - P1 - SwitchFlowCoordinator extraction violates package boundary and quickCheck
+
+- Status: `OPEN`
+- Evidence:
+  - `src/main/kotlin/com/submodule/branchswitcher/switch/SwitchFlowCoordinator.kt`
+  - `./gradlew quickCheck --max-workers=1 --no-parallel`: FAIL
+- Impact: `SwitchFlowCoordinator` is a platform/UI coordinator but currently lives under the `switch` package and imports `com.intellij.openapi.ui.Messages`. The repository rule treats `switch/` as the switch pipeline boundary, so quickCheck fails with `switch/ imports ui/: [import com.intellij.openapi.ui.Messages]`. The extraction direction is correct, but the coordinator belongs in a platform/UI-facing package, not the switch pipeline package.
+- Suggested fix: move `SwitchFlowCoordinator` out of `src/main/kotlin/com/submodule/branchswitcher/switch/`, for example to `ui/SwitchFlowCoordinator.kt` or a new `flow/` / `workflow/` package, then update imports in `SwitchController` and `SwitchPresetAction`.
+- Verification: rerun `./gradlew quickCheck --max-workers=1 --no-parallel` and `git diff --check HEAD~1..HEAD`.
+
+### ARCH-01B - P1 - ToolWindow progress icon can remain stuck after failed/cancelled/busy switch
 
 - Status: `OPEN`
 - Evidence:
   - `src/main/kotlin/com/submodule/branchswitcher/ui/SwitchController.kt`
-  - `src/main/kotlin/com/submodule/branchswitcher/action/SwitchPresetAction.kt`
-  - `src/main/kotlin/com/submodule/branchswitcher/switch/SwitchRunner.kt`
-- Impact: `SwitchRunner` centralizes the execution lifecycle, but preflight, confirmation, notification, telemetry/history, and VCS refresh still exist in separate ToolWindow/action flows. Future UI or safety changes can drift between entry points.
-- Suggested fix: introduce a platform-layer `SwitchFlowCoordinator` for `preflight -> confirm -> run -> notify -> refresh -> telemetry/history`; keep `SwitchController` and `SwitchPresetAction` as thin entry adapters.
-- Verification: add/adjust `SwitchRunnerTest` or coordinator tests for both entry modes; run targeted switch/controller/action tests plus `quickCheck`.
+  - `src/main/kotlin/com/submodule/branchswitcher/switch/SwitchFlowCoordinator.kt`
+- Impact: Before the refactor, `SwitchController.executeSwitch()` called `setSwitchInProgress(false)` before branching on `cancelled`, `ok`, or failure. After the refactor, `SwitchController.runSwitch()` calls `setSwitchInProgress(true)` before `coordinator.executeAndNotify(...)`, but only resets it in the success callback. Failed switches, cancelled switches, and `tryStartWrite()` busy failures can leave the ToolWindow icon in the in-progress state.
+- Suggested fix: add an `onFinished` callback to `executeAndNotify` and call it for success, failure, cancellation, and busy-gate rejection; or let `SwitchController` wrap the whole call in a local state guard that always resets the icon.
+- Verification: add a coordinator/controller test or at least grep-reviewed callback coverage; run `compileKotlin` and relevant switch tests.
 
 ### ARCH-02 - P2 - BranchSwitcherService is a broad service object
 
@@ -29,25 +37,15 @@
 - Suggested fix: split high-churn responsibilities into smaller collaborators, starting with `PresetRepository`, `TelemetryStore`, and `OperationGate`; keep `BranchSwitcherService` as the project-level composition root.
 - Verification: migrate in small steps with `BranchSwitcherServiceTest` coverage preserved; run service tests and compile.
 
-### ARCH-03 - P2 - Core still contains platform cancellation/progress wording
+### ARCH-03 - P2 - Core platform wording mostly fixed; verify docs stay clean
 
-- Status: `PARTIALLY_FIXED`
+- Status: `FIXED_PENDING_REVIEW`
 - Evidence:
-  - `core/src/main/kotlin/com/submodule/branchswitcher/switch/ProgressHandle.kt`
-  - `core/src/main/kotlin/com/submodule/branchswitcher/switch/SwitchPreflight.kt`
-  - `core/src/main/kotlin/com/submodule/branchswitcher/switch/DeriveBranchExecutor.kt`
-- Impact: `19ce561` introduced `CancellationClassifier` and platform injection, so the runtime class-name check has been removed. However core KDoc still directly references IntelliJ types in `CancellationClassifier.kt` and `ProgressHandle.kt`, so the conceptual platform leak is not fully closed.
-- Suggested fix: update core KDoc to use platform-neutral wording, e.g. "platform cancellation exception" and "platform progress indicator", without direct `com.intellij.*` links.
-- Verification: `./gradlew quickCheck --max-workers=1 --no-parallel` PASS; `./gradlew :core:test --tests "com.submodule.branchswitcher.switch.SwitchPreflightTest" --rerun-tasks --max-workers=1 --no-parallel` PASS.
-
-### DOC-01 - P3 - architecture review document has trailing whitespace
-
-- Status: `OPEN`
-- Evidence:
-  - `docs/architecture-review-2026-06-20.md`
-- Impact: `git diff --check HEAD~1..HEAD` fails on a trailing whitespace line. This is not a runtime issue, but it breaks the repository whitespace gate.
-- Suggested fix: remove trailing spaces from the `VCS refresh` bullet.
-- Verification: rerun `git diff --check HEAD~1..HEAD`.
+  - `03c0082 fix: clean up core KDoc - remove IntelliJ type references`
+  - `19ce561 refactor: introduce CancellationClassifier to eliminate platform leak in core`
+- Impact: Runtime class-name checks were replaced by `CancellationClassifier`, and the follow-up commit removed direct IntelliJ KDoc references from core. This appears to address the original ARCH-03 concern.
+- Suggested fix: keep this as pending until a final scan confirms no `com.intellij` references remain in `core/src/main`.
+- Verification: run `rg -n "com\\.intellij|ProcessCanceledException|ProgressIndicator" core/src/main` and targeted switch preflight tests.
 
 ### ARCH-04 - P3 - SwitchContext carries mutable cross-step state
 
@@ -69,14 +67,12 @@
 
 ## Positive Architecture Notes
 
-- `:core` is a useful boundary: switch/derive/preflight/model/rules are now pure JVM and much cheaper to test.
-- `GitClient` abstraction makes real Git integration and fake-based tests practical.
-- `SwitchExecutor` step pipeline is easier to reason about than a monolithic switch function.
-- `ResolvedSwitchRequest` prevents entry points from bypassing effective option resolution.
-- `SwitchRunner` is already a good anchor for further platform-flow consolidation.
+- `SwitchFlowCoordinator` is the right architectural direction for reducing drift between ToolWindow and action entry points.
+- `SwitchController` and `SwitchPresetAction` are now thinner and easier to read.
+- Shared preflight, force warning, switch execution, notification, telemetry, and refresh are much closer to one path.
 
 ## Validation
 
-- `./gradlew quickCheck --max-workers=1 --no-parallel`: PASS
-- `./gradlew :core:test --tests "com.submodule.branchswitcher.switch.SwitchPreflightTest" --rerun-tasks --max-workers=1 --no-parallel`: PASS
-- `git diff --check HEAD~1..HEAD`: FAIL (`docs/architecture-review-2026-06-20.md` trailing whitespace)
+- `./gradlew quickCheck --max-workers=1 --no-parallel`: FAIL (`switch/ imports ui/: [import com.intellij.openapi.ui.Messages]`)
+- `./gradlew compileKotlin --max-workers=1 --no-parallel`: PASS
+- `git diff --check HEAD~1..HEAD`: PASS

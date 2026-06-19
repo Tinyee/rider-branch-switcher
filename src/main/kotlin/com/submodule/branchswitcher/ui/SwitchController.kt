@@ -16,7 +16,6 @@ import com.submodule.branchswitcher.switch.DeriveBranchExecutor
 import com.submodule.branchswitcher.switch.platformCancellationClassifier
 import com.submodule.branchswitcher.switch.DeriveNotification
 import com.submodule.branchswitcher.switch.SwitchExecutor
-import com.submodule.branchswitcher.switch.SwitchFlowCoordinator
 import com.submodule.branchswitcher.switch.deriveNotification
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -61,9 +60,8 @@ class SwitchController(
                 val request = service.resolveSwitchRequest(preset)
                 if (SwitchPreviewDialog.showAndConfirm(project, request, probeResult)) {
                     setSwitchInProgress(true)
-                    coordinator.executeAndNotify(root, request, log) {
-                        setSwitchInProgress(false)
-                    }
+                    coordinator.executeAndNotify(root, request, log,
+                        onFinished = { setSwitchInProgress(false) })
                 }
             }
         }

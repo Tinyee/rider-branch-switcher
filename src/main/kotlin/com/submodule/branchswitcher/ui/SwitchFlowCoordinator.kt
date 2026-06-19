@@ -1,4 +1,4 @@
-package com.submodule.branchswitcher.switch
+package com.submodule.branchswitcher.ui
 
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.project.Project
@@ -11,6 +11,13 @@ import com.submodule.branchswitcher.model.PreflightRow
 import com.submodule.branchswitcher.model.Preset
 import com.submodule.branchswitcher.model.ResolvedSwitchRequest
 import com.submodule.branchswitcher.service.BranchSwitcherService
+import com.submodule.branchswitcher.switch.SwitchPreflight
+import com.submodule.branchswitcher.switch.ProgressCancellationHandle
+import com.submodule.branchswitcher.switch.SwitchExecutor
+import com.submodule.branchswitcher.switch.SwitchRunner
+import com.submodule.branchswitcher.switch.SwitchRunResult
+import com.submodule.branchswitcher.switch.platformCancellationClassifier
+import com.submodule.branchswitcher.switch.refreshVcsRepos
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -48,7 +55,7 @@ class SwitchFlowCoordinator(
     /** Show force warning dialog. Returns true if user confirms (or no warning needed). */
     fun showForceWarning(preset: Preset, probeResult: List<PreflightRow>): Boolean {
         val request = service.resolveSwitchRequest(preset)
-        if (!com.submodule.branchswitcher.ui.shouldShowForceWarning(request, probeResult)) return true
+        if (!shouldShowForceWarning(request, probeResult)) return true
         val confirmed = booleanArrayOf(false)
         ApplicationManager.getApplication().invokeAndWait {
             confirmed[0] = Messages.showYesNoDialog(
@@ -89,10 +96,14 @@ class SwitchFlowCoordinator(
         log: AppLogger,
         onSuccess: (() -> Unit)? = null,
         onFailure: ((SwitchRunResult) -> Unit)? = null,
+        onFinished: (() -> Unit)? = null,
     ) {
         val preset = request.preset
         if (!service.tryStartWrite()) {
-            uiLater { Notifier.warn(project, Bundle.msg("notify.write.busy"), Bundle.msg("notify.write.busy.msg")) }
+            uiLater {
+                Notifier.warn(project, Bundle.msg("notify.write.busy"), Bundle.msg("notify.write.busy.msg"))
+                onFinished?.invoke()
+            }
             return
         }
         service.scope.launch(Dispatchers.Default) {
@@ -101,7 +112,7 @@ class SwitchFlowCoordinator(
                     title = Bundle.msg("progress.switching"), request = request, log = log,
                 )
                 uiLater {
-                    if (result.cancelled) return@uiLater
+                    if (result.cancelled) { onFinished?.invoke(); return@uiLater }
                     if (result.ok) {
                         service.incrementSwitchCount()
                         service.addHistory(preset.name, preset.id)
@@ -122,6 +133,7 @@ class SwitchFlowCoordinator(
                                 Bundle.msg("notify.switch.partial.msg", preset.name))
                         }
                     }
+                    onFinished?.invoke()
                     refreshVcsRepos(project, root, preset.submodules.keys)
                 }
             } finally {

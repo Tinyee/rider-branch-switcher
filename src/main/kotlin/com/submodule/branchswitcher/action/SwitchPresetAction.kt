@@ -11,7 +11,7 @@ import com.submodule.branchswitcher.Bundle
 import com.submodule.branchswitcher.log.createStringAppender
 import com.submodule.branchswitcher.model.Preset
 import com.submodule.branchswitcher.service.BranchSwitcherService
-import com.submodule.branchswitcher.switch.SwitchFlowCoordinator
+import com.submodule.branchswitcher.ui.SwitchFlowCoordinator
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
