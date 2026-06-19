@@ -5,3 +5,5 @@ build/
 *.iml
 out/
 .kotlin/
+# Windows null-device redirect artifact
+nul

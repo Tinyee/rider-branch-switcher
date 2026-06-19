@@ -7,6 +7,7 @@ import com.intellij.openapi.wm.ToolWindowFactory
 import com.intellij.ui.content.ContentFactory
 import com.submodule.branchswitcher.Notifier
 import com.submodule.branchswitcher.Bundle
+import com.submodule.branchswitcher.git.GitOps
 import com.submodule.branchswitcher.service.BranchSwitcherService
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -31,14 +32,7 @@ class BranchSwitcherToolWindowFactory : ToolWindowFactory {
 
     private fun checkGitAvailable(project: Project, service: BranchSwitcherService) {
         service.scope.launch(kotlinx.coroutines.Dispatchers.IO) {
-            val gitFound = try {
-                val proc = ProcessBuilder("git", "--version")
-                    .redirectErrorStream(true)
-                    .start()
-                proc.waitFor() == 0
-            } catch (_: Exception) {
-                false
-            }
+            val gitFound = GitOps.isGitOnPath()
             if (!gitFound) {
                 com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater {
                     Notifier.warn(

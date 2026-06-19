@@ -20,7 +20,8 @@ data class LogEntry(val level: Level, val message: String) {
     enum class Level { INFO, WARN, ERROR, DEBUG, ACTIVITY }
 }
 
-/** Creates an [AppLogger] that appends every message as INFO to [collect]. */
+/** Creates an [AppLogger] that appends each message via [collect];
+ *  warn/error/debug are prefixed, info/activity are bare. */
 fun createStringAppender(collect: (String) -> Unit): AppLogger = object : AppLogger {
     override fun info(msg: String) { collect(msg) }
     override fun warn(msg: String) { collect("[warn] $msg") }

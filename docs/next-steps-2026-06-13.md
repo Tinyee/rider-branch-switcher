@@ -24,7 +24,7 @@
 - README Release 链接和 `plugin.xml` vendor 地址均指向 `Tinyee/rider-branch-switcher`。
 - `docs/code-review-2026-06-08.md` 已标记为历史归档。
 - `noFocusRing()` 工厂化、CI、Detekt、Plugin Verifier、Settings、结构化日志等状态已在 ROADMAP 中反映。
-- 当前测试数量已同步为 287 tests / 25 classes（2026-06-19 更新；135 个 core pure JVM + 152 个平台/集成；已清理 11 个低价值结构测试）。
+- 当前测试数量已同步为 291 tests / 27 classes（2026-06-19 更新；139 个 core pure JVM + 152 个平台/集成；已清理 11 个低价值结构测试）。
 
 仍需保持：
 

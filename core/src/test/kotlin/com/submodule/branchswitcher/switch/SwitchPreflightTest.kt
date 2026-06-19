@@ -173,4 +173,17 @@ class SwitchPreflightTest {
         val preflight = SwitchPreflight(cancelGit)
         preflight.probe(projectRoot, Preset("test", "main"))
     }
+
+    // Simulates IntelliJ ProcessCanceledException without importing the type
+    class ProcessCanceledException(msg: String) : RuntimeException(msg)
+
+    @Test(expected = ProcessCanceledException::class)
+    fun `probe rethrows PCE-like exception instead of converting to row`() {
+        val pceGit = object : GitClient by fakeGit {
+            override fun currentBranch(workDir: File): String? =
+                throw ProcessCanceledException("cancelled")
+        }
+        val preflight = SwitchPreflight(pceGit)
+        preflight.probe(projectRoot, Preset("test", "main"))
+    }
 }
