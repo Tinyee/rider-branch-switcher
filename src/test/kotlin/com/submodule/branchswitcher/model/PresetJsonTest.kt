@@ -10,14 +10,13 @@ class PresetJsonTest {
 
     @Test
     fun `round-trip export import single preset`() {
-        val original = PresetFile(listOf(Preset("dev", "dev", mapOf("SubA" to "dev"), overrides = PresetOverrides(pull = false))))
+        val original = PresetFile(listOf(Preset("dev", "dev", mapOf("SubA" to "dev"))))
         val json = gson.toJson(original)
         val restored = gson.fromJson(json, PresetFile::class.java)
         assertEquals(1, restored.presets.size)
         assertEquals("dev", restored.presets[0].name)
         assertEquals("dev", restored.presets[0].main)
         assertEquals(mapOf("SubA" to "dev"), restored.presets[0].submodules)
-        assertFalse(restored.presets[0].overrides?.pull ?: true)
     }
 
     @Test
@@ -54,9 +53,7 @@ class PresetJsonTest {
         val dto = gson.fromJson(json, PresetFileDto::class.java)
         val restored = dto.toPresetFile()
         assertEquals("legacy", restored.presets[0].name)
-        // Should have auto-generated a non-empty id
         val id = restored.presets[0].id
         assertTrue("Auto-generated id should not be blank", id.isNotBlank())
     }
-
 }

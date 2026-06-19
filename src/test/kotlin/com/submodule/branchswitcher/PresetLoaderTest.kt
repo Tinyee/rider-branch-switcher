@@ -2,7 +2,6 @@ package com.submodule.branchswitcher
 
 import com.submodule.branchswitcher.model.Preset
 import com.submodule.branchswitcher.model.PresetFile
-import com.submodule.branchswitcher.model.PresetOverrides
 import org.junit.After
 import org.junit.Assert.*
 import org.junit.Before
@@ -133,7 +132,6 @@ class PresetLoaderTest {
         assertEquals(1, parsed.presets.size)
         assertEquals("dev", parsed.presets[0].name)
         assertEquals("dev", parsed.presets[0].main)
-        assertTrue(parsed.presets[0].overrides?.pull ?: true)
     }
 
     @Test
@@ -148,7 +146,6 @@ class PresetLoaderTest {
         assertTrue(result.isSuccess)
         val preset = result.getOrThrow().second.presets.single()
         assertTrue(preset.submodules.isEmpty())
-        assertTrue(preset.overrides?.pull ?: true)
     }
 
     @Test
@@ -277,8 +274,8 @@ class PresetLoaderTest {
     @Test
     fun `save and load round-trip preserves data`() {
         val original = PresetFile(listOf(
-            Preset("a", "main", mapOf("SubA" to "dev"), overrides = PresetOverrides(pull = false)),
-            Preset("b", "dev", mapOf("SubA" to "main", "SubB" to "feature"), overrides = PresetOverrides(pull = true)),
+            Preset("a", "main", mapOf("SubA" to "dev")),
+            Preset("b", "dev", mapOf("SubA" to "main", "SubB" to "feature")),
         ))
         val file = PresetLoader.ensureFile(tmpDir)
         PresetLoader.save(file, original)
@@ -289,10 +286,8 @@ class PresetLoaderTest {
         assertEquals(2, restored.presets.size)
         assertEquals("a", restored.presets[0].name)
         assertEquals(mapOf("SubA" to "dev"), restored.presets[0].submodules)
-        assertFalse(restored.presets[0].overrides?.pull ?: true)
         assertEquals("b", restored.presets[1].name)
         assertEquals(2, restored.presets[1].submodules.size)
-        assertTrue(restored.presets[1].overrides?.pull ?: true)
     }
 
     @Test
@@ -317,53 +312,6 @@ class PresetLoaderTest {
         assertFalse(content.contains("old content"))
     }
 
-    // ── Legacy pull migration write-back ──────────────────────────
-
-    @Test
-    fun `legacy pull false without overrides migrates and rewrites JSON`() {
-        writePresetFile("""{"presets":[{"name":"old","main":"dev","pull":false}]}""")
-        val result = PresetLoader.load(tmpDir)
-        assertTrue(result.isSuccess)
-        val (_, parsed) = result.getOrThrow()
-        assertEquals(false, parsed.presets[0].overrides?.pull)
-
-        // Verify the saved file has no top-level "pull" key.
-        // Second load would re-apply the same migration and pass even if save failed.
-        val savedJson = Files.readString(result.getOrThrow().first)
-        val root = com.google.gson.JsonParser.parseString(savedJson).asJsonObject
-        val presetObj = root.getAsJsonArray("presets").get(0).asJsonObject
-        assertFalse("top-level pull key must be absent from saved file", presetObj.has("pull"))
-        assertEquals(false, presetObj.getAsJsonObject("overrides").get("pull").asBoolean)
-    }
-
-    @Test
-    fun `legacy pull true without overrides rewrites to delete legacy field`() {
-        writePresetFile("""{"presets":[{"name":"test","main":"dev","pull":true}]}""")
-        val result = PresetLoader.load(tmpDir)
-        assertTrue(result.isSuccess)
-        // pull:true → no override
-        assertNull(result.getOrThrow().second.presets[0].overrides?.pull)
-        // Verify saved file has no top-level "pull" key
-        val savedJson = Files.readString(result.getOrThrow().first)
-        val root = com.google.gson.JsonParser.parseString(savedJson).asJsonObject
-        assertFalse("top-level pull key must be absent", root.getAsJsonArray("presets").get(0).asJsonObject.has("pull"))
-    }
-
-    @Test
-    fun `legacy pull false with explicit overrides pull keeps explicit override and rewrites`() {
-        writePresetFile("""{"presets":[{"name":"test","main":"dev","pull":false,"overrides":{"pull":true}}]}""")
-        val result = PresetLoader.load(tmpDir)
-        assertTrue(result.isSuccess)
-        val (_, parsed) = result.getOrThrow()
-        assertEquals(true, parsed.presets[0].overrides?.pull)
-
-        // Verify saved file: top-level "pull" absent, explicit overrides.pull=true survives
-        val savedJson = Files.readString(result.getOrThrow().first)
-        val root = com.google.gson.JsonParser.parseString(savedJson).asJsonObject
-        val pObj = root.getAsJsonArray("presets").get(0).asJsonObject
-        assertFalse("top-level pull key must be absent", pObj.has("pull"))
-        assertEquals(true, pObj.getAsJsonObject("overrides").get("pull").asBoolean)
-    }
 
     @Test
     fun `presets with null item in list loads without NPE`() {
@@ -372,18 +320,6 @@ class PresetLoaderTest {
         assertTrue(result.isSuccess)
         assertEquals(1, result.getOrThrow().second.presets.size)
         assertEquals("ok", result.getOrThrow().second.presets[0].name)
-    }
-
-    @Test
-    fun `legacy pull false with overrides dirty only merges fields`() {
-        writePresetFile("""{"presets":[{"name":"test","main":"dev","pull":false,"overrides":{"dirty":"Force"}}]}""")
-        val result = PresetLoader.load(tmpDir)
-        assertTrue(result.isSuccess)
-        val ov = result.getOrThrow().second.presets[0].overrides
-        assertNotNull(ov)
-        assertEquals(com.submodule.branchswitcher.model.DirtyAction.Force, ov!!.dirty)
-        assertEquals(false, ov.pull) // migrated from legacy pull:false
-        assertNull(ov.fetchFirst)
     }
 
     @Test

@@ -1,8 +1,6 @@
-﻿package com.submodule.branchswitcher.ui
+package com.submodule.branchswitcher.ui
 
 import com.intellij.icons.AllIcons
-
-import com.intellij.openapi.progress.ProgressIndicator
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.Messages
 import com.submodule.branchswitcher.log.AppLogger
@@ -24,7 +22,6 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import java.nio.file.Path
-import javax.swing.JProgressBar
 
 /**
  * Handles all switch-related operations: preflight preview, execute, rollback,
@@ -37,7 +34,6 @@ class SwitchController(
     private val log: AppLogger,
     private val editors: () -> List<PresetEditor>,
     private val onStateChanged: () -> Unit,
-    private val progressBar: JProgressBar,
 ) {
 
     fun runSwitch(preset: Preset) {
@@ -87,35 +83,6 @@ class SwitchController(
                 title = Bundle.msg("progress.switching"),
                 request = request,
                 log = log,
-                progress = { indicator ->
-                    object : ProgressIndicator by indicator {
-                        override fun setFraction(fraction: Double) {
-                            indicator.fraction = fraction
-                            invokeLaterIfProjectAlive {
-                                progressBar.isIndeterminate = false
-                                progressBar.value = (fraction * 100).toInt()
-                            }
-                        }
-                        override fun setText2(text: String?) {
-                            indicator.text2 = text
-                            invokeLaterIfProjectAlive {
-                                progressBar.string = text ?: Bundle.msg("tooltip.progress.switching")
-                            }
-                        }
-                        override fun setText(text: String?) {
-                            indicator.text = text
-                            invokeLaterIfProjectAlive {
-                                progressBar.string = text ?: Bundle.msg("tooltip.progress.switching")
-                            }
-                        }
-                        override fun setIndeterminate(indeterminate: Boolean) {
-                            indicator.isIndeterminate = indeterminate
-                            invokeLaterIfProjectAlive {
-                                progressBar.isIndeterminate = indeterminate
-                            }
-                        }
-                    }
-                },
             )
             // Resumed on EDT via TaskBridge.onFinished, but continuation dispatcher is Default
             // Wrap UI ops in invokeLater to avoid EDT violations
@@ -325,14 +292,6 @@ class SwitchController(
     private fun setSwitchInProgress(inProgress: Boolean) {
         val tw = com.intellij.openapi.wm.ToolWindowManager.getInstance(project)
             .getToolWindow("SubmoduleBranches") ?: return
-        if (inProgress) {
-            tw.setIcon(AllIcons.Process.Step_4)
-            progressBar.isVisible = true
-            progressBar.isIndeterminate = true
-            progressBar.string = Bundle.msg("tooltip.progress.switching")
-        } else {
-            tw.setIcon(AllIcons.Vcs.Branch)
-            progressBar.isVisible = false
-        }
+        tw.setIcon(if (inProgress) AllIcons.Process.Step_4 else AllIcons.Vcs.Branch)
     }
 }

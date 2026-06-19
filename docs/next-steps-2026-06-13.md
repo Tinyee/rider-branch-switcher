@@ -3,7 +3,7 @@
 ## 当前判断
 
 当前核心切换安全问题、UI 重构、设置页、结构化日志、CI、Detekt、Plugin Verifier
-和 297 个自动化测试均已落地。项目下一阶段不应继续进行大规模重构，而应优先补齐：
+和 286 个自动化测试均已落地。项目下一阶段不应继续进行大规模重构，而应优先补齐：
 
 1. 文档和版本信息的持续一致性。
 2. Marketplace 发布物料。
@@ -24,7 +24,7 @@
 - README Release 链接和 `plugin.xml` vendor 地址均指向 `Tinyee/rider-branch-switcher`。
 - `docs/code-review-2026-06-08.md` 已标记为历史归档。
 - `noFocusRing()` 工厂化、CI、Detekt、Plugin Verifier、Settings、结构化日志等状态已在 ROADMAP 中反映。
-- 当前测试数量已同步为 297 tests / 20 classes（2026-06-19 更新；已清理 11 个低价值结构测试）。
+- 当前测试数量已同步为 286 tests / 20 classes（2026-06-19 更新；已清理 11 个低价值结构测试）。
 
 仍需保持：
 
@@ -131,7 +131,7 @@ Preflight 的 Git 调用预算，防止重复查询回归。
 
 - 默认关闭，不收集个人数据、分支名或仓库路径。
 - Settings 页面可随时开启/关闭，并可复制当前统计数据。
-- 统计字段覆盖 switch、create preset、derive、quick switch 和 error 计数。
+- 统计字段覆盖 switch、create preset、derive 和 error 计数。
 - i18n 文案已补齐，服务层测试覆盖默认关闭、ID 生成、导出和 loadState。
 
 ---

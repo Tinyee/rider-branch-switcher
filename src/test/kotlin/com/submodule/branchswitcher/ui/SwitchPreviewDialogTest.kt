@@ -11,14 +11,11 @@ import org.junit.Test
 
 class SwitchPreviewDialogTest {
 
-    private val globalOpts = SwitchOptions(DirtyAction.Stash, pull = true, fetchFirst = true)
-
     private fun makeRequest(
         dirty: DirtyAction = DirtyAction.Stash,
     ): ResolvedSwitchRequest = ResolvedSwitchRequest.resolve(
-        Preset("test", "main", overrides = if (dirty != DirtyAction.Stash)
-            com.submodule.branchswitcher.model.PresetOverrides(dirty = dirty) else null),
-        globalOpts,
+        Preset("test", "main"),
+        SwitchOptions(dirty = dirty, pull = true, fetchFirst = true),
     )
 
     private fun row(exists: Boolean = true, dirtyCount: Int = 0) =

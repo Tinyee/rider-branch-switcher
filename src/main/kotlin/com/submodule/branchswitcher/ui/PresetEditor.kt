@@ -1,4 +1,4 @@
-﻿package com.submodule.branchswitcher.ui
+package com.submodule.branchswitcher.ui
 
 import com.intellij.icons.AllIcons
 import com.intellij.ui.JBColor
@@ -7,11 +7,7 @@ import com.intellij.util.ui.NamedColorUtil
 import com.submodule.branchswitcher.Bundle
 import com.submodule.branchswitcher.git.GitClient
 import com.submodule.branchswitcher.log.AppLogger
-import com.submodule.branchswitcher.model.DirtyAction
 import com.submodule.branchswitcher.model.Preset
-import com.submodule.branchswitcher.model.PresetOverrides
-import com.submodule.branchswitcher.settings.dirtyActionToIndex
-import com.submodule.branchswitcher.settings.indexToDirtyAction
 import com.submodule.branchswitcher.switch.isValidBranchName
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
@@ -31,7 +27,6 @@ import java.nio.file.Path
 import javax.swing.BorderFactory
 import javax.swing.Box
 import javax.swing.BoxLayout
-import javax.swing.DefaultComboBoxModel
 import javax.swing.JButton
 import javax.swing.JComboBox
 import javax.swing.JLabel
@@ -51,13 +46,6 @@ import javax.swing.border.Border
  *   the dirty check while any load is pending
  * - [initializing]: true during constructor; prevents false dirty flags during setup
  */
-/** Carries factory labels so PresetEditor constructor stays under detekt's 12-param limit. */
-data class GlobalOptionLabels(
-    val dirty: () -> String,
-    val pull: () -> String,
-    val fetch: () -> String,
-)
-
 class PresetEditor(
     private val gitRoot: Path,
     initial: Preset,
@@ -69,9 +57,6 @@ class PresetEditor(
     private val nameValidator: (String) -> Boolean = { true },
     private val gitClient: GitClient,
     private val scope: CoroutineScope,
-    /** Fires after [updatePresetName] — enables parent to re-apply active filters. */
-    private val onNameChanged: (() -> Unit)? = null,
-    private val globalLabels: GlobalOptionLabels,
 ) : JPanel() {
 
     private var original: Preset = initial
@@ -82,20 +67,6 @@ class PresetEditor(
     private val addSubBtn = jButton(Bundle.msg("action.add.submodule"), AllIcons.General.Add)
     private val arrow = JLabel(AllIcons.General.ArrowRight)
 
-    // ── Override controls ─────────────────────────────────────────
-    private val overrideToggle = jButton(icon = AllIcons.General.GearPlain) {
-        toolTipText = Bundle.msg("option.override.gear.tip")
-        addActionListener { toggleOverrides() }
-    }
-    private val dirtyCombo = JComboBox(arrayOf("")).apply { /* populated in applyOverridesToUI */ }
-    private val pullCombo = JComboBox(arrayOf("", "", ""))
-    private val fetchCombo = JComboBox(arrayOf("", "", ""))
-    private val dirtyWrap = JPanel(FlowLayout(FlowLayout.LEFT, 2, 0)).apply { isOpaque = false }
-    private val pullWrap = JPanel(FlowLayout(FlowLayout.LEFT, 2, 0)).apply { isOpaque = false }
-    private val fetchWrap = JPanel(FlowLayout(FlowLayout.LEFT, 2, 0)).apply { isOpaque = false }
-    private val overrideRow = makeOverrideRow()
-    private var overrideCombosVisible = true
-    private var initialGearFg: java.awt.Color? = null // captured on first indicator update
     private val nameLabel = JLabel(initial.name).apply {
         toolTipText = Bundle.msg("label.rename.tip")
         cursor = Cursor.getPredefinedCursor(Cursor.TEXT_CURSOR)
@@ -203,7 +174,6 @@ class PresetEditor(
         }
 
         body.add(makeMainRow())
-        body.add(overrideRow)
         initial.submodules.forEach { (path, branch) ->
             body.add(subManager.buildSubRow(path, branch).panel)
         }
@@ -288,7 +258,6 @@ class PresetEditor(
     private fun applyOriginalToUI() {
         mainCombo.selectedItem = original.main
         subManager.applyPresetToUI(original)
-        applyOverridesToUI()
         updateDirty()
     }
 
@@ -317,101 +286,6 @@ class PresetEditor(
             onLoadStart = { subManager.loadingCount++ },
             onLoadEnd = { subManager.loadingCount--; updateDirty() },
         )
-    }
-
-    // ── Override panel ────────────────────────────────────────────
-
-    private fun makeOverrideRow(): JPanel {
-        refreshGlobalLabels()
-        listOf(dirtyCombo, pullCombo, fetchCombo).forEach { combo ->
-            combo.addActionListener {
-                updateDirty()
-                updateOverrideIndicator()
-            }
-        }
-        return JPanel(FlowLayout(FlowLayout.LEFT, 4, 0)).apply {
-            isOpaque = false
-            alignmentX = LEFT_ALIGNMENT
-            border = JBUI.Borders.empty(2, 24, 2, 4)
-            add(overrideToggle)
-            add(JLabel(Bundle.msg("option.override.title")).apply { font = font.deriveFont(Font.PLAIN) })
-            add(dirtyWrap.apply {
-                add(JLabel(Bundle.msg("option.override.label.dirty")).apply { font = font.deriveFont(Font.PLAIN, 11f) })
-                add(dirtyCombo.withCompactHeight(JBUI.scale(130)))
-            })
-            add(pullWrap.apply {
-                add(JLabel(Bundle.msg("option.override.label.pull")).apply { font = font.deriveFont(Font.PLAIN, 11f) })
-                add(pullCombo.withCompactHeight(JBUI.scale(80)))
-            })
-            add(fetchWrap.apply {
-                add(JLabel(Bundle.msg("option.override.label.fetch")).apply { font = font.deriveFont(Font.PLAIN, 11f) })
-                add(fetchCombo.withCompactHeight(JBUI.scale(80)))
-            })
-        }
-    }
-
-    private fun toggleOverrides() {
-        overrideCombosVisible = !overrideCombosVisible
-        listOf(dirtyWrap, pullWrap, fetchWrap).forEach { it.isVisible = overrideCombosVisible }
-        revalidate()
-        repaint()
-    }
-
-    private fun applyOverridesToUI() {
-        val ov = original.overrides
-        dirtyCombo.selectedIndex = if (ov?.dirty != null) dirtyActionToIndex(ov.dirty) + 1 else 0
-        pullCombo.selectedIndex = triStateToCombo(ov?.pull)
-        fetchCombo.selectedIndex = triStateToCombo(ov?.fetchFirst)
-        updateOverrideIndicator()
-    }
-
-    fun refreshGlobalLabels() {
-        // Save current selections to preserve uncommitted edits (P2-3)
-        val savedDirtyIdx = dirtyCombo.selectedIndex
-        val savedPullIdx = pullCombo.selectedIndex
-        val savedFetchIdx = fetchCombo.selectedIndex
-
-        dirtyCombo.removeAllItems()
-        dirtyCombo.addItem(Bundle.msg("option.override.use.global", globalLabels.dirty()))
-        dirtyCombo.addItem(Bundle.msg("option.dirty.stash"))
-        dirtyCombo.addItem(Bundle.msg("option.dirty.skip"))
-        dirtyCombo.addItem(Bundle.msg("option.dirty.force"))
-        dirtyCombo.selectedIndex = savedDirtyIdx.coerceIn(0, dirtyCombo.itemCount - 1)
-
-        pullCombo.removeAllItems()
-        pullCombo.addItem(Bundle.msg("option.override.use.global", globalLabels.pull()))
-        pullCombo.addItem(Bundle.msg("option.override.on"))
-        pullCombo.addItem(Bundle.msg("option.override.off"))
-        pullCombo.selectedIndex = savedPullIdx.coerceIn(0, pullCombo.itemCount - 1)
-
-        fetchCombo.removeAllItems()
-        fetchCombo.addItem(Bundle.msg("option.override.use.global", globalLabels.fetch()))
-        fetchCombo.addItem(Bundle.msg("option.override.on"))
-        fetchCombo.addItem(Bundle.msg("option.override.off"))
-        fetchCombo.selectedIndex = savedFetchIdx.coerceIn(0, fetchCombo.itemCount - 1)
-
-        updateOverrideIndicator()
-    }
-
-    private fun ensureInitialGearFg() {
-        if (initialGearFg == null) initialGearFg = overrideToggle.foreground
-    }
-
-    private fun updateOverrideIndicator() {
-        ensureInitialGearFg()
-        val curOverride = buildOverrides()
-        val hasOverride = curOverride != null
-        overrideToggle.foreground = if (hasOverride) JBColor(0xE07B00, 0xFFA726) else initialGearFg
-        overrideToggle.toolTipText = if (hasOverride)
-            Bundle.msg("option.override.summary", summarizeOverride(curOverride)) else Bundle.msg("option.override.gear.tip")
-    }
-
-    private fun summarizeOverride(ov: PresetOverrides): String {
-        val parts = mutableListOf<String>()
-        ov.dirty?.let { parts += Bundle.msg("option.dirty." + it.name.lowercase()) }
-        ov.pull?.let { parts += "${Bundle.msg("option.pull.after")}: ${Bundle.msg(if (it) "option.override.on" else "option.override.off")}" }
-        ov.fetchFirst?.let { parts += "${Bundle.msg("option.fetch.before")}: ${Bundle.msg(if (it) "option.override.on" else "option.override.off")}" }
-        return parts.joinToString(", ")
     }
 
     companion object {
@@ -497,30 +371,7 @@ class PresetEditor(
         return original.copy(
             main = (mainCombo.selectedItem as? String)?.trim() ?: original.main,
             submodules = newSubs,
-            overrides = buildOverrides(),
         )
-    }
-
-    // ── Override combo box mapping ──────────────────────────────────
-    // Combo item order (set in refreshGlobalLabels):
-    //   0 = "Use global" (null)   1 = "On" (true)   2 = "Off" (false)
-    // Dirty combo has 4 items (global/stash/skip/force) and uses
-    // indexToDirtyAction / dirtyActionToIndex for its own mapping.
-
-    private fun triStateFromCombo(index: Int): Boolean? = when (index) {
-        1 -> true; 2 -> false; else -> null
-    }
-
-    private fun triStateToCombo(value: Boolean?): Int = when (value) {
-        true -> 1; false -> 2; else -> 0
-    }
-
-    private fun buildOverrides(): PresetOverrides? {
-        val d = if (dirtyCombo.selectedIndex > 0)
-            indexToDirtyAction(dirtyCombo.selectedIndex - 1) else null
-        val p = triStateFromCombo(pullCombo.selectedIndex)
-        val f = triStateFromCombo(fetchCombo.selectedIndex)
-        return if (d != null || p != null || f != null) PresetOverrides(d, p, f) else null
     }
 
     private fun revert() {
@@ -544,7 +395,6 @@ class PresetEditor(
     fun updatePresetName(newName: String) {
         original = original.copy(name = newName)
         nameLabel.text = newName
-        onNameChanged?.invoke()
     }
 
     private fun rename() {

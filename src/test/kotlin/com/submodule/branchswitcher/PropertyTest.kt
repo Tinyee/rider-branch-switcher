@@ -3,7 +3,6 @@ package com.submodule.branchswitcher
 import com.google.gson.Gson
 import com.submodule.branchswitcher.model.Preset
 import com.submodule.branchswitcher.model.PresetFile
-import com.submodule.branchswitcher.model.PresetOverrides
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.property.Arb
 import io.kotest.property.arbitrary.*
@@ -23,11 +22,10 @@ class PropertyTest : StringSpec({
             Arb.string(1..20),
             Arb.list(Arb.string(1..10), 0..8),
             Arb.list(Arb.string(1..20), 0..8),
-            Arb.boolean(),
-        ) { name, main, paths, branches, pull ->
+        ) { name, main, paths, branches ->
             val size = minOf(paths.size, branches.size)
             val subs = (0 until size).associate { paths[it] to branches[it] }
-            Preset(name, main, subs.filterKeys { it.isNotEmpty() }, overrides = if (pull) null else PresetOverrides(pull = false))
+            Preset(name, main, subs.filterKeys { it.isNotEmpty() })
         }
 
         forAll(presetArb) { preset ->
@@ -36,17 +34,16 @@ class PropertyTest : StringSpec({
             val p = restored.presets.single()
             p.name == preset.name &&
             p.main == preset.main &&
-            p.submodules == preset.submodules &&
-            p.overrides == preset.overrides
+            p.submodules == preset.submodules
         }
     }
 
     "PresetFile round-trip with multiple presets" {
         val presetListArb = Arb.list(
             Arb.bind(
-                Arb.string(1..15), Arb.string(1..15), Arb.boolean()
-            ) { name, main, pull ->
-                Preset(name, main, overrides = if (pull) null else PresetOverrides(pull = false))
+                Arb.string(1..15), Arb.string(1..15)
+            ) { name, main ->
+                Preset(name, main)
             },
             0..10,
         )
@@ -56,7 +53,7 @@ class PropertyTest : StringSpec({
             val restored = Gson().fromJson(json, PresetFile::class.java)
             restored.presets.size == presets.size &&
             restored.presets.zip(presets).all { (a, b) ->
-                a.name == b.name && a.main == b.main && a.overrides == b.overrides
+                a.name == b.name && a.main == b.main
             }
         }
     }

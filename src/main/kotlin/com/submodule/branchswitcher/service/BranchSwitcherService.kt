@@ -75,7 +75,6 @@ class BranchSwitcherService(
         var telemetrySwitchCount: Int = 0,
         var telemetryCreateCount: Int = 0,
         var telemetryDeriveCount: Int = 0,
-        var telemetryQuickSwitchCount: Int = 0,
         var telemetryErrorCount: Int = 0,
     )
 
@@ -132,7 +131,6 @@ class BranchSwitcherService(
     fun incrementSwitchCount() { if (options.telemetryOptIn) options.telemetrySwitchCount++ }
     fun incrementCreateCount() { if (options.telemetryOptIn) options.telemetryCreateCount++ }
     fun incrementDeriveCount() { if (options.telemetryOptIn) options.telemetryDeriveCount++ }
-    fun incrementQuickSwitchCount() { if (options.telemetryOptIn) options.telemetryQuickSwitchCount++ }
     fun incrementErrorCount() { if (options.telemetryOptIn) options.telemetryErrorCount++ }
 
     /** Gson-friendly export model — no raw JSON building. */
@@ -166,7 +164,6 @@ class BranchSwitcherService(
                 "switch" to options.telemetrySwitchCount,
                 "createPreset" to options.telemetryCreateCount,
                 "derive" to options.telemetryDeriveCount,
-                "quickSwitch" to options.telemetryQuickSwitchCount,
                 "error" to options.telemetryErrorCount,
             ),
         )

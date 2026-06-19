@@ -88,7 +88,6 @@ object PresetLoader {
                 changed = true
                 generateUniqueId(usedIds)
             }
-            if (presetDto.needsPullMigration) changed = true
             presetDto.toPreset(explicitId = id)
         }
         return PresetFile(presets) to changed
