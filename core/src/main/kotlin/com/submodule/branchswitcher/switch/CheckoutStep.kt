@@ -1,6 +1,5 @@
 ﻿package com.submodule.branchswitcher.switch
 
-import com.submodule.branchswitcher.Bundle
 import java.io.File
 
 /**
@@ -40,16 +39,8 @@ class CheckoutStep : SwitchStep {
             if (!isMain && !context.git.isGitRepo(dir)) {
                 if (mainCheckoutOk) {
                     if (context.confirmBeforeInit && context.cancellationHandle?.isCanceled != true) {
-                        val result = java.util.concurrent.atomic.AtomicInteger(com.intellij.openapi.ui.Messages.NO)
-                        com.intellij.openapi.application.ApplicationManager.getApplication()
-                            .invokeAndWait {
-                                result.set(com.intellij.openapi.ui.Messages.showYesNoDialog(
-                                    Bundle.msg("dialog.init.submodule", target.path),
-                                    Bundle.msg("dialog.init.title"),
-                                    com.intellij.openapi.ui.Messages.getQuestionIcon(),
-                                ))
-                            }
-                        if (result.get() != com.intellij.openapi.ui.Messages.YES) {
+                        val confirmed = context.onConfirmSubmoduleInit?.invoke(target.path) ?: true
+                        if (!confirmed) {
                             context.log.info("[skip] init declined for ${target.path}")
                             failures[target.path] = "init declined"
                             continue

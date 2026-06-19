@@ -33,6 +33,9 @@ data class SwitchContext(
     val successfulCheckouts: MutableSet<String> = mutableSetOf(),
     /** If true, show confirmation dialog before auto-init of missing submodules. */
     val confirmBeforeInit: Boolean = false,
+    /** Callback for submodule init confirmation. The main module provides an IntelliJ dialog;
+     *  core tests use a simple lambda. Returns false if init was declined. */
+    val onConfirmSubmoduleInit: ((path: String) -> Boolean)? = null,
 )
 
 interface SwitchStep {
