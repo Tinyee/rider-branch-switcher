@@ -46,6 +46,7 @@ class PresetImportRulesTest {
         assertEquals(listOf("new"), result.presets.map { it.name })
         assertEquals(listOf("", "missing-main"), result.invalidNames)
         assertEquals(listOf("existing", "new"), result.conflictingNames)
+        assertTrue(result.hasRecognizedEntries)
     }
 
     @Test
@@ -84,6 +85,19 @@ class PresetImportRulesTest {
         assertTrue(result.presets.isEmpty())
         assertTrue(result.invalidNames.isEmpty())
         assertTrue(result.conflictingNames.isEmpty())
+        assertFalse(result.hasRecognizedEntries)
+    }
+
+    @Test
+    fun `duplicate-only import is recognized but has no new presets`() {
+        val result = parsePresetImport(
+            """{"presets":[{"name":"dev","main":"main"}]}""",
+            setOf("dev"),
+        )
+
+        assertTrue(result.presets.isEmpty())
+        assertEquals(listOf("dev"), result.conflictingNames)
+        assertTrue(result.hasRecognizedEntries)
     }
 
     @Test

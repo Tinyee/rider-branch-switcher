@@ -274,7 +274,12 @@ class PresetListManager(
             }
             val result = parsePresetImport(text, editors.map { it.currentPreset().name }.toSet())
             if (result.presets.isEmpty()) {
-                Messages.showWarningDialog(project, Bundle.msg("dialog.import.invalid"), Bundle.msg("dialog.import"))
+                val message = if (result.hasRecognizedEntries) {
+                    Bundle.msg("dialog.import.none", result.conflictingNames.size, result.invalidNames.size)
+                } else {
+                    Bundle.msg("dialog.import.invalid")
+                }
+                Messages.showWarningDialog(project, message, Bundle.msg("dialog.import"))
                 return
             }
             if (result.invalidNames.isNotEmpty()) {
