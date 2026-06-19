@@ -8,17 +8,10 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.Messages
 import com.submodule.branchswitcher.BranchSwitchListener
 import com.submodule.branchswitcher.Bundle
-import com.submodule.branchswitcher.Notifier
 import com.submodule.branchswitcher.log.createStringAppender
 import com.submodule.branchswitcher.model.Preset
-import com.submodule.branchswitcher.ui.invokeLaterIfAlive
-import com.submodule.branchswitcher.ui.shouldShowForceWarning
 import com.submodule.branchswitcher.service.BranchSwitcherService
-import com.submodule.branchswitcher.switch.platformCancellationClassifier
-import com.submodule.branchswitcher.switch.ProgressCancellationHandle
-import com.submodule.branchswitcher.switch.SwitchPreflight
-import com.submodule.branchswitcher.switch.SwitchRunner
-import com.submodule.branchswitcher.switch.refreshVcsRepos
+import com.submodule.branchswitcher.switch.SwitchFlowCoordinator
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
@@ -54,91 +47,27 @@ class SwitchPresetAction : AnAction() {
 
     private fun executeSwitch(project: Project, service: BranchSwitcherService, preset: Preset) {
         val root = project.basePath?.let { java.nio.file.Paths.get(it) } ?: return
-        if (!service.tryStartWrite()) return
+        val logLines = mutableListOf<String>()
+        val collector = createStringAppender { logLines += it }
+        val coordinator = SwitchFlowCoordinator(project, service)
         service.scope.launch(Dispatchers.Default) {
             try {
-            val logLines = mutableListOf<String>()
-            val gitClient = service.gitClient
-            val request = service.resolveSwitchRequest(preset)
-            val collector = createStringAppender { logLines += it }
-            val result = SwitchRunner(project, root, gitClient).execute(
-                title = Bundle.msg("progress.switching.to", preset.name),
-                request = request,
-                log = collector,
-                beforeExecute = before@ { indicator ->
-                    val preflight = SwitchPreflight(gitClient, Bundle.msg("preflight.probe.error.suffix"), platformCancellationClassifier)
-                    val probeResult = preflight.probe(root, preset, ProgressCancellationHandle(indicator)) { idx, total, label ->
-                        indicator.text2 = label
-                        indicator.fraction = idx.toDouble() / total
-                    }
-                    // Force confirmation before preflight warnings (P1-1)
-                    if (shouldShowForceWarning(request, probeResult)) {
-                        val forceConfirmed = booleanArrayOf(false)
-                        com.intellij.openapi.application.ApplicationManager.getApplication().invokeAndWait {
-                            forceConfirmed[0] = com.intellij.openapi.ui.Messages.showYesNoDialog(
-                                project,
-                                Bundle.msg("dialog.force.confirm.msg", preset.name),
-                                Bundle.msg("dialog.force.confirm.title"),
-                                com.intellij.openapi.ui.Messages.getWarningIcon(),
-                            ) == com.intellij.openapi.ui.Messages.YES
-                        }
-                        if (!forceConfirmed[0]) {
-                            logLines += "[warn] switch cancelled by user — Force dirty strategy declined"
-                            return@before false
-                        }
-                    }
-                    val missingDirs = probeResult.filter { !it.exists }
-                    val missingBranches = probeResult.filter { it.branchMissing }
-                    // Show preflight warnings and confirm before proceeding
-                    if (missingDirs.isNotEmpty() || missingBranches.isNotEmpty()) {
-                        val warnings = mutableListOf<String>()
-                        if (missingDirs.isNotEmpty()) {
-                            warnings += Bundle.msg("preflight.warn.dir.missing",
-                                missingDirs.joinToString(", ") { it.label })
-                        }
-                        if (missingBranches.isNotEmpty()) {
-                            warnings += Bundle.msg("preflight.warn.branch.not.found",
-                                missingBranches.joinToString(", ") { it.label })
-                        }
-                        val confirmed = booleanArrayOf(false)
-                        com.intellij.openapi.application.ApplicationManager.getApplication().invokeAndWait {
-                            confirmed[0] = com.intellij.openapi.ui.Messages.showYesNoDialog(
-                                project,
-                                warnings.joinToString("\n\n") + "\n\n" + Bundle.msg("preflight.warn.continue"),
-                                Bundle.msg("dialog.switch.title"),
-                                com.intellij.openapi.ui.Messages.getWarningIcon(),
-                            ) == com.intellij.openapi.ui.Messages.YES
-                        }
-                        if (!confirmed[0]) {
-                            logLines += "[warn] switch cancelled by user due to preflight warnings"
-                            return@before false
-                        }
-                    }
-                    true
-                },
-            )
-            // Resumed on EDT via TaskBridge.onFinished — wrap UI ops
-            project.invokeLaterIfAlive {
-                if (result.cancelled) {
-                    return@invokeLaterIfAlive
+                val probeResult = coordinator.preflight(root, preset)
+                if (!coordinator.showForceWarning(preset, probeResult)) {
+                    logLines += "[warn] switch cancelled by user — Force dirty strategy declined"
+                    return@launch
                 }
-                if (result.ok) {
-                    service.incrementSwitchCount()
-                    Notifier.info(project, Bundle.msg("switch.complete"), Bundle.msg("notify.switch.complete.msg", preset.name))
-                } else {
-                    service.incrementErrorCount()
-                    val detail = logLines.filter { it.contains("[fail]") || it.contains("[fatal]") || it.contains("[warn]") || it.contains("[error]") }
-                        .take(3).joinToString("\n")
-                    Notifier.error(project, Bundle.msg("switch.failed"),
-                        if (detail.isNotEmpty()) Bundle.msg("notify.switch.partial.msg", preset.name) + ":\n" + detail
-                        else Bundle.msg("notify.switch.partial.msg", preset.name))
+                if (!coordinator.showPreflightWarnings(probeResult)) {
+                    logLines += "[warn] switch cancelled by user due to preflight warnings"
+                    return@launch
                 }
-                project.messageBus.syncPublisher(BranchSwitchListener.TOPIC).onBranchSwitched()
-                service.scope.launch(Dispatchers.IO) {
-                    refreshVcsRepos(project, root, preset.submodules.keys)
+                val request = service.resolveSwitchRequest(preset)
+                coordinator.executeAndNotify(root, request, collector) {
+                    project.messageBus.syncPublisher(BranchSwitchListener.TOPIC).onBranchSwitched()
                 }
+            } catch (_: kotlinx.coroutines.CancellationException) {
+                // user cancelled
             }
-            } finally { service.endWrite() }
         }
     }
 }
