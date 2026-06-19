@@ -43,7 +43,12 @@ class SwitchController(
             val probeResult = try {
                 TaskBridge.runModal(project, Bundle.msg("progress.preflight"), true) { indicator ->
                     indicator.isIndeterminate = false
-                    SwitchPreflight(service.gitClient).probe(root, preset, indicator, ProgressCancellationHandle(indicator))
+                    SwitchPreflight(service.gitClient, Bundle.msg("preflight.probe.error.suffix")).probe(
+                        root, preset, ProgressCancellationHandle(indicator),
+                    ) { idx, total, label ->
+                        indicator.text2 = label
+                        indicator.fraction = idx.toDouble() / total
+                    }
                 }
             } catch (_: CancellationException) {
                 return@launch // user cancelled modal, nothing to do

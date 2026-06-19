@@ -1,6 +1,5 @@
 package com.submodule.branchswitcher.switch
 
-import com.intellij.openapi.progress.ProgressIndicator
 import com.submodule.branchswitcher.git.GitClient
 import com.submodule.branchswitcher.model.PreflightRow
 import com.submodule.branchswitcher.model.Preset
@@ -10,10 +9,12 @@ import java.nio.file.Path
 
 /**
  * Pre-switch inspection: probes all repos in a preset and returns a [PreflightRow] per target.
- * Used by [SwitchPreviewDialog] to show what will change before executing the switch.
+ * Pure-JVM: no IntelliJ Platform dependencies. Cancellation via [CancellationHandle],
+ * progress display via [onProgress] callback, error labels via [probeErrorSuffix].
  */
 class SwitchPreflight(
     private val git: GitClient,
+    private val probeErrorSuffix: String = "[probe error]",
 ) {
     /**
      * Iterates all targets in [preset], probing each for current branch, dirty status,
@@ -22,15 +23,14 @@ class SwitchPreflight(
     fun probe(
         projectRoot: Path,
         preset: Preset,
-        indicator: ProgressIndicator? = null,
         cancellationHandle: CancellationHandle? = null,
+        onProgress: ((index: Int, total: Int, label: String) -> Unit)? = null,
     ): List<PreflightRow> {
         val targets = preset.targets()
         val total = targets.size.coerceAtLeast(1)
         return targets.mapIndexed { idx, t ->
             cancellationHandle?.checkCanceled()
-            indicator?.fraction = idx.toDouble() / total
-            indicator?.text2 = if (t.path == ".") projectRoot.fileName.toString() else t.path
+            onProgress?.invoke(idx, total, if (t.path == ".") projectRoot.fileName.toString() else t.path)
             probeOne(projectRoot, t)
         }
     }
@@ -63,15 +63,13 @@ class SwitchPreflight(
                 hasLocal = git.localBranchExists(dir, target.branch),
                 hasRemote = git.remoteBranchExists(dir, target.branch),
             )
-        } catch (e: kotlinx.coroutines.CancellationException) {
+        } catch (e: java.util.concurrent.CancellationException) {
             throw e // cancellation must propagate, not become a warning row
-        } catch (e: com.intellij.openapi.progress.ProcessCanceledException) {
-            throw e // same for IntelliJ modal cancellation
         } catch (e: Exception) {
             // Fail closed per repo: one flaky git command must not abort the whole preflight.
             // All flags default to blocking/unknown so the user sees this repo as a warning.
             PreflightRow(
-                label = "$label ${com.submodule.branchswitcher.Bundle.msg("preflight.probe.error.suffix")}",
+                label = "$label $probeErrorSuffix",
                 path = target.path,
                 target = target.branch,
                 exists = true,
@@ -84,3 +82,7 @@ class SwitchPreflight(
     }
 
 }
+
+/** Returns the last path segment, stripping trailing `~`. Used for display labels. */
+fun shortLabel(path: String): String =
+    path.substringAfterLast('/').removeSuffix("~")

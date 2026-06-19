@@ -65,8 +65,11 @@ class SwitchPresetAction : AnAction() {
                 request = request,
                 log = collector,
                 beforeExecute = before@ { indicator ->
-                    val preflight = SwitchPreflight(gitClient)
-                    val probeResult = preflight.probe(root, preset, indicator, ProgressCancellationHandle(indicator))
+                    val preflight = SwitchPreflight(gitClient, Bundle.msg("preflight.probe.error.suffix"))
+                    val probeResult = preflight.probe(root, preset, ProgressCancellationHandle(indicator)) { idx, total, label ->
+                        indicator.text2 = label
+                        indicator.fraction = idx.toDouble() / total
+                    }
                     // Force confirmation before preflight warnings (P1-1)
                     if (shouldShowForceWarning(request, probeResult)) {
                         val forceConfirmed = booleanArrayOf(false)

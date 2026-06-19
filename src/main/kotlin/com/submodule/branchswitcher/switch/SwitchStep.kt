@@ -47,11 +47,6 @@ interface SwitchStep {
 fun resolveGitDir(root: java.nio.file.Path, path: String): java.io.File =
     if (path == ".") root.toFile() else root.resolve(path).toFile()
 
-/** Returns the last path segment, stripping trailing `~`. Used for display labels. */
-fun shortLabel(path: String): String {
-    return path.substringAfterLast('/').removeSuffix("~")
-}
-
 /**
  * Refreshes VCS status for main repo + submodule paths.
  * Shared by both tool-window switch and shortcut action switch.
