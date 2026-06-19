@@ -231,8 +231,5 @@ class DeriveBranchExecutor(
 }
 
 private fun rethrowIfCancellation(e: Exception) {
-    when (e) {
-        is kotlinx.coroutines.CancellationException -> throw e
-        is com.intellij.openapi.progress.ProcessCanceledException -> throw e
-    }
+    if (e is java.util.concurrent.CancellationException) throw e
 }
