@@ -10,7 +10,10 @@ data class PresetImportResult(
     val presets: List<Preset>,
     val invalidNames: List<String>,
     val conflictingNames: List<String>,
-)
+) {
+    val hasRecognizedEntries: Boolean
+        get() = presets.isNotEmpty() || invalidNames.isNotEmpty() || conflictingNames.isNotEmpty()
+}
 
 /**
  * Parses clipboard JSON and applies import rules without touching Swing or the system clipboard.
