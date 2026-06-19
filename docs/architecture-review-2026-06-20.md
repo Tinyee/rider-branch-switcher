@@ -67,10 +67,9 @@ class PresetRepository(private val project: Project) { ... }
 
 ## P2 Items (future)
 
-### Rename root switch/ package
-Root module's switch/SwitchRunner and switch/SwitchAdapters are IntelliJ
-platform adapters, not pure switch pipeline. Consider moving to platform/
-or ui/flow/ to avoid confusion with core/.../switch.
+### Rename root switch/ package ✅ done — moved to platform/
+SwitchRunner + SwitchAdapters (ProgressCancellationHandle, ProgressIndicatorHandle,
+refreshVcsRepos, platformCancellationClassifier) now in com.submodule.branchswitcher.platform.
 
 ### Rename TelemetryStore → TelemetryService ✅ done
 

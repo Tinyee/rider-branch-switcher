@@ -1,4 +1,4 @@
-package com.submodule.branchswitcher.switch
+package com.submodule.branchswitcher.platform
 
 import com.intellij.openapi.progress.ProgressIndicator
 import com.intellij.openapi.project.Project
@@ -7,6 +7,7 @@ import com.submodule.branchswitcher.TaskBridge
 import com.submodule.branchswitcher.git.GitClient
 import com.submodule.branchswitcher.log.AppLogger
 import com.submodule.branchswitcher.model.ResolvedSwitchRequest
+import com.submodule.branchswitcher.switch.SwitchExecutor
 import kotlinx.coroutines.CancellationException
 import java.nio.file.Path
 

@@ -3,6 +3,7 @@ package com.submodule.branchswitcher.switch
 import com.intellij.openapi.progress.ProgressIndicator
 import com.intellij.openapi.project.Project
 import com.submodule.branchswitcher.TaskBridge
+import com.submodule.branchswitcher.platform.SwitchRunner
 import com.submodule.branchswitcher.git.GitClient
 import com.submodule.branchswitcher.git.GitResult
 import com.submodule.branchswitcher.log.createStringAppender

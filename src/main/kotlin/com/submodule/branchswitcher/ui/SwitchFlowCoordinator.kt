@@ -12,12 +12,12 @@ import com.submodule.branchswitcher.model.Preset
 import com.submodule.branchswitcher.model.ResolvedSwitchRequest
 import com.submodule.branchswitcher.service.BranchSwitcherService
 import com.submodule.branchswitcher.switch.SwitchPreflight
-import com.submodule.branchswitcher.switch.ProgressCancellationHandle
+import com.submodule.branchswitcher.platform.ProgressCancellationHandle
+import com.submodule.branchswitcher.platform.SwitchRunner
+import com.submodule.branchswitcher.platform.SwitchRunResult
+import com.submodule.branchswitcher.platform.platformCancellationClassifier
+import com.submodule.branchswitcher.platform.refreshVcsRepos
 import com.submodule.branchswitcher.switch.SwitchExecutor
-import com.submodule.branchswitcher.switch.SwitchRunner
-import com.submodule.branchswitcher.switch.SwitchRunResult
-import com.submodule.branchswitcher.switch.platformCancellationClassifier
-import com.submodule.branchswitcher.switch.refreshVcsRepos
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
