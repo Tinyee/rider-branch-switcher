@@ -285,17 +285,17 @@ class BranchSwitcherServiceTest {
 
     @Test
     fun `telemetry is opt-out by default`() {
-        assertFalse("opt-in should default to false", service.telemetryOptIn)
+        assertFalse("opt-in should default to false", service.telemetry.optIn)
     }
 
     @Test
     fun `counters do not increment when opt-out`() {
-        service.telemetryOptIn = false
-        service.incrementSwitchCount()
-        service.incrementCreateCount()
-        service.incrementDeriveCount()
-        service.incrementErrorCount()
-        val stats = service.exportTelemetry()
+        service.telemetry.optIn = false
+        service.telemetry.incrementSwitch()
+        service.telemetry.incrementCreate()
+        service.telemetry.incrementDerive()
+        service.telemetry.incrementError()
+        val stats = service.telemetry.export()
         assertTrue(stats.contains("\"switch\": 0"))
         assertTrue(stats.contains("\"createPreset\": 0"))
         assertTrue(stats.contains("\"error\": 0"))
@@ -303,12 +303,12 @@ class BranchSwitcherServiceTest {
 
     @Test
     fun `counters increment when opt-in`() {
-        service.telemetryOptIn = true
-        service.incrementSwitchCount()
-        service.incrementSwitchCount()
-        service.incrementCreateCount()
-        service.incrementDeriveCount()
-        val stats = service.exportTelemetry()
+        service.telemetry.optIn = true
+        service.telemetry.incrementSwitch()
+        service.telemetry.incrementSwitch()
+        service.telemetry.incrementCreate()
+        service.telemetry.incrementDerive()
+        val stats = service.telemetry.export()
         assertTrue(stats.contains("\"switch\": 2"))
         assertTrue(stats.contains("\"createPreset\": 1"))
         assertTrue(stats.contains("\"derive\": 1"))
@@ -316,23 +316,23 @@ class BranchSwitcherServiceTest {
 
     @Test
     fun `install ID is not generated before opt-in`() {
-        service.telemetryOptIn = false
-        assertEquals("<not opted in>", service.telemetryInstallId)
+        service.telemetry.optIn = false
+        assertEquals("<not opted in>", service.telemetry.installId)
     }
 
     @Test
     fun `install ID is stable after opt-in`() {
-        service.telemetryOptIn = true
-        val id1 = service.telemetryInstallId
-        val id2 = service.telemetryInstallId
+        service.telemetry.optIn = true
+        val id1 = service.telemetry.installId
+        val id2 = service.telemetry.installId
         assertEquals(id1, id2)
         assertTrue("install ID should be a UUID", id1.length > 30)
     }
 
     @Test
     fun `export after opt-in includes redacted non-empty install ID`() {
-        service.telemetryOptIn = true
-        val stats = service.exportTelemetry()
+        service.telemetry.optIn = true
+        val stats = service.telemetry.export()
         assertTrue(stats.contains("\"pluginVersion\": \"0.7.0\""))
         assertTrue(stats.contains("\"riderVersion\":"))
         // installId should be redacted with 8-char prefix + ellipsis, not empty
@@ -346,10 +346,10 @@ class BranchSwitcherServiceTest {
     @Test
     fun `export after opt-out does not expose persisted ID`() {
         // Simulate: user opts in, ID is generated, then user opts out
-        service.telemetryOptIn = true
-        val realId = service.telemetryInstallId // trigger UUID generation
-        service.telemetryOptIn = false
-        val stats = service.exportTelemetry()
+        service.telemetry.optIn = true
+        val realId = service.telemetry.installId // trigger UUID generation
+        service.telemetry.optIn = false
+        val stats = service.telemetry.export()
         // Export must not contain the real UUID (even as a prefix)
         assertFalse("export must not leak real UUID after opt-out",
             stats.contains(realId.take(8)))
@@ -357,9 +357,9 @@ class BranchSwitcherServiceTest {
 
     @Test
     fun `prompt shown flag prevents re-prompting`() {
-        assertFalse("prompt not shown by default", service.telemetryPromptShown)
-        service.telemetryPromptShown = true
-        assertTrue(service.telemetryPromptShown)
+        assertFalse("prompt not shown by default", service.telemetry.promptShown)
+        service.telemetry.promptShown = true
+        assertTrue(service.telemetry.promptShown)
     }
 
     @Test
@@ -370,9 +370,9 @@ class BranchSwitcherServiceTest {
             telemetrySwitchCount = 42,
         )
         service.loadState(state)
-        assertTrue(service.telemetryOptIn)
-        assertEquals("test-id-123", service.telemetryInstallId)
-        val stats = service.exportTelemetry()
+        assertTrue(service.telemetry.optIn)
+        assertEquals("test-id-123", service.telemetry.installId)
+        val stats = service.telemetry.export()
         assertTrue(stats.contains("\"switch\": 42"))
     }
 }

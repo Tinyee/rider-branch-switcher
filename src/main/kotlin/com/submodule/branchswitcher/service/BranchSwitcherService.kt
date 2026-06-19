@@ -24,7 +24,7 @@ import java.util.concurrent.atomic.AtomicLong
  *
  * Composition root that owns persistent state and delegates to sub-components:
  * - [PresetRepository] for preset loading/saving/caching
- * - [TelemetryStore] for opt-in anonymous usage counters
+ * - [TelemetryService] for opt-in anonymous usage counters
  *
  * Also manages: write gate, switch history, GitClient cache, detect-gen counter,
  * and persistent switch options via [PersistentStateComponent].
@@ -79,7 +79,7 @@ class BranchSwitcherService(
 
     // ── Delegated sub-components ─────────────────────────────────────
 
-    val telemetry = TelemetryStore({ options }, project)
+    val telemetry = TelemetryService({ options }, project)
     val presetRepo = PresetRepository(project)
 
     var dirtyAction: DirtyAction
@@ -105,33 +105,6 @@ class BranchSwitcherService(
     var confirmBeforeInit: Boolean
         get() = options.confirmBeforeInit
         set(value) { options.confirmBeforeInit = value }
-
-    // ── Telemetry (delegated) ────────────────────────────────────────
-
-    @Deprecated("Use service.telemetry.optIn", ReplaceWith("telemetry.optIn"))
-    var telemetryOptIn: Boolean
-        get() = telemetry.optIn
-        set(value) { telemetry.optIn = value }
-
-    @Deprecated("Use service.telemetry.installId", ReplaceWith("telemetry.installId"))
-    val telemetryInstallId: String get() = telemetry.installId
-
-    @Deprecated("Use service.telemetry.promptShown", ReplaceWith("telemetry.promptShown"))
-    var telemetryPromptShown: Boolean
-        get() = telemetry.promptShown
-        set(value) { telemetry.promptShown = value }
-
-    @Deprecated("Use service.telemetry.export()", ReplaceWith("telemetry.export()"))
-    fun exportTelemetry(): String = telemetry.export()
-
-    @Deprecated("Use service.telemetry.maybeShowOptIn()", ReplaceWith("telemetry.maybeShowOptIn()"))
-    fun maybeShowTelemetryOptIn() = telemetry.maybeShowOptIn()
-
-    // Convenience accessors for counters (called from flow coordinator)
-    val incrementSwitchCount: () -> Unit get() = telemetry::incrementSwitch
-    val incrementCreateCount: () -> Unit get() = telemetry::incrementCreate
-    val incrementDeriveCount: () -> Unit get() = telemetry::incrementDerive
-    val incrementErrorCount: () -> Unit get() = telemetry::incrementError
 
     /** Cached [GitOps] instance, recreated only when timeout changes. */
     private var _gitClient: GitClient? = null
