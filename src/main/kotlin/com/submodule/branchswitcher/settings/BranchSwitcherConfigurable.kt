@@ -87,7 +87,7 @@ class BranchSwitcherConfigurable(private val project: Project) : Configurable {
         val copyBtn = JButton(Bundle.msg("telemetry.copy.stats")).apply {
             alignmentX = JPanel.LEFT_ALIGNMENT
             addActionListener {
-                val stats = service.exportTelemetry()
+                val stats = service.telemetry.export()
                 Toolkit.getDefaultToolkit().systemClipboard.setContents(StringSelection(stats), null)
             }
         }
@@ -108,7 +108,7 @@ class BranchSwitcherConfigurable(private val project: Project) : Configurable {
             fetchCheck?.isSelected != s.fetchFirst ||
             pullCheck?.isSelected != s.pullAfterSwitch ||
             confirmInitCheck?.isSelected != s.confirmBeforeInit ||
-            telemetryCheck?.isSelected != s.telemetryOptIn
+            telemetryCheck?.isSelected != s.telemetry.optIn
     }
 
     override fun apply() {
@@ -118,7 +118,7 @@ class BranchSwitcherConfigurable(private val project: Project) : Configurable {
         fetchCheck?.let { s.fetchFirst = it.isSelected }
         pullCheck?.let { s.pullAfterSwitch = it.isSelected }
         confirmInitCheck?.let { s.confirmBeforeInit = it.isSelected }
-        telemetryCheck?.let { s.telemetryOptIn = it.isSelected }
+        telemetryCheck?.let { s.telemetry.optIn = it.isSelected }
     }
 
     override fun reset() {
@@ -128,7 +128,7 @@ class BranchSwitcherConfigurable(private val project: Project) : Configurable {
         fetchCheck?.isSelected = s.fetchFirst
         pullCheck?.isSelected = s.pullAfterSwitch
         confirmInitCheck?.isSelected = s.confirmBeforeInit
-        telemetryCheck?.isSelected = s.telemetryOptIn
+        telemetryCheck?.isSelected = s.telemetry.optIn
     }
 
     override fun disposeUIResources() {

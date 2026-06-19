@@ -72,9 +72,7 @@ Root module's switch/SwitchRunner and switch/SwitchAdapters are IntelliJ
 platform adapters, not pure switch pipeline. Consider moving to platform/
 or ui/flow/ to avoid confusion with core/.../switch.
 
-### Rename TelemetryStore
-Now handles state + prompt + plugin version detection. Could be renamed
-to TelemetryService or split further (TelemetryStore / TelemetryEnvironment).
+### Rename TelemetryStore → TelemetryService ✅ done
 
 ## P3 Items (defer)
 
@@ -90,4 +88,5 @@ GitQueryClient / GitWriteClient / GitSubmoduleClient / GitOperationLifecycle.
 
 1. ✅ CancellationClassifier (smallest, fixes P2 core leak) — done 03c0082
 2. ✅ SwitchFlowCoordinator (unifies two switch entry points) — done a394c58
-3. ✅ TelemetryStore + PresetRepository extract — done (pending push)
+3. ✅ TelemetryStore + PresetRepository extract — done
+4. ✅ Remove deprecated bridges + rename to TelemetryService — done

@@ -10,7 +10,7 @@ import java.util.UUID
  * Anonymous usage statistics with explicit opt-in.
  * All data stays local; counters are exported to clipboard on demand.
  */
-class TelemetryStore(
+class TelemetryService(
     private val state: () -> OptionsState,
     private val project: Project,
 ) {

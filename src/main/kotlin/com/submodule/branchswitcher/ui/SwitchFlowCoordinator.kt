@@ -114,13 +114,13 @@ class SwitchFlowCoordinator(
                 uiLater {
                     if (result.cancelled) { onFinished?.invoke(); return@uiLater }
                     if (result.ok) {
-                        service.incrementSwitchCount()
+                        service.telemetry.incrementSwitch()
                         service.addHistory(preset.name, preset.id)
                         onSuccess?.invoke()
                         Notifier.info(project, Bundle.msg("switch.complete"),
                             Bundle.msg("notify.switch.complete.msg", preset.name))
                     } else {
-                        service.incrementErrorCount()
+                        service.telemetry.incrementError()
                         onFailure?.invoke(result)
                         val executor = result.executor
                         if (executor?.getCheckpoint() != null) {
