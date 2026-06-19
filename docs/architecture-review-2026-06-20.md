@@ -38,7 +38,7 @@ Platform wires: `CancellationClassifier { e -> e is ProcessCanceledException || 
 - Force warning check
 - missing branch/dir confirm
 - notification
-- VCS refresh  
+- VCS refresh
 - telemetry/history
 
 **Fix**: Extract shared `SwitchFlowCoordinator` that takes callbacks for UI differences.
