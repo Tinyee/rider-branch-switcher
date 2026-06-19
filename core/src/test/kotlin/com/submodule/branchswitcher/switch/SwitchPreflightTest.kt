@@ -183,7 +183,10 @@ class SwitchPreflightTest {
             override fun currentBranch(workDir: File): String? =
                 throw ProcessCanceledException("cancelled")
         }
-        val preflight = SwitchPreflight(pceGit)
+        val pceClassifier = CancellationClassifier { e ->
+            e is java.util.concurrent.CancellationException || e is ProcessCanceledException
+        }
+        val preflight = SwitchPreflight(pceGit, classifier = pceClassifier)
         preflight.probe(projectRoot, Preset("test", "main"))
     }
 }

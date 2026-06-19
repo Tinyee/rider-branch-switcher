@@ -14,6 +14,7 @@ import com.submodule.branchswitcher.model.Preset
 import com.submodule.branchswitcher.ui.invokeLaterIfAlive
 import com.submodule.branchswitcher.ui.shouldShowForceWarning
 import com.submodule.branchswitcher.service.BranchSwitcherService
+import com.submodule.branchswitcher.switch.platformCancellationClassifier
 import com.submodule.branchswitcher.switch.ProgressCancellationHandle
 import com.submodule.branchswitcher.switch.SwitchPreflight
 import com.submodule.branchswitcher.switch.SwitchRunner
@@ -65,7 +66,7 @@ class SwitchPresetAction : AnAction() {
                 request = request,
                 log = collector,
                 beforeExecute = before@ { indicator ->
-                    val preflight = SwitchPreflight(gitClient, Bundle.msg("preflight.probe.error.suffix"))
+                    val preflight = SwitchPreflight(gitClient, Bundle.msg("preflight.probe.error.suffix"), platformCancellationClassifier)
                     val probeResult = preflight.probe(root, preset, ProgressCancellationHandle(indicator)) { idx, total, label ->
                         indicator.text2 = label
                         indicator.fraction = idx.toDouble() / total

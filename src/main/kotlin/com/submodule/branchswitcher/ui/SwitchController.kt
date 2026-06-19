@@ -12,6 +12,7 @@ import com.submodule.branchswitcher.model.ResolvedSwitchRequest
 import com.submodule.branchswitcher.model.SwitchOptions
 import com.submodule.branchswitcher.service.BranchSwitcherService
 import com.submodule.branchswitcher.switch.DeriveBranchExecutor
+import com.submodule.branchswitcher.switch.platformCancellationClassifier
 import com.submodule.branchswitcher.switch.ProgressCancellationHandle
 import com.submodule.branchswitcher.switch.DeriveNotification
 import com.submodule.branchswitcher.switch.SwitchPreflight
@@ -43,7 +44,7 @@ class SwitchController(
             val probeResult = try {
                 TaskBridge.runModal(project, Bundle.msg("progress.preflight"), true) { indicator ->
                     indicator.isIndeterminate = false
-                    SwitchPreflight(service.gitClient, Bundle.msg("preflight.probe.error.suffix")).probe(
+                    SwitchPreflight(service.gitClient, Bundle.msg("preflight.probe.error.suffix"), platformCancellationClassifier).probe(
                         root, preset, ProgressCancellationHandle(indicator),
                     ) { idx, total, label ->
                         indicator.text2 = label
@@ -179,7 +180,7 @@ class SwitchController(
                     TaskBridge.runBackground(project, Bundle.msg("progress.derive", branchName), true,
                         block = { indicator ->
                             indicator.isIndeterminate = true
-                            val executor = DeriveBranchExecutor(root, log, gitClient, cancelled = { indicator.isCanceled })
+                            val executor = DeriveBranchExecutor(root, log, gitClient, cancelled = { indicator.isCanceled }, classifier = platformCancellationClassifier)
                             result = executor.execute(preset, branchName)
                             if (!result.allOk && result.succeeded.isNotEmpty()) {
                                 log.activity("[derive] rolling back ${result.succeeded.size} succeeded repo(s)...")
@@ -199,7 +200,7 @@ class SwitchController(
                 if (cancelled && result != null && result!!.succeeded.isNotEmpty()) {
                     gitClient.beginOperation()
                     try {
-                        val executor = DeriveBranchExecutor(root, log, gitClient)
+                        val executor = DeriveBranchExecutor(root, log, gitClient, classifier = platformCancellationClassifier)
                         log.activity("[derive] rolling back ${result!!.succeeded.size} succeeded repo(s) after cancel...")
                         rollbackFailures = executor.rollbackSucceeded(result!!, branchName)
                     } catch (e: Exception) {
