@@ -1,13 +1,9 @@
 package com.submodule.branchswitcher.switch
 
-import com.submodule.branchswitcher.Bundle
 import com.submodule.branchswitcher.git.GitClient
 import com.submodule.branchswitcher.log.AppLogger
 import com.submodule.branchswitcher.model.Preset
-import com.submodule.branchswitcher.model.RepoTarget
 import com.submodule.branchswitcher.model.ResolvedSwitchRequest
-import com.submodule.branchswitcher.model.SwitchOptions
-import java.io.File
 import java.nio.file.Path
 
 data class CheckpointEntry(
@@ -31,8 +27,10 @@ class SwitchExecutor(
     private val projectRoot: Path,
     private val log: AppLogger,
     private val git: GitClient,
-    private val indicator: com.intellij.openapi.progress.ProgressIndicator? = null,
+    private val cancellationHandle: CancellationHandle? = null,
+    private val progressHandle: ProgressHandle? = null,
     private val cancelled: (() -> Boolean)? = null,
+    private val onConfirmSubmoduleInit: ((String) -> Boolean)? = null,
     private val steps: List<SwitchStep> = listOf(
         DirtyHandlingStep(),
         FetchStep(),
@@ -48,30 +46,17 @@ class SwitchExecutor(
         val preset = request.preset
         val options = request.options
         log.activity("=== switching to preset: ${preset.name} ===")
-        val cancelHandle = ProgressCancellationHandle(indicator)
-        val progressHandle = if (indicator != null) ProgressIndicatorHandle(indicator) else null
         val context = SwitchContext(
             projectRoot = projectRoot,
             preset = preset,
             options = options,
             git = git,
             log = log,
-            cancellationHandle = cancelHandle,
+            cancellationHandle = cancellationHandle,
             progressHandle = progressHandle,
-            cancelled = { cancelled?.invoke() == true || cancelHandle.isCanceled },
+            cancelled = { cancelled?.invoke() == true || cancellationHandle?.isCanceled == true },
             confirmBeforeInit = options.confirmBeforeInit,
-            onConfirmSubmoduleInit = if (options.confirmBeforeInit) { path ->
-                val result = java.util.concurrent.atomic.AtomicInteger(com.intellij.openapi.ui.Messages.NO)
-                com.intellij.openapi.application.ApplicationManager.getApplication()
-                    .invokeAndWait {
-                        result.set(com.intellij.openapi.ui.Messages.showYesNoDialog(
-                            Bundle.msg("dialog.init.submodule", path),
-                            Bundle.msg("dialog.init.title"),
-                            com.intellij.openapi.ui.Messages.getQuestionIcon(),
-                        ))
-                    }
-                result.get() == com.intellij.openapi.ui.Messages.YES
-            } else null,
+            onConfirmSubmoduleInit = onConfirmSubmoduleInit,
         )
 
         // Record checkpoint before switching
@@ -82,7 +67,7 @@ class SwitchExecutor(
         var overallSuccess = true
         for (step in steps) {
             context.progressHandle?.text = step.name
-            cancelHandle.checkCanceled()
+            cancellationHandle?.checkCanceled()
             if (context.cancelled()) {
                 git.cancel() // terminate in-flight command if any
                 log.info("[cancelled] before step: ${step.name}")
