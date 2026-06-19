@@ -47,6 +47,7 @@ class SwitchExecutor(
         val preset = request.preset
         val options = request.options
         log.activity("=== switching to preset: ${preset.name} ===")
+        val handle = ProgressCancellationHandle(indicator)
         val context = SwitchContext(
             projectRoot = projectRoot,
             preset = preset,
@@ -54,6 +55,7 @@ class SwitchExecutor(
             git = git,
             log = log,
             indicator = indicator,
+            cancellationHandle = handle,
             cancelled = { cancelled?.invoke() == true || indicator?.isCanceled == true },
             confirmBeforeInit = options.confirmBeforeInit,
         )
@@ -66,7 +68,7 @@ class SwitchExecutor(
         var overallSuccess = true
         for (step in steps) {
             context.indicator?.text = step.name
-            context.indicator?.checkCanceled()
+            handle.checkCanceled()
             if (context.cancelled()) {
                 git.cancel() // terminate in-flight command if any
                 log.info("[cancelled] before step: ${step.name}")

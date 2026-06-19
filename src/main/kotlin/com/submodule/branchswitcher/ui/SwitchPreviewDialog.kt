@@ -7,7 +7,6 @@ import com.intellij.ui.table.JBTable
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.NamedColorUtil
 import com.submodule.branchswitcher.Bundle
-import com.submodule.branchswitcher.model.DirtyAction
 import com.submodule.branchswitcher.model.PreflightRow
 import com.submodule.branchswitcher.model.ResolvedSwitchRequest
 import java.awt.BorderLayout
@@ -226,8 +225,3 @@ class SwitchPreviewDialog(
     }
 }
 
-internal fun shouldShowForceWarning(
-    request: ResolvedSwitchRequest,
-    rows: List<PreflightRow>,
-): Boolean = request.options.dirty == DirtyAction.Force
-    && rows.any { it.exists && it.dirtyCount != 0 }

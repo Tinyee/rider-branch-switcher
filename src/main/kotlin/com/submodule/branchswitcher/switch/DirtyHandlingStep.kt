@@ -17,8 +17,8 @@ class DirtyHandlingStep : SwitchStep {
             context.indicator?.apply {
                 fraction = idx.toDouble() / total
                 text2 = if (target.path == ".") context.projectRoot.fileName.toString() else target.path
-                checkCanceled()
             }
+            context.cancellationHandle?.checkCanceled()
             val dir = resolveGitDir(context.projectRoot, target.path)
             if (!dir.exists()) continue
             if (!context.git.isGitRepo(dir)) continue
