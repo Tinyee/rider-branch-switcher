@@ -144,8 +144,8 @@ plugins {
 # 运行测试
 
 ```bash
-./gradlew :core:test    # 78 个 core 纯 JVM 用例（model / JSON / import / settings rules / preset file IO / GitResult / Swing layout rules / switch preview），不启动 IntelliJ Platform 测试运行时
-./gradlew test          # 209 个平台/集成用例（mock GitClient / 真实 git 仓库 / UI 规则 / Kotest 属性测试）
+./gradlew :core:test    # 135 个 core 纯 JVM 用例（switch pipeline, model, JSON, import, settings, rules, preset IO），不启动 IntelliJ Platform 测试运行时
+./gradlew test          # 152 个平台/集成用例（mock GitClient / 真实 git 仓库 / UI 规则 / Kotest 属性测试）
 ```
 
 # 常见错误速查
