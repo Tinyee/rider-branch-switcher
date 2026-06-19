@@ -1,5 +1,6 @@
 package com.submodule.branchswitcher.switch
 
+import com.submodule.branchswitcher.switch.CancellationClassifier
 import com.submodule.branchswitcher.git.GitClient
 import com.submodule.branchswitcher.log.AppLogger
 import com.submodule.branchswitcher.model.Preset
@@ -24,6 +25,7 @@ class DeriveBranchExecutor(
     private val git: GitClient,
     private val cancelled: (() -> Boolean)? = null,
     private val requireClean: Boolean = true,
+    private val classifier: CancellationClassifier = CancellationClassifier.DEFAULT,
 ) {
 
     @Suppress("TooGenericExceptionCaught")
@@ -229,11 +231,8 @@ class DeriveBranchExecutor(
 
         return rollbackFailures
     }
-}
 
-private fun rethrowIfCancellation(e: Exception) {
-    if (e is java.util.concurrent.CancellationException) throw e
-    // ProcessCanceledException (IntelliJ) also must propagate; core cannot
-    // import the type, so check by runtime class name.
-    if (e.javaClass.simpleName == "ProcessCanceledException") throw e
+    private fun rethrowIfCancellation(e: Exception) {
+        if (classifier.isCancellation(e)) throw e
+    }
 }

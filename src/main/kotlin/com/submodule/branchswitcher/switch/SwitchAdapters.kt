@@ -44,3 +44,9 @@ fun refreshVcsRepos(project: com.intellij.openapi.project.Project, root: java.ni
         } catch (_: Exception) { /* skip unreachable repos */ }
     }
 }
+
+/** Platform classifier: recognizes both JDK CancellationException and IntelliJ ProcessCanceledException. */
+val platformCancellationClassifier = CancellationClassifier { e ->
+    e is java.util.concurrent.CancellationException ||
+        e is com.intellij.openapi.progress.ProcessCanceledException
+}

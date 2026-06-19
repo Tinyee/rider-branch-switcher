@@ -15,6 +15,7 @@ import java.nio.file.Path
 class SwitchPreflight(
     private val git: GitClient,
     private val probeErrorSuffix: String = "[probe error]",
+    private val classifier: CancellationClassifier = CancellationClassifier.DEFAULT,
 ) {
     /**
      * Iterates all targets in [preset], probing each for current branch, dirty status,
@@ -63,24 +64,9 @@ class SwitchPreflight(
                 hasLocal = git.localBranchExists(dir, target.branch),
                 hasRemote = git.remoteBranchExists(dir, target.branch),
             )
-        } catch (e: java.util.concurrent.CancellationException) {
-            throw e // cancellation must propagate, not become a warning row
-        } catch (e: RuntimeException) {
-            // ProcessCanceledException (IntelliJ) also must not become a warning row.
-            // Core cannot import the type; check by runtime class name.
-            if (e.javaClass.simpleName == "ProcessCanceledException") throw e
-            // Unexpected runtime exception → fail-closed (same as catch (e: Exception) below)
-            PreflightRow(
-                label = "$label $probeErrorSuffix",
-                path = target.path,
-                target = target.branch,
-                exists = true,
-                current = null,
-                dirtyCount = -1,
-                hasLocal = false,
-                hasRemote = false,
-            )
         } catch (e: Exception) {
+            classifier.rethrowIfCancellation(e)
+            // probe failure → fail-closed row (includes platform cancellation if classifier says so)
             // Fail closed per repo: one flaky git command must not abort the whole preflight.
             // All flags default to blocking/unknown so the user sees this repo as a warning.
             PreflightRow(
