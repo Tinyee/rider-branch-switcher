@@ -51,7 +51,9 @@ class SwitchController(
                 invokeLaterIfProjectAlive {
                     val request = service.resolveSwitchRequest(preset)
                     if (SwitchPreviewDialog.showAndConfirm(project, request, emptyList())) {
-                        coordinator.executeAndNotify(root, request, log)
+                        setSwitchInProgress(true)
+                        coordinator.executeAndNotify(root, request, log,
+                            onFinished = { setSwitchInProgress(false) })
                     }
                 }
                 return@launch
