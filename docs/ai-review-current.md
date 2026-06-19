@@ -31,14 +31,23 @@
 
 ### ARCH-03 - P2 - Core still contains platform cancellation/progress wording
 
-- Status: `OPEN`
+- Status: `PARTIALLY_FIXED`
 - Evidence:
   - `core/src/main/kotlin/com/submodule/branchswitcher/switch/ProgressHandle.kt`
   - `core/src/main/kotlin/com/submodule/branchswitcher/switch/SwitchPreflight.kt`
   - `core/src/main/kotlin/com/submodule/branchswitcher/switch/DeriveBranchExecutor.kt`
-- Impact: Core has no IntelliJ dependency, which is correct, but KDoc and class-name checks still mention IntelliJ concepts. This weakens the conceptual boundary and relies on `javaClass.simpleName == "ProcessCanceledException"`.
-- Suggested fix: introduce a platform-neutral cancellation classifier or adapter injected from the platform layer; update KDoc to avoid direct IntelliJ type names in core.
-- Verification: keep existing PCE-like core test and platform `ProcessCanceledException` integration tests green.
+- Impact: `19ce561` introduced `CancellationClassifier` and platform injection, so the runtime class-name check has been removed. However core KDoc still directly references IntelliJ types in `CancellationClassifier.kt` and `ProgressHandle.kt`, so the conceptual platform leak is not fully closed.
+- Suggested fix: update core KDoc to use platform-neutral wording, e.g. "platform cancellation exception" and "platform progress indicator", without direct `com.intellij.*` links.
+- Verification: `./gradlew quickCheck --max-workers=1 --no-parallel` PASS; `./gradlew :core:test --tests "com.submodule.branchswitcher.switch.SwitchPreflightTest" --rerun-tasks --max-workers=1 --no-parallel` PASS.
+
+### DOC-01 - P3 - architecture review document has trailing whitespace
+
+- Status: `OPEN`
+- Evidence:
+  - `docs/architecture-review-2026-06-20.md`
+- Impact: `git diff --check HEAD~1..HEAD` fails on a trailing whitespace line. This is not a runtime issue, but it breaks the repository whitespace gate.
+- Suggested fix: remove trailing spaces from the `VCS refresh` bullet.
+- Verification: rerun `git diff --check HEAD~1..HEAD`.
 
 ### ARCH-04 - P3 - SwitchContext carries mutable cross-step state
 
@@ -68,5 +77,6 @@
 
 ## Validation
 
-- Not run: Gradle tests were intentionally skipped because this update only records architecture review findings.
-- Static review inputs: module layout, `core` platform reference scan, switch/service/action/controller source inspection.
+- `./gradlew quickCheck --max-workers=1 --no-parallel`: PASS
+- `./gradlew :core:test --tests "com.submodule.branchswitcher.switch.SwitchPreflightTest" --rerun-tasks --max-workers=1 --no-parallel`: PASS
+- `git diff --check HEAD~1..HEAD`: FAIL (`docs/architecture-review-2026-06-20.md` trailing whitespace)

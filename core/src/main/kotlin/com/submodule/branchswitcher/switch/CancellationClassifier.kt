@@ -5,7 +5,7 @@ package com.submodule.branchswitcher.switch
  *
  * The default implementation only recognizes [java.util.concurrent.CancellationException].
  * Platform modules should inject a classifier that also recognizes
- * [com.intellij.openapi.progress.ProcessCanceledException].
+ * platform cancellation exceptions (e.g. IDE progress cancellation).
  */
 fun interface CancellationClassifier {
     fun isCancellation(e: Throwable): Boolean
