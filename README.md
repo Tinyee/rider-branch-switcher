@@ -3,7 +3,7 @@
 **Rider plugin** — one-click switch the main repo and all submodules to a preset branch combination.
 
 ![version](https://img.shields.io/badge/version-0.7.0-blue)
-![tests](https://img.shields.io/badge/tests-297-green)
+![tests](https://img.shields.io/badge/tests-286-green)
 ![Rider](https://img.shields.io/badge/Rider-2026.1-purple)
 
 ## Features
@@ -14,8 +14,6 @@
 - **Auto stash pop**: when switching back to the original branch, stashed changes are automatically restored
 - **Derive feature branches**: create `feature/xxx` on main + all submodules simultaneously from a preset
 - **Rollback**: failed switches record a checkpoint — one-click rollback to pre-switch state
-- **Per-preset overrides**: each preset can override global dirty strategy, pull, and fetch settings
-- **Quick switch**: type a branch name and switch all repos instantly — no preset needed
 - **Keyboard shortcut**: `Ctrl+Alt+B` opens the preset picker from anywhere
 - **i18n**: English + 中文, follows IDE language setting
 - **Persistent settings**: dirty strategy, timeout, fetch/pull preferences survive IDE restarts
@@ -62,8 +60,7 @@ Presets are stored as JSON in `.idea/branch-presets.json` (auto-created on first
     {
       "name": "dev",
       "main": "develop",
-      "submodules": { "lib/common": "develop", "lib/net": "develop" },
-      "pull": true
+      "submodules": { "lib/common": "develop", "lib/net": "develop" }
     }
   ]
 }
@@ -116,8 +113,7 @@ Tech stack: Kotlin 2.3, IntelliJ Platform Gradle Plugin 2.2.1, Gradle 8.13, JUni
 For the JetBrains Marketplace listing (1280×800, 16:10, no device borders):
 
 1. **Tool window with multiple presets** — Show the Submodule Branches tool window docked in Rider, with 2-3 presets visible, one expanded to show main repo + submodule rows, and the current preset highlighted
-2. **Per-preset overrides** — Gear button expanded on a preset, showing Dirty/Pull/Fetch override combos with the orange indicator active
-3. **Preflight dry-run dialog** — The preview table showing current → target branches, dirty counts, and branch sources before confirming a switch
-4. **Settings page** — File → Settings → Version Control → Submodule Branch Switcher, showing dirty strategy, timeout, fetch/pull checkboxes
+2. **Preflight dry-run dialog** — The preview table showing current → target branches, dirty counts, and branch sources before confirming a switch
+3. **Settings page** — File → Settings → Version Control → Submodule Branch Switcher, showing dirty strategy, timeout, fetch/pull checkboxes
 
 Place screenshots in a `screenshots/` directory at the repo root.

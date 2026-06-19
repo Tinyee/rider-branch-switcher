@@ -1,7 +1,5 @@
 package com.submodule.branchswitcher.model
 
-import java.util.logging.Logger
-
 /** A single repository target: its path (or "." for main) and desired branch. */
 data class RepoTarget(
     val path: String,
@@ -9,7 +7,7 @@ data class RepoTarget(
 )
 
 /**
- * A named branch preset — the central data model.
+ * A named branch preset, the central data model.
  * [targets()] returns main first (".") followed by submodules in order,
  * which is the required processing order for the switch pipeline.
  *
@@ -17,19 +15,11 @@ data class RepoTarget(
  * and auto-filled when loading old JSON that lacks an id field. History and future features
  * (shortcut bindings, color tags) reference presets by [id] rather than [name].
  */
-/** Per-preset option overrides. Each field is null = use global default. */
-data class PresetOverrides(
-    val dirty: DirtyAction? = null,
-    val pull: Boolean? = null,
-    val fetchFirst: Boolean? = null,
-)
-
 data class Preset(
     val name: String,
     val main: String,
     val submodules: Map<String, String> = emptyMap(),
     val id: String = java.util.UUID.randomUUID().toString(),
-    val overrides: PresetOverrides? = null,
 ) {
     /** Returns all targets: main (".") first, then submodules. Main-first ordering is critical for submodule init. */
     fun targets(): List<RepoTarget> {
@@ -46,61 +36,21 @@ data class Preset(
  *
  * If [id] is missing (old JSON), [toPreset] auto-generates one.
  */
-/** Gson-safe DTO for [PresetOverrides]. All fields nullable. */
-data class PresetOverridesDto(
-    val dirty: String? = null,
-    val pull: Boolean? = null,
-    val fetchFirst: Boolean? = null,
-) {
-    companion object {
-        private val LOG = Logger.getLogger(PresetOverridesDto::class.java.name)
-    }
-
-    fun toOverrides(): PresetOverrides? {
-        val d = dirty?.let { raw ->
-            try { DirtyAction.valueOf(raw) }
-            catch (e: IllegalArgumentException) {
-                LOG.warning("Invalid dirty action '$raw' in preset JSON, treating as null: ${e.message}")
-                null
-            }
-        }
-        if (d == null && pull == null && fetchFirst == null) return null
-        return PresetOverrides(dirty = d, pull = pull, fetchFirst = fetchFirst)
-    }
-}
-
 data class PresetDto(
     val id: String? = null,
     val name: String? = null,
     val main: String? = null,
     val submodules: Map<String, String>? = null,
-    @com.google.gson.annotations.SerializedName("pull")
-    val pull: Boolean? = null,
-    val overrides: PresetOverridesDto? = null,
 ) {
     fun toPreset(explicitId: String? = null): Preset = Preset(
         id = explicitId ?: id ?: java.util.UUID.randomUUID().toString(),
         name = (name ?: error("preset.name is required")).trim(),
         main = (main ?: error("preset.main is required")).trim(),
         submodules = submodules ?: emptyMap(),
-        overrides = migratePullAndOverrides(),
     )
-
-    private fun migratePullAndOverrides(): PresetOverrides? {
-        val ov = overrides?.toOverrides()
-        val legacyPull = pull
-        return when {
-            legacyPull == null -> ov
-            ov?.pull != null -> ov
-            legacyPull == true -> ov
-            else -> PresetOverrides(dirty = ov?.dirty, pull = false, fetchFirst = ov?.fetchFirst)
-        }
-    }
-
-    val needsPullMigration: Boolean get() = pull != null
 }
 
-/** Persistence container for [PresetDto] — all fields nullable for Gson safety. */
+/** Persistence container for [PresetDto], all fields nullable for Gson safety. */
 data class PresetFileDto(
     val presets: List<PresetDto?>? = null,
 ) {
@@ -108,7 +58,7 @@ data class PresetFileDto(
         PresetFile(presets.orEmpty().filterNotNull().map { it.toPreset() })
 }
 
-/** Persistence container — a list of presets serialized to JSON. */
+/** Persistence container, a list of presets serialized to JSON. */
 data class PresetFile(
     val presets: List<Preset> = emptyList(),
 )
@@ -124,17 +74,6 @@ data class SwitchOptions(
     val confirmBeforeInit: Boolean = false,
 )
 
-/** Merges [PresetOverrides] into global [SwitchOptions]. confirmBeforeInit always from global. */
-fun PresetOverrides?.effectiveOptions(global: SwitchOptions): SwitchOptions {
-    if (this == null) return global
-    return SwitchOptions(
-        dirty = dirty ?: global.dirty,
-        pull = pull ?: global.pull,
-        fetchFirst = fetchFirst ?: global.fetchFirst,
-        confirmBeforeInit = global.confirmBeforeInit,
-    )
-}
-
 /**
  * A switch request whose effective options have already been resolved.
  * Private constructor prevents entry points from pairing a preset with arbitrary options.
@@ -145,7 +84,7 @@ class ResolvedSwitchRequest private constructor(
 ) {
     companion object {
         fun resolve(preset: Preset, global: SwitchOptions): ResolvedSwitchRequest =
-            ResolvedSwitchRequest(preset, options = preset.overrides.effectiveOptions(global))
+            ResolvedSwitchRequest(preset, options = global)
     }
 }
 

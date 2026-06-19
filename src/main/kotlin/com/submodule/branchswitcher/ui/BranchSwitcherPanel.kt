@@ -9,7 +9,6 @@ import com.intellij.openapi.vcs.FileStatusManager
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.ui.JBColor
 import com.intellij.ui.components.JBScrollPane
-import com.intellij.ui.components.JBTextField
 import com.intellij.util.Alarm
 import com.intellij.util.ui.JBUI
 import com.submodule.branchswitcher.BranchSwitchListener
@@ -19,8 +18,6 @@ import com.submodule.branchswitcher.log.LogEntry
 import com.submodule.branchswitcher.log.ToolWindowLogger
 import com.submodule.branchswitcher.model.Preset
 import com.submodule.branchswitcher.service.BranchSwitcherService
-import com.submodule.branchswitcher.switch.isValidBranchName
-import kotlinx.coroutines.Dispatchers
 import com.submodule.branchswitcher.settings.BranchSwitcherConfigurable
 import kotlinx.coroutines.launch
 import java.awt.BorderLayout
@@ -29,7 +26,6 @@ import java.awt.FlowLayout
 import java.awt.Font
 import java.nio.file.Path
 import java.nio.file.Paths
-import javax.swing.JProgressBar
 import javax.swing.BorderFactory
 import javax.swing.Box
 import javax.swing.BoxLayout
@@ -45,7 +41,7 @@ import javax.swing.SwingUtilities
  * Main tool window panel with header + card layout.
  *
  * Layout (BorderLayout):
- * - NORTH: header (title + current branch + more menu) + action row + status bar
+ * - NORTH: header (title + current branch + more menu) + action row
  * - CENTER: scrollable preset cards
  * - SOUTH: collapsible log panel (toggle to show/hide)
  *
@@ -93,12 +89,6 @@ class BranchSwitcherPanel(
         border = BorderFactory.createEmptyBorder()
     }
 
-    private val progressBar = JProgressBar(0, 100).apply {
-        isStringPainted = true
-        isVisible = false
-        preferredSize = Dimension(JBUI.scale(200), JBUI.scale(16))
-    }
-
     private val log = javax.swing.JTextPane().apply {
         isEditable = false
         font = Font(Font.MONOSPACED, Font.PLAIN, 12)
@@ -112,23 +102,6 @@ class BranchSwitcherPanel(
     // ── Logger ──────────────────────────────────────────────────
     private val logger: AppLogger = ToolWindowLogger(::appendStructured)
 
-    // ── Quick switch (no-preset) ─────────────────────────────────
-    private val quickSwitchField = JBTextField().apply {
-        putClientProperty("JTextField.placeholderText", Bundle.msg("quick.switch.placeholder"))
-        preferredSize = Dimension(JBUI.scale(120), preferredSize.height)
-        maximumSize = preferredSize
-        minimumSize = preferredSize
-        addKeyListener(object : java.awt.event.KeyAdapter() {
-            override fun keyPressed(e: java.awt.event.KeyEvent) {
-                if (e.keyCode == java.awt.event.KeyEvent.VK_ENTER) doQuickSwitch()
-            }
-        })
-    }
-    private val quickSwitchBtn = jButton(Bundle.msg("quick.switch"), AllIcons.Actions.Execute) {
-        toolTipText = Bundle.msg("quick.switch.tip")
-        addActionListener { doQuickSwitch() }
-    }
-
     // ── Delegates (after UI fields to resolve init order) ──────
     private val presetManager = PresetListManager(
         project, service, ::gitRoot, logger,
@@ -140,7 +113,6 @@ class BranchSwitcherPanel(
             project, service, ::gitRoot, logger,
             editors = { presetManager.editors },
             onStateChanged = ::detectCurrentState,
-            progressBar = progressBar,
         )
     }
     private var worktreeInfoLogged = false
@@ -162,7 +134,7 @@ class BranchSwitcherPanel(
         project.invokeLaterIfAlive { service.maybeShowTelemetryOptIn() }
     }
 
-    // ── Top block: header + action row + status ────────────────
+    // ── Top block: header + action row ────────────────
 
     private fun createTopBlock(): JPanel {
         return JPanel().apply {
@@ -171,10 +143,6 @@ class BranchSwitcherPanel(
             add(createHeaderRow())
             add(Box.createVerticalStrut(4))
             add(createActionRow())
-            add(Box.createVerticalStrut(4))
-            add(presetManager.createSearchRow())
-            add(Box.createVerticalStrut(2))
-            add(createStatusBar())
         }
     }
 
@@ -198,10 +166,7 @@ class BranchSwitcherPanel(
             add(jButton(Bundle.msg("action.add.preset"), AllIcons.General.Add) {
                 addActionListener { presetManager.addPreset(presetsInner) }
             })
-            add(Box.createHorizontalStrut(4))
-            add(quickSwitchField)
-            add(Box.createHorizontalStrut(4))
-            add(quickSwitchBtn)
+
             add(Box.createHorizontalGlue())
             add(strategyLabel)
         }
@@ -222,50 +187,24 @@ class BranchSwitcherPanel(
 
     private fun createMoreMenu(): JPopupMenu {
         return JPopupMenu().apply {
-            add(JMenuItem(Bundle.msg("action.reload"), AllIcons.Actions.Refresh).apply {
-                addActionListener { presetManager.reload(presetsInner); detectCurrentState() }
+            border = JBUI.Borders.empty(4, 0)
+            add(menuItem(Bundle.msg("action.reload")) {
+                presetManager.reload(presetsInner)
+                detectCurrentState()
             })
-            add(JMenuItem(Bundle.msg("action.open.config"), AllIcons.Actions.EditSource).apply {
-                addActionListener { presetManager.openConfig() }
-            })
+            add(menuItem(Bundle.msg("action.open.config")) { presetManager.openConfig() })
             addSeparator()
-            add(JMenuItem(Bundle.msg("action.import"), AllIcons.Actions.MenuSaveall).apply {
-                addActionListener { presetManager.importPresets(presetsContainer) }
-            })
-            add(JMenuItem(Bundle.msg("action.export"), AllIcons.Actions.MenuSaveall).apply {
-                addActionListener { presetManager.exportPresets() }
-            })
+            add(menuItem(Bundle.msg("action.import")) { presetManager.importPresets(presetsContainer) })
+            add(menuItem(Bundle.msg("action.export")) { presetManager.exportPresets() })
             addSeparator()
-            add(JMenuItem(Bundle.msg("action.undo"), AllIcons.Actions.Rollback).apply {
-                addActionListener { switchController.undoLastSwitch() }
-            })
-            addSeparator()
-            add(JMenuItem(Bundle.msg("action.settings"), AllIcons.General.Gear).apply {
-                addActionListener { openSettings() }
-            })
+            add(menuItem(Bundle.msg("action.undo")) { switchController.undoLastSwitch() })
+            add(menuItem(Bundle.msg("action.settings")) { openSettings() })
         }
     }
 
-    // ── Quick switch (no-preset) logic ──────────────────────────
-
-    private fun doQuickSwitch() {
-        val branch = quickSwitchField.text.trim()
-        if (branch.isEmpty()) return
-        if (!isValidBranchName(branch)) {
-            logger.warn("[quick-switch] invalid branch name: $branch")
-            return
-        }
-        val root = gitRoot() ?: return
-        service.scope.launch(Dispatchers.IO) {
-            val gitClient = service.gitClient
-            val subPaths = gitClient.listSubmodulePaths(root.toFile())
-            val tempPreset = buildQuickSwitchPreset(branch, subPaths)
-            project.invokeLaterIfAlive {
-                quickSwitchField.text = ""
-                service.incrementQuickSwitchCount()
-                switchController.runSwitch(tempPreset)
-            }
-        }
+    private fun menuItem(text: String, action: () -> Unit): JMenuItem = JMenuItem(text).apply {
+        border = JBUI.Borders.empty(4, 14)
+        addActionListener { action() }
     }
 
     // ── Strategy summary ───────────────────────────────────────
@@ -282,22 +221,8 @@ class BranchSwitcherPanel(
     private fun openSettings() {
         ShowSettingsUtil.getInstance().showSettingsDialog(project, BranchSwitcherConfigurable::class.java)
         refreshStrategySummary()
-        presetManager.refreshAllGlobalLabels()
     }
-
-    // ── Status bar: progress + border ──────────────────────────
-
-    private fun createStatusBar(): JPanel {
-        return JPanel(BorderLayout()).apply {
-            border = BorderFactory.createCompoundBorder(
-                BorderFactory.createMatteBorder(0, 0, 1, 0, JBColor.border()),
-                JBUI.Borders.empty(2, 2, 4, 2),
-            )
-            add(progressBar, BorderLayout.EAST)
-        }
-    }
-
-    // ── Log panel (collapsible) ────────────────────────────────
+    // ── Log panel (collapsible) ─────────────────────────────────
 
     private fun createLogPanel(): JPanel {
         logScroll = JBScrollPane(log).apply {
@@ -430,7 +355,6 @@ class BranchSwitcherPanel(
                 pinnedEditors.forEach { editor ->
                     if (editor in eds) editor.applyCurrentState(branches, dirty)
                 }
-                presetManager.refreshAllGlobalLabels()
                 presetsInner.revalidate()
                 presetsInner.repaint()
                 logDetected(eds.toList(), branches, dirty)
@@ -477,11 +401,4 @@ class BranchSwitcherPanel(
             log.caretPosition = doc.length
         }
     }
-}
-
-/** Pure builder: creates a temporary preset for quick no-preset switch. */
-internal fun buildQuickSwitchPreset(branch: String, submodulePaths: List<String>): Preset {
-    val subs = LinkedHashMap<String, String>()
-    submodulePaths.forEach { subs[it] = branch }
-    return Preset(branch, main = branch, submodules = subs)
 }

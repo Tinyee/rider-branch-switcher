@@ -86,26 +86,4 @@ class UiRulesTest {
         assertEquals(preferredHeight, combo.maximumSize.height)
     }
 
-    // ── buildQuickSwitchPreset ──────────────────────────────────
-
-    @Test fun `builds preset with no submodules`() {
-        val preset = buildQuickSwitchPreset("develop", emptyList())
-        assertEquals("develop", preset.name)
-        assertEquals("develop", preset.main)
-        assertTrue(preset.submodules.isEmpty())
-    }
-
-    @Test fun `builds preset with multiple submodules`() {
-        val preset = buildQuickSwitchPreset("feature/x", listOf("SubA", "SubB"))
-        assertEquals("feature/x", preset.name)
-        assertEquals(mapOf("SubA" to "feature/x", "SubB" to "feature/x"), preset.submodules)
-        assertEquals(3, preset.targets().size) // main + 2 subs
-    }
-
-    @Test fun `main already on target still includes all submodules`() {
-        // QR-01 regression: main=target should not skip submodule switching
-        val preset = buildQuickSwitchPreset("main", listOf("SubA", "SubB"))
-        assertEquals("main", preset.main)
-        assertEquals(mapOf("SubA" to "main", "SubB" to "main"), preset.submodules)
-    }
 }

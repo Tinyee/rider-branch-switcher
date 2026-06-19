@@ -1,6 +1,7 @@
 package com.submodule.branchswitcher.ui
 
 import com.google.gson.Gson
+import com.google.gson.JsonParseException
 import com.submodule.branchswitcher.model.Preset
 import com.submodule.branchswitcher.model.PresetDto
 import com.submodule.branchswitcher.model.PresetFileDto
@@ -22,13 +23,22 @@ fun parsePresetImport(
 ): PresetImportResult {
     val trimmed = text.trim()
     if (trimmed.isEmpty()) return PresetImportResult(emptyList(), emptyList(), emptyList())
+    if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) {
+        return PresetImportResult(emptyList(), emptyList(), emptyList())
+    }
 
     val gson = Gson()
-    val dto = if (trimmed.startsWith("[")) {
-        val presets = gson.fromJson(trimmed, Array<PresetDto>::class.java)
-        PresetFileDto(presets?.toList().orEmpty())
-    } else {
-        gson.fromJson(trimmed, PresetFileDto::class.java) ?: PresetFileDto()
+    val dto = try {
+        if (trimmed.startsWith("[")) {
+            val presets = gson.fromJson(trimmed, Array<PresetDto>::class.java)
+            PresetFileDto(presets?.toList().orEmpty())
+        } else {
+            gson.fromJson(trimmed, PresetFileDto::class.java) ?: PresetFileDto()
+        }
+    } catch (_: JsonParseException) {
+        return PresetImportResult(emptyList(), emptyList(), emptyList())
+    } catch (_: IllegalStateException) {
+        return PresetImportResult(emptyList(), emptyList(), emptyList())
     }
 
     val acceptedNames = existingNames.toMutableSet()

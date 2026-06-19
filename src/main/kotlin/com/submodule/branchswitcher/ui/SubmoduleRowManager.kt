@@ -1,6 +1,5 @@
-﻿package com.submodule.branchswitcher.ui
+package com.submodule.branchswitcher.ui
 
-import com.intellij.icons.AllIcons
 import com.intellij.ui.JBColor
 import com.intellij.util.ui.JBUI
 import com.submodule.branchswitcher.Bundle
@@ -85,31 +84,6 @@ class SubmoduleRowManager(
             add(labelPanel, BorderLayout.WEST)
             add(combo, BorderLayout.CENTER)
 
-            val removeRow = {
-                val r = subRows[path]
-                if (r != null) {
-                    r.deleted = true
-                    r.panel.isVisible = false
-                    onDirty()
-                    body.revalidate()
-                    body.repaint()
-                }
-            }
-            val rowMenuBtn = jButton(icon = AllIcons.Actions.MoreHorizontal) {
-                margin = JBUI.insets(0, 4, 0, 4)
-                preferredSize = Dimension(JBUI.scale(32), JBUI.scale(24))
-                maximumSize = Dimension(JBUI.scale(32), JBUI.scale(24))
-                minimumSize = Dimension(JBUI.scale(32), JBUI.scale(24))
-                toolTipText = Bundle.msg("action.more.tip")
-                addActionListener {
-                    val popup = javax.swing.JPopupMenu()
-                    popup.add(javax.swing.JMenuItem(Bundle.msg("action.remove.submodule"), AllIcons.General.Remove).apply {
-                        addActionListener { removeRow() }
-                    })
-                    popup.show(this, 0, height)
-                }
-            }
-            add(rowMenuBtn, BorderLayout.EAST)
         }
         // Right-click context menu
         rowPanel.addMouseListener(object : MouseAdapter() {
@@ -120,6 +94,15 @@ class SubmoduleRowManager(
         row.panel = rowPanel
         subRows[path] = row
         return row
+    }
+
+    private fun removeRow(path: String) {
+        val row = subRows[path] ?: return
+        row.deleted = true
+        row.panel.isVisible = false
+        onDirty()
+        body.revalidate()
+        body.repaint()
     }
 
     /** Shows a popup to add a new submodule from .gitmodules paths not yet in the preset. */
@@ -240,6 +223,10 @@ class SubmoduleRowManager(
     private fun showContextMenu(e: MouseEvent, path: String) {
         val row = subRows[path] ?: return
         val popup = javax.swing.JPopupMenu()
+        popup.add(javax.swing.JMenuItem(Bundle.msg("action.remove.submodule")).apply {
+            addActionListener { removeRow(path) }
+        })
+        popup.addSeparator()
         popup.add("${Bundle.msg("menu.switch.only")} ($path)").addActionListener {
             val dir = gitRoot.resolve(path).toFile()
             if (dir.exists() && java.io.File(dir, ".git").exists()) {

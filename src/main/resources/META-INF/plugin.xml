@@ -16,21 +16,16 @@
             <li><b>Derive feature branches</b> — create <code>feature/xxx</code> on all repos simultaneously from a preset baseline</li>
             <li><b>Auto submodule init</b> — missing submodules are auto-initialized after switching</li>
         </ul>
-        <b>Per-preset overrides (v0.7):</b>
-        <ul>
-            <li>Each preset can override global dirty strategy, pull-after-switch, and fetch-before-switch settings</li>
-            <li>Force dirty strategy shows a safety confirmation in both the panel preview and the Ctrl+Alt+B shortcut dialog</li>
-        </ul>
         <b>Preset management:</b>
         <ul>
             <li>One-click "snapshot from current state" to create a preset</li>
-            <li>Rename, import/export (clipboard), and search/filter presets</li>
+            <li>Rename and import/export presets via clipboard</li>
             <li>Undo last switch from history (last 5 switches)</li>
             <li>Reorder presets with ↑↓ buttons</li>
         </ul>
         <b>Quality:</b>
         <ul>
-            <li>297 tests, GitHub Actions CI (ubuntu/macOS/Windows), Qodana static analysis</li>
+            <li>286 tests, GitHub Actions CI (ubuntu/macOS/Windows), Qodana static analysis</li>
             <li>i18n: English and Chinese (中文) via IntelliJ DynamicBundle</li>
             <li>HiDPI-aware, theme-aware (dark/light) UI with IntelliJ native icons</li>
         </ul>
