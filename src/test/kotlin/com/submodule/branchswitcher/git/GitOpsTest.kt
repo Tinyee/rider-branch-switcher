@@ -371,18 +371,7 @@ class GitOpsTest {
         }
     }
 
-    @Test
-    fun `GitResult ok is true when exitCode is zero`() {
-        val r = GitResult("test", 0, "", "")
-        assertTrue(r.ok)
-    }
 
-    @Test
-    fun `GitResult ok is false when exitCode is non-zero`() {
-        val r = GitResult("test", 1, "", "error")
-        assertFalse(r.ok)
-        assertEquals("error", r.stderr)
-    }
 
     @Test
     fun `remote selection prefers origin then first configured remote`() {

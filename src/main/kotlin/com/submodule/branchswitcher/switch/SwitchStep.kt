@@ -23,6 +23,7 @@ data class SwitchContext(
     val git: GitClient,
     val log: AppLogger,
     val indicator: ProgressIndicator? = null,
+    val cancellationHandle: CancellationHandle? = null,
     /** Mutable flag checked between/within steps for cancellation. */
     val cancelled: () -> Boolean = { false },
     /** Tracks stashed repos: path -> stash message. Pop is deferred to PullStep. */
@@ -66,4 +67,12 @@ fun refreshVcsRepos(project: com.intellij.openapi.project.Project, root: java.ni
             mgr.getRepositoryForRoot(vf)?.update()
         } catch (_: Exception) { /* skip unreachable repos */ }
     }
+}
+
+/** Adapts an IntelliJ [ProgressIndicator] to a pure [CancellationHandle]. */
+class ProgressCancellationHandle(
+    private val indicator: ProgressIndicator?,
+) : CancellationHandle {
+    override fun checkCanceled() { indicator?.checkCanceled() }
+    override val isCanceled: Boolean get() = indicator?.isCanceled == true
 }

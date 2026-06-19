@@ -31,6 +31,7 @@ tasks.test {
     }
     maxParallelForks = 1
 }
+
 detekt {
     buildUponDefaultConfig = true
     config.setFrom(file("../detekt-config.yml"))
@@ -43,6 +44,8 @@ pitest {
             "com.submodule.branchswitcher.switch.BranchNameRulesKt",
             "com.submodule.branchswitcher.switch.DeriveNotification*",
             "com.submodule.branchswitcher.ui.PresetImportResultKt",
+            "com.submodule.branchswitcher.ui.UiLayoutRulesKt",
+            "com.submodule.branchswitcher.ui.SwitchPreviewRulesKt",
         )
     )
     targetTests.set(
@@ -51,6 +54,8 @@ pitest {
             "com.submodule.branchswitcher.switch.BranchNameRulesTest",
             "com.submodule.branchswitcher.switch.DeriveNotificationTest",
             "com.submodule.branchswitcher.ui.PresetImportRulesTest",
+            "com.submodule.branchswitcher.ui.UiLayoutRulesTest",
+            "com.submodule.branchswitcher.ui.SwitchPreviewDialogTest",
         )
     )
     avoidCallsTo.set(setOf("kotlin.jvm.internal"))

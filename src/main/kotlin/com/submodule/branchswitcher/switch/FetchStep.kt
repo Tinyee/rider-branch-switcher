@@ -11,7 +11,7 @@ class FetchStep : SwitchStep {
 
         val failures = LinkedHashMap<String, String>()
         for (target in context.preset.targets()) {
-            context.indicator?.checkCanceled()
+            context.cancellationHandle?.checkCanceled()
             val dir = resolveGitDir(context.projectRoot, target.path)
             if (!dir.exists() || !context.git.isGitRepo(dir)) continue
             // Skip if already on target (no need to fetch latest)

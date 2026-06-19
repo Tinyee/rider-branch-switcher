@@ -21,8 +21,8 @@ class CheckoutStep : SwitchStep {
             context.indicator?.apply {
                 fraction = idx.toDouble() / total
                 text2 = if (target.path == ".") context.projectRoot.fileName.toString() else target.path
-                checkCanceled()
             }
+            context.cancellationHandle?.checkCanceled()
             val isMain = target.path == "."
             val dir = resolveGitDir(context.projectRoot, target.path)
             val label = if (isMain) context.projectRoot.fileName.toString() else target.path
@@ -39,7 +39,7 @@ class CheckoutStep : SwitchStep {
             // Submodule init for missing directories (after main checkout only)
             if (!isMain && !context.git.isGitRepo(dir)) {
                 if (mainCheckoutOk) {
-                    if (context.confirmBeforeInit && context.indicator?.isCanceled != true) {
+                    if (context.confirmBeforeInit && context.cancellationHandle?.isCanceled != true) {
                         val result = java.util.concurrent.atomic.AtomicInteger(com.intellij.openapi.ui.Messages.NO)
                         com.intellij.openapi.application.ApplicationManager.getApplication()
                             .invokeAndWait {

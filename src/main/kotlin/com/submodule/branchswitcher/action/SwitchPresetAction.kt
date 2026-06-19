@@ -14,6 +14,7 @@ import com.submodule.branchswitcher.model.Preset
 import com.submodule.branchswitcher.ui.invokeLaterIfAlive
 import com.submodule.branchswitcher.ui.shouldShowForceWarning
 import com.submodule.branchswitcher.service.BranchSwitcherService
+import com.submodule.branchswitcher.switch.ProgressCancellationHandle
 import com.submodule.branchswitcher.switch.SwitchPreflight
 import com.submodule.branchswitcher.switch.SwitchRunner
 import com.submodule.branchswitcher.switch.refreshVcsRepos
@@ -65,7 +66,7 @@ class SwitchPresetAction : AnAction() {
                 log = collector,
                 beforeExecute = before@ { indicator ->
                     val preflight = SwitchPreflight(gitClient)
-                    val probeResult = preflight.probe(root, preset, indicator)
+                    val probeResult = preflight.probe(root, preset, indicator, ProgressCancellationHandle(indicator))
                     // Force confirmation before preflight warnings (P1-1)
                     if (shouldShowForceWarning(request, probeResult)) {
                         val forceConfirmed = booleanArrayOf(false)

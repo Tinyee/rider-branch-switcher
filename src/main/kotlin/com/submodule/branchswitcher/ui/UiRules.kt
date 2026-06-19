@@ -58,16 +58,3 @@ fun strategySummary(dirty: DirtyAction, fetch: Boolean, pull: Boolean, timeoutSe
     parts += "${timeoutSeconds}s"
     return parts.joinToString(" · ")
 }
-
-fun shouldShowSecondaryAction(availableWidth: Int, requiredWidth: Int): Boolean =
-    availableWidth <= 0 || availableWidth >= requiredWidth
-
-fun <T : JComponent> T.withCompactHeight(maxWidth: Int): T {
-    maximumSize = Dimension(maxWidth, preferredSize.height)
-    return this
-}
-
-class CompactHeightPanel(layout: LayoutManager? = null) : JPanel(layout) {
-    override fun getMaximumSize(): Dimension =
-        Dimension(Short.MAX_VALUE.toInt(), preferredSize.height)
-}

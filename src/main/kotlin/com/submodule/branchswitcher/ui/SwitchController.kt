@@ -12,6 +12,7 @@ import com.submodule.branchswitcher.model.ResolvedSwitchRequest
 import com.submodule.branchswitcher.model.SwitchOptions
 import com.submodule.branchswitcher.service.BranchSwitcherService
 import com.submodule.branchswitcher.switch.DeriveBranchExecutor
+import com.submodule.branchswitcher.switch.ProgressCancellationHandle
 import com.submodule.branchswitcher.switch.DeriveNotification
 import com.submodule.branchswitcher.switch.SwitchPreflight
 import com.submodule.branchswitcher.switch.SwitchExecutor
@@ -42,7 +43,7 @@ class SwitchController(
             val probeResult = try {
                 TaskBridge.runModal(project, Bundle.msg("progress.preflight"), true) { indicator ->
                     indicator.isIndeterminate = false
-                    SwitchPreflight(service.gitClient).probe(root, preset, indicator)
+                    SwitchPreflight(service.gitClient).probe(root, preset, indicator, ProgressCancellationHandle(indicator))
                 }
             } catch (_: CancellationException) {
                 return@launch // user cancelled modal, nothing to do

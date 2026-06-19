@@ -23,11 +23,12 @@ class SwitchPreflight(
         projectRoot: Path,
         preset: Preset,
         indicator: ProgressIndicator? = null,
+        cancellationHandle: CancellationHandle? = null,
     ): List<PreflightRow> {
         val targets = preset.targets()
         val total = targets.size.coerceAtLeast(1)
         return targets.mapIndexed { idx, t ->
-            indicator?.checkCanceled()
+            cancellationHandle?.checkCanceled()
             indicator?.fraction = idx.toDouble() / total
             indicator?.text2 = if (t.path == ".") projectRoot.fileName.toString() else t.path
             probeOne(projectRoot, t)
