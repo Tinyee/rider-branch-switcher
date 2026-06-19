@@ -164,11 +164,11 @@ class SwitchPreflightTest {
         assertTrue("should be branchMissing", rows[0].branchMissing)
     }
 
-    @Test(expected = kotlinx.coroutines.CancellationException::class)
+    @Test(expected = java.util.concurrent.CancellationException::class)
     fun `probe rethrows CancellationException instead of converting to row`() {
         val cancelGit = object : GitClient by fakeGit {
             override fun currentBranch(workDir: File): String? =
-                throw kotlinx.coroutines.CancellationException("cancelled")
+                throw java.util.concurrent.CancellationException("cancelled")
         }
         val preflight = SwitchPreflight(cancelGit)
         preflight.probe(projectRoot, Preset("test", "main"))

@@ -13,7 +13,7 @@ repositories {
 
 dependencies {
     implementation("org.jetbrains.kotlin:kotlin-stdlib")
-    // IntelliJ Platform provides Gson at plugin runtime; tests bring their own copy explicitly.
+    // Provided by IntelliJ Platform at plugin runtime; core tests bring their own copies.
     compileOnly("com.google.code.gson:gson:2.11.0")
     testImplementation("com.google.code.gson:gson:2.11.0")
     testImplementation("junit:junit:4.13.2")
@@ -46,6 +46,7 @@ pitest {
             "com.submodule.branchswitcher.ui.PresetImportResultKt",
             "com.submodule.branchswitcher.ui.UiLayoutRulesKt",
             "com.submodule.branchswitcher.ui.SwitchPreviewRulesKt",
+            "com.submodule.branchswitcher.switch.SwitchPreflight",
         )
     )
     targetTests.set(
@@ -53,6 +54,7 @@ pitest {
             "com.submodule.branchswitcher.settings.*Test",
             "com.submodule.branchswitcher.switch.BranchNameRulesTest",
             "com.submodule.branchswitcher.switch.DeriveNotificationTest",
+            "com.submodule.branchswitcher.switch.SwitchPreflightTest",
             "com.submodule.branchswitcher.ui.PresetImportRulesTest",
             "com.submodule.branchswitcher.ui.UiLayoutRulesTest",
             "com.submodule.branchswitcher.ui.SwitchPreviewDialogTest",
