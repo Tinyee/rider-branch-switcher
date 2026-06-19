@@ -8,18 +8,16 @@ import com.submodule.branchswitcher.Notifier
 import com.submodule.branchswitcher.Bundle
 import com.submodule.branchswitcher.TaskBridge
 import com.submodule.branchswitcher.model.Preset
-import com.submodule.branchswitcher.model.ResolvedSwitchRequest
 import com.submodule.branchswitcher.model.SwitchOptions
 import com.submodule.branchswitcher.service.BranchSwitcherService
+import com.submodule.branchswitcher.switch.refreshVcsRepos
+import com.submodule.branchswitcher.switch.SwitchRunner
 import com.submodule.branchswitcher.switch.DeriveBranchExecutor
 import com.submodule.branchswitcher.switch.platformCancellationClassifier
-import com.submodule.branchswitcher.switch.ProgressCancellationHandle
 import com.submodule.branchswitcher.switch.DeriveNotification
-import com.submodule.branchswitcher.switch.SwitchPreflight
 import com.submodule.branchswitcher.switch.SwitchExecutor
-import com.submodule.branchswitcher.switch.SwitchRunner
+import com.submodule.branchswitcher.switch.SwitchFlowCoordinator
 import com.submodule.branchswitcher.switch.deriveNotification
-import com.submodule.branchswitcher.switch.refreshVcsRepos
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -38,86 +36,36 @@ class SwitchController(
     private val onStateChanged: () -> Unit,
 ) {
 
+    private val coordinator = SwitchFlowCoordinator(project, service)
+
     fun runSwitch(preset: Preset) {
         val root = gitRoot() ?: return
         service.scope.launch(Dispatchers.Default) {
             val probeResult = try {
-                TaskBridge.runModal(project, Bundle.msg("progress.preflight"), true) { indicator ->
-                    indicator.isIndeterminate = false
-                    SwitchPreflight(service.gitClient, Bundle.msg("preflight.probe.error.suffix"), platformCancellationClassifier).probe(
-                        root, preset, ProgressCancellationHandle(indicator),
-                    ) { idx, total, label ->
-                        indicator.text2 = label
-                        indicator.fraction = idx.toDouble() / total
-                    }
-                }
+                coordinator.preflight(root, preset)
             } catch (_: CancellationException) {
-                return@launch // user cancelled modal, nothing to do
+                return@launch
             } catch (_: com.intellij.openapi.progress.ProcessCanceledException) {
-                return@launch // IDE modal cancellation, nothing to do
+                return@launch
             } catch (e: Exception) {
                 log.error("preflight probe failed: ${e.javaClass.simpleName}: ${e.message}")
                 invokeLaterIfProjectAlive {
                     val request = service.resolveSwitchRequest(preset)
                     if (SwitchPreviewDialog.showAndConfirm(project, request, emptyList())) {
-                        executeSwitch(root, request)
+                        coordinator.executeAndNotify(root, request, log)
                     }
                 }
                 return@launch
             }
-            // Resumed on caller thread after modal closes
             invokeLaterIfProjectAlive {
                 val request = service.resolveSwitchRequest(preset)
                 if (SwitchPreviewDialog.showAndConfirm(project, request, probeResult)) {
-                    executeSwitch(root, request)
-                }
-            }
-        }
-    }
-
-    fun executeSwitch(root: Path, request: ResolvedSwitchRequest) {
-        if (!service.tryStartWrite()) {
-            Notifier.warn(project, Bundle.msg("notify.write.busy"), Bundle.msg("notify.write.busy.msg"))
-            return
-        }
-        val preset = request.preset
-
-        setSwitchInProgress(true)
-        service.scope.launch(Dispatchers.Default) {
-            try {
-            val gitClient = service.gitClient
-            val result = SwitchRunner(project, root, gitClient).execute(
-                title = Bundle.msg("progress.switching"),
-                request = request,
-                log = log,
-            )
-            // Resumed on EDT via TaskBridge.onFinished, but continuation dispatcher is Default
-            // Wrap UI ops in invokeLater to avoid EDT violations
-            invokeLaterIfProjectAlive {
-                setSwitchInProgress(false)
-                if (result.cancelled) {
-                    refreshVcs(root, preset)
-                    return@invokeLaterIfProjectAlive
-                } else if (result.ok) {
-                    service.incrementSwitchCount()
-                    service.addHistory(preset.name, preset.id)
-                    Notifier.info(project, Bundle.msg("switch.complete"), Bundle.msg("notify.switch.complete.msg", preset.name))
-                } else {
-                    service.incrementErrorCount()
-                    val executor = result.executor
-                    if (executor?.getCheckpoint() != null) {
-                        Notifier.rollbackAction(project, Bundle.msg("switch.failed"),
-                            Bundle.msg("notify.switch.partial.msg", preset.name) + Bundle.msg("notify.switch.rollback.hint")) {
-                            rollbackSwitch(executor)
-                        }
-                    } else {
-                        Notifier.error(project, Bundle.msg("switch.failed"),
-                            Bundle.msg("notify.switch.partial.msg", preset.name))
+                    setSwitchInProgress(true)
+                    coordinator.executeAndNotify(root, request, log) {
+                        setSwitchInProgress(false)
                     }
                 }
-                refreshVcs(root, preset)
             }
-            } finally { service.endWrite() }
         }
     }
 
