@@ -32,6 +32,13 @@ class GitOps(
 
     companion object {
         private val LOG = Logger.getLogger(GitOps::class.java.name)
+
+        // NOTE: --version output is one line — safe to skip async stream drain.
+        // Long-running commands (fetch, pull) must use GitOps.run() which drains pipes
+        // via CompletableFuture to avoid pipe-buffer deadlock on Windows.
+        fun isGitOnPath(): Boolean = try {
+            ProcessBuilder("git", "--version").redirectErrorStream(true).start().waitFor() == 0
+        } catch (_: Exception) { false }
     }
 
     override fun beginOperation() {

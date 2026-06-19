@@ -26,7 +26,7 @@ class DeriveBranchExecutor(
     private val requireClean: Boolean = true,
 ) {
 
-
+    @Suppress("TooGenericExceptionCaught")
     fun execute(preset: Preset, branchName: String): DeriveResult {
         val targets = preset.targets()
         val validTargets = mutableListOf<RepoTarget>()
@@ -189,6 +189,7 @@ class DeriveBranchExecutor(
      * Rolls back succeeded repos: checkout original branch -> safe-delete derived branch.
      * Must be called in a non-cancelled operation for Git commands to execute.
      */
+    @Suppress("TooGenericExceptionCaught")
     fun rollbackSucceeded(result: DeriveResult, branchName: String): List<String> {
         val rollbackFailures = mutableListOf<String>()
 
@@ -232,4 +233,7 @@ class DeriveBranchExecutor(
 
 private fun rethrowIfCancellation(e: Exception) {
     if (e is java.util.concurrent.CancellationException) throw e
+    // ProcessCanceledException (IntelliJ) also must propagate; core cannot
+    // import the type, so check by runtime class name.
+    if (e.javaClass.simpleName == "ProcessCanceledException") throw e
 }

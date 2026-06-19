@@ -426,6 +426,72 @@ class SwitchExecutorTest {
         assertTrue("Rollback should succeed when already on checkpoint branch", result)
     }
 
+    // -- confirmBeforeInit fail-closed ---------------------------------
+
+    @Test
+    fun `confirmBeforeInit with null callback declines init`() {
+        val noInitGit = object : GitClient by fakeGit {
+            override fun isGitRepo(workDir: File): Boolean = when {
+                workDir.name == "SubA" -> false // needs init
+                else -> true
+            }
+            override fun listSubmodulePaths(gitRoot: File): List<String> = listOf("SubA")
+        }
+        val subPreset = Preset("sub", "main", mapOf("SubA" to "main"))
+        val executor = SwitchExecutor(projectRoot, createStringAppender { log += it }, noInitGit,
+            onConfirmSubmoduleInit = null)
+        // SubA needs init but no callback → fail-closed: init declined
+        val result = executor.executeTest(subPreset,
+            SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false, confirmBeforeInit = true))
+        assertFalse("Switch should have partial failure from declined init", result)
+        assertTrue("Should log init declined",
+            log.any { it.contains("[skip] init declined for SubA") })
+    }
+
+    @Test
+    fun `confirmBeforeInit with callback returning false declines init`() {
+        val noInitGit = object : GitClient by fakeGit {
+            override fun isGitRepo(workDir: File): Boolean = when {
+                workDir.name == "SubA" -> false
+                else -> true
+            }
+            override fun listSubmodulePaths(gitRoot: File): List<String> = listOf("SubA")
+        }
+        val subPreset = Preset("sub", "main", mapOf("SubA" to "main"))
+        val executor = SwitchExecutor(projectRoot, createStringAppender { log += it }, noInitGit,
+            onConfirmSubmoduleInit = { false })
+        val result = executor.executeTest(subPreset,
+            SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false, confirmBeforeInit = true))
+        assertFalse("Switch should have partial failure from declined init", result)
+        assertTrue("Should log init declined", log.any { it.contains("[skip] init declined for SubA") })
+    }
+
+    @Test
+    fun `confirmBeforeInit with callback returning true proceeds with init`() {
+        val initLog = mutableListOf<String>()
+        var subADirReady = false
+        val noInitGit = object : GitClient by fakeGit {
+            override fun isGitRepo(workDir: File): Boolean = when {
+                workDir.name == "SubA" -> subADirReady
+                else -> true
+            }
+            override fun listSubmodulePaths(gitRoot: File): List<String> = listOf("SubA")
+            override fun submoduleInitPath(gitRoot: File, path: String): GitResult {
+                initLog += "init:$path"
+                gitRoot.toPath().resolve(path).toFile().mkdirs()
+                subADirReady = true // simulate git init creating .git
+                return GitResult("init", 0, "", "")
+            }
+        }
+        val subPreset = Preset("sub", "main", mapOf("SubA" to "main"))
+        val executor = SwitchExecutor(projectRoot, createStringAppender { log += it }, noInitGit,
+            onConfirmSubmoduleInit = { true })
+        val result = executor.executeTest(subPreset,
+            SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false, confirmBeforeInit = true))
+        assertTrue("Switch should succeed", result)
+        assertEquals(listOf("init:SubA"), initLog)
+    }
+
     // ---- Shared utilities ----
 
     @Test

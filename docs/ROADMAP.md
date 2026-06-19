@@ -23,7 +23,7 @@
 - **动态远端名**：自动检测 remote 名，不再硬编码 origin
 - IntelliJ 原生图标（AllIcons），主题感知色
 - i18n 中英双语（DynamicBundle + @PropertyKey 编译时校验）
-- 287 测试 / 28 个测试类（135 个 core pure JVM + 152 个平台/集成；含 6 个 Kotest 属性测试）
+- 291 测试 / 27 个测试类（139 个 core pure JVM + 152 个平台/集成；含 6 个 Kotest 属性测试）
 - GitHub Actions CI（ubuntu/macOS/Windows）+ Qodana 静态分析
 
 下面按「切换体验 / 状态可视化 / UI / 工作流 / 质量」五块梳理后续要做的功能点，优先级 **P0(致命) / P1(高价值) / P2(锦上添花)**；状态列标记 v0.x 已落地或下阶段候选。
@@ -345,7 +345,7 @@ com.submodule.branchswitcher/
 
 ### 当前状态
 
-- ✅ 287 测试，28 个测试类：`./gradlew :core:test` 跑 135 个 core 纯 JVM 测试，`./gradlew test` 跑 152 个平台/集成测试
+- ✅ 291 测试，27 个测试类：`./gradlew :core:test` 跑 139 个 core 纯 JVM 测试，`./gradlew test` 跑 152 个平台/集成测试
 - ✅ `GitClient` 接口 + Fake 实现 → 架构已隔离 IntelliJ 运行时
 - ✅ 真实 git 临时仓库集成测试（`SwitchIntegrationTest`）
 - ✅ 50 目标仓库 Switch/Preflight Git 调用预算测试（`LargeRepoScalabilityTest`，counting fake）

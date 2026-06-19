@@ -1,4 +1,4 @@
-﻿package com.submodule.branchswitcher.switch
+package com.submodule.branchswitcher.switch
 
 import java.io.File
 
@@ -39,7 +39,7 @@ class CheckoutStep : SwitchStep {
             if (!isMain && !context.git.isGitRepo(dir)) {
                 if (mainCheckoutOk) {
                     if (context.confirmBeforeInit && context.cancellationHandle?.isCanceled != true) {
-                        val confirmed = context.onConfirmSubmoduleInit?.invoke(target.path) ?: true
+                        val confirmed = context.onConfirmSubmoduleInit?.invoke(target.path) ?: false
                         if (!confirmed) {
                             context.log.info("[skip] init declined for ${target.path}")
                             failures[target.path] = "init declined"
