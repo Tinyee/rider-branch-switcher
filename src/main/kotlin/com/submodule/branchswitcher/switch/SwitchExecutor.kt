@@ -1,5 +1,6 @@
 package com.submodule.branchswitcher.switch
 
+import com.submodule.branchswitcher.Bundle
 import com.submodule.branchswitcher.git.GitClient
 import com.submodule.branchswitcher.log.AppLogger
 import com.submodule.branchswitcher.model.Preset
@@ -59,6 +60,18 @@ class SwitchExecutor(
             progressHandle = progressHandle,
             cancelled = { cancelled?.invoke() == true || cancelHandle.isCanceled },
             confirmBeforeInit = options.confirmBeforeInit,
+            onConfirmSubmoduleInit = if (options.confirmBeforeInit) { path ->
+                val result = java.util.concurrent.atomic.AtomicInteger(com.intellij.openapi.ui.Messages.NO)
+                com.intellij.openapi.application.ApplicationManager.getApplication()
+                    .invokeAndWait {
+                        result.set(com.intellij.openapi.ui.Messages.showYesNoDialog(
+                            Bundle.msg("dialog.init.submodule", path),
+                            Bundle.msg("dialog.init.title"),
+                            com.intellij.openapi.ui.Messages.getQuestionIcon(),
+                        ))
+                    }
+                result.get() == com.intellij.openapi.ui.Messages.YES
+            } else null,
         )
 
         // Record checkpoint before switching
