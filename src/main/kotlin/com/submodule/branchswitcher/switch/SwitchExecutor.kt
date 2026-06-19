@@ -55,10 +55,9 @@ class SwitchExecutor(
             options = options,
             git = git,
             log = log,
-            indicator = indicator,
             cancellationHandle = cancelHandle,
             progressHandle = progressHandle,
-            cancelled = { cancelled?.invoke() == true || indicator?.isCanceled == true },
+            cancelled = { cancelled?.invoke() == true || cancelHandle.isCanceled },
             confirmBeforeInit = options.confirmBeforeInit,
         )
 
