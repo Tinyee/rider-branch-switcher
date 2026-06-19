@@ -47,7 +47,8 @@ class SwitchExecutor(
         val preset = request.preset
         val options = request.options
         log.activity("=== switching to preset: ${preset.name} ===")
-        val handle = ProgressCancellationHandle(indicator)
+        val cancelHandle = ProgressCancellationHandle(indicator)
+        val progressHandle = if (indicator != null) ProgressIndicatorHandle(indicator) else null
         val context = SwitchContext(
             projectRoot = projectRoot,
             preset = preset,
@@ -55,7 +56,8 @@ class SwitchExecutor(
             git = git,
             log = log,
             indicator = indicator,
-            cancellationHandle = handle,
+            cancellationHandle = cancelHandle,
+            progressHandle = progressHandle,
             cancelled = { cancelled?.invoke() == true || indicator?.isCanceled == true },
             confirmBeforeInit = options.confirmBeforeInit,
         )
@@ -63,12 +65,12 @@ class SwitchExecutor(
         // Record checkpoint before switching
         lastCheckpoint = recordCheckpoint(preset)
 
-        context.indicator?.isIndeterminate = false
+        context.progressHandle?.isIndeterminate = false
 
         var overallSuccess = true
         for (step in steps) {
-            context.indicator?.text = step.name
-            handle.checkCanceled()
+            context.progressHandle?.text = step.name
+            cancelHandle.checkCanceled()
             if (context.cancelled()) {
                 git.cancel() // terminate in-flight command if any
                 log.info("[cancelled] before step: ${step.name}")

@@ -18,7 +18,7 @@ class CheckoutStep : SwitchStep {
         val total = targets.size
 
         for ((idx, target) in targets.withIndex()) {
-            context.indicator?.apply {
+            context.progressHandle?.apply {
                 fraction = idx.toDouble() / total
                 text2 = if (target.path == ".") context.projectRoot.fileName.toString() else target.path
             }

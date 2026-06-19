@@ -24,6 +24,7 @@ data class SwitchContext(
     val log: AppLogger,
     val indicator: ProgressIndicator? = null,
     val cancellationHandle: CancellationHandle? = null,
+    val progressHandle: ProgressHandle? = null,
     /** Mutable flag checked between/within steps for cancellation. */
     val cancelled: () -> Boolean = { false },
     /** Tracks stashed repos: path -> stash message. Pop is deferred to PullStep. */
@@ -70,4 +71,22 @@ class ProgressCancellationHandle(
 ) : CancellationHandle {
     override fun checkCanceled() { indicator?.checkCanceled() }
     override val isCanceled: Boolean get() = indicator?.isCanceled == true
+}
+
+/** Adapts an IntelliJ [ProgressIndicator] to a pure [ProgressHandle]. */
+class ProgressIndicatorHandle(
+    private val indicator: ProgressIndicator,
+) : ProgressHandle {
+    override var fraction: Double
+        get() = indicator.fraction
+        set(value) { indicator.fraction = value }
+    override var text: String?
+        get() = indicator.text
+        set(value) { indicator.text = value }
+    override var text2: String?
+        get() = indicator.text2
+        set(value) { indicator.text2 = value }
+    override var isIndeterminate: Boolean
+        get() = indicator.isIndeterminate
+        set(value) { indicator.isIndeterminate = value }
 }
