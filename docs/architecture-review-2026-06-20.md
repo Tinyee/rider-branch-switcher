@@ -77,6 +77,6 @@ GitQueryClient / GitWriteClient / GitSubmoduleClient / GitOperationLifecycle.
 
 ## Implementation Order
 
-1. CancellationClassifier (smallest, fixes P2 core leak)
-2. SwitchFlowCoordinator (unifies two switch entry points)
-3. TelemetryStore + PresetRepository extract
+1. ✅ CancellationClassifier (smallest, fixes P2 core leak) — done 03c0082
+2. ✅ SwitchFlowCoordinator (unifies two switch entry points) — done a394c58
+3. TelemetryStore + PresetRepository extract — deferred, lower priority
