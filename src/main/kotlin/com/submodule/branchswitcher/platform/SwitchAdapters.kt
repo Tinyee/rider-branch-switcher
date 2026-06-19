@@ -1,6 +1,9 @@
-package com.submodule.branchswitcher.switch
+package com.submodule.branchswitcher.platform
 
 import com.intellij.openapi.progress.ProgressIndicator
+import com.submodule.branchswitcher.switch.CancellationClassifier
+import com.submodule.branchswitcher.switch.CancellationHandle
+import com.submodule.branchswitcher.switch.ProgressHandle
 
 /** Adapts an IntelliJ [ProgressIndicator] to a pure [CancellationHandle]. */
 class ProgressCancellationHandle(

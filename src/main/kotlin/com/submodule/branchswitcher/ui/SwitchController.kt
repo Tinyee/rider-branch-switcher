@@ -10,10 +10,10 @@ import com.submodule.branchswitcher.TaskBridge
 import com.submodule.branchswitcher.model.Preset
 import com.submodule.branchswitcher.model.SwitchOptions
 import com.submodule.branchswitcher.service.BranchSwitcherService
-import com.submodule.branchswitcher.switch.refreshVcsRepos
-import com.submodule.branchswitcher.switch.SwitchRunner
+import com.submodule.branchswitcher.platform.refreshVcsRepos
+import com.submodule.branchswitcher.platform.SwitchRunner
 import com.submodule.branchswitcher.switch.DeriveBranchExecutor
-import com.submodule.branchswitcher.switch.platformCancellationClassifier
+import com.submodule.branchswitcher.platform.platformCancellationClassifier
 import com.submodule.branchswitcher.switch.DeriveNotification
 import com.submodule.branchswitcher.switch.SwitchExecutor
 import com.submodule.branchswitcher.switch.deriveNotification
