@@ -2,6 +2,7 @@ package com.submodule.branchswitcher.switch
 
 import com.intellij.openapi.progress.ProgressIndicator
 import com.intellij.openapi.project.Project
+import com.submodule.branchswitcher.Bundle
 import com.submodule.branchswitcher.TaskBridge
 import com.submodule.branchswitcher.git.GitClient
 import com.submodule.branchswitcher.log.AppLogger
@@ -49,7 +50,22 @@ class SwitchRunner(
                         return@runBackground
                     }
                     val wrapped = progress(indicator)
-                    val currentExecutor = SwitchExecutor(root, log, gitClient, wrapped)
+                    val cancelHandle = ProgressCancellationHandle(wrapped)
+                    val progHandle = ProgressIndicatorHandle(wrapped)
+                    val initConfirm: ((String) -> Boolean)? = { path ->
+                        val result = java.util.concurrent.atomic.AtomicInteger(com.intellij.openapi.ui.Messages.NO)
+                        com.intellij.openapi.application.ApplicationManager.getApplication()
+                            .invokeAndWait {
+                                result.set(com.intellij.openapi.ui.Messages.showYesNoDialog(
+                                    Bundle.msg("dialog.init.submodule", path),
+                                    Bundle.msg("dialog.init.title"),
+                                    com.intellij.openapi.ui.Messages.getQuestionIcon(),
+                                ))
+                            }
+                        result.get() == com.intellij.openapi.ui.Messages.YES
+                    }
+                    val currentExecutor = SwitchExecutor(root, log, gitClient, cancelHandle, progHandle,
+                        onConfirmSubmoduleInit = initConfirm)
                     executor = currentExecutor
                     ok = currentExecutor.execute(request)
                 },
