@@ -142,10 +142,10 @@ plugin.verifier.ideCodes=RD,PY,WS,CL
 
 ## Screenshots
 
-For the JetBrains Marketplace listing (1280x800, 16:10, no device borders):
+JetBrains Marketplace screenshots (1280x800, 16:10, no device borders):
 
-1. Tool window with multiple presets visible.
-2. Preflight dry-run dialog.
-3. Settings page under `Version Control | Submodule Branch Switcher`.
+![Tool window with branch presets](screenshots/01-tool-window.png)
 
-Place screenshots in a `screenshots/` directory at the repo root.
+![Preflight dry-run dialog](screenshots/02-preflight-dialog.png)
+
+![Settings page](screenshots/03-settings.png)

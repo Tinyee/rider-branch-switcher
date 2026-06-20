@@ -43,14 +43,13 @@
 LICENSE ✅ 已添加（MIT）。
 `pluginIcon.svg` ✅ 已添加。
 
-当前主要剩余缺口：
+当前状态：
 
-- README 截图仍是 TODO。
+- README 已嵌入三张 1280x800 截图：Tool Window、Dry-run 预览和 Settings。
 - `plugin.xml` 英文描述已扩充，覆盖目标用户、核心能力、数据存储位置和安全策略。
 
 建议动作：
 
-- 准备一张 1280x800 左右的英文界面截图，展示 2-3 个 preset、状态点和日志区。
 - 在发布前执行 `./gradlew releaseCheck`，验证最终 ZIP。
 
 验收标准：
@@ -103,7 +102,7 @@ Preflight 的 Git 调用预算，防止重复查询回归。
 - `:core:test` + `test` + `:core:detekt` + `detekt` + `buildPlugin` + `verifyPlugin`
 - README 版本 badge + CHANGELOG 最新版本精确校验
 - ZIP 名称、LICENSE 存在性检查
-- 非致命提醒：README screenshot TODO
+- README 截图已完成；`releaseCheck` 仍保留 screenshot TODO 文案扫描，防止未来重新引入占位内容
 
 ### PITest 变异测试 ✅
 
