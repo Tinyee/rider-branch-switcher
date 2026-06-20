@@ -21,16 +21,22 @@ repositories {
     maven("https://repo.huaweicloud.com/repository/maven/")
 }
 
-val riderVersion = providers.gradleProperty("rider.version").get()
-val riderPath = providers.gradleProperty("rider.path").orNull
-val verifierRiderNotation = providers.gradleProperty("rider.version").map { "RD-$it" }
+val platformType = providers.gradleProperty("platform.type")
+val platformVersion = providers.gradleProperty("platform.version")
+val platformLocalPath = providers.gradleProperty("platform.localPath").orNull
+val verifierIdeCodes = providers.gradleProperty("plugin.verifier.ideCodes")
+    .orElse(platformType)
+    .get()
+    .split(',')
+    .map { it.trim() }
+    .filter { it.isNotEmpty() }
 
 dependencies {
     intellijPlatform {
-        if (!riderPath.isNullOrBlank()) {
-            local(riderPath)
+        if (!platformLocalPath.isNullOrBlank()) {
+            local(platformLocalPath)
         } else {
-            rider(riderVersion)
+            create(platformType, platformVersion, useInstaller = false)
         }
         bundledPlugin("Git4Idea")
     }
@@ -64,7 +70,9 @@ intellijPlatform {
     }
     pluginVerification {
         ides {
-            ide(verifierRiderNotation)
+            verifierIdeCodes.forEach { code ->
+                ide("$code-${platformVersion.get()}")
+            }
         }
     }
 }
@@ -316,7 +324,7 @@ tasks {
 
         doLast {
             val projVersion = version.toString()
-            val expectedZip = layout.buildDirectory.file("distributions/rider-branch-switcher-$projVersion.zip").get().asFile
+            val expectedZip = layout.buildDirectory.file("distributions/submodule-branch-switcher-$projVersion.zip").get().asFile
 
             // --- version consistency -------------------------------------------------
             val readmeText = file("README.md").readText()
