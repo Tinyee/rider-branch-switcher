@@ -9,5 +9,5 @@ pluginManagement {
     }
 }
 
-rootProject.name = "rider-branch-switcher"
+rootProject.name = "submodule-branch-switcher"
 include(":core")

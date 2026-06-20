@@ -1,218 +1,124 @@
-# 环境准备 & 适配不同 Rider 版本
+# Environment Setup
 
-记录从零跑起来需要装什么，以及切换 Rider 主版本时要改哪几处。
+This project is a generic JetBrains IDE plugin. It is no longer built against Rider by default.
 
-## 必装依赖
+## Requirements
 
-| 依赖 | 怎么装 | 为什么 |
-|---|---|---|
-| **JDK 17 或 21** | macOS：`brew install openjdk@17`（或 21）；Windows：[Adoptium](https://adoptium.net/) | Gradle 工具链 + 编译。Rider 2026 警告需要 21，17 也能跑 |
-| **Rider** | 装到默认路径；`build.gradle.kts` 里写死了 `local("/Applications/Rider.app")` | 用本机 Rider 当 SDK，省 1.5 GB 下载 |
-| **Git CLI** | macOS：`xcode-select --install`；Windows：[git-scm](https://git-scm.com/) | 插件本身就是包 `git` 命令 |
+| Requirement | Notes |
+| --- | --- |
+| JDK 17 or 21 | Gradle toolchain uses JDK 17. Newer JetBrains IDEs may warn about JDK 21, but builds still run with 17. |
+| Git CLI | Required by the plugin runtime and integration tests. |
+| JetBrains IDE | Optional for local sandbox testing. Gradle can download the configured platform SDK automatically. |
 
-## 镜像/网络（国内无 VPN 也能跑）
+## Platform Configuration
 
-| 项 | 当前配置 | 说明 |
-|---|---|---|
-| Maven 镜像 | `build.gradle.kts` + `settings.gradle.kts` 都指了 aliyun | aliyun 是公网公开镜像，无需 VPN，**保持就好** |
-| Gradle 发行版 | `gradle-wrapper.properties` 指官方 `services.gradle.org` | 国内首装可能慢几分钟，装完缓存到 `~/.gradle/wrapper/dists/`，之后不再下载 |
-| IntelliJ Platform 依赖 | `intellijPlatform { defaultRepositories() }` 走 jetbrains 官方 + cache-redirector | 首次跑会下一些 jar，全本地化到 `~/.gradle/caches/`，之后无网也能编译 |
-
-## 完全不需要
-
-- 不需要单独装 Kotlin / Gradle / IntelliJ Platform SDK，全部由 Gradle wrapper 拉
-- 不需要 Android SDK / .NET / Unity
-
-## 第一次跑
-
-```bash
-cd ~/Code/rider-branch-switcher
-
-# 启用提交前自动检查（Windows/macOS/Linux 通用）
-git config core.hooksPath .githooks
-
-./gradlew buildPlugin
-# 产物：build/distributions/rider-branch-switcher-0.7.0.zip
-```
-
-`git config core.hooksPath .githooks` 只需执行一次。之后每次 `git commit` 和 `git push` 会自动跑 quickCheck。
-发布前手动跑 `./gradlew releaseCheck`；如果希望 push 时同时跑发布检查，用 `RUN_RELEASE_CHECK_ON_PUSH=1 git push`。
-跳过检查：`git commit --no-verify` 或 `git push --no-verify`。
-
-Windows 终端读取中文 Markdown 如果出现乱码，先看 `docs/encoding-and-line-endings.md`。通常是终端编码问题，不是文件损坏。
-
-Rider 里 `Settings → Plugins → ⚙ → Install plugin from disk` 选这个 zip。
-
----
-
-# 适配不同 Rider 版本
-
-所有版本相关配置集中在 **`gradle.properties`**，不动 `build.gradle.kts`。
-
-## 只需要改 `gradle.properties`
+All platform and compatibility settings live in `gradle.properties`:
 
 ```properties
-# Rider SDK 版本（在线下载时使用，或设 rider.path 指向本机安装）
-rider.version=2026.1.1
-# 插件兼容的 IDE build 号
+platform.type=IC
+platform.version=2026.1
+platform.localPath=
+
 plugin.sinceBuild=261
 plugin.untilBuild=261.*
-# 指向本机 Rider 安装（设了就跳过 1.5GB 下载）
-rider.path=
+plugin.verifier.ideCodes=IC,RD
 ```
 
-各 OS 的 `rider.path` 示例：
+Product codes commonly used here:
 
-| OS | 路径示例 |
-|---|---|
-| macOS | `/Applications/Rider.app` |
-| Windows | `C:/Program Files/JetBrains/JetBrains Rider 2026.1` |
-| Linux | `~/.local/share/JetBrains/Toolbox/apps/rider/...` |
+| Code | IDE |
+| --- | --- |
+| IC | IntelliJ IDEA Community |
+| IU | IntelliJ IDEA Ultimate |
+| RD | Rider |
+| PY | PyCharm Professional |
+| WS | WebStorm |
+| CL | CLion |
 
-切换 Rider 版本只需改 `rider.version` 和 `plugin.sinceBuild`，对应关系：
+Default local development uses `IC` because it is the lightest generic IntelliJ Platform SDK.
+The build resolves the non-installer platform artifact by default, so it does not download a full IDE installer unless `platform.localPath` or a product-specific workflow requires it.
 
-| Rider | build 前缀 |
-|---|---|
-| 2024.3 | 243 |
-| 2025.1 | 251 |
-| 2025.2 | 252 |
-| 2026.1 | 261 |
-}
+## Using A Local IDE
+
+Set `platform.localPath` to avoid downloading an SDK:
+
+```properties
+platform.localPath=C:/Program Files/JetBrains/IntelliJ IDEA Community Edition 2026.1
 ```
 
-## 2. `build.gradle.kts` 里 sinceBuild / untilBuild
+Examples:
 
-```kotlin
-intellijPlatform {
-    pluginConfiguration {
-        ideaVersion {
-            sinceBuild = "261"      // ← Rider 主版本对应的 build 前缀
-            untilBuild = "261.*"    // ← 不想锁可改 "999.*"
-        }
-    }
-}
+| OS | Example |
+| --- | --- |
+| macOS | `/Applications/IntelliJ IDEA CE.app` |
+| Windows | `C:/Program Files/JetBrains/IntelliJ IDEA Community Edition 2026.1` |
+| Linux | `~/.local/share/JetBrains/Toolbox/apps/intellij-idea-community-edition/...` |
+
+For Rider-specific sandbox testing, point `platform.localPath` at Rider or set `platform.type=RD`.
+
+## First Run
+
+```bash
+git config core.hooksPath .githooks
+
+./gradlew quickCheck
+./gradlew buildPlugin
 ```
 
-Rider 主版本与 build 前缀对照：
+The plugin ZIP is written to:
 
-| Rider | build 前缀 |
-|---|---|
-| 2024.1 | 241 |
-| 2024.2 | 242 |
-| 2024.3 | 243 |
-| 2025.1 | 251 |
-| 2025.2 | 252 |
-| 2026.1 | 261 |
-
-想插件跨多 Rider 版本可装：`sinceBuild = "243"`、`untilBuild = "999.*"`。SDK 仍按编译那个版本，运行时偶有 API 不兼容，改完测一遍。
-
-## 3. Kotlin 编译器版本 ≤ Rider 内置 Kotlin
-
-在 `build.gradle.kts` 的 `plugins` 块中（Gradle `plugins` 块不支持属性懒加载，需直接改版本号）：
-
-```kotlin
-plugins {
-    id("org.jetbrains.kotlin.jvm") version "2.3.0"     // ← 改这里
-}
+```text
+build/distributions/submodule-branch-switcher-0.7.0.zip
 ```
 
-| Rider | 内置 Kotlin | 编译器版本 |
-|---|---|---|
-| 2024.1 / 2024.2 | 1.9.x | `1.9.x` |
-| 2024.3 / 2025.1 | 2.0.x / 2.1.x | `2.0.x / 2.1.x` |
-| 2025.2 | 2.2.x | `2.2.x` |
-| 2026.1 | 2.3.x | `2.3.x` ← 当前 |
+Install it with `Settings | Plugins | Install Plugin from Disk...`.
 
-> 编译期 Kotlin 高于 Rider 运行时会报：`incompatible version of Kotlin`。
-
----
-
-# 开发加速：Sandbox Rider
-
-不用每次改完手动装插件，一行命令启动预装插件的 Rider 实例：
+## Sandbox IDE
 
 ```bash
 ./gradlew runIde
 ```
 
-- 自动打开一个沙盒 Rider，插件已预装
-- 改代码后关掉重跑 `runIde` 即可
-- 沙盒不会影响你正常装的 Rider 和配置
+`runIde` launches a sandbox for the configured platform SDK or `platform.localPath`.
 
----
+## Validation Levels
 
-# 运行测试
+Use the low-load flow during development:
 
 ```bash
-./gradlew :core:test    # 139 个 core 纯 JVM 用例（switch pipeline, model, JSON, import, settings, rules, preset IO），不启动 IntelliJ Platform 测试运行时
-./gradlew test          # 149 个平台/集成用例（mock GitClient / 真实 git 仓库 / UI 规则 / Kotest 属性测试）
+./gradlew quickCheck
+./gradlew pureTest --max-workers=1 --no-parallel
+./gradlew test --tests "<ClassOrMethod>" --max-workers=1 --no-parallel
 ```
 
-# 常见错误速查
-
-| 报错 | 原因 | 对策 |
-|---|---|---|
-| `Could not resolve rider:JetBrains.Rider:<ver>... Connect timed out` | 在线 rider() 配置 + 网络慢 | 改回 `local("/Applications/Rider.app")` |
-| `incompatible version of Kotlin: binary version 2.3.0, expected 1.9.0` | Kotlin 编译器版本高于 Rider 运行时 | 把 `id("org.jetbrains.kotlin.jvm") version "..."` 降到 Rider 内置 Kotlin 的同等或更低版本 |
-| `sourceCompatibility='17' but IntelliJ Platform '2026.1.1' requires sourceCompatibility='21'` | JDK 警告，**不是错误** | 升 `kotlin.jvmToolchain(21)` + 本机装 JDK 21；不升也能跑 |
-| `Plugin 'XXX' is incompatible with this installation` | sinceBuild/untilBuild 没覆盖目标 Rider | 调整 `untilBuild` 或重新编译 |
-| `Could not resolve all artifacts ... Connection refused` 等 maven 拉取失败 | 国内官方源被墙 | 检查 `settings.gradle.kts` / `build.gradle.kts` 顶部的 aliyun 镜像是否还在 |
-
----
-
-# 发布到 JetBrains Marketplace
-
-## 编译产物
+Before commit or broad architecture changes:
 
 ```bash
-./gradlew buildPlugin
-# 产出: build/distributions/rider-branch-switcher-0.4.0.zip
+./gradlew :core:test test :core:detekt detekt --max-workers=2 --no-parallel
+git diff --check
 ```
 
-## 首次上传
+Before release:
 
-1. 注册账号：https://plugins.jetbrains.com/
-2. 点右上角 **Upload plugin** → 拖上面的 `.zip`
-3. 填写信息：
-   - License：推荐 `MIT` 或 `Apache-2.0`
-   - Category：`VCS Integration`
-   - Tags：`git`, `submodule`, `branch`
-4. 提交审核（通常 2-3 个工作日）
-
-## 后续更新（命令行一键发布）
-
-1. 到 https://plugins.jetbrains.com/authorize 生成 Personal Access Token
-2. 把 token 写入 `gradle.properties`：
-   ```properties
-   publishToken=perm:...
-   ```
-   或者设环境变量 `export PUBLISH_TOKEN=perm:...`
-3. 更新 `build.gradle.kts` 顶部的版本号：
-   ```kotlin
-   version = "0.4.1"
-   ```
-4. 发布：
-   ```bash
-   ./gradlew publishPlugin
-   ```
-
-## 兼容多 Rider 版本
-
-改 `gradle.properties` 三行，然后 `./gradlew buildPlugin` 重新编译：
-
-```properties
-rider.version=2025.2       # 编译用的 SDK 版本
-plugin.sinceBuild=243      # 最低兼容 IDE build
-plugin.untilBuild=999.*    # 最高兼容（999.* 表示不封顶）
+```bash
+./gradlew releaseCheck
 ```
 
-| Rider 版本 | build 前缀 |
-|---|---|
-| 2024.1 | 241 |
-| 2024.2 | 242 |
-| 2024.3 | 243 |
-| 2025.1 | 251 |
-| 2025.2 | 252 |
-| 2026.1 | 261 |
+`releaseCheck` also runs `verifyPlugin` for the product codes in `plugin.verifier.ideCodes`. Keep that list short during local development to avoid heavy downloads.
 
-> ⚠️ `sinceBuild` 降到低于 261 时，Kotlin 编译器版本（`build.gradle.kts` 的 `plugins` 块）也要同步降，否则运行时报 incompatible Kotlin version。
+## Compatibility Notes
+
+- Keep `plugin.sinceBuild` and `plugin.untilBuild` aligned with the IntelliJ Platform major build you support.
+- If lowering `plugin.sinceBuild`, also check Kotlin runtime compatibility for the oldest target IDE.
+- Prefer IntelliJ Platform common APIs in production code.
+- Avoid Rider-only APIs unless they are isolated behind a product-specific adapter.
+- Add extra verifier IDE codes only when you intentionally claim support for those IDEs.
+
+## Common Issues
+
+| Error | Cause | Fix |
+| --- | --- | --- |
+| `Could not resolve ...` | Network or platform SDK download issue | Use `platform.localPath` or retry with proxy/mirror available |
+| `Plugin is incompatible with this installation` | Build range does not cover target IDE | Adjust `plugin.sinceBuild` / `plugin.untilBuild` |
+| `incompatible version of Kotlin` | Compiler output newer than target IDE Kotlin runtime | Lower Kotlin compiler or raise target IDE build |
+| Chinese Markdown looks garbled in terminal | Terminal encoding issue | See `docs/encoding-and-line-endings.md`; do not rewrite files just for terminal display |

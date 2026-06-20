@@ -2,10 +2,10 @@
 
 ## 概述
 
-Rider 插件 — 一键将主仓库和所有子模块切换到预设的分支组合。
+JetBrains IDE 插件 — 一键将主仓库和所有子模块切换到预设的分支组合。
 
 - **技术栈**: Kotlin 2.3, IntelliJ Platform Gradle Plugin 2.2.1, Gradle 8.13, JUnit 4 + Kotest 5.9
-- **目标**: JetBrains Rider 2026.1 (build 261)
+- **目标**: JetBrains IDEs 2026.1 (build 261)，默认使用 IntelliJ IDEA Community SDK 构建，Rider 作为兼容验证目标
 - **测试**: 288 tests / 27 classes (14 core + 13 platform)
 - **版本**: 0.7.0
 
@@ -46,8 +46,8 @@ src/…/com/submodule/branchswitcher/    # IntelliJ Platform 模块
 git config core.hooksPath .githooks   # 首次 clone 后执行一次，启用自动检查
 ./gradlew pureTest      # alias for :core:test; 139 core pure JVM tests (14 classes)
 ./gradlew test          # 146 platform JUnit tests + 6 Kotest (13 classes)
-./gradlew buildPlugin   # → build/distributions/rider-branch-switcher-{version}.zip
-./gradlew runIde        # 启动沙箱 Rider，插件已预装
+./gradlew buildPlugin   # → build/distributions/submodule-branch-switcher-{version}.zip
+./gradlew runIde        # 启动配置的沙箱 JetBrains IDE，插件已预装
 ./gradlew quickCheck    # <1 秒，grep 结构检查（git commit / git push 时自动跑）
 ./gradlew releaseCheck  # quickCheck + core test/detekt + test + detekt + buildPlugin + verifyPlugin（发布前手动跑）
 ./gradlew pitestCore    # 手动 PITest 变异测试（单线程、纯规则范围，不进 releaseCheck）

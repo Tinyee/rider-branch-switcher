@@ -5,33 +5,33 @@
     <resource-bundle>messages.BranchSwitcherBundle</resource-bundle>
     <description><![CDATA[
         One-click switch the main repo and all its submodules to a preset branch combination.
-        Ideal for teams working with microservices or multi-repo projects where branches must stay in sync.
+        Works across JetBrains IDEs that support Git projects and the IntelliJ Platform VCS APIs.
         <br><br>
         <b>Core workflow:</b>
         <ul>
-            <li><b>Switch presets in one click</b> — define a branch for the main repo and each submodule, then switch all at once</li>
-            <li><b>Preflight dry-run preview</b> — table showing current → target branch, dirty file count, and branch source (local/remote) per repo before switching</li>
-            <li><b>Dirty working tree strategies</b> — stash / skip / force: choose what happens when repos have uncommitted changes; stash auto-pops when switching back</li>
-            <li><b>Partial failure rollback</b> — checkpoint before switching; one-click rollback on failure</li>
-            <li><b>Derive feature branches</b> — create <code>feature/xxx</code> on all repos simultaneously from a preset baseline</li>
-            <li><b>Auto submodule init</b> — missing submodules are auto-initialized after switching</li>
+            <li><b>Switch presets in one click</b> - define a branch for the main repo and each submodule, then switch all at once</li>
+            <li><b>Preflight dry-run preview</b> - table showing current to target branch, dirty file count, and branch source per repo before switching</li>
+            <li><b>Dirty working tree strategies</b> - stash / skip / force: choose what happens when repos have uncommitted changes</li>
+            <li><b>Partial failure rollback</b> - checkpoint before switching; one-click rollback on failure</li>
+            <li><b>Derive feature branches</b> - create <code>feature/xxx</code> on all repos simultaneously from a preset baseline</li>
+            <li><b>Auto submodule init</b> - missing submodules are auto-initialized after switching</li>
         </ul>
         <b>Preset management:</b>
         <ul>
             <li>One-click "snapshot from current state" to create a preset</li>
             <li>Rename and import/export presets via clipboard</li>
             <li>Undo last switch from history (last 5 switches)</li>
-            <li>Reorder presets with ↑↓ buttons</li>
+            <li>Reorder presets with move up/down buttons</li>
         </ul>
         <b>Quality:</b>
         <ul>
-            <li>287 tests, GitHub Actions CI (ubuntu/macOS/Windows), Qodana static analysis</li>
-            <li>i18n: English and Chinese (中文) via IntelliJ DynamicBundle</li>
+            <li>Automated unit and integration tests, GitHub Actions CI (ubuntu/macOS/Windows), Qodana static analysis</li>
+            <li>i18n: English and Chinese via IntelliJ DynamicBundle</li>
             <li>HiDPI-aware, theme-aware (dark/light) UI with IntelliJ native icons</li>
         </ul>
-        Presets are stored in <code>.idea/branch-presets.json</code> — team members can share via git.
+        Presets are stored in <code>.idea/branch-presets.json</code> so team members can share them via git.
         <br><br>
-        Configure global options at <i>File → Settings → Version Control → Submodule Branch Switcher</i>.
+        Configure global options at <i>File | Settings | Version Control | Submodule Branch Switcher</i>.
         <br><br>
         <b>Quick start:</b> open the Submodule Branches tool window, click "From Current State" to snapshot your current branches into a preset, then switch with one click.
     ]]></description>
