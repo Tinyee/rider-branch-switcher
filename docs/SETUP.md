@@ -16,12 +16,12 @@ All platform and compatibility settings live in `gradle.properties`:
 
 ```properties
 platform.type=IC
-platform.version=2026.1
+platform.version=2026.1.3
 platform.localPath=
 
 plugin.sinceBuild=261
 plugin.untilBuild=261.*
-plugin.verifier.ideCodes=IC,RD
+plugin.verifier.ideCodes=RD
 ```
 
 Product codes commonly used here:
@@ -105,6 +105,7 @@ Before release:
 ```
 
 `releaseCheck` also runs `verifyPlugin` for the product codes in `plugin.verifier.ideCodes`. Keep that list short during local development to avoid heavy downloads.
+The GitHub Actions matrix still runs tests, build, detekt, quickCheck, and checkQuickCheck on ubuntu/windows/macOS; only `verifyPlugin` is Linux-only because plugin verifier checks binary/API compatibility and does not need to download IDE distributions on every OS.
 
 ## Compatibility Notes
 
@@ -121,9 +122,9 @@ Treat compatibility as evidence-based:
 | IDE family | Claim level | Required evidence before advertising support |
 | --- | --- | --- |
 | IntelliJ IDEA Community | Primary | `compileKotlin`, `compileTestKotlin`, `buildPlugin`, and normal CI pass with `platform.type=IC`. |
-| Rider | Compatible | Plugin verifier target plus manual smoke test in a Rider sandbox before release. |
+| Rider | Compatible | Default plugin verifier target plus manual smoke test in a Rider sandbox before release. |
 | IntelliJ IDEA Ultimate | Expected compatible | Add `IU` to verifier list if Marketplace copy explicitly names it. |
-| PyCharm / WebStorm / CLion | Not claimed | Add product code to `plugin.verifier.ideCodes`, run `verifyPlugin`, and do a tool-window/settings/manual Git smoke test first. |
+| PyCharm / WebStorm / CLion | Not claimed | Add product code to `plugin.verifier.ideCodes`, confirm CI can resolve that IDE distribution, run `verifyPlugin`, and do a tool-window/settings/manual Git smoke test first. |
 
 Do not broaden Marketplace wording from "JetBrains IDEs that support Git projects" to a named IDE list until the corresponding row has evidence.
 

@@ -46,6 +46,7 @@ jobs:
         run: ./gradlew checkQuickCheck
 
       - name: Verify plugin compatibility
+        if: runner.os == 'Linux'
         run: ./gradlew verifyPlugin
 
       - name: Upload test results
