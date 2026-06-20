@@ -26,9 +26,9 @@ class DirtyHandlingStep : SwitchStep {
             if (context.git.isDirty(dir)) {
                 when (context.options.dirty) {
                     DirtyAction.Skip -> {
-                        context.log.info("[skip] working tree dirty — ${target.path}")
+                        context.log.info("[skip] working tree dirty - ${target.path}")
                         failures[target.path] = "working tree dirty"
-                        context.skippedPaths.add(target.path)
+                        context.state.markSkipped(target.path)
                         continue
                     }
                     DirtyAction.Stash -> {
@@ -45,13 +45,13 @@ class DirtyHandlingStep : SwitchStep {
                             }
                             if (!r.ok) {
                                 failures[target.path] = "stash failed"
-                                context.skippedPaths.add(target.path)
+                                context.state.markSkipped(target.path)
                                 continue
                             }
-                            context.stashedPaths[target.path] = "before -> ${target.branch}"
+                            context.state.trackStash(target.path, "before -> ${target.branch}")
                         }
                     }
-                    DirtyAction.Force -> context.log.info("[force] proceeding with dirty tree — ${target.path}")
+                    DirtyAction.Force -> context.log.info("[force] proceeding with dirty tree - ${target.path}")
                 }
             }
         }

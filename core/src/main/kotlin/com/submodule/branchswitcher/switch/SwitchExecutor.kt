@@ -15,11 +15,11 @@ data class CheckpointEntry(
  * Orchestrates a branch switch by running a pipeline of [SwitchStep]s.
  *
  * Pipeline order (intentional):
- * 1. [DirtyHandlingStep] — stash/skip/force dirty repos first, before any branch changes
- * 2. [FetchStep] — ensure remote refs are current
- * 3. [CheckoutStep] — switch branches (main first, then submodules)
- * 4. [PullStep] — fast-forward after checkout
- * 5. [SubmoduleSyncStep] — align .gitmodules URLs
+ * 1. [DirtyHandlingStep] - stash/skip/force dirty repos first, before any branch changes
+ * 2. [FetchStep] - ensure remote refs are current
+ * 3. [CheckoutStep] - switch branches (main first, then submodules)
+ * 4. [PullStep] - fast-forward after checkout
+ * 5. [SubmoduleSyncStep] - align .gitmodules URLs
  *
  * Records a [CheckpointEntry] before switching for rollback support.
  */
@@ -109,12 +109,12 @@ class SwitchExecutor @JvmOverloads constructor(
             val dir = resolveGitDir(projectRoot, path)
             val label = if (path == ".") projectRoot.fileName.toString() else path
             if (!dir.exists() || !git.isGitRepo(dir)) {
-                log.debug("[rollback] skip $label — dir missing or not a repo")
+                log.debug("[rollback] skip $label - dir missing or not a repo")
                 allOk = false
                 continue
             }
             val cur = git.currentBranch(dir)
-            // Already on the same branch as checkpoint — nothing to roll back
+            // Already on the same branch as checkpoint - nothing to roll back
             if (entry.branch != null && entry.branch == cur) {
                 log.debug("$label: still on ${entry.branch}, skip")
                 continue
@@ -132,7 +132,7 @@ class SwitchExecutor @JvmOverloads constructor(
                     }
                 }
             } else {
-                // Was detached HEAD originally — restore to SHA only if different
+                // Was detached HEAD originally - restore to SHA only if different
                 if (cur != entry.sha) {
                     log.activity("$label: resetting to ${entry.sha} (was on ${cur ?: "(detached)"})")
                     val r = git.checkoutExisting(dir, entry.sha)
