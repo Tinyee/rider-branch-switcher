@@ -25,7 +25,7 @@ Current support matrix:
 | IDE family | Status | Notes |
 | --- | --- | --- |
 | IntelliJ IDEA Community | Primary build target | Default SDK for local development and CI-compatible builds. |
-| Rider | Compatibility target | Covered by `plugin.verifier.ideCodes=IC,RD`; keep manual smoke checks before release. |
+| Rider | Compatibility target | Covered by `plugin.verifier.ideCodes=RD`; keep manual smoke checks before release. |
 | IntelliJ IDEA Ultimate | Expected compatible | Same platform + Git APIs, but not listed as a primary verifier target yet. |
 | PyCharm / WebStorm / CLion | Not claimed yet | Add verifier codes and manual smoke checks before Marketplace support is advertised. |
 
@@ -113,9 +113,9 @@ Default platform configuration lives in `gradle.properties`:
 
 ```properties
 platform.type=IC
-platform.version=2026.1
+platform.version=2026.1.3
 platform.localPath=
-plugin.verifier.ideCodes=IC,RD
+plugin.verifier.ideCodes=RD
 plugin.sinceBuild=261
 plugin.untilBuild=261.*
 ```
@@ -125,7 +125,7 @@ To test with another local JetBrains IDE, set `platform.localPath` to that IDE i
 To verify more products before release, extend `plugin.verifier.ideCodes`, for example:
 
 ```properties
-plugin.verifier.ideCodes=IC,RD,PY,WS,CL
+plugin.verifier.ideCodes=RD,PY,WS,CL
 ```
 
 ## Heavy Diagnostics
