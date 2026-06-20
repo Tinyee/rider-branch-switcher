@@ -1,6 +1,6 @@
 package com.submodule.branchswitcher.switch
 
-import com.submodule.branchswitcher.git.GitClient
+import com.submodule.branchswitcher.git.GitQueryClient
 import com.submodule.branchswitcher.model.PreflightRow
 import com.submodule.branchswitcher.model.Preset
 import com.submodule.branchswitcher.model.RepoTarget
@@ -13,7 +13,7 @@ import java.nio.file.Path
  * progress display via [onProgress] callback, error labels via [probeErrorSuffix].
  */
 class SwitchPreflight(
-    private val git: GitClient,
+    private val git: GitQueryClient,
     private val probeErrorSuffix: String = "[probe error]",
     private val classifier: CancellationClassifier = CancellationClassifier.DEFAULT,
 ) {
@@ -66,7 +66,7 @@ class SwitchPreflight(
             )
         } catch (e: Exception) {
             classifier.rethrowIfCancellation(e)
-            // probe failure → fail-closed row (includes platform cancellation if classifier says so)
+            // probe failure -> fail-closed row (includes platform cancellation if classifier says so)
             // Fail closed per repo: one flaky git command must not abort the whole preflight.
             // All flags default to blocking/unknown so the user sees this repo as a warning.
             PreflightRow(

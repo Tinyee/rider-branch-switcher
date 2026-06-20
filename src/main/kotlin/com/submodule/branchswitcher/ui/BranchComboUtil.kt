@@ -1,7 +1,7 @@
 package com.submodule.branchswitcher.ui
 
 import com.intellij.openapi.application.ApplicationManager
-import com.submodule.branchswitcher.git.GitClient
+import com.submodule.branchswitcher.git.GitQueryClient
 import com.submodule.branchswitcher.log.AppLogger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
@@ -101,7 +101,7 @@ fun loadComboBranches(
     combo: JComboBox<String>,
     dir: File,
     current: String,
-    gitClient: GitClient,
+    gitClient: GitQueryClient,
     scope: CoroutineScope,
     log: AppLogger,
     onLoadStart: () -> Unit,

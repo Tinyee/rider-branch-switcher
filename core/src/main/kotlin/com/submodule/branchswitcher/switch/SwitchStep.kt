@@ -9,10 +9,47 @@ import java.nio.file.Path
 sealed class StepResult {
     /** Step completed successfully, continue pipeline. */
     object Success : StepResult()
-    /** Step failed fatally — pipeline must abort. */
+    /** Step failed fatally - pipeline must abort. */
     data class Fatal(val reason: String) : StepResult()
-    /** Step completed with partial failures — continue but mark overall as warning. */
+    /** Step completed with partial failures - continue but mark overall as warning. */
     data class Partial(val failures: Map<String, String>) : StepResult()
+}
+
+/**
+ * Mutable state produced and consumed by switch pipeline steps.
+ *
+ * Keeping cross-step state behind named methods makes the pipeline contract
+ * explicit: dirty handling decides skips/stashes, checkout records successful
+ * repos, and pull/sync consume those decisions later.
+ */
+class SwitchPipelineState {
+    private val stashedPaths: MutableMap<String, String> = linkedMapOf()
+    private val skippedPaths: MutableSet<String> = linkedSetOf()
+    private val successfulCheckouts: MutableSet<String> = linkedSetOf()
+
+    fun markSkipped(path: String) {
+        skippedPaths.add(path)
+    }
+
+    fun isSkipped(path: String): Boolean = path in skippedPaths
+
+    fun trackStash(path: String, message: String) {
+        stashedPaths[path] = message
+    }
+
+    fun consumeStash(path: String): String? = stashedPaths.remove(path)
+
+    fun stashesSnapshot(): Map<String, String> = stashedPaths.toMap()
+
+    fun markCheckoutSuccessful(path: String) {
+        successfulCheckouts.add(path)
+    }
+
+    fun checkoutSucceeded(path: String): Boolean = path in successfulCheckouts
+
+    fun hasStashes(): Boolean = stashedPaths.isNotEmpty()
+    fun skippedSnapshot(): Set<String> = skippedPaths.toSet()
+    fun successfulCheckoutsSnapshot(): Set<String> = successfulCheckouts.toSet()
 }
 
 data class SwitchContext(
@@ -25,12 +62,8 @@ data class SwitchContext(
     val progressHandle: ProgressHandle? = null,
     /** Mutable flag checked between/within steps for cancellation. */
     val cancelled: () -> Boolean = { false },
-    /** Tracks stashed repos: path -> stash message. Pop is deferred to PullStep. */
-    val stashedPaths: MutableMap<String, String> = mutableMapOf(),
-    /** Paths that DirtyHandlingStep marked as skipped (skip/stash-fail). Subsequent steps skip these. */
-    val skippedPaths: MutableSet<String> = mutableSetOf(),
-    /** Paths where checkout succeeded. PullStep / SubmoduleSyncStep only operate on these. */
-    val successfulCheckouts: MutableSet<String> = mutableSetOf(),
+    /** Cross-step state shared by the switch pipeline. */
+    val state: SwitchPipelineState = SwitchPipelineState(),
     /** If true, show confirmation dialog before auto-init of missing submodules. */
     val confirmBeforeInit: Boolean = false,
     /** Callback for submodule init confirmation. The main module provides an IntelliJ dialog;

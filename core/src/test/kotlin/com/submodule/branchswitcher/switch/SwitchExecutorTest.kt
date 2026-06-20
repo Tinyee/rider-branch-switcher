@@ -200,7 +200,7 @@ class SwitchExecutorTest {
             override fun revParseHead(workDir: File): String? = "abc123"
         }
         val executor = SwitchExecutor(projectRoot, createStringAppender { log += it }, trackGit)
-        // Execute switch to dev — checkout records branch as "dev"
+        // Execute switch to dev - checkout records branch as "dev"
         executor.executeTest(Preset("test", "dev", emptyMap()),
             SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false))
         checkoutCalls.clear()
@@ -440,7 +440,7 @@ class SwitchExecutorTest {
         val subPreset = Preset("sub", "main", mapOf("SubA" to "main"))
         val executor = SwitchExecutor(projectRoot, createStringAppender { log += it }, noInitGit,
             onConfirmSubmoduleInit = null)
-        // SubA needs init but no callback → fail-closed: init declined
+        // SubA needs init but no callback - fail-closed: init declined
         val result = executor.executeTest(subPreset,
             SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false, confirmBeforeInit = true))
         assertFalse("Switch should have partial failure from declined init", result)

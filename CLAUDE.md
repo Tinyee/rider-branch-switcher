@@ -32,6 +32,7 @@
 - **接口加方法忘了给默认实现。** test fake 炸一片。新方法优先加 `= defaultImpl`，等所有 fake/测试适配完再决定是否去掉默认值。
 - **文档数字凭 `replace_all` 一键改，没确认范围。** `270 tests` 改到了 CHANGELOG 历史记录。先用 `grep -n` 确认范围，再决定 replace_all 还是逐处改。
 - **加测试后文档数字改不全。** 测试 270→282→297→300→302→304→306→308，每次漏改一两个文件。commit 前 `grep` 旧数字确认全替换。
+- **Kotlin 跨模块三件事。** ① 跨模块改公开函数的默认参数 → 调用方必须重编译，否则 `$default` 合成方法签名不匹配 → `NoSuchMethodError`。加默认参数后跑 `./gradlew clean build` 确认全量重编译。`@JvmOverloads` 只对 Java 调用方和 IntelliJ API 需要，不是 Kotlin-to-Kotlin 的解决方案。② 搬文件到不同 Gradle 模块 → 确认没有同名同包文件，两个模块的同包同名 Kotlin 文件会生成相同的 `{Name}Kt.class`，一个遮蔽另一个（core 的 `SwitchStep.kt` 遮蔽了主模块的同名文件，导致 `refreshVcsRepos` 消失）。③ 需要 lambda/SAM 转换的接口 → 用 `fun interface` 而非 `interface`，否则 `{ e -> ... }` 语法在 Kotlin 报错。
 
 ## 提交前自审 — 在审查者发现问题之前自己先找
 

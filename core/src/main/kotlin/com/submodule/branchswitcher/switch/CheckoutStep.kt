@@ -27,13 +27,13 @@ class CheckoutStep : SwitchStep {
             val label = if (isMain) context.projectRoot.fileName.toString() else target.path
 
             // Skip paths marked by DirtyHandlingStep (skip / stash-fail)
-            if (target.path in context.skippedPaths) {
-                context.log.info("[skip] $label — skipped by dirty handling")
+            if (context.state.isSkipped(target.path)) {
+                context.log.info("[skip] $label - skipped by dirty handling")
                 continue
             }
 
             context.log.info("")
-            context.log.info("--- $label  →  ${target.branch} ---")
+            context.log.info("--- $label - ${target.branch} ---")
 
             // Submodule init for missing directories (after main checkout only)
             if (!isMain && !context.git.isGitRepo(dir)) {
@@ -74,7 +74,7 @@ class CheckoutStep : SwitchStep {
             if (cur != null && cur == target.branch) {
                 context.log.info("already on '${target.branch}', skipping checkout")
                 if (isMain) mainCheckoutOk = true
-                context.successfulCheckouts.add(target.path)
+                context.state.markCheckoutSuccessful(target.path)
                 continue
             }
 
@@ -87,8 +87,8 @@ class CheckoutStep : SwitchStep {
             } else {
                 context.log.warn("[fail] branch '${target.branch}' not found locally or on origin")
                 failures[target.path] = "branch not found"
-                // Still try to pop stash if this path was stashed — don't leave orphaned stashes
-                context.stashedPaths.remove(target.path)?.let { msg ->
+                // Still try to pop stash if this path was stashed - don't leave orphaned stashes
+                context.state.consumeStash(target.path)?.let { msg ->
                     val popResult = context.git.stashPop(dir)
                     if (popResult.ok) {
                         context.log.info("stash pop ok (recovered after branch-not-found: $msg)")
@@ -106,7 +106,7 @@ class CheckoutStep : SwitchStep {
             }
             context.log.info("checkout ok")
             if (isMain) mainCheckoutOk = true
-            context.successfulCheckouts.add(target.path)
+            context.state.markCheckoutSuccessful(target.path)
         }
         return if (failures.isEmpty()) StepResult.Success else StepResult.Partial(failures)
     }

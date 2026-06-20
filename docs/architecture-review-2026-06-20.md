@@ -1,91 +1,60 @@
-# Architecture Review — 2026-06-20
+# Architecture Review - 2026-06-20
 
 ## Current State
 
-core/: Pure JVM — GitClient, model, switch pipeline, rules, import/export
-root/: IntelliJ adapters, UI, notifications, persistence
+- `core/`: pure JVM module - `GitClient` facets, model, switch pipeline, rules, import/export.
+- `src/`: IntelliJ Platform module - adapters, UI, notifications, persistence, workflow orchestration.
 
-The split is correct. Remaining issues are in the platform orchestration layer.
+The split is correct. The 2026-06-20 architecture cleanup is now complete; only future feature-driven refactors should reopen these areas.
 
-## P2 Items (implement now)
+## Completed P2 Items
 
-### 1. CancellationClassifier → core
+### 1. CancellationClassifier -> core
 
-**Problem**: core has PCE class-name checks (`e.javaClass.simpleName == "ProcessCanceledException"`)
-in SwitchPreflight and DeriveBranchExecutor. Platform concept leaks into core.
+Problem: core had platform cancellation checks by class-name string.
 
-**Fix**: Define `CancellationClassifier` interface in core. Platform injects it.
+Result: `CancellationClassifier` lives in core, and the IntelliJ module injects platform cancellation recognition.
 
-```kotlin
-// core
-interface CancellationClassifier {
-    fun isCancellation(e: Throwable): Boolean
-    companion object {
-        val DEFAULT: CancellationClassifier = object : CancellationClassifier {
-            override fun isCancellation(e: Throwable) =
-                e is java.util.concurrent.CancellationException
-        }
-    }
-}
-```
+### 2. SwitchFlowCoordinator -> platform/UI orchestration
 
-Platform wires: `CancellationClassifier { e -> e is ProcessCanceledException || e is CancellationException }`
+Problem: `SwitchController` and `SwitchPresetAction` duplicated switch flow pieces: preflight, confirmation, notification, telemetry/history, and VCS refresh.
 
-### 2. SwitchFlowCoordinator → platform
-
-**Problem**: SwitchController and SwitchPresetAction each have their own:
-- preflight + progress
-- Force warning check
-- missing branch/dir confirm
-- notification
-- VCS refresh
-- telemetry/history
-
-**Fix**: Extract shared `SwitchFlowCoordinator` that takes callbacks for UI differences.
-
-```kotlin
-// platform
-class SwitchFlowCoordinator(
-    private val project: Project,
-    private val service: BranchSwitcherService,
-    private val gitRoot: () -> Path?,
-)
-
-suspend fun executeSwitch(preset: Preset, log: AppLogger, confirmation: SwitchConfirmation): SwitchResult
-```
+Result: `SwitchFlowCoordinator` centralizes shared switch orchestration while entry points keep their UI-specific selection/preview behavior.
 
 ### 3. BranchSwitcherService split
 
-**Problem**: Service holds telemetry, preset cache, write gate, history, settings.
+Problem: the project service held telemetry, preset cache, write gate, history, and settings directly.
 
-**Fix**: Extract `TelemetryStore` and `PresetRepository`.
+Result: `BranchSwitcherService` is closer to a composition root. Preset file state lives in `PresetRepository`; telemetry state/export/prompt lives in `TelemetryService`.
 
-```kotlin
-class TelemetryStore { ... }
-class PresetRepository(private val project: Project) { ... }
-```
+### 4. Root switch package rename
 
-## P2 Items (future)
+Problem: root-module `switch/` contained IntelliJ adapters and looked like pure switch pipeline code.
 
-### Rename root switch/ package ✅ done — moved to platform/
-SwitchRunner + SwitchAdapters (ProgressCancellationHandle, ProgressIndicatorHandle,
-refreshVcsRepos, platformCancellationClassifier) now in com.submodule.branchswitcher.platform.
+Result: platform switch glue moved to `com.submodule.branchswitcher.platform`; pure switch pipeline remains under `core/.../switch`.
 
-### Rename TelemetryStore → TelemetryService ✅ done
+### 5. Deprecated telemetry bridge removal
 
-## P3 Items (defer)
+Problem: plugin-unreleased compatibility bridges kept old telemetry API shape alive.
 
-### 4. SwitchContext → explicit pipeline state
+Result: internal call sites use `service.telemetry.*`; deprecated bridge accessors were removed.
 
-Replace mutable maps with immutable data class per step.
+## Completed P3 Items
 
-### 5. GitClient → split by concern
+### 6. SwitchContext -> explicit pipeline state
 
-GitQueryClient / GitWriteClient / GitSubmoduleClient / GitOperationLifecycle.
+Problem: top-level mutable `SwitchContext` collections (`stashedPaths`, `skippedPaths`, `successfulCheckouts`) made cross-step coupling implicit.
 
-## Implementation Order
+Result: `SwitchPipelineState` owns cross-step state behind explicit methods such as `markSkipped`, `trackStash`, `markCheckoutSuccessful`, and `checkoutSucceeded`.
 
-1. ✅ CancellationClassifier (smallest, fixes P2 core leak) — done 03c0082
-2. ✅ SwitchFlowCoordinator (unifies two switch entry points) — done a394c58
-3. ✅ TelemetryStore + PresetRepository extract — done
-4. ✅ Remove deprecated bridges + rename to TelemetryService — done
+### 7. GitClient split by concern
+
+Problem: `GitClient` exposed query, write, stash, submodule, derive, and lifecycle operations as one large interface.
+
+Result: the core API now defines focused facets: `GitQueryClient`, `GitWorkingTreeClient`, `GitBranchClient`, `GitSubmoduleClient`, and `GitOperationLifecycle`. `GitClient` remains as the aggregate interface for full Git implementations. Read-only paths such as preflight and branch-combo loading use `GitQueryClient`.
+
+## Validation Evidence
+
+- `./gradlew :core:compileKotlin :core:compileTestKotlin compileKotlin compileTestKotlin --max-workers=1 --no-parallel`: PASS
+- `./gradlew :core:test --tests "com.submodule.branchswitcher.switch.SwitchStepTest" --tests "com.submodule.branchswitcher.switch.SwitchExecutorTest" --tests "com.submodule.branchswitcher.switch.SwitchPreflightTest" --max-workers=1 --no-parallel`: PASS
+- `./gradlew quickCheck --max-workers=1 --no-parallel`: PASS
