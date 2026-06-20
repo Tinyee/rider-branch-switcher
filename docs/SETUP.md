@@ -114,6 +114,19 @@ Before release:
 - Avoid Rider-only APIs unless they are isolated behind a product-specific adapter.
 - Add extra verifier IDE codes only when you intentionally claim support for those IDEs.
 
+## Support Matrix Policy
+
+Treat compatibility as evidence-based:
+
+| IDE family | Claim level | Required evidence before advertising support |
+| --- | --- | --- |
+| IntelliJ IDEA Community | Primary | `compileKotlin`, `compileTestKotlin`, `buildPlugin`, and normal CI pass with `platform.type=IC`. |
+| Rider | Compatible | Plugin verifier target plus manual smoke test in a Rider sandbox before release. |
+| IntelliJ IDEA Ultimate | Expected compatible | Add `IU` to verifier list if Marketplace copy explicitly names it. |
+| PyCharm / WebStorm / CLion | Not claimed | Add product code to `plugin.verifier.ideCodes`, run `verifyPlugin`, and do a tool-window/settings/manual Git smoke test first. |
+
+Do not broaden Marketplace wording from "JetBrains IDEs that support Git projects" to a named IDE list until the corresponding row has evidence.
+
 ## Common Issues
 
 | Error | Cause | Fix |

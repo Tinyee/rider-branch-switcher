@@ -20,6 +20,15 @@ Recommended compatibility checks before release:
 - Rider (`RD`)
 - Add PyCharm/WebStorm/CLion verifier codes only when you plan to publish support for them.
 
+Current support matrix:
+
+| IDE family | Status | Notes |
+| --- | --- | --- |
+| IntelliJ IDEA Community | Primary build target | Default SDK for local development and CI-compatible builds. |
+| Rider | Compatibility target | Covered by `plugin.verifier.ideCodes=IC,RD`; keep manual smoke checks before release. |
+| IntelliJ IDEA Ultimate | Expected compatible | Same platform + Git APIs, but not listed as a primary verifier target yet. |
+| PyCharm / WebStorm / CLion | Not claimed yet | Add verifier codes and manual smoke checks before Marketplace support is advertised. |
+
 ## Features
 
 - **Preset management**: save branch combinations (main + submodules) as named presets and switch between them in one click.
