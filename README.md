@@ -1,26 +1,39 @@
 # Submodule Branch Switcher
 
-**JetBrains IDE plugin** - one-click switch the main repo and all submodules to a preset branch combination.
+[English](README.md) | [中文](README.zh-CN.md)
+
+**JetBrains IDE plugin for switching a main repository and all submodules to a saved branch preset in one click.**
 
 ![version](https://img.shields.io/badge/version-0.7.0-blue)
 ![tests](https://img.shields.io/badge/tests-288-green)
 ![JetBrains](https://img.shields.io/badge/JetBrains-2026.1-blue)
 
+Submodule Branch Switcher is built for teams that keep several related repositories in one Git project and need to move them between known branch combinations, such as `main`, `develop`, release branches, or feature branches.
+
+Presets are stored as JSON in `.idea/branch-presets.json`, so they can be committed and shared with the project.
+
+## Highlights
+
+- **One-click presets**: define the target branch for the main repo and each submodule, then switch all repos together.
+- **Dry-run preview**: see current branch, target branch, dirty file count, and branch source before checkout.
+- **Dirty working tree strategies**: stash, skip, or force when a repo has uncommitted changes.
+- **Rollback support**: failed switches keep a checkpoint for one-click rollback.
+- **Submodule handling**: sync submodules after main repo checkout and initialize missing submodule directories.
+- **Feature branch derivation**: create the same new branch across the main repo and all submodules from a preset baseline.
+- **Preset tools**: create from current state, rename, reorder, import/export via clipboard, and undo recent switches.
+- **IDE integration**: Tool Window, `Ctrl+Alt+B` quick switch action, notifications, Settings page, and English/Chinese i18n.
+
+## Screenshots
+
+![Tool window with branch presets](screenshots/01-tool-window.png)
+
+![Preflight dry-run dialog](screenshots/02-preflight-dialog.png)
+
+![Settings page](screenshots/03-settings.png)
+
 ## Supported IDEs
 
-The plugin targets the IntelliJ Platform and depends only on the platform module plus the bundled `Git4Idea` plugin.
-
-Default development SDK:
-
-- IntelliJ IDEA Community 2026.1 (`platform.type=IC`)
-
-Recommended compatibility checks before release:
-
-- IntelliJ IDEA Community (`IC`)
-- Rider (`RD`)
-- Add PyCharm/WebStorm/CLion verifier codes only when you plan to publish support for them.
-
-Current support matrix:
+The plugin uses IntelliJ Platform APIs plus the bundled `Git4Idea` plugin.
 
 | IDE family | Status | Notes |
 | --- | --- | --- |
@@ -29,35 +42,46 @@ Current support matrix:
 | IntelliJ IDEA Ultimate | Expected compatible | Same platform + Git APIs, but not listed as a primary verifier target yet. |
 | PyCharm / WebStorm / CLion | Not claimed yet | Add verifier codes and manual smoke checks before Marketplace support is advertised. |
 
-## Features
+Default development SDK:
 
-- **Preset management**: save branch combinations (main + submodules) as named presets and switch between them in one click.
-- **Preflight preview**: dry-run table showing current to target branch, dirty file count, and branch source per repo.
-- **Dirty tree strategies**: stash / skip / force for repos with uncommitted changes.
-- **Auto stash pop**: when switching back to the original branch, stashed changes can be restored automatically.
-- **Derive feature branches**: create `feature/xxx` on main + all submodules simultaneously from a preset.
-- **Rollback**: failed switches record a checkpoint for one-click rollback.
-- **Keyboard shortcut**: `Ctrl+Alt+B` opens the preset picker.
-- **i18n**: English + Chinese, following the IDE language setting.
+```properties
+platform.type=IC
+platform.version=2026.1.3
+plugin.sinceBuild=261
+plugin.untilBuild=261.*
+plugin.verifier.ideCodes=RD
+```
 
 ## Install
 
-From disk:
+Marketplace publication is planned later. For now, install from disk:
 
 1. Build or download `submodule-branch-switcher-{version}.zip`.
 2. Open `Settings | Plugins | Install Plugin from Disk...`.
-3. Select the `.zip` file.
+3. Select the ZIP file.
 4. Restart the IDE.
 
-Marketplace publication is planned later.
+Build the ZIP locally:
+
+```bash
+./gradlew buildPlugin
+```
+
+The output is written to:
+
+```text
+build/distributions/submodule-branch-switcher-0.7.0.zip
+```
 
 ## Quick Start
 
-1. Open the **SubmoduleBranches** tool window.
-2. Click **From Current State** to snapshot current main repo and submodule branches.
-3. Click **Switch** on any preset and confirm the preview dialog.
+1. Open the **SubmoduleBranches** Tool Window.
+2. Click **From Current State** to create a preset from the current main repo and submodule branches.
+3. Edit the preset branch targets if needed.
+4. Click **Switch to this Preset**.
+5. Review the dry-run preview and confirm.
 
-Presets are stored as JSON in `.idea/branch-presets.json` and can be shared through git.
+Example preset file:
 
 ```json
 {
@@ -76,15 +100,16 @@ Presets are stored as JSON in `.idea/branch-presets.json` and can be shared thro
 
 ## Options
 
-Configured via `Settings | Version Control | Submodule Branch Switcher`:
+Configure global behavior at `Settings | Version Control | Submodule Branch Switcher`.
 
 | Option | Default | Description |
 | --- | --- | --- |
-| Dirty working tree | Stash | Strategy for uncommitted changes: Stash / Skip / Force |
-| Timeout | 60s | Max time per `git` command |
-| Fetch before switch | On | `git fetch --prune` before checkout |
-| Pull after switch | On | `git pull --ff-only` after checkout |
-| Confirm before init | Off | Ask before `git submodule update --init` for missing dirs |
+| Dirty working tree | Stash changes | Strategy for uncommitted changes: stash, skip, or force. |
+| Timeout | 60s | Maximum time per Git command. |
+| Fetch before switch | On | Run `git fetch --prune` before checkout. |
+| Pull after switch | On | Run `git pull --ff-only` after checkout. |
+| Confirm before init | Off | Ask before initializing missing submodule directories. |
+| Local anonymous stats | Opt-in | Keeps local counters only; no data is sent automatically. |
 
 ## Development
 
@@ -103,49 +128,34 @@ git config core.hooksPath .githooks
 
 # Build plugin zip
 ./gradlew buildPlugin
-# -> build/distributions/submodule-branch-switcher-{version}.zip
 
 # Launch sandbox IDE with the plugin installed
 ./gradlew runIde
 ```
 
-Default platform configuration lives in `gradle.properties`:
-
-```properties
-platform.type=IC
-platform.version=2026.1.3
-platform.localPath=
-plugin.verifier.ideCodes=RD
-plugin.sinceBuild=261
-plugin.untilBuild=261.*
-```
-
-To test with another local JetBrains IDE, set `platform.localPath` to that IDE installation.
-
-To verify more products before release, extend `plugin.verifier.ideCodes`, for example:
-
-```properties
-plugin.verifier.ideCodes=RD,PY,WS,CL
-```
-
-## Heavy Diagnostics
+Use low-load validation during normal development:
 
 ```bash
-# Large-repo wall-clock benchmark (manual, heavy)
+./gradlew quickCheck
+./gradlew :core:test --tests "<ClassOrMethod>" --max-workers=1 --no-parallel
+./gradlew test --tests "<ClassOrMethod>" --max-workers=2 --no-parallel
+```
+
+Before broad changes or release preparation:
+
+```bash
+./gradlew :core:test test :core:detekt detekt --max-workers=2 --no-parallel
+./gradlew releaseCheck
+```
+
+Manual heavy diagnostics:
+
+```bash
+# Large-repo wall-clock benchmark
 ./gradlew benchmark
 
-# Scoped mutation testing (manual, heavy)
+# Scoped mutation testing
 ./gradlew pitestCore
 ```
 
 `benchmark` and `pitestCore` are intentionally not part of normal `test` or `releaseCheck`.
-
-## Screenshots
-
-JetBrains Marketplace screenshots (1280x800, 16:10, no device borders):
-
-![Tool window with branch presets](screenshots/01-tool-window.png)
-
-![Preflight dry-run dialog](screenshots/02-preflight-dialog.png)
-
-![Settings page](screenshots/03-settings.png)
