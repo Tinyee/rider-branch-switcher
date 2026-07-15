@@ -17,15 +17,15 @@ Result: `CancellationClassifier` lives in core, and the IntelliJ module injects 
 
 ### 2. SwitchFlowCoordinator -> platform/UI orchestration
 
-Problem: `SwitchController` and `SwitchPresetAction` duplicated switch flow pieces: preflight, confirmation, notification, telemetry/history, and VCS refresh.
+Problem: `SwitchController` and `SwitchPresetAction` duplicated switch flow pieces: preflight, confirmation, notification, history, and VCS refresh.
 
 Result: `SwitchFlowCoordinator` centralizes shared switch orchestration while entry points keep their UI-specific selection/preview behavior.
 
 ### 3. BranchSwitcherService split
 
-Problem: the project service held telemetry, preset cache, write gate, history, and settings directly.
+Problem: the project service held preset cache, write gate, history, and settings directly.
 
-Result: `BranchSwitcherService` is closer to a composition root. Preset file state lives in `PresetRepository`; telemetry state/export/prompt lives in `TelemetryService`.
+Result: `BranchSwitcherService` is closer to a composition root. Preset file state lives in `PresetRepository`.
 
 ### 4. Root switch package rename
 
@@ -33,21 +33,15 @@ Problem: root-module `switch/` contained IntelliJ adapters and looked like pure 
 
 Result: platform switch glue moved to `com.submodule.branchswitcher.platform`; pure switch pipeline remains under `core/.../switch`.
 
-### 5. Deprecated telemetry bridge removal
-
-Problem: plugin-unreleased compatibility bridges kept old telemetry API shape alive.
-
-Result: internal call sites use `service.telemetry.*`; deprecated bridge accessors were removed.
-
 ## Completed P3 Items
 
-### 6. SwitchContext -> explicit pipeline state
+### 5. SwitchContext -> explicit pipeline state
 
 Problem: top-level mutable `SwitchContext` collections (`stashedPaths`, `skippedPaths`, `successfulCheckouts`) made cross-step coupling implicit.
 
 Result: `SwitchPipelineState` owns cross-step state behind explicit methods such as `markSkipped`, `trackStash`, `markCheckoutSuccessful`, and `checkoutSucceeded`.
 
-### 7. GitClient split by concern
+### 6. GitClient split by concern
 
 Problem: `GitClient` exposed query, write, stash, submodule, derive, and lifecycle operations as one large interface.
 

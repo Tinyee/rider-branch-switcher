@@ -157,7 +157,6 @@ class PresetListManager(
         presetsInner.parent?.revalidate()
         presetsInner.parent?.repaint()
         saveAll()
-        service.telemetry.incrementCreate()
         log.debug("[added] $name (展开后可编辑各子模块分支)")
     }
 
@@ -225,7 +224,6 @@ class PresetListManager(
                 presetsInner.parent?.revalidate()
                 presetsInner.parent?.repaint()
                 saveAll()
-                service.telemetry.incrementCreate()
                 log.debug("[added from current] $name -> 主仓=$mb, ${result.submodules.size} 个子模块")
                 if (result.skipped.isNotEmpty()) {
                     log.debug("[skipped] ${result.skipped.joinToString(", ")}")

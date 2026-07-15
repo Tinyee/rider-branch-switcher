@@ -87,9 +87,7 @@ class SwitchFlowCoordinator(
         return confirmed[0]
     }
 
-    /**
-     * Execute switch + handle post-switch notification, telemetry, and VCS refresh.
-     */
+    /** Execute switch, then handle notifications and VCS refresh. */
     fun executeAndNotify(
         root: Path,
         request: ResolvedSwitchRequest,
@@ -114,13 +112,11 @@ class SwitchFlowCoordinator(
                 uiLater {
                     if (result.cancelled) { onFinished?.invoke(); return@uiLater }
                     if (result.ok) {
-                        service.telemetry.incrementSwitch()
                         service.addHistory(preset.name, preset.id)
                         onSuccess?.invoke()
                         Notifier.info(project, Bundle.msg("switch.complete"),
                             Bundle.msg("notify.switch.complete.msg", preset.name))
                     } else {
-                        service.telemetry.incrementError()
                         onFailure?.invoke(result)
                         val executor = result.executor
                         if (executor?.getCheckpoint() != null) {
