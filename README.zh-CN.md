@@ -5,7 +5,7 @@
 **Submodule Branch Switcher 是一个 JetBrains IDE 插件，用来一键把主仓库和所有子模块切换到预设的分支组合。**
 
 ![version](https://img.shields.io/badge/version-0.7.0-blue)
-![tests](https://img.shields.io/badge/tests-288-green)
+![tests](https://img.shields.io/badge/tests-279-green)
 ![JetBrains](https://img.shields.io/badge/JetBrains-2026.1-blue)
 
 它适合这类项目：一个主仓库下挂着多个 Git 子模块，日常需要在 `main`、`develop`、发布分支、功能分支之间整组切换。你可以把每组分支保存成 preset，然后在 Tool Window 里直接切换。
@@ -109,7 +109,6 @@ build/distributions/submodule-branch-switcher-0.7.0.zip
 | Fetch before switch | 开启 | 切换前执行 `git fetch --prune`。 |
 | Pull after switch | 开启 | 切换后执行 `git pull --ff-only`。 |
 | Confirm before init | 关闭 | 初始化缺失子模块前先确认。 |
-| Local anonymous stats | 主动选择开启 | 本地匿名计数，不会自动发送数据。 |
 
 ## 开发与验证
 

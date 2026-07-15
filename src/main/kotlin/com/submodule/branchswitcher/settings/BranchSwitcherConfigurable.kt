@@ -8,10 +8,7 @@ import com.submodule.branchswitcher.Bundle
 import com.submodule.branchswitcher.service.BranchSwitcherService
 import com.submodule.branchswitcher.ui.withCompactHeight
 import java.awt.BorderLayout
-import java.awt.Toolkit
-import java.awt.datatransfer.StringSelection
 import javax.swing.BoxLayout
-import javax.swing.JButton
 import javax.swing.JCheckBox
 import javax.swing.JComboBox
 import javax.swing.JComponent
@@ -30,7 +27,6 @@ class BranchSwitcherConfigurable(private val project: Project) : Configurable {
     private var fetchCheck: JCheckBox? = null
     private var pullCheck: JCheckBox? = null
     private var confirmInitCheck: JCheckBox? = null
-    private var telemetryCheck: JCheckBox? = null
 
     private val service get() = project.service<BranchSwitcherService>()
 
@@ -77,22 +73,6 @@ class BranchSwitcherConfigurable(private val project: Project) : Configurable {
             alignmentX = JPanel.LEFT_ALIGNMENT
         })
 
-        telemetryCheck = JCheckBox(Bundle.msg("telemetry.optin.label"))
-        form.add(telemetryCheck!!.apply {
-            border = JBUI.Borders.empty(16, 0, 0, 0)
-            alignmentX = JPanel.LEFT_ALIGNMENT
-        })
-
-        // Copy stats button
-        val copyBtn = JButton(Bundle.msg("telemetry.copy.stats")).apply {
-            alignmentX = JPanel.LEFT_ALIGNMENT
-            addActionListener {
-                val stats = service.telemetry.export()
-                Toolkit.getDefaultToolkit().systemClipboard.setContents(StringSelection(stats), null)
-            }
-        }
-        form.add(copyBtn.apply { border = JBUI.Borders.empty(4, 0, 0, 0) })
-
         val panel = JPanel(BorderLayout()).apply {
             border = JBUI.Borders.empty(12, 12, 12, 12)
             add(form, BorderLayout.NORTH)
@@ -107,8 +87,7 @@ class BranchSwitcherConfigurable(private val project: Project) : Configurable {
             timeoutComboIndex() != timeoutToIndex(s.timeoutSeconds) ||
             fetchCheck?.isSelected != s.fetchFirst ||
             pullCheck?.isSelected != s.pullAfterSwitch ||
-            confirmInitCheck?.isSelected != s.confirmBeforeInit ||
-            telemetryCheck?.isSelected != s.telemetry.optIn
+            confirmInitCheck?.isSelected != s.confirmBeforeInit
     }
 
     override fun apply() {
@@ -118,7 +97,6 @@ class BranchSwitcherConfigurable(private val project: Project) : Configurable {
         fetchCheck?.let { s.fetchFirst = it.isSelected }
         pullCheck?.let { s.pullAfterSwitch = it.isSelected }
         confirmInitCheck?.let { s.confirmBeforeInit = it.isSelected }
-        telemetryCheck?.let { s.telemetry.optIn = it.isSelected }
     }
 
     override fun reset() {
@@ -128,7 +106,6 @@ class BranchSwitcherConfigurable(private val project: Project) : Configurable {
         fetchCheck?.isSelected = s.fetchFirst
         pullCheck?.isSelected = s.pullAfterSwitch
         confirmInitCheck?.isSelected = s.confirmBeforeInit
-        telemetryCheck?.isSelected = s.telemetry.optIn
     }
 
     override fun disposeUIResources() {
@@ -138,7 +115,6 @@ class BranchSwitcherConfigurable(private val project: Project) : Configurable {
         fetchCheck = null
         pullCheck = null
         confirmInitCheck = null
-        telemetryCheck = null
     }
 
     private fun dirtyComboIndex(): Int = dirtyCombo?.selectedIndex ?: 0

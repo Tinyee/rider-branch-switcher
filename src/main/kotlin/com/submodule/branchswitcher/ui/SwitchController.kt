@@ -169,13 +169,11 @@ class SwitchController(
                 refreshVcs(root, preset)
                 when (val d = deriveNotification(cancelled, r, rfCount, branchName)) {
                     is DeriveNotification.Success -> {
-                        service.telemetry.incrementDerive()
                         Notifier.info(project,
                             Bundle.msg("notify.derive.complete"),
                             Bundle.msg("notify.derive.created", d.branchName, d.repoCount))
                     }
                     is DeriveNotification.Failure -> {
-                        service.telemetry.incrementError()
                         Notifier.warn(project,
                             Bundle.msg("notify.derive.partial"),
                             when (d.reason) {

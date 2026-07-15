@@ -24,7 +24,6 @@ import java.util.concurrent.atomic.AtomicLong
  *
  * Composition root that owns persistent state and delegates to sub-components:
  * - [PresetRepository] for preset loading/saving/caching
- * - [TelemetryService] for opt-in anonymous usage counters
  *
  * Also manages: write gate, switch history, GitClient cache, detect-gen counter,
  * and persistent switch options via [PersistentStateComponent].
@@ -62,14 +61,6 @@ class BranchSwitcherService(
         var timeoutSeconds: Int = 60,
         var confirmBeforeInit: Boolean = false,
         var history: MutableList<SwitchHistoryEntry> = mutableListOf(),
-        // ── Anonymous telemetry ──────────────────────────────────
-        var telemetryInstallId: String = "",
-        var telemetryPromptShown: Boolean = false,
-        var telemetryOptIn: Boolean = false,
-        var telemetrySwitchCount: Int = 0,
-        var telemetryCreateCount: Int = 0,
-        var telemetryDeriveCount: Int = 0,
-        var telemetryErrorCount: Int = 0,
     )
 
     private var options = OptionsState()
@@ -79,7 +70,6 @@ class BranchSwitcherService(
 
     // ── Delegated sub-components ─────────────────────────────────────
 
-    val telemetry = TelemetryService({ options }, project)
     val presetRepo = PresetRepository(project)
 
     var dirtyAction: DirtyAction

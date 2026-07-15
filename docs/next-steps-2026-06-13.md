@@ -24,7 +24,7 @@
 - README Release 链接和 `plugin.xml` vendor 地址均指向 `Tinyee/rider-branch-switcher`。
 - `docs/code-review-2026-06-08.md` 已标记为历史归档。
 - `noFocusRing()` 工厂化、CI、Detekt、Plugin Verifier、Settings、结构化日志等状态已在 ROADMAP 中反映。
-- 当前测试数量已同步为 288 tests / 27 classes（2026-06-20 更新；139 个 core pure JVM + 149 个平台/集成；已清理 11 个低价值结构测试）。
+- 当前测试数量已同步为 279 tests / 27 classes（2026-07-15 更新；139 个 core pure JVM + 140 个平台/集成；已清理 11 个低价值结构测试及 9 个无产品闭环的本地统计测试）。
 
 仍需保持：
 
@@ -123,17 +123,6 @@ Preflight 的 Git 调用预算，防止重复查询回归。
 - Preset 文件位置及团队共享方式。
 
 后续仅需在发布检查中验证窄 Tool Window 和中英文布局。
-
-### 匿名遥测（opt-in）✅
-
-已实现主动选择的匿名统计：
-
-- 默认关闭，不收集个人数据、分支名或仓库路径。
-- Settings 页面可随时开启/关闭，并可复制当前统计数据。
-- 统计字段覆盖 switch、create preset、derive 和 error 计数。
-- i18n 文案已补齐，服务层测试覆盖默认关闭、ID 生成、导出和 loadState。
-
----
 
 ## 暂不建议
 

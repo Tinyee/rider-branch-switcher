@@ -130,8 +130,6 @@ class BranchSwitcherPanel(
         detectCurrentState()
         refreshStrategySummary()
         wireEventSubscriptions()
-        // Defer telemetry opt-in to after panel is visible
-        project.invokeLaterIfAlive { service.telemetry.maybeShowOptIn() }
     }
 
     // ── Top block: header + action row ────────────────
