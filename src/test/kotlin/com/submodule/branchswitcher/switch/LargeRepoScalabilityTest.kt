@@ -144,10 +144,10 @@ class LargeRepoScalabilityTest {
 
         assertTrue("Switch should succeed", ok)
 
-        // Checkpoint + Fetch + Checkout each call currentBranch once per repo.
+        // Checkpoint + Checkout each call currentBranch once per repo.
         val repos = 1 + submoduleCount // main + submodules
-        assertEquals("currentBranch calls should match checkpoint + fetch + checkout",
-            repos * 3, git.calls["currentBranch"])
+        assertEquals("currentBranch calls should match checkpoint + checkout",
+            repos * 2, git.calls["currentBranch"])
         assertEquals("revParseHead calls should match checkpoint repo count",
             repos, git.calls["revParseHead"])
 

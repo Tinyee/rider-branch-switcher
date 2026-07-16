@@ -49,6 +49,8 @@ class GitOpsTest {
         assertEquals("git init should succeed: $output", 0, proc.waitFor())
 
         assertTrue("initialized directory should be a git repo", git.isGitRepo(repoDir))
+        val nestedPlainDir = File(repoDir, "SubA").also { it.mkdirs() }
+        assertFalse("ordinary child directory must not resolve to its parent repo", git.isGitRepo(nestedPlainDir))
     }
 
     private fun writeGitmodules(content: String): File {

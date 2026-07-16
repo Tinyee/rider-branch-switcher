@@ -1,5 +1,12 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+- Pull and update the main repository before syncing and initializing submodules, so a submodule added only on the remote parent branch can be cloned and switched in the same operation
+- Treat plain child directories as missing submodules instead of mistakenly resolving them to the parent Git repository
+- Initialize missing submodules recursively and block "New Preset from Current State" from silently saving incomplete presets
+
 ## [0.7.0] — 2026-06-16
 
 ### Per-Preset Option Overrides (#29)

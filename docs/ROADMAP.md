@@ -7,7 +7,7 @@
 - 分支下拉输入即过滤
 - **当前命中预设高亮 + 切换按钮自动禁用**
 - **切换前 Dry-run 预览表**：每仓 `当前 → 目标`、dirty 计数、远端是否存在、新建/已存在标记
-- **主仓切完自动 `submodule sync`，缺失子模块自动 `submodule update --init`**
+- **先更新主仓，再执行 `submodule sync`；缺失子模块自动 `submodule update --init --recursive`**
 - **「从当前状态新建 preset」一键录入**
 - **关键失败走 IDE Notification** + Exception Analyzer 自动上报
 - **每个 preset 头部显示主仓 diff 标签**
@@ -23,7 +23,7 @@
 - **动态远端名**：自动检测 remote 名，不再硬编码 origin
 - IntelliJ 原生图标（AllIcons），主题感知色
 - i18n 中英双语（DynamicBundle + @PropertyKey 编译时校验）
-- 279 测试 / 27 个测试类（139 个 core pure JVM + 140 个平台/集成；含 6 个 Kotest 属性测试）
+- 283 测试 / 27 个测试类（142 个 core pure JVM + 141 个平台/集成；含 6 个 Kotest 属性测试）
 - GitHub Actions CI（ubuntu/macOS/Windows）+ Qodana 静态分析
 
 下面按「切换体验 / 状态可视化 / UI / 工作流 / 质量」五块梳理后续要做的功能点，优先级 **P0(致命) / P1(高价值) / P2(锦上添花)**；状态列标记 v0.x 已落地或下阶段候选。
@@ -34,7 +34,7 @@
 |---|---|---|---|
 | P0 | **Dry-run 预览** | 每仓 `当前分支 → 目标分支`、是否 dirty、stash 会动多少文件、远端有/无目标分支 | ✅ v0.2 |
 | P0 | **部分失败回滚** | 切前 checkpoint 记录 branch+SHA, 失败通知带回滚 action, 回滚优先恢复分支 | ✅ v0.3 |
-| P0 | **submodule 处理** | 主仓切完跑 `git submodule sync`,缺失子模块跑 `git submodule update --init -- <path>` | ✅ v0.2 |
+| P0 | **submodule 处理** | 先拉取主仓远端更新，再跑 `git submodule sync`；缺失子模块跑 `git submodule update --init --recursive -- <path>` | ✅ v0.7 hardened |
 | P1 | **stash 自动 pop** | Stash 模式只 push 不 pop。切回原分支时要手工 `git stash list/pop`。可加「记住 stash → 切回时自动 pop」 | ✅ v0.4 |
 | P1 | **进度可视化** | `Task.Backgroundable` 用 indeterminate，看不到「5 个仓的第 3 个」。改 `indicator.fraction + text2` | ✅ v0.4 |
 | P1 | **可取消** | 进度条有取消按钮但 `SwitchExecutor` 循环里不查 `indicator.isCanceled`，点了没用 | ✅ v0.3 |
@@ -67,7 +67,7 @@
 
 | 优先级 | 需求 | 现状 | 状态 |
 |---|---|---|---|
-| P0 | **「从当前状态新建 preset」** | 后台读主仓 + `.gitmodules` 全集的 HEAD，detached 拒绝主仓、跳过子模块；输入框默认填主仓分支名 | ✅ v0.2 |
+| P0 | **「从当前状态新建 preset」** | 后台读主仓 + `.gitmodules` 全集的 HEAD；主仓 detached 或子模块未初始化/detached 时阻止保存不完整预设 | ✅ v0.7 hardened |
 | P1 | **派生功能分支** | 选某 preset → 输入分支名 `feature/xxx` → 主仓和所有子模块同时 `checkout -b feature/xxx`，基于 preset 的 base。Unity feature 流极常见 | ✅ v0.4 |
 | P1 | **预设重命名** | 现在改名要手工编辑 JSON | ✅ v0.4 |
 | P1 | **快捷键** | `Tools → Branch Switcher → 切到 X` 注册成 Action，可绑快捷键 (Ctrl+Alt+B) | ✅ v0.4 |
@@ -89,7 +89,7 @@
 1. 当前命中预设高亮 + 切换按钮禁用 + 自动检测
 2. 切换前 Dry-run 预览表
 3. VCS 后台刷新（避免切完高亮不刷新）
-4. 主仓切完自动 `submodule sync`、缺失子模块自动 `submodule update --init`
+4. 主仓更新完成后自动 `submodule sync`、缺失子模块自动 `submodule update --init --recursive`
 5. 按钮 focus ring 残留修复（action / 松手 / disable / ToolWindow 显示四个时机都覆盖）
 6. 去硬编码颜色，改主题感知色
 7. 字符 ▶/▼/✓/⟲/+/✕ 替换为 AllIcons
@@ -344,7 +344,7 @@ com.submodule.branchswitcher/
 
 ### 当前状态
 
-- ✅ 279 测试，27 个测试类：`./gradlew :core:test` 跑 139 个 core 纯 JVM 测试，`./gradlew test` 跑 140 个平台/集成测试
+- ✅ 283 测试，27 个测试类：`./gradlew :core:test` 跑 142 个 core 纯 JVM 测试，`./gradlew :test` 跑 141 个平台/集成测试
 - ✅ `GitClient` 接口 + Fake 实现 → 架构已隔离 IntelliJ 运行时
 - ✅ 真实 git 临时仓库集成测试（`SwitchIntegrationTest`）
 - ✅ 50 目标仓库 Switch/Preflight Git 调用预算测试（`LargeRepoScalabilityTest`，counting fake）

@@ -63,7 +63,7 @@ interface GitBranchClient {
 interface GitSubmoduleClient {
     /** Runs `git submodule sync --recursive`. */
     fun submoduleSync(gitRoot: File): GitResult
-    /** Runs `git submodule update --init -- <path>`. */
+    /** Runs `git submodule update --init --recursive -- <path>`. */
     fun submoduleInitPath(gitRoot: File, path: String): GitResult
     /** Recursively parses .gitmodules to list all submodule paths, including nested ones. */
     fun listSubmodulePaths(gitRoot: File): List<String>

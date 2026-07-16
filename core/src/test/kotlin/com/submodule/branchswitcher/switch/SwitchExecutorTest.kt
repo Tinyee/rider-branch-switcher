@@ -398,6 +398,77 @@ class SwitchExecutorTest {
         assertTrue("Checkpoint should contain SubB", checkpoint.containsKey("SubB"))
     }
 
+    @Test
+    fun `main is pulled before missing submodule is synced initialized and fetched`() {
+        val events = mutableListOf<String>()
+        var mainPulled = false
+        var submoduleReady = false
+        var submoduleBranch: String? = null
+        val stagedGit = object : GitClient by fakeGit {
+            override fun isGitRepo(workDir: File): Boolean =
+                if (workDir.name == "SubA") submoduleReady else true
+
+            override fun currentBranch(workDir: File): String? =
+                if (workDir.name == "SubA") submoduleBranch else "main"
+
+            override fun fetch(workDir: File): GitResult {
+                events += "fetch:${if (workDir.name == "SubA") "SubA" else "."}"
+                return GitResult("fetch", 0, "", "")
+            }
+
+            override fun pullFf(workDir: File, branch: String): GitResult {
+                val path = if (workDir.name == "SubA") "SubA" else "."
+                events += "pull:$path"
+                if (path == ".") mainPulled = true
+                return GitResult("pull", 0, "", "")
+            }
+
+            override fun submoduleSync(gitRoot: File): GitResult {
+                assertTrue("main must be pulled before submodule sync", mainPulled)
+                events += "sync"
+                return GitResult("sync", 0, "", "")
+            }
+
+            override fun submoduleInitPath(gitRoot: File, path: String): GitResult {
+                assertTrue("main must be pulled before submodule init", mainPulled)
+                events += "init:$path"
+                gitRoot.resolve(path).mkdirs()
+                submoduleReady = true
+                return GitResult("init", 0, "", "")
+            }
+
+            override fun localBranchExists(workDir: File, branch: String): Boolean =
+                workDir.name != "SubA"
+
+            override fun checkoutFromRemote(workDir: File, branch: String): GitResult {
+                events += "checkout-remote:SubA"
+                submoduleBranch = branch
+                return GitResult("checkout", 0, "", "")
+            }
+        }
+        val subPreset = Preset("cloud-submodule", "main", mapOf("SubA" to "release"))
+        val executor = SwitchExecutor(projectRoot, createStringAppender { log += it }, stagedGit)
+
+        val result = executor.executeTest(
+            subPreset,
+            SwitchOptions(DirtyAction.Stash, pull = true, fetchFirst = true),
+        )
+
+        assertTrue("Cloud-only submodule switch should succeed", result)
+        assertEquals(
+            listOf(
+                "fetch:.",
+                "pull:.",
+                "sync",
+                "init:SubA",
+                "fetch:SubA",
+                "checkout-remote:SubA",
+                "pull:SubA",
+            ),
+            events,
+        )
+    }
+
     // ---- Rollback edge cases ----
 
     @Test

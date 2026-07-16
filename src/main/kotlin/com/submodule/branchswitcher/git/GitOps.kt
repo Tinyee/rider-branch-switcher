@@ -115,8 +115,14 @@ class GitOps(
         return if (r.ok) r.stdout.trim().ifEmpty { null } else null
     }
 
-    override fun isGitRepo(workDir: File): Boolean =
-        workDir.exists() && run(workDir, "rev-parse", "--git-dir").ok
+    override fun isGitRepo(workDir: File): Boolean {
+        if (!workDir.isDirectory) return false
+        val result = run(workDir, "rev-parse", "--show-toplevel")
+        if (!result.ok || result.stdout.isBlank()) return false
+        val topLevel = runCatching { File(result.stdout).canonicalFile }.getOrNull() ?: return false
+        val requested = runCatching { workDir.canonicalFile }.getOrNull() ?: return false
+        return topLevel == requested
+    }
 
     override fun isDirty(workDir: File): Boolean {
         val r = run(workDir, "status", "--porcelain")
@@ -195,7 +201,7 @@ class GitOps(
         run(gitRoot, "submodule", "sync", "--recursive")
 
     override fun submoduleInitPath(gitRoot: File, path: String): GitResult =
-        run(gitRoot, "submodule", "update", "--init", "--", path)
+        run(gitRoot, "submodule", "update", "--init", "--recursive", "--", path)
 
     /** Matches `path = <value>` lines in .gitmodules, skipping comments and blank lines. */
     private val pathLineRegex = Regex("""^path\s*=\s*(.+?)\s*$""", RegexOption.IGNORE_CASE)
