@@ -1,20 +1,19 @@
 package com.submodule.branchswitcher.switch
 
-import java.io.File
-
 /** If resolved [SwitchOptions.pull] is enabled, pull --ff-only for each target. */
-class PullStep : SwitchStep {
-    override val name = "pull"
+class PullStep(
+    private val scope: SwitchTargetScope = SwitchTargetScope.ALL,
+) : SwitchStep {
+    override val name = scopedStepName("pull", scope)
 
     override fun execute(context: SwitchContext): StepResult {
         if (!context.options.pull) {
-            // Still pop stashes even when pull is disabled
             popStashes(context)
             return StepResult.Success
         }
 
         val failures = LinkedHashMap<String, String>()
-        for (target in context.preset.targets()) {
+        for (target in context.preset.targetsFor(scope)) {
             val dir = resolveGitDir(context.projectRoot, target.path)
             if (!dir.exists() || !context.git.isGitRepo(dir)) continue
             // Only pull on repos where checkout actually succeeded
@@ -41,7 +40,9 @@ class PullStep : SwitchStep {
 
     /** Pop stashes that were created during DirtyHandlingStep, now that checkout + pull are done. */
     private fun popStashes(context: SwitchContext) {
+        val selectedPaths = context.preset.targetsFor(scope).mapTo(hashSetOf()) { it.path }
         for ((path, msg) in context.state.stashesSnapshot()) {
+            if (path !in selectedPaths) continue
             val dir = resolveGitDir(context.projectRoot, path)
             if (!dir.exists() || !context.git.isGitRepo(dir)) {
                 context.log.warn(" stash pop skipped - dir gone for $path ($msg)")

@@ -206,14 +206,19 @@ class SwitchStepTest {
     }
 
     @Test
-    fun `fetch step skip when already on target`() {
+    fun `fetch step still fetches when already on target`() {
+        var fetchCalls = 0
         val alreadyGit = object : GitClient by fakeGit {
             override fun currentBranch(workDir: File): String? = "dev"
+            override fun fetch(workDir: File): GitResult {
+                fetchCalls++
+                return GitResult("fetch", 0, "", "")
+            }
         }
         val c = context(SwitchOptions(DirtyAction.Stash, fetchFirst = true)).copy(git = alreadyGit)
         val step = FetchStep()
         assertTrue(step.execute(c) is StepResult.Success)
-        assertTrue(log.none { it.contains("fetch") })
+        assertEquals(1, fetchCalls)
     }
 
     @Test
@@ -293,6 +298,51 @@ class SwitchStepTest {
         assertTrue(PullStep().execute(c) is StepResult.Success)
         assertEquals(1, popCalls)
         assertTrue(!c.state.hasStashes())
+    }
+
+    @Test
+    fun `staged pull restores only stashes in its target scope`() {
+        val popped = mutableListOf<String>()
+        projectRoot.resolve("SubA").toFile().mkdirs()
+        val popGit = object : GitClient by fakeGit {
+            override fun isGitRepo(workDir: File): Boolean = true
+            override fun stashPop(workDir: File): GitResult {
+                popped += if (workDir == projectRoot.toFile()) "." else workDir.name
+                return GitResult("pop", 0, "", "")
+            }
+        }
+        val c = context(SwitchOptions(DirtyAction.Stash, pull = false)).copy(
+            git = popGit,
+            preset = Preset("test", "dev", mapOf("SubA" to "dev")),
+        )
+        c.state.trackStash(".", "before -> dev")
+        c.state.trackStash("SubA", "before -> dev")
+
+        assertTrue(PullStep(SwitchTargetScope.MAIN).execute(c) is StepResult.Success)
+        assertEquals(listOf("."), popped)
+        assertEquals(setOf("SubA"), c.state.stashesSnapshot().keys)
+
+        assertTrue(PullStep(SwitchTargetScope.SUBMODULES).execute(c) is StepResult.Success)
+        assertEquals(listOf(".", "SubA"), popped)
+        assertFalse(c.state.hasStashes())
+    }
+
+    @Test
+    fun `submodule target scope processes parents before nested paths`() {
+        val preset = Preset(
+            "nested",
+            "main",
+            linkedMapOf(
+                "SubA/Nested" to "nested-dev",
+                "SubB" to "main",
+                "SubA" to "dev",
+            ),
+        )
+
+        assertEquals(
+            listOf("SubB", "SubA", "SubA/Nested"),
+            preset.targetsFor(SwitchTargetScope.SUBMODULES).map { it.path },
+        )
     }
 
     // ---- SubmoduleSyncStep ----

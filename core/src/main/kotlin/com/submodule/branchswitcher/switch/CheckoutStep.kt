@@ -1,19 +1,19 @@
 package com.submodule.branchswitcher.switch
 
-import java.io.File
-
 /**
- * Checkout each target to its target branch, processing main first then submodules.
- * For submodules with missing directories, attempts `git submodule update --init`
- * after main checkout has succeeded. Also reports current branch and logs per-target progress.
+ * Checkout the selected targets to their target branches.
+ * For missing submodules, initialization is allowed only after main checkout has succeeded.
+ * A newly initialized repository is fetched before branch discovery when fetch-first is enabled.
  */
-class CheckoutStep : SwitchStep {
-    override val name = "checkout"
+class CheckoutStep(
+    private val scope: SwitchTargetScope = SwitchTargetScope.ALL,
+) : SwitchStep {
+    override val name = scopedStepName("checkout", scope)
 
     override fun execute(context: SwitchContext): StepResult {
         val failures = LinkedHashMap<String, String>()
-        var mainCheckoutOk = false
-        val targets = context.preset.targets()
+        var mainCheckoutOk = context.state.checkoutSucceeded(".")
+        val targets = context.preset.targetsFor(scope)
         val total = targets.size
 
         for ((idx, target) in targets.withIndex()) {
@@ -46,7 +46,7 @@ class CheckoutStep : SwitchStep {
                             continue
                         }
                     }
-                    context.log.info("dir missing, trying: git submodule update --init -- ${target.path}")
+                    context.log.info("dir missing, trying: git submodule update --init --recursive -- ${target.path}")
                     val r = context.git.submoduleInitPath(context.projectRoot.toFile(), target.path)
                     if (!r.ok) {
                         context.log.warn("[skip] submodule init failed: ${r.stderr.lines().firstOrNull() ?: ""}")
@@ -54,6 +54,15 @@ class CheckoutStep : SwitchStep {
                         continue
                     }
                     context.log.info("submodule init ok")
+                    if (context.options.fetchFirst) {
+                        val fetch = context.git.fetch(dir)
+                        if (!fetch.ok) {
+                            context.log.warn(
+                                "fetch after init warn: ${fetch.stderr.lines().firstOrNull() ?: ""} (${target.path})"
+                            )
+                            failures[target.path] = "fetch after init had warnings"
+                        }
+                    }
                 }
             }
 

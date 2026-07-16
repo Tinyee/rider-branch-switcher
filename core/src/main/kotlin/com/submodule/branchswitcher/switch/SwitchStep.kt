@@ -78,6 +78,24 @@ interface SwitchStep {
     fun execute(context: SwitchContext): StepResult
 }
 
+/** Selects which repositories a staged switch step should process. */
+enum class SwitchTargetScope { ALL, MAIN, SUBMODULES }
+
+internal fun Preset.targetsFor(scope: SwitchTargetScope) = when (scope) {
+    SwitchTargetScope.ALL -> targets()
+    SwitchTargetScope.MAIN -> targets().filter { it.path == "." }
+    // Initialize parent submodules before nested paths even if imported JSON used a different map order.
+    SwitchTargetScope.SUBMODULES -> targets()
+        .filter { it.path != "." }
+        .sortedBy { it.path.count { separator -> separator == '/' } }
+}
+
+internal fun scopedStepName(action: String, scope: SwitchTargetScope): String = when (scope) {
+    SwitchTargetScope.ALL -> action
+    SwitchTargetScope.MAIN -> "$action main"
+    SwitchTargetScope.SUBMODULES -> "$action submodules"
+}
+
 /** Resolve a target path to a [java.io.File] relative to the project root. */
 fun resolveGitDir(root: java.nio.file.Path, path: String): java.io.File =
     if (path == ".") root.toFile() else root.resolve(path).toFile()

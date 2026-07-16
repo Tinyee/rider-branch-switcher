@@ -32,7 +32,10 @@ class SwitchIntegrationTest {
     @Before
     fun setUp() {
         tmpDir = Files.createTempDirectory("switch-it-")
-        git = GitOps(timeoutSeconds = 30)
+        git = GitOps(timeoutSeconds = 30, processStarter = { builder ->
+            builder.environment()["GIT_ALLOW_PROTOCOL"] = "file"
+            builder.start()
+        })
         log.clear()
     }
 
@@ -91,6 +94,21 @@ class SwitchIntegrationTest {
         val rel = mainDir.toPath().relativize(subDir.toPath()).toString().replace('\\', '/')
         gitOk(mainDir, "-c", "protocol.file.allow=always", "submodule", "add", rel, path)
         gitOk(mainDir, "commit", "-m", "add submodule $path")
+    }
+
+    private fun createBareClone(source: File, name: String): File {
+        val target = tmpDir.resolve(name).toFile()
+        gitOk(tmpDir.toFile(), "clone", "--bare", source.absolutePath, target.absolutePath)
+        return target
+    }
+
+    private fun cloneRepo(source: File, name: String): File {
+        val target = tmpDir.resolve(name).toFile()
+        gitOk(tmpDir.toFile(), "clone", source.absolutePath, target.absolutePath)
+        gitOk(target, "config", "user.email", "test@test.com")
+        gitOk(target, "config", "user.name", "Test")
+        gitOk(target, "config", "core.autocrlf", "false")
+        return target
     }
 
     /** Execute a switch and return (success, log lines). */
@@ -227,6 +245,41 @@ class SwitchIntegrationTest {
         assertTrue("Switch with submodule init should succeed", ok)
         assertTrue("SubA dir should exist after init", subDir.exists())
         assertTrue("SubA should be a git repo", File(subDir, ".git").exists())
+        assertEquals("release", git.currentBranch(subDir))
+    }
+
+    @Test
+    fun `remote parent addition is pulled before cloud-only submodule initialization`() {
+        val subAuthor = createRepo(tmpDir, "sub-author")
+        createBranch(subAuthor, "release")
+        val subRemote = createBareClone(subAuthor, "sub-remote.git")
+
+        val mainAuthor = createRepo(tmpDir, "main-author")
+        val mainRemote = createBareClone(mainAuthor, "main-remote.git")
+        gitOk(mainAuthor, "remote", "add", "origin", mainRemote.absolutePath)
+        val local = cloneRepo(mainRemote, "project")
+
+        addSubmodule(mainAuthor, subRemote, "SubA")
+        gitOk(mainAuthor, "push", "origin", "main")
+
+        assertFalse("Local clone should predate .gitmodules", File(local, ".gitmodules").exists())
+        assertFalse("Submodule should initially exist only in the remote parent", File(local, "SubA").exists())
+
+        val (ok, logs) = runSwitch(
+            local,
+            Preset("remote-addition", "main", mapOf("SubA" to "release")),
+            SwitchOptions(DirtyAction.Stash, pull = true, fetchFirst = true),
+        )
+
+        assertTrue("Remote-only submodule should be initialized and switched. Logs: $logs", ok)
+        assertTrue("Parent pull should bring down .gitmodules", File(local, ".gitmodules").exists())
+        val subDir = File(local, "SubA")
+        assertTrue("Submodule worktree should be created", subDir.exists())
+        assertTrue("Submodule should be a usable git repository", git.isGitRepo(subDir))
+        assertEquals("release", git.currentBranch(subDir))
+        val mainPull = logs.indexOfFirst { it.contains("pull ok - .") }
+        val submoduleInit = logs.indexOfFirst { it.contains("submodule init ok") }
+        assertTrue("Main pull must happen before submodule initialization", mainPull >= 0 && mainPull < submoduleInit)
     }
 
     // ---- Rollback ----

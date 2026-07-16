@@ -211,6 +211,13 @@ class PresetListManager(
                         Bundle.msg("dialog.detached.head"), Bundle.msg("plugin.title"))
                     return@invokeLaterIfAlive
                 }
+                if (result.skipped.isNotEmpty()) {
+                    val details = result.skipped.joinToString("\n") { "- $it" }
+                    log.warn("[from current] incomplete preset blocked: ${result.skipped.joinToString(", ")}")
+                    Messages.showWarningDialog(project,
+                        Bundle.msg("dialog.from.current.incomplete", details), Bundle.msg("dialog.from.current"))
+                    return@invokeLaterIfAlive
+                }
                 val name = Messages.showInputDialog(project,
                     Bundle.msg("dialog.preset.name.rule"),
                     Bundle.msg("dialog.from.current"), null, mb, newNameValidator())?.trim()
@@ -225,9 +232,6 @@ class PresetListManager(
                 presetsInner.parent?.repaint()
                 saveAll()
                 log.debug("[added from current] $name -> 主仓=$mb, ${result.submodules.size} 个子模块")
-                if (result.skipped.isNotEmpty()) {
-                    log.debug("[skipped] ${result.skipped.joinToString(", ")}")
-                }
                 onStateChanged?.invoke()
             })
         }

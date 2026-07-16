@@ -15,11 +15,10 @@ data class CheckpointEntry(
  * Orchestrates a branch switch by running a pipeline of [SwitchStep]s.
  *
  * Pipeline order (intentional):
- * 1. [DirtyHandlingStep] - stash/skip/force dirty repos first, before any branch changes
- * 2. [FetchStep] - ensure remote refs are current
- * 3. [CheckoutStep] - switch branches (main first, then submodules)
- * 4. [PullStep] - fast-forward after checkout
- * 5. [SubmoduleSyncStep] - align .gitmodules URLs
+ * 1. [DirtyHandlingStep] - stash/skip/force known repos before any branch changes
+ * 2. Update main (fetch, checkout, pull) so its .gitmodules and gitlinks are current
+ * 3. [SubmoduleSyncStep] - align URLs from the updated .gitmodules
+ * 4. Update submodules (fetch existing repos, initialize missing repos, checkout, pull)
  *
  * Records a [CheckpointEntry] before switching for rollback support.
  */
@@ -33,10 +32,13 @@ class SwitchExecutor @JvmOverloads constructor(
     private val onConfirmSubmoduleInit: ((String) -> Boolean)? = null,
     private val steps: List<SwitchStep> = listOf(
         DirtyHandlingStep(),
-        FetchStep(),
-        CheckoutStep(),
-        PullStep(),
+        FetchStep(SwitchTargetScope.MAIN),
+        CheckoutStep(SwitchTargetScope.MAIN),
+        PullStep(SwitchTargetScope.MAIN),
         SubmoduleSyncStep(),
+        FetchStep(SwitchTargetScope.SUBMODULES),
+        CheckoutStep(SwitchTargetScope.SUBMODULES),
+        PullStep(SwitchTargetScope.SUBMODULES),
     ),
 ) {
 
