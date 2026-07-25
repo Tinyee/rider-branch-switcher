@@ -49,12 +49,8 @@ class SwitchController(
             } catch (e: Exception) {
                 log.error("preflight probe failed: ${e.javaClass.simpleName}: ${e.message}")
                 invokeLaterIfProjectAlive {
-                    val request = service.resolveSwitchRequest(preset)
-                    if (SwitchPreviewDialog.showAndConfirm(project, request, emptyList())) {
-                        setSwitchInProgress(true)
-                        coordinator.executeAndNotify(root, request, log,
-                            onFinished = { setSwitchInProgress(false) })
-                    }
+                    Notifier.error(project, Bundle.msg("notify.preflight.failed"),
+                        Bundle.msg("notify.preflight.failed.msg", e.javaClass.simpleName, e.message ?: ""))
                 }
                 return@launch
             }

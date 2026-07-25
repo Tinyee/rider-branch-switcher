@@ -38,6 +38,7 @@ class SubmoduleRowManager(
     private val body: JPanel,
     private val log: AppLogger,
     private val onDirty: () -> Unit,
+    private val onSwitchOnly: (path: String, target: String) -> Unit = { _, _ -> },
 ) {
     /** One submodule row: path, branch combo, panel, and tracking state. */
     class SubRow(
@@ -238,46 +239,13 @@ class SubmoduleRowManager(
     }
 
     private fun showContextMenu(rowPanel: JPanel, e: MouseEvent, path: String) {
-        val row = subRows[path] ?: return
         val popup = javax.swing.JPopupMenu()
         popup.add(javax.swing.JMenuItem(Bundle.msg("action.remove.submodule")).apply {
             addActionListener { removeRow(path) }
         })
         popup.addSeparator()
         popup.add("${Bundle.msg("menu.switch.only")} ($path)").addActionListener {
-            val dir = gitRoot.resolve(path).toFile()
-            if (dir.exists() && java.io.File(dir, ".git").exists()) {
-                scope.launch {
-                    val target = row.targetBranch.ifEmpty { row.combo.selectedItem as? String ?: "" }
-                    if (target.isEmpty()) return@launch
-                    // Check dirty working tree
-                    if (gitClient.isDirty(dir)) {
-                        com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater {
-                            log.warn("[switch] $path: working tree dirty, skip")
-                        }
-                        return@launch
-                    }
-                    val cur = gitClient.currentBranch(dir)
-                    if (cur == target) {
-                        com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater {
-                            log.debug("[switch] $path already on $target")
-                        }
-                        return@launch
-                    }
-                    val result = when {
-                        gitClient.localBranchExists(dir, target) -> gitClient.checkoutExisting(dir, target)
-                        gitClient.remoteBranchExists(dir, target) -> gitClient.checkoutFromRemote(dir, target)
-                        else -> com.submodule.branchswitcher.git.GitResult("checkout", 1, "", "branch $target not found")
-                    }
-                    com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater {
-                        if (result.ok) {
-                            log.debug("[switch] $path -> $target ok")
-                        } else {
-                            log.warn("[switch] $path fail: ${result.stderr.lines().firstOrNull() ?: ""}")
-                        }
-                    }
-                }
-            }
+            requestSwitchOnly(path)
         }
         popup.add(Bundle.msg("menu.open.explorer")).addActionListener {
             val dir = gitRoot.resolve(path).toFile()
@@ -285,5 +253,15 @@ class SubmoduleRowManager(
         }
         val point = SwingUtilities.convertPoint(e.component, e.point, rowPanel)
         popup.show(rowPanel, point.x, point.y)
+    }
+
+    internal fun requestSwitchOnly(path: String) {
+        val row = subRows[path] ?: return
+        val target = row.targetBranch.ifEmpty { row.combo.selectedItem as? String ?: "" }
+        if (target.isEmpty()) {
+            log.warn("[switch] $path: target branch is empty")
+            return
+        }
+        onSwitchOnly(path, target)
     }
 }

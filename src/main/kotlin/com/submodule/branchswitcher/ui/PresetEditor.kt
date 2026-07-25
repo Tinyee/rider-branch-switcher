@@ -57,6 +57,7 @@ class PresetEditor(
     private val nameValidator: (String) -> Boolean = { true },
     private val gitClient: GitClient,
     private val scope: CoroutineScope,
+    private val onSwitchOnly: (path: String, target: String) -> Unit = { _, _ -> },
 ) : JPanel() {
 
     private var original: Preset = initial
@@ -103,7 +104,9 @@ class PresetEditor(
     private var initializing = true
 
     // ── Submodule manager ──────────────────────────────────────
-    private val subManager = SubmoduleRowManager(gitRoot, gitClient, scope, body, log, ::updateDirty)
+    private val subManager = SubmoduleRowManager(
+        gitRoot, gitClient, scope, body, log, ::updateDirty, onSwitchOnly,
+    )
     private val subRows get() = subManager.subRows
     val loadingCount get() = subManager.loadingCount
 

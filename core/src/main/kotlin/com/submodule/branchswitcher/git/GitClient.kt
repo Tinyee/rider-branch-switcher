@@ -10,7 +10,23 @@ data class GitResult(
     val stderr: String,
 ) {
     val ok: Boolean get() = exitCode == 0
+    val failureKind: GitFailureKind
+        get() = when {
+            ok -> GitFailureKind.NONE
+            stderr == "cancelled" -> GitFailureKind.CANCELLED
+            stderr.startsWith("timeout after ") -> GitFailureKind.TIMEOUT
+            stderr.startsWith("failed to start: ") -> GitFailureKind.START_FAILED
+            else -> GitFailureKind.GIT_FAILED
+        }
+
+    /** Compact, bounded failure detail for user-facing logs. */
+    fun diagnostic(maxLines: Int = 5, maxChars: Int = 1000): String {
+        val detail = stderr.lineSequence().take(maxLines).joinToString("\n").take(maxChars)
+        return "[$failureKind] $cmd (exit $exitCode): ${detail.ifEmpty { "no stderr" }}"
+    }
 }
+
+enum class GitFailureKind { NONE, CANCELLED, TIMEOUT, START_FAILED, GIT_FAILED }
 
 interface GitQueryClient {
     /** True when [workDir] is a usable git repository. */

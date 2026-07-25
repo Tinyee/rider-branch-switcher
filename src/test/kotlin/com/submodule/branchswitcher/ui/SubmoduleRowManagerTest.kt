@@ -5,6 +5,7 @@ import com.submodule.branchswitcher.log.createStringAppender
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.awt.Component
@@ -35,6 +36,25 @@ class SubmoduleRowManagerTest {
 
         assertNotNull(pathLabel)
         assertTrue(pathLabel!!.mouseListeners.isNotEmpty())
+    }
+
+    @Test
+    fun `single submodule switch delegates target to guarded owner`() {
+        var requested: Pair<String, String>? = null
+        val manager = SubmoduleRowManager(
+            gitRoot = Paths.get("."),
+            gitClient = emptyGit(),
+            scope = CoroutineScope(Dispatchers.Unconfined),
+            body = JPanel(),
+            log = createStringAppender {},
+            onDirty = {},
+            onSwitchOnly = { path, target -> requested = path to target },
+        )
+        manager.buildSubRow("SubA", "dev")
+
+        manager.requestSwitchOnly("SubA")
+
+        assertEquals("SubA" to "dev", requested)
     }
 
     private fun descendants(root: Component): List<Component> =

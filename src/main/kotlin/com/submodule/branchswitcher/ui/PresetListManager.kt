@@ -9,8 +9,11 @@ import com.intellij.util.ui.JBUI
 import com.submodule.branchswitcher.Notifier
 import com.submodule.branchswitcher.PresetLoader
 import com.submodule.branchswitcher.Bundle
+import com.submodule.branchswitcher.TaskBridge
+import com.submodule.branchswitcher.git.GitResult
 import com.submodule.branchswitcher.log.AppLogger
 import com.submodule.branchswitcher.model.Preset
+import com.submodule.branchswitcher.platform.refreshVcsRepos
 import com.submodule.branchswitcher.service.BranchSwitcherService
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -88,6 +91,7 @@ class PresetListManager(
             nameValidator = { newName -> editors.none { it !== editor && it.currentPreset().name == newName } },
             gitClient = service.gitClient,
             scope = service.scope,
+            onSwitchOnly = { path, target -> switchSubmodule(root, path, target) },
         )
         editors.add(editor)
         val wrapper = CompactHeightPanel(BorderLayout()).apply {
@@ -97,6 +101,67 @@ class PresetListManager(
             add(Box.createVerticalStrut(4), BorderLayout.SOUTH)
         }
         presetsInner.add(wrapper)
+    }
+
+    private fun switchSubmodule(root: Path, path: String, target: String) {
+        if (!service.tryStartWrite()) {
+            Notifier.warn(project, Bundle.msg("notify.write.busy"), Bundle.msg("notify.write.busy.msg"))
+            return
+        }
+        service.scope.launch(Dispatchers.Default) {
+            val git = service.gitClient
+            val dir = root.resolve(path).toFile()
+            var result: GitResult? = null
+            var skipped: String? = null
+            try {
+                git.beginOperation()
+                try {
+                    TaskBridge.runBackground(project, Bundle.msg("progress.switching.to", target), true,
+                        block = { indicator ->
+                            indicator.isIndeterminate = true
+                            when {
+                                !dir.exists() || !git.isGitRepo(dir) -> skipped = "repository is not initialized"
+                                git.isDirty(dir) -> skipped = "working tree dirty"
+                                git.currentBranch(dir) == target -> skipped = "already on $target"
+                                git.localBranchExists(dir, target) -> result = git.checkoutExisting(dir, target)
+                                git.remoteBranchExists(dir, target) -> result = git.checkoutFromRemote(dir, target)
+                                else -> result = GitResult("checkout", 1, "", "branch $target not found")
+                            }
+                        },
+                        onCancel = { git.cancel() },
+                        onFinished = { git.endOperation() },
+                    )
+                } catch (_: kotlinx.coroutines.CancellationException) {
+                    skipped = "cancelled"
+                    log.info("[switch] $path: cancelled")
+                } catch (_: com.intellij.openapi.progress.ProcessCanceledException) {
+                    skipped = "cancelled"
+                    log.info("[switch] $path: cancelled")
+                } catch (e: Exception) {
+                    skipped = "${e.javaClass.simpleName}: ${e.message}"
+                    log.error("[switch] $path: $skipped")
+                }
+            } finally {
+                service.endWrite()
+            }
+            project.invokeLaterIfAlive {
+                when {
+                    result?.ok == true -> {
+                        log.debug("[switch] $path -> $target ok")
+                        Notifier.info(project, Bundle.msg("switch.complete"),
+                            Bundle.msg("notify.switch.only.complete", path, target))
+                    }
+                    result != null -> {
+                        log.warn("[switch] $path failed: ${result!!.stderr.lines().firstOrNull().orEmpty()}")
+                        Notifier.warn(project, Bundle.msg("switch.failed"),
+                            Bundle.msg("notify.switch.only.failed", path, target))
+                    }
+                    else -> log.warn("[switch] $path skipped: $skipped")
+                }
+                refreshVcsRepos(project, root, setOf(path))
+                onStateChanged?.invoke()
+            }
+        }
     }
 
     fun deleteEditor(editor: PresetEditor, presetsInner: JPanel) {

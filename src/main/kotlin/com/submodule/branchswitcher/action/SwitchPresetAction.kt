@@ -8,9 +8,12 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.Messages
 import com.submodule.branchswitcher.BranchSwitchListener
 import com.submodule.branchswitcher.Bundle
-import com.submodule.branchswitcher.log.createStringAppender
+import com.submodule.branchswitcher.Notifier
+import com.submodule.branchswitcher.log.AppLogger
+import com.submodule.branchswitcher.log.LogEntry
 import com.submodule.branchswitcher.model.Preset
 import com.submodule.branchswitcher.service.BranchSwitcherService
+import com.submodule.branchswitcher.ui.invokeLaterIfAlive
 import com.submodule.branchswitcher.ui.SwitchFlowCoordinator
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -47,18 +50,17 @@ class SwitchPresetAction : AnAction() {
 
     private fun executeSwitch(project: Project, service: BranchSwitcherService, preset: Preset) {
         val root = project.basePath?.let { java.nio.file.Paths.get(it) } ?: return
-        val logLines = mutableListOf<String>()
-        val collector = createStringAppender { logLines += it }
+        val collector = actionLogger(project)
         val coordinator = SwitchFlowCoordinator(project, service)
         service.scope.launch(Dispatchers.Default) {
             try {
                 val probeResult = coordinator.preflight(root, preset)
                 if (!coordinator.showForceWarning(preset, probeResult)) {
-                    logLines += "[warn] switch cancelled by user — Force dirty strategy declined"
+                    collector.warn("switch cancelled by user - Force dirty strategy declined")
                     return@launch
                 }
                 if (!coordinator.showPreflightWarnings(probeResult)) {
-                    logLines += "[warn] switch cancelled by user due to preflight warnings"
+                    collector.warn("switch cancelled by user due to preflight warnings")
                     return@launch
                 }
                 val request = service.resolveSwitchRequest(preset)
@@ -67,7 +69,25 @@ class SwitchPresetAction : AnAction() {
                 }
             } catch (_: kotlinx.coroutines.CancellationException) {
                 // user cancelled
+            } catch (e: Exception) {
+                collector.error("shortcut switch failed: ${e.javaClass.simpleName}: ${e.message}")
+                project.invokeLaterIfAlive {
+                    Notifier.error(project, Bundle.msg("notify.preflight.failed"),
+                        Bundle.msg("notify.preflight.failed.msg", e.javaClass.simpleName, e.message ?: ""))
+                }
             }
         }
+    }
+
+    private fun actionLogger(project: Project): AppLogger = object : AppLogger {
+        private fun emit(level: LogEntry.Level, message: String) {
+            project.messageBus.syncPublisher(BranchSwitchListener.TOPIC).onLog(LogEntry(level, message))
+        }
+
+        override fun info(msg: String) = emit(LogEntry.Level.INFO, msg)
+        override fun warn(msg: String) = emit(LogEntry.Level.WARN, msg)
+        override fun error(msg: String) = emit(LogEntry.Level.ERROR, msg)
+        override fun debug(msg: String) = emit(LogEntry.Level.DEBUG, msg)
+        override fun activity(msg: String) = emit(LogEntry.Level.ACTIVITY, msg)
     }
 }

@@ -16,7 +16,7 @@ class SubmoduleSyncStep : SwitchStep {
             context.log.info("submodule sync ok")
             return StepResult.Success
         } else {
-            context.log.warn(" submodule sync failed: ${s.stderr.lines().firstOrNull() ?: ""}")
+            context.log.warn(" submodule sync failed: ${s.diagnostic()}")
             return StepResult.Partial(mapOf("." to "submodule sync failed"))
         }
     }

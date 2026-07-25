@@ -19,6 +19,7 @@ import com.submodule.branchswitcher.log.ToolWindowLogger
 import com.submodule.branchswitcher.model.Preset
 import com.submodule.branchswitcher.service.BranchSwitcherService
 import com.submodule.branchswitcher.settings.BranchSwitcherConfigurable
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import java.awt.BorderLayout
 import java.awt.Dimension
@@ -261,6 +262,10 @@ class BranchSwitcherPanel(
             override fun onBranchSwitched() {
                 com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater { detectCurrentState() }
             }
+
+            override fun onLog(entry: LogEntry) {
+                appendStructured(entry)
+            }
         })
         FileStatusManager.getInstance(project).addFileStatusListener(object : FileStatusListener {
             override fun fileStatusesChanged() {
@@ -332,6 +337,7 @@ class BranchSwitcherPanel(
      * Uses generation-based stale detection: if a newer [detectCurrentState] call starts
      * before this one finishes, the stale result is discarded via [service.getDetectGen].
      */
+    @Suppress("TooGenericExceptionCaught")
     private fun detectCurrentState() {
         val root = gitRoot() ?: return
         val eds = presetManager.editors
@@ -345,8 +351,18 @@ class BranchSwitcherPanel(
             val dirty = HashMap<String, Boolean>(snapshot.size)
             for (p in snapshot) {
                 val dir = if (p == ".") root.toFile() else root.resolve(p).toFile()
-                branches[p] = if (dir.exists()) service.gitClient.currentBranch(dir) else null
-                dirty[p] = if (dir.exists()) service.gitClient.isDirty(dir) else false
+                try {
+                    branches[p] = if (dir.exists()) service.gitClient.currentBranch(dir) else null
+                    dirty[p] = if (dir.exists()) service.gitClient.isDirty(dir) else false
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: com.intellij.openapi.progress.ProcessCanceledException) {
+                    throw e
+                } catch (e: Exception) {
+                    branches[p] = null
+                    dirty[p] = false
+                    logger.error("[detect] $p: ${e.javaClass.simpleName}: ${e.message}")
+                }
             }
             com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater {
                 if (gen != service.getDetectGen()) return@invokeLater

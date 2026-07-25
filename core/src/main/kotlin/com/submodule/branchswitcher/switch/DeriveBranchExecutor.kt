@@ -173,7 +173,7 @@ class DeriveBranchExecutor(
                     succeeded.add(target.path)
                     log.activity("[derive] $label: created branch $branchName")
                 } else {
-                    val err = r.stderr.lines().firstOrNull() ?: "exit ${r.exitCode}"
+                    val err = r.diagnostic()
                     failed[target.path] = err
                     log.warn("[derive] $label: FAILED - $err")
                 }
@@ -205,7 +205,7 @@ class DeriveBranchExecutor(
                     val target = entry.branch ?: entry.sha
                     val co = git.checkoutExisting(dir, target)
                     if (!co.ok) {
-                        log.warn("[derive] $label: checkout rollback FAILED - ${co.stderr.lines().firstOrNull() ?: "exit ${co.exitCode}"}")
+                        log.warn("[derive] $label: checkout rollback FAILED - ${co.diagnostic()}")
                         rollbackFailures.add(path)
                         continue
                     }
@@ -215,7 +215,7 @@ class DeriveBranchExecutor(
                     if (del.ok) {
                         log.activity("[derive] $label: deleted branch $branchName")
                     } else {
-                        log.warn("[derive] $label: could not delete branch $branchName - ${del.stderr.lines().firstOrNull() ?: "exit ${del.exitCode}"}")
+                        log.warn("[derive] $label: could not delete branch $branchName - ${del.diagnostic()}")
                         rollbackFailures.add(path)
                     }
                 } else {
