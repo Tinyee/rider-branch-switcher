@@ -61,8 +61,13 @@ class SwitchExecutor @JvmOverloads constructor(
             onConfirmSubmoduleInit = onConfirmSubmoduleInit,
         )
 
-        // Record checkpoint before switching
+        // Do not mutate any existing repository unless it has rollback coverage.
         lastCheckpoint = recordCheckpoint(preset)
+        if (lastCheckpoint == null) {
+            log.error("[checkpoint] switch aborted: unable to record every existing repository")
+            log.activity("=== done with errors ===")
+            return false
+        }
 
         context.progressHandle?.isIndeterminate = false
 
@@ -149,12 +154,22 @@ class SwitchExecutor @JvmOverloads constructor(
         return allOk
     }
 
-    private fun recordCheckpoint(preset: Preset): Map<String, CheckpointEntry> {
+    /**
+     * Returns null when an existing Git repository cannot be checkpointed.
+     * Missing submodule directories are intentionally excluded: they have no state to restore
+     * and may be initialized later in the switch pipeline.
+     */
+    private fun recordCheckpoint(preset: Preset): Map<String, CheckpointEntry>? {
         val map = LinkedHashMap<String, CheckpointEntry>()
         for (target in preset.targets()) {
             val dir = resolveGitDir(projectRoot, target.path)
             if (!dir.exists() || !git.isGitRepo(dir)) continue
-            val sha = git.revParseHead(dir) ?: continue
+            val label = if (target.path == ".") projectRoot.fileName.toString() else target.path
+            val sha = git.revParseHead(dir)
+            if (sha == null) {
+                log.error("[checkpoint] $label: unable to read HEAD")
+                return null
+            }
             val branch = git.currentBranch(dir)
             map[target.path] = CheckpointEntry(sha, branch)
         }

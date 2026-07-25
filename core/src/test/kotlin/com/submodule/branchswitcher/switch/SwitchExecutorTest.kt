@@ -81,6 +81,24 @@ class SwitchExecutorTest {
         assertFalse("Switch should fail when branch doesn't exist", result)
     }
 
+    @Test
+    fun `checkpoint failure blocks switch before checkout`() {
+        var checkoutCalls = 0
+        val missingHeadGit = object : GitClient by fakeGit {
+            override fun revParseHead(workDir: File): String? = null
+            override fun checkoutExisting(workDir: File, branch: String): GitResult {
+                checkoutCalls++
+                return GitResult("checkout", 0, "", "")
+            }
+        }
+        val executor = SwitchExecutor(projectRoot, createStringAppender { log += it }, missingHeadGit)
+
+        assertFalse(executor.executeTest(preset, SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false)))
+        assertEquals("Checkpoint failure must prevent checkout", 0, checkoutCalls)
+        assertNull("Incomplete checkpoints must not be retained", executor.getCheckpoint())
+        assertTrue(log.any { it.contains("[checkpoint]") && it.contains("unable to read HEAD") })
+    }
+
     // ---- Dirty handling ----
 
     @Test

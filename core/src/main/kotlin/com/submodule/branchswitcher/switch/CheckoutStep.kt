@@ -49,7 +49,7 @@ class CheckoutStep(
                     context.log.info("dir missing, trying: git submodule update --init --recursive -- ${target.path}")
                     val r = context.git.submoduleInitPath(context.projectRoot.toFile(), target.path)
                     if (!r.ok) {
-                        context.log.warn("[skip] submodule init failed: ${r.stderr.lines().firstOrNull() ?: ""}")
+                        context.log.warn("[skip] submodule init failed: ${r.diagnostic()}")
                         failures[target.path] = "submodule init failed"
                         continue
                     }
@@ -58,7 +58,7 @@ class CheckoutStep(
                         val fetch = context.git.fetch(dir)
                         if (!fetch.ok) {
                             context.log.warn(
-                                "fetch after init warn: ${fetch.stderr.lines().firstOrNull() ?: ""} (${target.path})"
+                                "fetch after init warn: ${fetch.diagnostic()} (${target.path})"
                             )
                             failures[target.path] = "fetch after init had warnings"
                         }
@@ -102,14 +102,14 @@ class CheckoutStep(
                     if (popResult.ok) {
                         context.log.info("stash pop ok (recovered after branch-not-found: $msg)")
                     } else {
-                        context.log.warn("[fail] stash pop also failed: ${popResult.stderr.lines().firstOrNull() ?: ""}")
+                        context.log.warn("[fail] stash pop also failed: ${popResult.diagnostic()}")
                         failures[target.path] = "branch not found + stash pop failed"
                     }
                 }
                 continue
             }
             if (!checkoutResult.ok) {
-                context.log.warn("[fail] checkout: ${checkoutResult.stderr}")
+                context.log.warn("[fail] checkout: ${checkoutResult.diagnostic()}")
                 failures[target.path] = "checkout failed"
                 continue
             }

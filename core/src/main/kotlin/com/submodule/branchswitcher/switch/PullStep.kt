@@ -30,7 +30,7 @@ class PullStep(
             if (p.ok) {
                 context.log.info("pull ok - ${target.path}")
             } else {
-                context.log.warn(" pull failed (kept local): ${p.stderr.lines().firstOrNull() ?: ""}")
+                context.log.warn(" pull failed (kept local): ${p.diagnostic()}")
                 failures[target.path] = "pull had warnings"
             }
         }
@@ -54,7 +54,7 @@ class PullStep(
                 context.log.info("stash pop ok ($msg)")
                 context.state.consumeStash(path)
             } else {
-                context.log.warn("[fail] stash pop failed for $path: ${popResult.stderr.lines().firstOrNull() ?: ""}")
+                context.log.warn("[fail] stash pop failed for $path: ${popResult.diagnostic()}")
             }
         }
     }

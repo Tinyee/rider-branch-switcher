@@ -123,7 +123,7 @@ class SwitchFlowCoordinator(
                             Notifier.rollbackAction(project, Bundle.msg("switch.failed"),
                                 Bundle.msg("notify.switch.partial.msg", preset.name) +
                                     Bundle.msg("notify.switch.rollback.hint")
-                            ) { rollbackSwitch(executor) }
+                            ) { rollbackSwitch(executor, log) }
                         } else {
                             Notifier.error(project, Bundle.msg("switch.failed"),
                                 Bundle.msg("notify.switch.partial.msg", preset.name))
@@ -138,7 +138,8 @@ class SwitchFlowCoordinator(
         }
     }
 
-    private fun rollbackSwitch(executor: SwitchExecutor) {
+    @Suppress("TooGenericExceptionCaught")
+    private fun rollbackSwitch(executor: SwitchExecutor, log: AppLogger) {
         if (!service.tryStartWrite()) {
             uiLater { Notifier.warn(project, Bundle.msg("notify.write.busy"), Bundle.msg("notify.write.busy.msg")) }
             return
@@ -160,7 +161,9 @@ class SwitchFlowCoordinator(
                     )
                 } catch (_: CancellationException) {}
                 catch (_: com.intellij.openapi.progress.ProcessCanceledException) {}
-                catch (_: RuntimeException) {}
+                catch (e: RuntimeException) {
+                    log.error("notification rollback: ${e.javaClass.simpleName}: ${e.message}")
+                }
                 uiLater {
                     if (rollbackOk) Notifier.info(project, Bundle.msg("rollback.complete"),
                         Bundle.msg("notify.rollback.complete.msg"))

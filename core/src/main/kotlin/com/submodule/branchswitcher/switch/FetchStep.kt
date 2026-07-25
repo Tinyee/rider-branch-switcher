@@ -17,7 +17,7 @@ class FetchStep(
 
             val f = context.git.fetch(dir)
             if (!f.ok) {
-                context.log.warn("fetch warn: ${f.stderr} (${target.path})")
+                context.log.warn("fetch warn: ${f.diagnostic()} (${target.path})")
                 failures[target.path] = "fetch had warnings"
             }
         }
