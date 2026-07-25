@@ -10,6 +10,8 @@ import com.submodule.branchswitcher.switch.shortLabel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import java.awt.BorderLayout
+import java.awt.Component
+import java.awt.Container
 import java.awt.Dimension
 import java.awt.FlowLayout
 import java.awt.event.MouseAdapter
@@ -85,15 +87,30 @@ class SubmoduleRowManager(
             add(combo, BorderLayout.CENTER)
 
         }
-        // Right-click context menu
-        rowPanel.addMouseListener(object : MouseAdapter() {
-            override fun mousePressed(e: MouseEvent) { if (e.isPopupTrigger) showContextMenu(e, path) }
-            override fun mouseReleased(e: MouseEvent) { if (e.isPopupTrigger) showContextMenu(e, path) }
-            override fun mouseClicked(e: MouseEvent) {}
-        })
+        installContextMenu(rowPanel, path)
         row.panel = rowPanel
         subRows[path] = row
         return row
+    }
+
+    private fun installContextMenu(rowPanel: JPanel, path: String) {
+        val listener = object : MouseAdapter() {
+            override fun mousePressed(e: MouseEvent) {
+                if (e.isPopupTrigger) showContextMenu(rowPanel, e, path)
+            }
+
+            override fun mouseReleased(e: MouseEvent) {
+                if (e.isPopupTrigger) showContextMenu(rowPanel, e, path)
+            }
+        }
+        addContextMenuListener(rowPanel, listener)
+    }
+
+    private fun addContextMenuListener(component: Component, listener: MouseAdapter) {
+        component.addMouseListener(listener)
+        if (component is Container) {
+            component.components.forEach { addContextMenuListener(it, listener) }
+        }
     }
 
     private fun removeRow(path: String) {
@@ -220,7 +237,7 @@ class SubmoduleRowManager(
         )
     }
 
-    private fun showContextMenu(e: MouseEvent, path: String) {
+    private fun showContextMenu(rowPanel: JPanel, e: MouseEvent, path: String) {
         val row = subRows[path] ?: return
         val popup = javax.swing.JPopupMenu()
         popup.add(javax.swing.JMenuItem(Bundle.msg("action.remove.submodule")).apply {
@@ -266,6 +283,7 @@ class SubmoduleRowManager(
             val dir = gitRoot.resolve(path).toFile()
             if (dir.exists()) java.awt.Desktop.getDesktop().open(dir)
         }
-        popup.show(e.component, e.x, e.y)
+        val point = SwingUtilities.convertPoint(e.component, e.point, rowPanel)
+        popup.show(rowPanel, point.x, point.y)
     }
 }
