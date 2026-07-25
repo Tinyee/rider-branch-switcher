@@ -8,14 +8,11 @@ import com.submodule.branchswitcher.Notifier
 import com.submodule.branchswitcher.Bundle
 import com.submodule.branchswitcher.TaskBridge
 import com.submodule.branchswitcher.model.Preset
-import com.submodule.branchswitcher.model.SwitchOptions
 import com.submodule.branchswitcher.service.BranchSwitcherService
 import com.submodule.branchswitcher.platform.refreshVcsRepos
-import com.submodule.branchswitcher.platform.SwitchRunner
 import com.submodule.branchswitcher.switch.DeriveBranchExecutor
 import com.submodule.branchswitcher.platform.platformCancellationClassifier
 import com.submodule.branchswitcher.switch.DeriveNotification
-import com.submodule.branchswitcher.switch.SwitchExecutor
 import com.submodule.branchswitcher.switch.deriveNotification
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -62,48 +59,6 @@ class SwitchController(
                         onFinished = { setSwitchInProgress(false) })
                 }
             }
-        }
-    }
-
-    fun rollbackSwitch(executor: SwitchExecutor) {
-        if (!service.tryStartWrite()) {
-            Notifier.warn(project, Bundle.msg("notify.write.busy"), Bundle.msg("notify.write.busy.msg"))
-            return
-        }
-        service.scope.launch(Dispatchers.Default) {
-            try {
-            var rollbackOk = false
-            val gitClient = service.gitClient
-            gitClient.beginOperation()
-            try {
-                TaskBridge.runBackground(project, Bundle.msg("progress.rollback"), true,
-                    block = { indicator ->
-                        indicator.isIndeterminate = true
-                        rollbackOk = executor.rollback()
-                    },
-                    onCancel = { gitClient.cancel() },
-                    onFinished = { gitClient.endOperation() },
-                )
-            } catch (_: CancellationException) {
-                log.info("[cancelled] rollback cancelled by user")
-                rollbackOk = false
-            } catch (e: Exception) {
-                log.error("rollback: ${e.javaClass.simpleName}: ${e.message}")
-                rollbackOk = false
-            }
-            // Wrap UI ops in invokeLater to avoid EDT violations
-            invokeLaterIfProjectAlive {
-                val root = gitRoot()
-                if (root != null) {
-                    val submodulePaths = executor.getCheckpoint()?.keys?.filter { it != "." } ?: emptyList()
-                    refreshVcs(root, Preset("_rollback", "", submodulePaths.associateWith { "" }))
-                    onStateChanged()
-                    if (!rollbackOk) {
-                        Notifier.warn(project, Bundle.msg("rollback.partial"), Bundle.msg("rollback.partial.msg"))
-                    }
-                }
-            }
-            } finally { service.endWrite() }
         }
     }
 
