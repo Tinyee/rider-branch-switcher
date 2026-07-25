@@ -6,6 +6,7 @@
 - Target: full functionality and failure diagnosability review
 - Result: `ACCEPTED` - all P1/P2 findings are verified; one P3 preview-diagnostic enhancement is deferred
 - Follow-up: the local-only statistics feature was fully removed; source, persisted fields, UI, i18n, tests, and active docs were checked with no new finding.
+- Architecture follow-up (2026-07-26): `ARCH-01` was fixed by removing an unreachable duplicate rollback path; `ARCH-02` and `ARCH-03` are accepted P3 observations in `docs/architecture-review-2026-07-26.md`.
 
 ## Active Findings
 
