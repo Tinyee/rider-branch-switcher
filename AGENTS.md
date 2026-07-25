@@ -6,7 +6,7 @@ JetBrains IDE 插件 — 一键将主仓库和所有子模块切换到预设的�
 
 - **技术栈**: Kotlin 2.3, IntelliJ Platform Gradle Plugin 2.2.1, Gradle 8.13, JUnit 4 + Kotest 5.9
 - **目标**: JetBrains IDEs 2026.1 (build 261)，默认使用 IntelliJ IDEA Community SDK 构建，Rider 作为兼容验证目标
-- **测试**: 283 tests / 27 classes (14 core + 13 platform)
+- **测试**: 284 tests / 28 classes (14 core + 14 platform)
 - **版本**: 0.7.0
 
 ## 架构
@@ -45,7 +45,7 @@ src/…/com/submodule/branchswitcher/    # IntelliJ Platform 模块
 ```bash
 git config core.hooksPath .githooks   # 首次 clone 后执行一次，启用自动检查
 ./gradlew pureTest      # alias for :core:test; 142 core pure JVM tests (14 classes)
-./gradlew :test         # 141 platform/integration tests, including 6 Kotest (13 classes)
+./gradlew :test         # 142 platform/integration tests, including 6 Kotest (14 classes)
 ./gradlew buildPlugin   # → build/distributions/submodule-branch-switcher-{version}.zip
 ./gradlew runIde        # 启动配置的沙箱 JetBrains IDE，插件已预装
 ./gradlew quickCheck    # <1 秒，grep 结构检查（git commit / git push 时自动跑）
@@ -119,7 +119,7 @@ RUN_RELEASE_CHECK_ON_PUSH=1 git push  # 需要 push 时同时跑 releaseCheck �
 - 分支名校验 (`isValidBranchName`)。
 - 云端新增子模块切换改为先更新主仓，再递归同步、初始化和切换子模块；普通子目录不再误判为父 Git 仓库。
 - 新增 MIT `LICENSE`、`quickCheck` + `releaseCheck` Gradle task、git pre-commit/pre-push hooks（push 默认只跑 quickCheck，releaseCheck 手动或 opt-in）。
-- 283 tests / 27 classes 覆盖：142 个 core pure JVM 测试 + 141 个平台/集成测试（含 6 个 Kotest 属性测试），含真实 Git 集成、取消、rollback、derive 安全、通知决策、stash+rollback、远端新增子模块和 50 子模块调用预算。
+- 284 tests / 28 classes 覆盖：142 个 core pure JVM 测试 + 142 个平台/集成测试（含 6 个 Kotest 属性测试），含真实 Git 集成、取消、rollback、derive 安全、通知决策、stash+rollback、远端新增子模块和 50 子模块调用预算。
 
 ## 会话流程规则
 
