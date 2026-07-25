@@ -5,12 +5,12 @@
 
 ## 不准 — 可自动验证
 
-- **没按验证预算跑对应层级，不准说没问题。** 纯文档可 L0/L1；生产代码按 `/handoff` 和 `AGENTS.md` 升级到 L2/L3/L4。
+- **没按验证预算跑对应层级，不准说没问题。** 纯文档可 L0/L1；生产代码按 `AGENTS.md` 升级到 L2/L3/L4。
 - **不准静默吞异常。** `CancellationException` 必须重抛。探针异常 → Unknown/Error。UI 清理 → 可忽略但注释原因。其他 → 至少 `LOG.warn`。
 - **新增异步路径不准缺生命周期。** 每条路径：门禁 → beginOperation → 可取消任务 → endOperation → finally。`invokeLater` 回调检查 `project.isDisposed`。
 - **声称完成前不准用 Gradle 缓存声称通过。** 开发增量 OK，声称"没问题"至少跑一次 `--rerun-tasks`。
 - **`ProcessCanceledException extends RuntimeException`**——`catch (e: RuntimeException)` 和 `catch (e: Exception)` 都会误吞它。取消异常和进程取消异常必须在任何宽 catch 之前单独处理。**改变任何异常传播路径后，必须 `grep -rn "catch.*Exception\|catch.*RuntimeException" src/main` 扫全量上行 catch 块。**
-- **验证分层**：改测试/文档 → L1（testClasses+quickCheck）。改生产代码 → L2（+detekt）。改 GitOps/SwitchExecutor → L3（+相关 test）。普通 push 只走 pre-push quickCheck；发布/重大里程碑 → L4（全量 test detekt --rerun-tasks 或 releaseCheck）。详见 `/handoff` skill。
+- **验证分层**：改测试/文档 → L1（testClasses+quickCheck）。改生产代码 → L2（+detekt）。改 GitOps/SwitchExecutor → L3（+相关 test）。普通 push 只走 pre-push quickCheck；发布/重大里程碑 → L4（全量 test detekt --rerun-tasks 或 releaseCheck）。详见 `AGENTS.md`。
 
 ## 血泪教训 — 没法自动验证但每次都栽
 
@@ -74,8 +74,3 @@ grep "NEW_KEY" src/main/resources/messages/*.properties
 - **写完代码对着设计逐条过。** 不看设计直接写 = 漏 UI、漏交互细节。
 - **审查修完一轮重读源码。** 不能凭记忆——两轮之间文件已被自己改过。
 - **提交前跑 `docs/templates/implementation-review-checklist.md`。**
-
-## Skill
-
-- IntelliJ SDK：`/intellij-plugin-dev`
-- 验证分层 + commit 约定 + 审查侧不重跑：`/handoff`
