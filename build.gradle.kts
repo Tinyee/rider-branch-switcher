@@ -242,9 +242,9 @@ tasks {
         description = "Test quickCheck rules by injecting broken fixtures into a temp dir and verifying the scan catches them."
 
         doLast {
-            val fixtureDir = file(".claude/rules/fixtures")
+            val fixtureDir = file("gradle/quick-check-fixtures")
             val fixtures = fixtureDir.listFiles { f -> f.extension == "fixture" }?.toList() ?: emptyList()
-            if (fixtures.isEmpty()) throw GradleException("No quickCheck fixtures found in $fixtureDir - commit .claude/rules/fixtures/?")
+            if (fixtures.isEmpty()) throw GradleException("No quickCheck fixtures found in $fixtureDir - commit gradle/quick-check-fixtures/?")
 
             // Write fixtures under build/ to avoid interfering with detekt or other tools
             // scanning src/main/kotlin concurrently.
