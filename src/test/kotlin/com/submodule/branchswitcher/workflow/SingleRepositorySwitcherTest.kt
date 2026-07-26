@@ -1,4 +1,4 @@
-package com.submodule.branchswitcher.platform
+package com.submodule.branchswitcher.workflow
 
 import com.intellij.openapi.progress.ProgressIndicator
 import com.intellij.openapi.project.Project

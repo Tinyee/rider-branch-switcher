@@ -17,9 +17,9 @@ import com.submodule.branchswitcher.log.AppLogger
 import com.submodule.branchswitcher.log.LogEntry
 import com.submodule.branchswitcher.log.ToolWindowLogger
 import com.submodule.branchswitcher.model.Preset
-import com.submodule.branchswitcher.platform.RepositoryStateDetector
 import com.submodule.branchswitcher.platform.gitRootPath
 import com.submodule.branchswitcher.service.BranchSwitcherService
+import com.submodule.branchswitcher.workflow.RepositoryStateDetector
 import com.submodule.branchswitcher.settings.BranchSwitcherConfigurable
 import kotlinx.coroutines.launch
 import java.awt.BorderLayout

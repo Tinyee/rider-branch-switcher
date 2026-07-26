@@ -8,11 +8,11 @@ import com.submodule.branchswitcher.Bundle
 import com.submodule.branchswitcher.Notifier
 import com.submodule.branchswitcher.log.AppLogger
 import com.submodule.branchswitcher.model.Preset
-import com.submodule.branchswitcher.platform.SingleRepositorySkipReason
-import com.submodule.branchswitcher.platform.SingleRepositorySwitchResult
-import com.submodule.branchswitcher.platform.SingleRepositorySwitcher
 import com.submodule.branchswitcher.platform.refreshVcsRepos
 import com.submodule.branchswitcher.service.BranchSwitcherService
+import com.submodule.branchswitcher.workflow.SingleRepositorySkipReason
+import com.submodule.branchswitcher.workflow.SingleRepositorySwitchResult
+import com.submodule.branchswitcher.workflow.SingleRepositorySwitcher
 import java.awt.BorderLayout
 import java.awt.FlowLayout
 import java.awt.Font

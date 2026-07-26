@@ -1,10 +1,13 @@
-package com.submodule.branchswitcher.platform
+package com.submodule.branchswitcher.workflow
 
 import com.intellij.openapi.project.Project
 import com.submodule.branchswitcher.Bundle
 import com.submodule.branchswitcher.TaskBridge
 import com.submodule.branchswitcher.git.GitOperationProvider
 import com.submodule.branchswitcher.git.GitResult
+import com.submodule.branchswitcher.platform.GitBackgroundResult
+import com.submodule.branchswitcher.platform.GitBackgroundRunner
+import com.submodule.branchswitcher.platform.platformCancellationClassifier
 import com.submodule.branchswitcher.switch.resolveGitDir
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers

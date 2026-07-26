@@ -179,14 +179,35 @@ fun scanQuickChecks(
             fail("switch/ imports ui/: ${violations.take(3)}")
     }
 
-    // 5. Git process execution belongs to GitProcessRunner; GitOps may only probe --version.
+    // 5. Platform and application layers must keep a one-way dependency direction.
+    val forbiddenLayerImports = mapOf(
+        "workflow" to listOf(".ui.", ".service."),
+        "platform" to listOf(".workflow.", ".ui.", ".service."),
+        "service" to listOf(".workflow.", ".platform.", ".ui."),
+    )
+    for ((layer, forbidden) in forbiddenLayerImports) {
+        val layerDir = file("$srcRoot/com/submodule/branchswitcher/$layer")
+        if (!layerDir.exists()) continue
+        val violations = fileTree(layerDir).filter { it.extension == "kt" }
+            .flatMap { file ->
+                file.readLines()
+                    .filter { line ->
+                        line.trimStart().startsWith("import com.submodule.branchswitcher") &&
+                            forbidden.any(line::contains)
+                    }
+                    .map { "${file.name}: $it" }
+            }
+        if (violations.isNotEmpty()) fail("$layer has forbidden layer imports: ${violations.take(3)}")
+    }
+
+    // 6. Git process execution belongs to GitProcessRunner; GitOps may only probe --version.
     val rawGit = fileTree(srcRoot).filter {
         it.extension == "kt" && it.name !in setOf("GitProcessRunner.kt", "GitOps.kt")
     }.flatMap { it.readLines() }.filter { it.contains("ProcessBuilder") && it.contains("\"git") }
     if (rawGit.isNotEmpty())
         fail("Raw git ProcessBuilder outside GitProcessRunner: ${rawGit.take(3)}")
 
-    // 6. i18n key count symmetry
+    // 7. i18n key count symmetry
     val enFile = file("$msgDir/BranchSwitcherBundle.properties")
     val zhFile = file("$msgDir/BranchSwitcherBundle_zh.properties")
     if (checkMessages && enFile.exists() && zhFile.exists()) {
@@ -200,7 +221,7 @@ fun scanQuickChecks(
         if (onlyZh.isNotEmpty()) fail("Keys only in ZH: $onlyZh")
     }
 
-    // 7. allOk must include cancelled check
+    // 8. allOk must include cancelled check
     val allOkDefs = fileTree(srcRoot).filter { it.extension == "kt" }
         .flatMap { it.readLines() }.filter { it.contains("val allOk") || it.contains("val allClean") }
     for (def in allOkDefs) {
@@ -208,7 +229,7 @@ fun scanQuickChecks(
             fail("allOk/allClean missing cancelled check: $def")
     }
 
-    // 8. Deprecated IntelliJ API patterns
+    // 9. Deprecated IntelliJ API patterns
     val deprecated = fileTree(srcRoot).filter { it.extension == "kt" }
         .flatMap { it.readLines() }.filter {
             it.contains("project.coroutineScope") && !it.contains("//") ||
@@ -282,9 +303,10 @@ tasks {
             val tempSrcDir = file("$tempRoot/com/submodule/branchswitcher")
             val msgDir = file("src/main/resources/messages")
 
-            // switch-imports-ui fixture must go in switch/ directory (rule 3 only scans there)
+            // Package-scoped fixtures must be placed under the directory scanned by their rule.
             val fixtureToDir = mapOf(
                 "violates-switch-imports-ui.kt" to "switch/_fixture_test_",
+                "violates-workflow-imports-ui.kt" to "workflow/_fixture_test_",
             )
             val defaultDir = "_fixture_test_"
 
@@ -313,6 +335,7 @@ tasks {
                             name.contains("cancel") -> "runBackground without"
                             name.contains("write") -> "tryAcquireWrite without writeLease.close"
                             name.contains("switch") -> "switch/ imports ui/"
+                            name.contains("workflow") -> "workflow has forbidden layer imports"
                             name.contains("core-intellij") -> "Core imports IntelliJ API"
                             name.contains("deprecated") -> "Deprecated API"
                             else -> name
