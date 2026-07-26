@@ -9,13 +9,14 @@ import com.intellij.util.ui.JBUI
 import com.submodule.branchswitcher.Notifier
 import com.submodule.branchswitcher.PresetLoader
 import com.submodule.branchswitcher.Bundle
-import com.submodule.branchswitcher.TaskBridge
 import com.submodule.branchswitcher.git.GitResult
 import com.submodule.branchswitcher.log.AppLogger
 import com.submodule.branchswitcher.model.Preset
 import com.submodule.branchswitcher.switch.resolveGitDir
 import com.submodule.branchswitcher.platform.refreshVcsRepos
 import com.submodule.branchswitcher.service.BranchSwitcherService
+import com.submodule.branchswitcher.platform.GitBackgroundResult
+import com.submodule.branchswitcher.platform.GitBackgroundRunner
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import java.awt.BorderLayout
@@ -118,42 +119,38 @@ class PresetListManager(
             return
         }
         service.scope.launch(Dispatchers.Default) {
-            val operation = service.gitClient.openOperation()
             val dir = resolveGitDir(root, path)
             var result: GitResult? = null
             var skipped: String? = null
             try {
-                try {
-                    TaskBridge.runBackground(project, Bundle.msg("progress.switching.to", target), true,
-                        block = { indicator ->
-                            indicator.isIndeterminate = true
-                            when {
-                                !dir.exists() || !operation.isGitRepo(dir) ->
-                                    skipped = "repository is not initialized"
-                                operation.isDirty(dir) -> skipped = "working tree dirty"
-                                operation.currentBranch(dir) == target -> skipped = "already on $target"
-                                operation.localBranchExists(dir, target) ->
-                                    result = operation.checkoutExisting(dir, target)
-                                operation.remoteBranchExists(dir, target) ->
-                                    result = operation.checkoutFromRemote(dir, target)
-                                else -> result = GitResult("checkout", 1, "", "branch $target not found")
-                            }
-                        },
-                        onCancel = { operation.cancel() },
-                        onFinished = { operation.close() },
-                    )
-                } catch (_: kotlinx.coroutines.CancellationException) {
-                    skipped = "cancelled"
-                    log.info("[switch] $path: cancelled")
-                } catch (_: com.intellij.openapi.progress.ProcessCanceledException) {
-                    skipped = "cancelled"
-                    log.info("[switch] $path: cancelled")
-                } catch (e: Exception) {
-                    skipped = "${e.javaClass.simpleName}: ${e.message}"
-                    log.error("[switch] $path: $skipped")
+                when (val background = GitBackgroundRunner(project, service.gitClient).run(
+                    Bundle.msg("progress.switching.to", target),
+                ) { indicator, operation ->
+                    indicator.isIndeterminate = true
+                    when {
+                        !dir.exists() || !operation.isGitRepo(dir) ->
+                            skipped = "repository is not initialized"
+                        operation.isDirty(dir) -> skipped = "working tree dirty"
+                        operation.currentBranch(dir) == target -> skipped = "already on $target"
+                        operation.localBranchExists(dir, target) ->
+                            result = operation.checkoutExisting(dir, target)
+                        operation.remoteBranchExists(dir, target) ->
+                            result = operation.checkoutFromRemote(dir, target)
+                        else -> result = GitResult("checkout", 1, "", "branch $target not found")
+                    }
+                }) {
+                    is GitBackgroundResult.Completed -> Unit
+                    is GitBackgroundResult.Cancelled -> {
+                        skipped = "cancelled"
+                        log.info("[switch] $path: cancelled")
+                    }
+                    is GitBackgroundResult.Failed -> {
+                        val e = background.error
+                        skipped = "${e.javaClass.simpleName}: ${e.message}"
+                        log.error("[switch] $path: $skipped")
+                    }
                 }
             } finally {
-                operation.close()
                 writeLease.close()
             }
             project.invokeLaterIfAlive {
@@ -164,7 +161,7 @@ class PresetListManager(
                             Bundle.msg("notify.switch.only.complete", path, target))
                     }
                     result != null -> {
-                        log.warn("[switch] $path failed: ${result!!.diagnostic()}")
+                        log.warn("[switch] $path failed: ${result.diagnostic()}")
                         Notifier.warn(project, Bundle.msg("switch.failed"),
                             Bundle.msg("notify.switch.only.failed", path, target))
                     }

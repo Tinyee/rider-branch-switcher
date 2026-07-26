@@ -9,7 +9,6 @@ import com.submodule.branchswitcher.log.AppLogger
 import com.submodule.branchswitcher.model.ResolvedSwitchRequest
 import com.submodule.branchswitcher.switch.SwitchExecutionResult
 import com.submodule.branchswitcher.switch.SwitchExecutor
-import kotlinx.coroutines.CancellationException
 import java.nio.file.Path
 
 data class SwitchRunResult(
@@ -39,7 +38,6 @@ class SwitchRunner(
     private val gitClient: GitOperationProvider,
     private val taskRunner: TaskBridge.TaskRunner = TaskBridge.TaskRunner.DEFAULT,
 ) {
-    @Suppress("TooGenericExceptionCaught")
     suspend fun execute(
         title: String,
         request: ResolvedSwitchRequest,
@@ -51,55 +49,53 @@ class SwitchRunner(
         var execution: SwitchExecutionResult? = null
         var recovery: SwitchRecoveryResult? = null
 
-        val operation = gitClient.openOperation()
-        try {
-            TaskBridge.runBackground(taskRunner, project, title, true,
-                block = { indicator ->
-                    indicator.isIndeterminate = true
-                    if (!beforeExecute(indicator)) {
-                        cancelled = true
-                        return@runBackground
-                    }
-                    val wrapped = progress(indicator)
-                    val cancelHandle = ProgressCancellationHandle(wrapped)
-                    val progHandle = ProgressIndicatorHandle(wrapped)
-                    val initConfirm: ((String) -> Boolean)? = { path ->
-                        val result = java.util.concurrent.atomic.AtomicInteger(com.intellij.openapi.ui.Messages.NO)
-                        com.intellij.openapi.application.ApplicationManager.getApplication()
-                            .invokeAndWait {
-                                result.set(com.intellij.openapi.ui.Messages.showYesNoDialog(
-                                    Bundle.msg("dialog.init.submodule", path),
-                                    Bundle.msg("dialog.init.title"),
-                                    com.intellij.openapi.ui.Messages.getQuestionIcon(),
-                                ))
-                            }
-                        result.get() == com.intellij.openapi.ui.Messages.YES
-                    }
-                    val executor = SwitchExecutor(
-                        root,
-                        log,
-                        operation,
-                        cancelHandle,
-                        progHandle,
-                        cancellationClassifier = platformCancellationClassifier,
-                        onConfirmSubmoduleInit = initConfirm)
-                    execution = executor.execute(request)
-                },
-                onCancel = { operation.cancel() },
-                onFinished = { operation.close() },
-            )
-        } catch (_: CancellationException) {
-            log.info("[cancelled] switch cancelled by user")
-            cancelled = true
-        } catch (_: com.intellij.openapi.progress.ProcessCanceledException) {
-            log.info("[cancelled] switch cancelled via IDE progress")
-            cancelled = true
-        } catch (e: RuntimeException) {
-            // Boundary catch: convert unexpected switch failures into a result so UI callers
-            // can notify consistently without leaking coroutine failures.
-            log.error("switch: ${e.javaClass.simpleName}: ${e.message}")
-        } finally {
-            operation.close()
+        val backgroundResult = GitBackgroundRunner(project, gitClient, taskRunner).run(
+            title,
+            task@{ indicator, operation ->
+                indicator.isIndeterminate = true
+                if (!beforeExecute(indicator)) {
+                    return@task null
+                }
+                val wrapped = progress(indicator)
+                val cancelHandle = ProgressCancellationHandle(wrapped)
+                val progHandle = ProgressIndicatorHandle(wrapped)
+                val initConfirm: ((String) -> Boolean)? = { path ->
+                    val result = java.util.concurrent.atomic.AtomicInteger(com.intellij.openapi.ui.Messages.NO)
+                    com.intellij.openapi.application.ApplicationManager.getApplication()
+                        .invokeAndWait {
+                            result.set(com.intellij.openapi.ui.Messages.showYesNoDialog(
+                                Bundle.msg("dialog.init.submodule", path),
+                                Bundle.msg("dialog.init.title"),
+                                com.intellij.openapi.ui.Messages.getQuestionIcon(),
+                            ))
+                        }
+                    result.get() == com.intellij.openapi.ui.Messages.YES
+                }
+                SwitchExecutor(
+                    root,
+                    log,
+                    operation,
+                    cancelHandle,
+                    progHandle,
+                    cancellationClassifier = platformCancellationClassifier,
+                    onConfirmSubmoduleInit = initConfirm,
+                ).execute(request)
+            },
+        )
+        when (backgroundResult) {
+            is GitBackgroundResult.Completed -> {
+                execution = backgroundResult.value
+                if (execution == null) cancelled = true
+            }
+            is GitBackgroundResult.Cancelled -> {
+                execution = backgroundResult.value
+                log.info("[cancelled] switch cancelled by user")
+                cancelled = true
+            }
+            is GitBackgroundResult.Failed -> {
+                val error = backgroundResult.error
+                log.error("switch: ${error.javaClass.simpleName}: ${error.message}")
+            }
         }
 
         if (execution?.cancelled == true) cancelled = true

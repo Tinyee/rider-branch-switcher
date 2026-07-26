@@ -13,13 +13,14 @@ import com.submodule.branchswitcher.model.ResolvedSwitchRequest
 import com.submodule.branchswitcher.service.BranchSwitcherService
 import com.submodule.branchswitcher.switch.SwitchPreflight
 import com.submodule.branchswitcher.platform.ProgressCancellationHandle
+import com.submodule.branchswitcher.platform.GitBackgroundResult
+import com.submodule.branchswitcher.platform.GitBackgroundRunner
 import com.submodule.branchswitcher.platform.SwitchRunner
 import com.submodule.branchswitcher.platform.SwitchRunResult
 import com.submodule.branchswitcher.platform.platformCancellationClassifier
 import com.submodule.branchswitcher.platform.refreshVcsRepos
 import com.submodule.branchswitcher.switch.SwitchExecutor
 import com.submodule.branchswitcher.switch.SwitchExecutionResult
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import java.nio.file.Path
@@ -153,7 +154,6 @@ class SwitchFlowCoordinator(
         }
     }
 
-    @Suppress("TooGenericExceptionCaught")
     private fun rollbackSwitch(root: Path, execution: SwitchExecutionResult, log: AppLogger) {
         val writeLease = service.tryAcquireWrite()
         if (writeLease == null) {
@@ -161,28 +161,26 @@ class SwitchFlowCoordinator(
             return
         }
         service.scope.launch(Dispatchers.Default) {
-            val operation = service.gitClient.openOperation()
             try {
                 var rollbackOk = false
-                try {
-                    TaskBridge.runBackground(project, Bundle.msg("progress.rollback"), true,
-                        block = { indicator ->
-                            indicator.isIndeterminate = true
-                            indicator.text = Bundle.msg("progress.rollback")
-                            val executor = SwitchExecutor(root, log, operation)
-                            rollbackOk = if (executor.rollback(execution)) {
-                                executor.restoreTrackedStashes(execution).failures.isEmpty()
-                            } else {
-                                false
-                            }
-                        },
-                        onCancel = { operation.cancel() },
-                        onFinished = { operation.close() },
-                    )
-                } catch (_: CancellationException) {}
-                catch (_: com.intellij.openapi.progress.ProcessCanceledException) {}
-                catch (e: RuntimeException) {
-                    log.error("notification rollback: ${e.javaClass.simpleName}: ${e.message}")
+                when (val background = GitBackgroundRunner(project, service.gitClient).run(
+                    Bundle.msg("progress.rollback"),
+                ) { indicator, operation ->
+                    indicator.isIndeterminate = true
+                    indicator.text = Bundle.msg("progress.rollback")
+                    val executor = SwitchExecutor(root, log, operation)
+                    rollbackOk = if (executor.rollback(execution)) {
+                        executor.restoreTrackedStashes(execution).failures.isEmpty()
+                    } else {
+                        false
+                    }
+                }) {
+                    is GitBackgroundResult.Completed,
+                    is GitBackgroundResult.Cancelled -> Unit
+                    is GitBackgroundResult.Failed -> {
+                        val e = background.error
+                        log.error("notification rollback: ${e.javaClass.simpleName}: ${e.message}")
+                    }
                 }
                 uiLater {
                     if (rollbackOk) Notifier.info(project, Bundle.msg("rollback.complete"),
@@ -191,7 +189,6 @@ class SwitchFlowCoordinator(
                         Bundle.msg("notify.rollback.partial.msg"))
                 }
             } finally {
-                operation.close()
                 writeLease.close()
             }
         }
