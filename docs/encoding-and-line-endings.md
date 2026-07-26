@@ -18,7 +18,7 @@ Preferred checks:
 ```powershell
 git diff --check
 git ls-files --eol
-rg -n "pattern" docs AGENTS.md CLAUDE.md
+rg -n "pattern" README.md CONTRIBUTING.md docs
 ```
 
 For readable UTF-8 output in PowerShell:
@@ -26,14 +26,14 @@ For readable UTF-8 output in PowerShell:
 ```powershell
 chcp 65001
 $OutputEncoding = [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new()
-Get-Content -Encoding UTF8 AGENTS.md
+Get-Content -Encoding UTF8 CONTRIBUTING.md
 ```
 
 For Python helpers:
 
 ```powershell
 $env:PYTHONUTF8 = "1"
-python -c "from pathlib import Path; print(Path('AGENTS.md').read_text(encoding='utf-8')[:200])"
+python -c "from pathlib import Path; print(Path('CONTRIBUTING.md').read_text(encoding='utf-8')[:200])"
 ```
 
 ## Review Guidance

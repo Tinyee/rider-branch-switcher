@@ -5,7 +5,5 @@ build/
 *.iml
 out/
 .kotlin/
-# Local Claude configuration; shared skills live outside this repository.
-.claude/
 # Windows null-device redirect artifact
 nul
