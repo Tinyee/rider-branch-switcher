@@ -10,7 +10,9 @@
 
 它适合这类项目：一个主仓库下挂着多个 Git 子模块，日常需要在 `main`、`develop`、发布分支、功能分支之间整组切换。你可以把每组分支保存成 preset，然后在 Tool Window 里直接切换。
 
-preset 存在 `.idea/branch-presets.json`，可以随项目提交，让团队成员共享同一套分支组合。
+preset 是项目内的 JSON 文件。首选位置是 `.idea/branch-presets.json`，也支持项目根目录的
+`.branch-presets.json`。如果需要避免本地 IDE 配置清理造成丢失，并让团队共享，请把选定的
+preset 文件提交到 Git。
 
 ## 主要功能
 
@@ -88,6 +90,10 @@ build/distributions/submodule-branch-switcher-0.7.0.zip
 }
 ```
 
+preset 加载时会先检查 `.idea/branch-presets.json`，再检查
+`.branch-presets.json`，最后向父目录查找，直到 Git 仓库边界。插件不会把 preset
+额外保存到全局配置；如果 `.idea` 没有被 Git 跟踪，删除该目录也会删除其中的 preset。
+
 ## 配置项
 
 全局配置位置：`Settings | Version Control | Submodule Branch Switcher`。
@@ -103,5 +109,7 @@ build/distributions/submodule-branch-switcher-0.7.0.zip
 ## 参与开发
 
 本地环境、架构边界、验证方式和审查约定见
-[CONTRIBUTING.md](CONTRIBUTING.md)。日常开发可直接运行
-`./gradlew runIde` 启动带插件的沙箱 IDE。
+[CONTRIBUTING.md](CONTRIBUTING.md)。当前代码结构从
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) 开始阅读，完整文档索引见
+[docs/README.md](docs/README.md)。日常开发可直接运行 `./gradlew runIde`
+启动带插件的沙箱 IDE。

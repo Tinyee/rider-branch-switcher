@@ -2,7 +2,8 @@
 
 This document consolidates completed code, test, and architecture reviews.
 It records durable project decisions and historical outcomes, not active work.
-Current behavior is defined by the code, tests, `ROADMAP.md`, and `CHANGELOG.md`.
+Current behavior is defined by the code, tests, [architecture](ARCHITECTURE.md),
+[roadmap](ROADMAP.md), and [changelog](../CHANGELOG.md).
 
 ## 2026-06-08 - UI And Repository Review
 
@@ -158,6 +159,28 @@ Validation:
 - Core and platform Detekt: passed.
 - `quickCheck` and all 8 rule fixtures: passed.
 - Plugin ZIP build: passed.
+
+## 2026-07-26 - Post-refactor Hardening
+
+Focused follow-up reviews tightened failure recovery and lifecycle handling
+without changing the user-facing switch workflow.
+
+Completed changes:
+
+- Switch execution preserves the latest immutable operation state when a step
+  throws or cancellation arrives.
+- Rollback and stash restoration are attempted independently, so one recovery
+  failure does not suppress the other.
+- Repository restoration records both branch and commit state, including
+  detached HEAD, and avoids destructive reset when the worktree is dirty.
+- Git process interruption and operation closure are propagated exactly once.
+- Import reports a clear validation error when the clipboard does not contain
+  text JSON.
+- Context-menu hit testing uses the actual preset and submodule rows.
+
+Validation after the larger refactor recorded 309 passing tests. The clipboard
+follow-up added one focused platform test, bringing the current suite to 310
+tests; its focused test and `quickCheck` both passed.
 
 ## Maintenance
 

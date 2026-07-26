@@ -10,7 +10,10 @@
 
 Submodule Branch Switcher is built for teams that keep several related repositories in one Git project and need to move them between known branch combinations, such as `main`, `develop`, release branches, or feature branches.
 
-Presets are stored as JSON in `.idea/branch-presets.json`, so they can be committed and shared with the project.
+Presets are project-local JSON. The preferred location is
+`.idea/branch-presets.json`; a project-root `.branch-presets.json` is also
+supported. Commit the chosen file if the preset set should survive local IDE
+configuration cleanup and be shared by the team.
 
 ## Highlights
 
@@ -88,6 +91,11 @@ Example preset file:
 }
 ```
 
+Preset lookup checks `.idea/branch-presets.json` first, then
+`.branch-presets.json`, and finally parent directories up to a Git repository
+boundary. Presets are not stored globally by the plugin. Removing an untracked
+`.idea` directory removes presets kept there.
+
 ## Options
 
 Configure global behavior at `Settings | Version Control | Submodule Branch Switcher`.
@@ -103,5 +111,7 @@ Configure global behavior at `Settings | Version Control | Submodule Branch Swit
 ## Contributing
 
 For local setup, architecture boundaries, validation, and review conventions,
-see [CONTRIBUTING.md](CONTRIBUTING.md). The usual local development loop is
-`./gradlew runIde`.
+see [CONTRIBUTING.md](CONTRIBUTING.md). Start with
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the current code structure or
+[docs/README.md](docs/README.md) for the complete documentation index. The
+usual local development loop is `./gradlew runIde`.
