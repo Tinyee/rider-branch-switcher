@@ -129,15 +129,23 @@ class SwitchPreviewDialog(
             val r = value as PreflightRow
             val text = when (column) {
                 0 -> r.label
-                1 -> if (!r.exists) Bundle.msg("status.missing.dir") else r.current ?: Bundle.msg("status.detached")
+                1 -> when {
+                    r.probeError != null -> r.probeError
+                    !r.exists -> Bundle.msg("status.missing.dir")
+                    else -> r.current ?: Bundle.msg("status.detached")
+                }
                 else -> ""
             }
             super.getTableCellRendererComponent(table, text, isSelected, hasFocus, row, column)
-            toolTipText = if (column == 0 && !r.isMain) r.path else null
+            toolTipText = when {
+                column == 1 && r.probeError != null -> r.probeError
+                column == 0 && !r.isMain -> r.path
+                else -> null
+            }
             font = if (r.isMain && column == 0) font.deriveFont(Font.BOLD) else font.deriveFont(Font.PLAIN)
             if (!isSelected) {
                 foreground = when {
-                    !r.exists -> warnColor
+                    !r.exists || r.probeError != null -> warnColor
                     !r.needsSwitch -> mutedColor
                     else -> table.foreground
                 }

@@ -14,7 +14,9 @@ import com.submodule.branchswitcher.log.LogEntry
 import com.submodule.branchswitcher.model.Preset
 import com.submodule.branchswitcher.service.BranchSwitcherService
 import com.submodule.branchswitcher.ui.invokeLaterIfAlive
+import com.submodule.branchswitcher.ui.ShortcutPresetLoadDecision
 import com.submodule.branchswitcher.ui.SwitchFlowCoordinator
+import com.submodule.branchswitcher.ui.shortcutPresetLoadDecision
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
@@ -29,15 +31,18 @@ class SwitchPresetAction : AnAction() {
         val project = e.project ?: return
         val service = project.service<BranchSwitcherService>()
         val loadResult = service.loadPresets()
-        if (loadResult.isFailure) {
-            Notifier.error(project, Bundle.msg("preset.load.failed"),
-                loadResult.exceptionOrNull()?.message ?: Bundle.msg("dialog.import.failed"))
-            return
-        }
         val presets = service.presets
-        if (presets.isEmpty()) {
-            Messages.showInfoMessage(project, Bundle.msg("action.no.presets"), Bundle.msg("plugin.title"))
-            return
+        when (shortcutPresetLoadDecision(loadResult.isSuccess, presets.size)) {
+            ShortcutPresetLoadDecision.LoadFailed -> {
+                Notifier.error(project, Bundle.msg("preset.load.failed"),
+                    loadResult.exceptionOrNull()?.message ?: Bundle.msg("dialog.import.failed"))
+                return
+            }
+            ShortcutPresetLoadDecision.NoPresets -> {
+                Messages.showInfoMessage(project, Bundle.msg("action.no.presets"), Bundle.msg("plugin.title"))
+                return
+            }
+            ShortcutPresetLoadDecision.Ready -> Unit
         }
         val names = presets.map { it.name }.toTypedArray()
         val choice = Messages.showDialog(

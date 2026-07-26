@@ -102,6 +102,8 @@ data class PreflightRow(
     val dirtyCount: Int,
     val hasLocal: Boolean,
     val hasRemote: Boolean,
+    /** Non-null when an existing repository could not be fully inspected. */
+    val probeError: String? = null,
 ) {
     val isMain: Boolean get() = path == "."
     val needsSwitch: Boolean get() = exists && current != target
