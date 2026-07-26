@@ -18,6 +18,7 @@ import com.submodule.branchswitcher.platform.SwitchRunResult
 import com.submodule.branchswitcher.platform.platformCancellationClassifier
 import com.submodule.branchswitcher.platform.refreshVcsRepos
 import com.submodule.branchswitcher.switch.SwitchExecutor
+import com.submodule.branchswitcher.switch.SwitchExecutionResult
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -131,12 +132,12 @@ class SwitchFlowCoordinator(
                             Bundle.msg("notify.switch.complete.msg", preset.name))
                     } else {
                         onFailure?.invoke(result)
-                        val executor = result.executor
-                        if (executor?.getCheckpoint() != null) {
+                        val execution = result.execution
+                        if (execution?.checkpoint != null) {
                             Notifier.rollbackAction(project, Bundle.msg("switch.failed"),
                                 Bundle.msg("notify.switch.partial.msg", preset.name) +
                                     Bundle.msg("notify.switch.rollback.hint")
-                            ) { rollbackSwitch(executor, log) }
+                            ) { rollbackSwitch(root, execution, log) }
                         } else {
                             Notifier.error(project, Bundle.msg("switch.failed"),
                                 Bundle.msg("notify.switch.partial.msg", preset.name))
@@ -152,7 +153,7 @@ class SwitchFlowCoordinator(
     }
 
     @Suppress("TooGenericExceptionCaught")
-    private fun rollbackSwitch(executor: SwitchExecutor, log: AppLogger) {
+    private fun rollbackSwitch(root: Path, execution: SwitchExecutionResult, log: AppLogger) {
         if (!service.tryStartWrite()) {
             uiLater { Notifier.warn(project, Bundle.msg("notify.write.busy"), Bundle.msg("notify.write.busy.msg")) }
             return
@@ -167,7 +168,9 @@ class SwitchFlowCoordinator(
                         block = { indicator ->
                             indicator.isIndeterminate = true
                             indicator.text = Bundle.msg("progress.rollback")
-                            rollbackOk = executor.rollback() && executor.restoreTrackedStashes().isEmpty()
+                            val executor = SwitchExecutor(root, log, gitClient)
+                            rollbackOk =
+                                executor.rollback(execution) && executor.restoreTrackedStashes(execution).isEmpty()
                         },
                         onCancel = { gitClient.cancel() },
                         onFinished = { gitClient.endOperation() },

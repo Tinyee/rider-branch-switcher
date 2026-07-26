@@ -1,6 +1,7 @@
 
 package com.submodule.branchswitcher.switch
 import com.submodule.branchswitcher.executeTest
+import com.submodule.branchswitcher.executeResultTest
 
 import com.submodule.branchswitcher.git.GitClient
 import com.submodule.branchswitcher.git.GitOps
@@ -290,10 +291,13 @@ class SwitchIntegrationTest {
         createBranch(root, "dev")
 
         val executor = SwitchExecutor(root.toPath(), createStringAppender { log += it }, git)
-        executor.executeTest(Preset("test", "dev"), SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false))
+        val result = executor.executeResultTest(
+            Preset("test", "dev"),
+            SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false),
+        )
         assertEquals("dev", git.currentBranch(root))
 
-        val rbOk = executor.rollback()
+        val rbOk = executor.rollback(result)
         assertTrue("Rollback should succeed", rbOk)
         assertEquals("main", git.currentBranch(root))
     }
@@ -302,7 +306,11 @@ class SwitchIntegrationTest {
     fun `rollback without checkpoint returns false`() {
         val root = createRepo(tmpDir, "project")
         val executor = SwitchExecutor(root.toPath(), createStringAppender { log += it }, git)
-        assertFalse("Rollback without checkpoint should return false", executor.rollback())
+        val result = executor.executeResultTest(
+            Preset("test", "main"),
+            SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false),
+        ).copy(checkpoint = null)
+        assertFalse("Rollback without checkpoint should return false", executor.rollback(result))
     }
 
     // ---- Derive branch ----
@@ -410,9 +418,12 @@ class SwitchIntegrationTest {
 
         val executor = SwitchExecutor(root.toPath(), createStringAppender { log += it }, git)
         val preset = Preset("ck-test", "main", mapOf("SubA" to "main"))
-        executor.executeTest(preset, SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false))
+        val result = executor.executeResultTest(
+            preset,
+            SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false),
+        )
 
-        val checkpoint = executor.getCheckpoint()
+        val checkpoint = result.checkpoint
         assertNotNull("Checkpoint should exist", checkpoint)
         assertTrue("Checkpoint should contain main repo", checkpoint!!.containsKey("."))
         assertTrue("Checkpoint should contain SubA", checkpoint.containsKey("SubA"))
@@ -876,11 +887,11 @@ class SwitchIntegrationTest {
         val opts = SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false)
         val executor = SwitchExecutor(root.toPath(), createStringAppender { log += it }, git)
 
-        val ok = executor.executeTest(preset, opts)
-        assertFalse("Switch should fail due to missing branch on SubA", ok)
+        val result = executor.executeResultTest(preset, opts)
+        assertFalse("Switch should fail due to missing branch on SubA", result.ok)
 
         // Rollback
-        val rollbackOk = executor.rollback()
+        val rollbackOk = executor.rollback(result)
         assertTrue("Rollback should succeed", rollbackOk)
 
         // Both repos back on original branch
@@ -905,10 +916,10 @@ class SwitchIntegrationTest {
         val opts = SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false)
         val executor = SwitchExecutor(root.toPath(), createStringAppender { log += it }, git)
 
-        val ok = executor.executeTest(preset, opts)
-        assertFalse("Switch should fail", ok)
+        val result = executor.executeResultTest(preset, opts)
+        assertFalse("Switch should fail", result.ok)
 
-        val rollbackOk = executor.rollback()
+        val rollbackOk = executor.rollback(result)
         assertTrue("Rollback should succeed", rollbackOk)
         assertEquals("main", git.currentBranch(root))
 
@@ -927,10 +938,10 @@ class SwitchIntegrationTest {
         val opts = SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false)
         val executor = SwitchExecutor(root.toPath(), createStringAppender { log += it }, git)
 
-        val ok = executor.executeTest(preset, opts)
-        assertFalse("Switch should fail", ok)
+        val result = executor.executeResultTest(preset, opts)
+        assertFalse("Switch should fail", result.ok)
 
-        val rollbackOk = executor.rollback()
+        val rollbackOk = executor.rollback(result)
         assertTrue("Rollback should succeed", rollbackOk)
         assertEquals("main", git.currentBranch(root))
 

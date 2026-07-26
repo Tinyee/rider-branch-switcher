@@ -160,7 +160,7 @@ class LargeRepoBenchmark {
                     preset, SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = true),
                 ),
             )
-            assertTrue("switch to dev should succeed", ok)
+            assertTrue("switch to dev should succeed", ok.ok)
         }
 
         // Verify the switch actually happened
