@@ -39,7 +39,7 @@ class SubmoduleRowManagerTest {
     }
 
     @Test
-    fun `single submodule switch delegates target to guarded owner`() {
+    fun `single submodule switch uses the currently visible target`() {
         var requested: Pair<String, String>? = null
         val manager = SubmoduleRowManager(
             gitRoot = Paths.get("."),
@@ -50,11 +50,12 @@ class SubmoduleRowManagerTest {
             onDirty = {},
             onSwitchOnly = { path, target -> requested = path to target },
         )
-        manager.buildSubRow("SubA", "dev")
+        val row = manager.buildSubRow("SubA", "dev")
+        row.combo.selectedItem = "release"
 
         manager.requestSwitchOnly("SubA")
 
-        assertEquals("SubA" to "dev", requested)
+        assertEquals("SubA" to "release", requested)
     }
 
     private fun descendants(root: Component): List<Component> =
