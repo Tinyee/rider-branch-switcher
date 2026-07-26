@@ -13,7 +13,7 @@ data class RepositoryStateSnapshot(
     val dirtyRepositories: Map<String, Boolean>,
 )
 
-data class RepositoryStateRequest internal constructor(
+class RepositoryStateRequest internal constructor(
     val id: Long,
     val root: Path,
     val paths: List<String>,
