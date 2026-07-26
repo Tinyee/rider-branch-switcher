@@ -40,7 +40,7 @@ class SwitchPreflight(
     private fun probeOne(projectRoot: Path, target: RepoTarget): PreflightRow {
         val dir = resolveGitDir(projectRoot, target.path)
         val label = if (target.path == ".") projectRoot.fileName.toString() else shortLabel(target.path)
-        if (!dir.exists() || !git.isGitRepo(dir)) {
+        if (!dir.exists()) {
             return PreflightRow(
                 label = label,
                 path = target.path,
@@ -53,6 +53,18 @@ class SwitchPreflight(
             )
         }
         return try {
+            if (!git.isGitRepo(dir)) {
+                return PreflightRow(
+                    label = label,
+                    path = target.path,
+                    target = target.branch,
+                    exists = false,
+                    current = null,
+                    dirtyCount = -1,
+                    hasLocal = false,
+                    hasRemote = false,
+                )
+            }
             PreflightRow(
                 label = label,
                 path = target.path,

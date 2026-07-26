@@ -390,6 +390,21 @@ class GitOpsTest {
     }
 
     @Test
+    fun `failed git queries throw instead of reporting clean or missing`() {
+        val repo = tmpDir.resolve("query-failure").toFile().also {
+            it.mkdirs()
+            File(it, ".git").mkdir()
+        }
+        git = GitOps(timeoutSeconds = 10) { throw java.io.IOException("git unavailable") }
+
+        val dirtyFailure = assertThrows(GitQueryException::class.java) { git.isDirty(repo) }
+        assertEquals(GitFailureKind.START_FAILED, dirtyFailure.result.failureKind)
+        assertThrows(GitQueryException::class.java) { git.currentBranch(repo) }
+        assertThrows(GitQueryException::class.java) { git.isGitRepo(repo) }
+        assertThrows(GitQueryException::class.java) { git.localBranchExists(repo, "main") }
+    }
+
+    @Test
     fun `cancelled operation rejects subsequent commands until operation ends`() {
         git.beginOperation()
         git.cancel()

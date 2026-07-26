@@ -28,12 +28,15 @@ data class GitResult(
 
 enum class GitFailureKind { NONE, CANCELLED, TIMEOUT, START_FAILED, GIT_FAILED }
 
+/** A Git read/query failed and cannot be safely interpreted as a normal negative result. */
+class GitQueryException(val result: GitResult) : RuntimeException(result.diagnostic())
+
 interface GitQueryClient {
     /** True when [workDir] is a usable git repository. */
     fun isGitRepo(workDir: File): Boolean = File(workDir, ".git").exists()
-    /** Returns the current branch name, or null on detached HEAD. */
+    /** Returns the current branch name, or null on detached HEAD. Throws when Git cannot inspect HEAD. */
     fun currentBranch(workDir: File): String?
-    /** True if the working tree has uncommitted changes. */
+    /** True if the working tree has uncommitted changes. Throws when status cannot be inspected. */
     fun isDirty(workDir: File): Boolean
     /** Number of dirty files (0 = clean). Uses `git status --porcelain`. */
     fun dirtyFileCount(workDir: File): Int
