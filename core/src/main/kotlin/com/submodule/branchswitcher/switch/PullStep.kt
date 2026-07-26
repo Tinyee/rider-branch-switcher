@@ -6,10 +6,15 @@ class PullStep(
 ) : SwitchStep {
     override val name = scopedStepName("pull", scope)
 
-    override fun execute(context: SwitchContext): StepResult {
+    override fun execute(context: SwitchContext, state: SwitchState): StepExecution {
         if (!context.options.pull) {
-            val failures = restoreTrackedStashes(context)
-            return if (failures.isEmpty()) StepResult.Success else StepResult.Partial(failures)
+            val restore = restoreTrackedStashes(context, state)
+            val result = if (restore.failures.isEmpty()) {
+                StepResult.Success
+            } else {
+                StepResult.Partial(restore.failures)
+            }
+            return StepExecution(result, restore.state)
         }
 
         val failures = LinkedHashMap<String, String>()
@@ -17,7 +22,7 @@ class PullStep(
             val dir = resolveGitDir(context.projectRoot, target.path)
             if (!dir.exists() || !context.git.isGitRepo(dir)) continue
             // Only pull on repos where checkout actually succeeded
-            if (!context.state.checkoutSucceeded(target.path)) {
+            if (!state.checkoutSucceeded(target.path)) {
                 context.log.info("[skip] pull - checkout did not succeed for ${target.path}")
                 continue
             }
@@ -34,28 +39,36 @@ class PullStep(
                 failures[target.path] = "pull had warnings"
             }
         }
-        failures.putAll(restoreTrackedStashes(context))
-        return if (failures.isEmpty()) StepResult.Success else StepResult.Partial(failures)
+        val restore = restoreTrackedStashes(context, state)
+        failures.putAll(restore.failures)
+        val result = if (failures.isEmpty()) StepResult.Success else StepResult.Partial(failures)
+        return StepExecution(result, restore.state)
     }
 
     /** Pop stashes that were created during DirtyHandlingStep, now that checkout + pull are done. */
-    private fun restoreTrackedStashes(context: SwitchContext): Map<String, String> {
+    private fun restoreTrackedStashes(context: SwitchContext, state: SwitchState): StashRestoreResult {
         val selectedPaths = context.preset.targetsFor(scope).mapTo(hashSetOf()) { it.path }
         return restoreTrackedStashes(
-            context.projectRoot, context.git, context.log, context.state, selectedPaths,
+            context.projectRoot, context.git, context.log, state, selectedPaths,
         )
     }
 }
+
+data class StashRestoreResult(
+    val state: SwitchState,
+    val failures: Map<String, String>,
+)
 
 /** Restores tracked stashes and retains failed entries so a later recovery can retry them. */
 internal fun restoreTrackedStashes(
     projectRoot: java.nio.file.Path,
     git: com.submodule.branchswitcher.git.GitClient,
     log: com.submodule.branchswitcher.log.AppLogger,
-    state: SwitchPipelineState,
+    state: SwitchState,
     selectedPaths: Set<String>? = null,
-): Map<String, String> {
+): StashRestoreResult {
     val failures = linkedMapOf<String, String>()
+    var nextState = state
     for ((path, msg) in state.stashesSnapshot()) {
         if (selectedPaths != null && path !in selectedPaths) continue
         val dir = resolveGitDir(projectRoot, path)
@@ -67,11 +80,11 @@ internal fun restoreTrackedStashes(
         val popResult = git.stashPop(dir)
         if (popResult.ok) {
             log.info("stash pop ok ($msg)")
-            state.consumeStash(path)
+            nextState = nextState.withoutStash(path)
         } else {
             log.warn("[fail] stash pop failed for $path: ${popResult.diagnostic()}")
             failures[path] = "stash pop failed"
         }
     }
-    return failures
+    return StashRestoreResult(nextState, failures)
 }

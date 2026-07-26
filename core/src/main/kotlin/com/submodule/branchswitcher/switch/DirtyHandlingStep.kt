@@ -9,8 +9,9 @@ import java.io.File
 class DirtyHandlingStep : SwitchStep {
     override val name = "dirty handling"
 
-    override fun execute(context: SwitchContext): StepResult {
+    override fun execute(context: SwitchContext, state: SwitchState): StepExecution {
         val failures = LinkedHashMap<String, String>()
+        var nextState = state
         val targets = context.preset.targets()
         val total = targets.size
         for ((idx, target) in targets.withIndex()) {
@@ -28,7 +29,7 @@ class DirtyHandlingStep : SwitchStep {
                     DirtyAction.Skip -> {
                         context.log.info("[skip] working tree dirty - ${target.path}")
                         failures[target.path] = "working tree dirty"
-                        context.state.markSkipped(target.path)
+                        nextState = nextState.withSkipped(target.path)
                         continue
                     }
                     DirtyAction.Stash -> {
@@ -44,16 +45,20 @@ class DirtyHandlingStep : SwitchStep {
                             }
                             if (!r.ok) {
                                 failures[target.path] = "stash failed"
-                                context.state.markSkipped(target.path)
+                                nextState = nextState.withSkipped(target.path)
                                 continue
                             }
-                            context.state.trackStash(target.path, "before -> ${target.branch}")
+                            nextState = nextState.withTrackedStash(
+                                target.path,
+                                "before -> ${target.branch}",
+                            )
                         }
                     }
                     DirtyAction.Force -> context.log.info("[force] proceeding with dirty tree - ${target.path}")
                 }
             }
         }
-        return if (failures.isEmpty()) StepResult.Success else StepResult.Partial(failures)
+        val result = if (failures.isEmpty()) StepResult.Success else StepResult.Partial(failures)
+        return StepExecution(result, nextState)
     }
 }

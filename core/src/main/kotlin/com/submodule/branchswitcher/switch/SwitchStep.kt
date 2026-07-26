@@ -16,40 +16,41 @@ sealed class StepResult {
     data class Partial(val failures: Map<String, String>) : StepResult()
 }
 
-/**
- * Mutable state produced and consumed by switch pipeline steps.
- *
- * Keeping cross-step state behind named methods makes the pipeline contract
- * explicit: dirty handling decides skips/stashes, checkout records successful
- * repos, and pull/sync consume those decisions later.
- */
-class SwitchPipelineState {
-    private val stashedPaths: MutableMap<String, String> = linkedMapOf()
-    private val skippedPaths: MutableSet<String> = linkedSetOf()
-    private val successfulCheckouts: MutableSet<String> = linkedSetOf()
+/** Immutable state passed explicitly between switch pipeline steps. */
+class SwitchState private constructor(
+    private val stashedPaths: Map<String, String>,
+    private val skippedPaths: Set<String>,
+    private val successfulCheckouts: Set<String>,
+) {
+    constructor() : this(emptyMap(), emptySet(), emptySet())
 
-    fun markSkipped(path: String) {
-        skippedPaths.add(path)
-    }
+    fun withSkipped(path: String): SwitchState =
+        SwitchState(stashedPaths, skippedPaths + path, successfulCheckouts)
 
     fun isSkipped(path: String): Boolean = path in skippedPaths
 
-    fun trackStash(path: String, message: String) {
-        stashedPaths[path] = message
-    }
+    fun withTrackedStash(path: String, message: String): SwitchState =
+        SwitchState(stashedPaths + (path to message), skippedPaths, successfulCheckouts)
 
-    fun consumeStash(path: String): String? = stashedPaths.remove(path)
+    fun withoutStash(path: String): SwitchState =
+        SwitchState(stashedPaths - path, skippedPaths, successfulCheckouts)
+
+    fun trackedStash(path: String): String? = stashedPaths[path]
 
     fun stashesSnapshot(): Map<String, String> = stashedPaths.toMap()
 
-    fun markCheckoutSuccessful(path: String) {
-        successfulCheckouts.add(path)
-    }
+    fun withSuccessfulCheckout(path: String): SwitchState =
+        SwitchState(stashedPaths, skippedPaths, successfulCheckouts + path)
 
     fun checkoutSucceeded(path: String): Boolean = path in successfulCheckouts
 
     fun hasStashes(): Boolean = stashedPaths.isNotEmpty()
 }
+
+data class StepExecution(
+    val result: StepResult,
+    val state: SwitchState,
+)
 
 data class SwitchContext(
     val projectRoot: Path,
@@ -61,8 +62,6 @@ data class SwitchContext(
     val progressHandle: ProgressHandle? = null,
     /** Mutable flag checked between/within steps for cancellation. */
     val cancelled: () -> Boolean = { false },
-    /** Cross-step state shared by the switch pipeline. */
-    val state: SwitchPipelineState = SwitchPipelineState(),
     /** If true, show confirmation dialog before auto-init of missing submodules. */
     val confirmBeforeInit: Boolean = false,
     /** Callback for submodule init confirmation. The main module provides an IntelliJ dialog;
@@ -73,8 +72,8 @@ data class SwitchContext(
 interface SwitchStep {
     /** Human-readable name for logging/progress display. */
     val name: String
-    /** Execute this step. Return the result. */
-    fun execute(context: SwitchContext): StepResult
+    /** Execute this step and explicitly return the state for the next step. */
+    fun execute(context: SwitchContext, state: SwitchState): StepExecution
 }
 
 /** Selects which repositories a staged switch step should process. */

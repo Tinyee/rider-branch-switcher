@@ -105,8 +105,13 @@ class AppLoggerTest {
             okGit,
             steps = listOf(object : com.submodule.branchswitcher.switch.SwitchStep {
                 override val name = "always-fatal"
-                override fun execute(context: SwitchContext): StepResult =
-                    StepResult.Fatal("simulated fatal")
+                override fun execute(
+                    context: SwitchContext,
+                    state: com.submodule.branchswitcher.switch.SwitchState,
+                ) = com.submodule.branchswitcher.switch.StepExecution(
+                    StepResult.Fatal("simulated fatal"),
+                    state,
+                )
             })
         )
         executor.executeTest(Preset("test", "dev"),

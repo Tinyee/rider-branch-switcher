@@ -169,8 +169,11 @@ class SwitchFlowCoordinator(
                             indicator.isIndeterminate = true
                             indicator.text = Bundle.msg("progress.rollback")
                             val executor = SwitchExecutor(root, log, gitClient)
-                            rollbackOk =
-                                executor.rollback(execution) && executor.restoreTrackedStashes(execution).isEmpty()
+                            rollbackOk = if (executor.rollback(execution)) {
+                                executor.restoreTrackedStashes(execution).failures.isEmpty()
+                            } else {
+                                false
+                            }
                         },
                         onCancel = { gitClient.cancel() },
                         onFinished = { gitClient.endOperation() },

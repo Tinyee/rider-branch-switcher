@@ -21,7 +21,7 @@ enum class SwitchExecutionStatus {
 data class SwitchExecutionResult(
     val status: SwitchExecutionStatus,
     val checkpoint: Map<String, CheckpointEntry>?,
-    val state: SwitchPipelineState,
+    val state: SwitchState,
     val failures: Map<String, String> = emptyMap(),
 ) {
     val ok: Boolean get() = status == SwitchExecutionStatus.SUCCESS
@@ -65,6 +65,7 @@ class SwitchExecutor @JvmOverloads constructor(
         val preset = request.preset
         val options = request.options
         log.activity("=== switching to preset: ${preset.name} ===")
+        var state = SwitchState()
         val context = SwitchContext(
             projectRoot = projectRoot,
             preset = preset,
@@ -86,7 +87,7 @@ class SwitchExecutor @JvmOverloads constructor(
             return SwitchExecutionResult(
                 status = SwitchExecutionStatus.FAILED,
                 checkpoint = null,
-                state = context.state,
+                state = state,
                 failures = mapOf("." to "unable to record every existing repository"),
             )
         }
@@ -113,7 +114,9 @@ class SwitchExecutor @JvmOverloads constructor(
                 break
             }
             log.info("--- ${step.name} ---")
-            when (val result = step.execute(context)) {
+            val execution = step.execute(context, state)
+            state = execution.state
+            when (val result = execution.result) {
                 is StepResult.Fatal -> {
                     log.error(" ${result.reason}")
                     failures[step.name] = result.reason
@@ -134,11 +137,11 @@ class SwitchExecutor @JvmOverloads constructor(
         }
         log.info("")
         log.activity(if (status == SwitchExecutionStatus.SUCCESS) "=== done ===" else "=== done with errors ===")
-        return SwitchExecutionResult(status, checkpoint, context.state, failures)
+        return SwitchExecutionResult(status, checkpoint, state, failures)
     }
 
     /** Retries any stash restores left incomplete by cancellation or a failed pipeline tail. */
-    fun restoreTrackedStashes(result: SwitchExecutionResult): Map<String, String> =
+    fun restoreTrackedStashes(result: SwitchExecutionResult): StashRestoreResult =
         restoreTrackedStashes(projectRoot, git, log, result.state)
 
     fun rollback(result: SwitchExecutionResult): Boolean {

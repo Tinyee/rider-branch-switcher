@@ -6,8 +6,8 @@ class FetchStep(
 ) : SwitchStep {
     override val name = scopedStepName("fetch", scope)
 
-    override fun execute(context: SwitchContext): StepResult {
-        if (!context.options.fetchFirst) return StepResult.Success
+    override fun execute(context: SwitchContext, state: SwitchState): StepExecution {
+        if (!context.options.fetchFirst) return StepExecution(StepResult.Success, state)
 
         val failures = LinkedHashMap<String, String>()
         for (target in context.preset.targetsFor(scope)) {
@@ -21,6 +21,7 @@ class FetchStep(
                 failures[target.path] = "fetch had warnings"
             }
         }
-        return if (failures.isEmpty()) StepResult.Success else StepResult.Partial(failures)
+        val result = if (failures.isEmpty()) StepResult.Success else StepResult.Partial(failures)
+        return StepExecution(result, state)
     }
 }
