@@ -105,18 +105,18 @@ class BranchSwitcherServiceTest {
     @Test
     fun `addHistory stores preset id when provided`() {
         service.addHistory("dev", "uuid-abc")
-        assertEquals("uuid-abc", service.getLastHistory()!!.presetId)
+        assertEquals("uuid-abc", service.getHistory().single().presetId)
     }
 
     @Test
     fun `addHistory id defaults to null`() {
         service.addHistory("dev")
-        assertNull(service.getLastHistory()!!.presetId)
+        assertNull(service.getHistory().single().presetId)
     }
 
     @Test
-    fun `getLastHistory returns null when no history`() {
-        assertNull(service.getLastHistory())
+    fun `history is empty initially`() {
+        assertTrue(service.getHistory().isEmpty())
     }
 
     @Test

@@ -49,8 +49,6 @@ class SwitchPipelineState {
     fun checkoutSucceeded(path: String): Boolean = path in successfulCheckouts
 
     fun hasStashes(): Boolean = stashedPaths.isNotEmpty()
-    fun skippedSnapshot(): Set<String> = skippedPaths.toSet()
-    fun successfulCheckoutsSnapshot(): Set<String> = successfulCheckouts.toSet()
 }
 
 data class SwitchContext(

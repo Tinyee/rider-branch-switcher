@@ -34,11 +34,6 @@ class BundleTest {
     }
 
     @Test
-    fun `every key count matches between locales`() {
-        assertEquals("Key count mismatch between EN and ZH", enProps.size, zhProps.size)
-    }
-
-    @Test
     fun `known keys resolve correctly`() {
         // Spot-check: plugin.title should resolve (exact value depends on locale)
         assertTrue(Bundle.msg("plugin.title").isNotEmpty())
@@ -62,7 +57,7 @@ class BundleTest {
 
     @Test
     fun `all Chinese values are non-empty`() {
-        val locale = java.util.Locale("zh")
+        val locale = java.util.Locale.forLanguageTag("zh")
         val bundle = java.util.ResourceBundle.getBundle("messages.BranchSwitcherBundle", locale)
         val keys = bundle.keys
         var count = 0

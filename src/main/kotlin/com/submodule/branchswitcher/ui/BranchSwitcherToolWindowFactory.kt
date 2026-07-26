@@ -9,7 +9,6 @@ import com.submodule.branchswitcher.Notifier
 import com.submodule.branchswitcher.Bundle
 import com.submodule.branchswitcher.git.GitOps
 import com.submodule.branchswitcher.service.BranchSwitcherService
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
 class BranchSwitcherToolWindowFactory : ToolWindowFactory {

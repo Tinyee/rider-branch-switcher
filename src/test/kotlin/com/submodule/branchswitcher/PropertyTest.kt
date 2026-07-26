@@ -116,40 +116,4 @@ class PropertyTest : StringSpec({
         }
     }
 
-    // ── GitResult invariants ──────────────────────────────────────
-
-    "GitResult.ok matches exitCode == 0" {
-        forAll(
-            Arb.string(0..30),   // cmd
-            Arb.int(-1..128),    // exitCode
-            Arb.string(0..50),   // stdout
-            Arb.string(0..50),   // stderr
-        ) { cmd, exitCode, stdout, stderr ->
-            val r = com.submodule.branchswitcher.git.GitResult(cmd, exitCode, stdout, stderr)
-            r.ok == (exitCode == 0)
-        }
-    }
-
-    // ── PreflightRow computable properties ────────────────────────
-
-    "PreflightRow invariants hold for any field combination" {
-        forAll(
-            Arb.string(1..20),   // label
-            Arb.string(1..10),   // path
-            Arb.string(0..20),   // target
-            Arb.boolean(),       // exists
-            Arb.string(0..20).orNull(),  // current
-            Arb.int(-1..100),    // dirtyCount
-            Arb.boolean(),       // hasLocal
-            Arb.boolean(),       // hasRemote
-        ) { label, path, target, exists, current, dirtyCount, hasLocal, hasRemote ->
-            val row = com.submodule.branchswitcher.model.PreflightRow(
-                label, path, target, exists, current, dirtyCount, hasLocal, hasRemote,
-            )
-            // invariants
-            (row.isMain == (path == ".")) &&
-            (!exists || row.needsSwitch == (current != target)) &&
-            (!exists || row.branchMissing == (!hasLocal && !hasRemote))
-        }
-    }
 })

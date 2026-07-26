@@ -57,10 +57,7 @@ data class PresetDto(
 /** Persistence container for [PresetDto], all fields nullable for Gson safety. */
 data class PresetFileDto(
     val presets: List<PresetDto?>? = null,
-) {
-    fun toPresetFile(): PresetFile =
-        PresetFile(presets.orEmpty().filterNotNull().map { it.toPreset() })
-}
+)
 
 /** Persistence container, a list of presets serialized to JSON. */
 data class PresetFile(
