@@ -23,6 +23,7 @@ data class Preset(
 ) {
     /** Returns all targets: main (".") first, then submodules. Main-first ordering is critical for submodule init. */
     fun targets(): List<RepoTarget> {
+        requireValidPreset(this)
         val list = mutableListOf(RepoTarget(".", main))
         submodules.forEach { (path, branch) -> list += RepoTarget(path, branch) }
         return list
@@ -42,12 +43,15 @@ data class PresetDto(
     val main: String? = null,
     val submodules: Map<String, String>? = null,
 ) {
-    fun toPreset(explicitId: String? = null): Preset = Preset(
-        id = explicitId ?: id ?: java.util.UUID.randomUUID().toString(),
-        name = (name ?: error("preset.name is required")).trim(),
-        main = (main ?: error("preset.main is required")).trim(),
-        submodules = submodules ?: emptyMap(),
-    )
+    fun toPreset(explicitId: String? = null): Preset =
+        requireValidPreset(
+            Preset(
+                id = explicitId ?: id ?: java.util.UUID.randomUUID().toString(),
+                name = (name ?: error("preset.name is required")).trim(),
+                main = (main ?: error("preset.main is required")).trim(),
+                submodules = submodules.orEmpty().mapValues { (_, branch) -> branch.trim() },
+            )
+        )
 }
 
 /** Persistence container for [PresetDto], all fields nullable for Gson safety. */

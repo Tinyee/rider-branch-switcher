@@ -13,6 +13,7 @@ import com.submodule.branchswitcher.TaskBridge
 import com.submodule.branchswitcher.git.GitResult
 import com.submodule.branchswitcher.log.AppLogger
 import com.submodule.branchswitcher.model.Preset
+import com.submodule.branchswitcher.switch.resolveGitDir
 import com.submodule.branchswitcher.platform.refreshVcsRepos
 import com.submodule.branchswitcher.service.BranchSwitcherService
 import kotlinx.coroutines.Dispatchers
@@ -110,7 +111,7 @@ class PresetListManager(
         }
         service.scope.launch(Dispatchers.Default) {
             val git = service.gitClient
-            val dir = root.resolve(path).toFile()
+            val dir = resolveGitDir(root, path)
             var result: GitResult? = null
             var skipped: String? = null
             try {

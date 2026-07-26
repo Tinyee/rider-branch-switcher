@@ -339,6 +339,18 @@ class PresetLoaderTest {
         assertTrue(result.getOrThrow().second.presets.isEmpty())
     }
 
+    @Test
+    fun `load rejects preset paths that escape the project root`() {
+        writePresetFile(
+            """{"presets":[{"name":"unsafe","main":"main","submodules":{"../outside":"dev"}}]}"""
+        )
+
+        val result = PresetLoader.load(tmpDir)
+
+        assertTrue(result.isFailure)
+        assertTrue(result.exceptionOrNull()?.message.orEmpty().contains("invalid submodule path"))
+    }
+
     private fun writePresetFile(json: String) {
         val ideaDir = Files.createDirectories(tmpDir.resolve(".idea"))
         Files.writeString(ideaDir.resolve("branch-presets.json"), json.trimIndent())
