@@ -25,7 +25,7 @@
         </ul>
         <b>Quality:</b>
         <ul>
-            <li>Automated unit and integration tests, GitHub Actions CI (ubuntu/macOS/Windows), Qodana static analysis</li>
+            <li>Automated unit and integration tests, GitHub Actions CI (ubuntu/macOS/Windows), Detekt static analysis</li>
             <li>i18n: English and Chinese via IntelliJ DynamicBundle</li>
             <li>HiDPI-aware, theme-aware (dark/light) UI with IntelliJ native icons</li>
         </ul>
