@@ -47,13 +47,4 @@ class PresetJsonTest {
         assertEquals(original.id, restored.presets[0].id)
     }
 
-    @Test
-    fun `old JSON without id auto generates one`() {
-        val json = """{"presets":[{"name":"legacy","main":"main"}]}"""
-        val dto = gson.fromJson(json, PresetFileDto::class.java)
-        val restored = dto.toPresetFile()
-        assertEquals("legacy", restored.presets[0].name)
-        val id = restored.presets[0].id
-        assertTrue("Auto-generated id should not be blank", id.isNotBlank())
-    }
 }

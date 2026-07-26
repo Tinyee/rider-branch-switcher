@@ -5,7 +5,6 @@ import com.intellij.openapi.components.PersistentStateComponent
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.State
 import com.intellij.openapi.components.Storage
-import com.intellij.openapi.components.service
 import com.intellij.openapi.project.Project
 import com.submodule.branchswitcher.git.GitClient
 import com.submodule.branchswitcher.git.GitOps
@@ -136,7 +135,6 @@ class BranchSwitcherService(
     }
 
     fun getHistory(): List<SwitchHistoryEntry> = options.history.toList()
-    fun getLastHistory(): SwitchHistoryEntry? = options.history.firstOrNull()
 
     // -- Stale-detection for async branch probes --
 
@@ -161,8 +159,4 @@ class BranchSwitcherService(
             ),
         )
 
-    companion object {
-        fun getInstance(project: Project): BranchSwitcherService =
-            project.service()
-    }
 }
