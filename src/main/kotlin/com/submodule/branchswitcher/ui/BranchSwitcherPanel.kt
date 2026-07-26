@@ -17,10 +17,10 @@ import com.submodule.branchswitcher.log.AppLogger
 import com.submodule.branchswitcher.log.LogEntry
 import com.submodule.branchswitcher.log.ToolWindowLogger
 import com.submodule.branchswitcher.model.Preset
+import com.submodule.branchswitcher.platform.RepositoryStateDetector
 import com.submodule.branchswitcher.platform.gitRootPath
 import com.submodule.branchswitcher.service.BranchSwitcherService
 import com.submodule.branchswitcher.settings.BranchSwitcherConfigurable
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import java.awt.BorderLayout
 import java.awt.Dimension
@@ -46,8 +46,8 @@ import javax.swing.SwingUtilities
  * - CENTER: scrollable preset cards
  * - SOUTH: collapsible log panel (toggle to show/hide)
  *
- * Thread safety: uses [service.scope] for background git probes;
- * [detectCurrentState] uses generation-based stale detection.
+ * Thread safety: uses [service.scope] for background git probes and
+ * [RepositoryStateDetector] for generation-based stale detection.
  */
 class BranchSwitcherPanel(
     private val project: Project,
@@ -102,6 +102,7 @@ class BranchSwitcherPanel(
 
     // ── Logger ──────────────────────────────────────────────────
     private val logger: AppLogger = ToolWindowLogger(::appendStructured)
+    private val stateDetector = RepositoryStateDetector({ service.gitClient }, logger)
 
     // ── Delegates (after UI fields to resolve init order) ──────
     private val presetManager = PresetListManager(
@@ -323,46 +324,26 @@ class BranchSwitcherPanel(
         return root
     }
 
-    /**
-     * Probes all editor paths (main + submodules) in the background, then updates UI.
-     * Uses generation-based stale detection: if a newer [detectCurrentState] call starts
-     * before this one finishes, the stale result is discarded via [service.getDetectGen].
-     */
-    @Suppress("TooGenericExceptionCaught")
+    /** Probes all editor paths in the background, then applies the latest snapshot. */
     private fun detectCurrentState() {
         val root = gitRoot() ?: return
         val eds = presetManager.editors
         val paths = LinkedHashSet<String>().apply { add(".") }
         eds.forEach { paths.addAll(it.currentPreset().submodules.keys) }
-        val snapshot = paths.toList()
+        val request = stateDetector.begin(root, paths)
         val pinnedEditors = eds.toList()
-        val gen = service.nextDetectGen()
         service.scope.launch {
-            val branches = HashMap<String, String?>(snapshot.size)
-            val dirty = HashMap<String, Boolean>(snapshot.size)
-            for (p in snapshot) {
-                val dir = if (p == ".") root.toFile() else root.resolve(p).toFile()
-                try {
-                    branches[p] = if (dir.exists()) service.gitClient.currentBranch(dir) else null
-                    dirty[p] = if (dir.exists()) service.gitClient.isDirty(dir) else false
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: com.intellij.openapi.progress.ProcessCanceledException) {
-                    throw e
-                } catch (e: Exception) {
-                    branches[p] = null
-                    dirty[p] = false
-                    logger.error("[detect] $p: ${e.javaClass.simpleName}: ${e.message}")
-                }
-            }
+            val snapshot = stateDetector.detect(request)
             com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater {
-                if (gen != service.getDetectGen()) return@invokeLater
+                if (!stateDetector.isLatest(snapshot)) return@invokeLater
                 pinnedEditors.forEach { editor ->
-                    if (editor in eds) editor.applyCurrentState(branches, dirty)
+                    if (editor in eds) {
+                        editor.applyCurrentState(snapshot.branches, snapshot.dirtyRepositories)
+                    }
                 }
                 presetsInner.revalidate()
                 presetsInner.repaint()
-                logDetected(eds.toList(), branches, dirty)
+                logDetected(eds.toList(), snapshot.branches, snapshot.dirtyRepositories)
             }
         }
     }

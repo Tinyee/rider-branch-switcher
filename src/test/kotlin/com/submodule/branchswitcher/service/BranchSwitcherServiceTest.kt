@@ -63,29 +63,6 @@ class BranchSwitcherServiceTest {
         newLease.close()
     }
 
-    // ── Detect generation (stale-detection) ──────────────────────────
-
-    @Test
-    fun `nextDetectGen increments monotonically`() {
-        val g1 = service.nextDetectGen()
-        val g2 = service.nextDetectGen()
-        val g3 = service.nextDetectGen()
-        assertTrue("g1 < g2", g1 < g2)
-        assertTrue("g2 < g3", g2 < g3)
-    }
-
-    @Test
-    fun `getDetectGen returns last nextDetectGen value`() {
-        service.nextDetectGen() // discard
-        val gen = service.nextDetectGen()
-        assertEquals(gen, service.getDetectGen())
-    }
-
-    @Test
-    fun `getDetectGen starts at 0 before any detection`() {
-        assertEquals(0, service.getDetectGen())
-    }
-
     // ── Switch history ───────────────────────────────────────────────
 
     @Test
@@ -206,10 +183,7 @@ class BranchSwitcherServiceTest {
     }
 
     // ── Concurrent contracts ──────────────────────────────────────────
-    // Verify concurrent observable contracts: write gate mutual exclusion
-    // and detectGen uniqueness. These are probabilistic — they exercise
-    // the concurrent code path but cannot reliably prevent someone from
-    // downgrading AtomicBoolean/AtomicLong to plain Boolean/Long.
+    // Verify the concurrent observable contract of the write gate.
 
     @Test
     fun `concurrent write acquisition grants exactly one winner`() {
@@ -232,39 +206,6 @@ class BranchSwitcherServiceTest {
 
             assertEquals("exactly one thread should acquire the gate", 1, winners.get())
             leases.filterNotNull().forEach { it.close() }
-        } finally {
-            pool.shutdownNow()
-        }
-    }
-
-    @Test
-    fun `concurrent nextDetectGen yields unique values and correct count`() {
-        val threads = 8
-        val callsPerThread = 100
-        val pool = Executors.newFixedThreadPool(threads)
-        val latch = CountDownLatch(1)
-        val sync = Any()
-        val collected = mutableListOf<Long>()
-
-        try {
-            val futures = (0 until threads).map {
-                pool.submit {
-                    latch.await()
-                    val batch = (0 until callsPerThread).map { service.nextDetectGen() }
-                    synchronized(sync) { collected.addAll(batch) }
-                }
-            }
-            latch.countDown()
-
-            for (f in futures) {
-                f.get(5, TimeUnit.SECONDS)
-            }
-
-            val expectedCount = threads * callsPerThread
-            assertEquals("all calls should produce a value", expectedCount, collected.size)
-            assertEquals("all values should be unique", expectedCount, collected.distinct().size)
-            // Final getDetectGen must equal the max generated value
-            assertEquals(collected.max(), service.getDetectGen())
         } finally {
             pool.shutdownNow()
         }
