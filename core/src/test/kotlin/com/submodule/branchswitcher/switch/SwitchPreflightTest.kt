@@ -166,6 +166,18 @@ class SwitchPreflightTest {
     }
 
     @Test
+    fun `repository probe failure is not reported as a missing directory`() {
+        val throwingGit = object : GitClient by fakeGit {
+            override fun isGitRepo(workDir: File): Boolean = throw java.io.IOException("cannot inspect repo")
+        }
+
+        val row = SwitchPreflight(throwingGit).probe(projectRoot, Preset("test", "main")).single()
+
+        assertTrue(row.exists)
+        assertEquals("IOException: cannot inspect repo", row.probeError)
+    }
+
+    @Test
     fun `probe caps diagnostic text when git exception message is long`() {
         val throwingGit = object : GitClient by fakeGit {
             override fun dirtyFileCount(workDir: File): Int =

@@ -112,13 +112,23 @@ class GitOps(
 
     override fun currentBranch(workDir: File): String? {
         val r = run(workDir, "symbolic-ref", "--short", "-q", "HEAD")
-        return if (r.ok) r.stdout.trim().ifEmpty { null } else null
+        return when {
+            r.ok -> r.stdout.trim().ifEmpty { null }
+            r.exitCode == 1 -> null
+            else -> throw GitQueryException(r)
+        }
     }
 
     override fun isGitRepo(workDir: File): Boolean {
         if (!workDir.isDirectory) return false
         val result = run(workDir, "rev-parse", "--show-toplevel")
-        if (!result.ok || result.stdout.isBlank()) return false
+        if (!result.ok) {
+            if (File(workDir, ".git").exists() || result.failureKind != GitFailureKind.GIT_FAILED) {
+                throw GitQueryException(result)
+            }
+            return false
+        }
+        if (result.stdout.isBlank()) throw GitQueryException(result)
         val topLevel = runCatching { File(result.stdout).canonicalFile }.getOrNull() ?: return false
         val requested = runCatching { workDir.canonicalFile }.getOrNull() ?: return false
         return topLevel == requested
@@ -126,12 +136,13 @@ class GitOps(
 
     override fun isDirty(workDir: File): Boolean {
         val r = run(workDir, "status", "--porcelain")
-        return r.ok && r.stdout.isNotBlank()
+        if (!r.ok) throw GitQueryException(r)
+        return r.stdout.isNotBlank()
     }
 
     override fun dirtyFileCount(workDir: File): Int {
         val r = run(workDir, "status", "--porcelain")
-        if (!r.ok) return -1
+        if (!r.ok) throw GitQueryException(r)
         return r.stdout.lines().count { it.isNotBlank() }
     }
 
@@ -143,8 +154,14 @@ class GitOps(
     override fun fetch(workDir: File): GitResult = run(workDir, "fetch", "--prune")
 
     /** Uses plumbing command `show-ref --verify` for fast existence check. */
-    override fun localBranchExists(workDir: File, branch: String): Boolean =
-        run(workDir, "show-ref", "--verify", "--quiet", "refs/heads/$branch").ok
+    override fun localBranchExists(workDir: File, branch: String): Boolean {
+        val result = run(workDir, "show-ref", "--verify", "--quiet", "refs/heads/$branch")
+        return when {
+            result.ok -> true
+            result.exitCode == 1 -> false
+            else -> throw GitQueryException(result)
+        }
+    }
 
     /** Tri-state: true=exists, false=not, null=git error. Distinguishes "not found" (exit 1) from errors. */
     override fun localBranchProbe(workDir: File, branch: String): Boolean? {
@@ -177,6 +194,7 @@ class GitOps(
         val key = workDir.absolutePath
         return remoteCache[key] ?: run {
             val r = run(workDir, "remote")
+            if (!r.ok) throw GitQueryException(r)
             val remotes = r.stdout.lines().map { it.trim() }.filter { it.isNotEmpty() }
             val name = selectRemoteName(remotes)
             remoteCache[key] = name
@@ -185,8 +203,14 @@ class GitOps(
     }
 
     /** Uses plumbing command `show-ref --verify` for fast existence check. */
-    override fun remoteBranchExists(workDir: File, branch: String): Boolean =
-        run(workDir, "show-ref", "--verify", "--quiet", "refs/remotes/${remoteName(workDir)}/$branch").ok
+    override fun remoteBranchExists(workDir: File, branch: String): Boolean {
+        val result = run(workDir, "show-ref", "--verify", "--quiet", "refs/remotes/${remoteName(workDir)}/$branch")
+        return when {
+            result.ok -> true
+            result.exitCode == 1 -> false
+            else -> throw GitQueryException(result)
+        }
+    }
 
     override fun checkoutExisting(workDir: File, branch: String): GitResult =
         run(workDir, "checkout", branch)
@@ -265,6 +289,7 @@ class GitOps(
 
     override fun revParseHead(workDir: File): String? {
         val r = run(workDir, "rev-parse", "HEAD")
+        if (!r.ok && r.failureKind != GitFailureKind.GIT_FAILED) throw GitQueryException(r)
         return if (r.ok) r.stdout.trim().ifEmpty { null } else null
     }
 
@@ -277,7 +302,7 @@ class GitOps(
         val r = run(workDir, "for-each-ref",
             "--format=%(refname:short)",
             "refs/heads", "refs/remotes/$remote")
-        if (!r.ok) return emptyList()
+        if (!r.ok) throw GitQueryException(r)
         return r.stdout.lines()
             .map { it.trim() }
             .filter { it.isNotEmpty() && !it.startsWith("$remote/HEAD") }
