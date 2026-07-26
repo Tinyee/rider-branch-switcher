@@ -6,7 +6,7 @@ JetBrains IDE 插件 — 一键将主仓库和所有子模块切换到预设的�
 
 - **技术栈**: Kotlin 2.3, IntelliJ Platform Gradle Plugin 2.2.1, Gradle 8.13, JUnit 4 + Kotest 5.9
 - **目标**: JetBrains IDEs 2026.1 (build 261)，默认使用 IntelliJ IDEA Community SDK 构建，Rider 作为兼容验证目标
-- **测试**: 288 tests / 28 classes (14 core + 14 platform)
+- **测试**: 290 tests / 26 classes (15 core + 11 platform)
 - **版本**: 0.7.0
 
 ## 架构
@@ -97,6 +97,7 @@ git config core.hooksPath .githooks   # 首次 clone 后执行一次，启用自
 - **Level 3: 目标测试强制重跑。** 要把共享审查项标为 `VERIFIED`、声称功能完成、或涉及取消/rollback/迁移/持久化时，相关目标测试加 `--rerun-tasks`，除非写明不需要的理由。
 - **Level 4: 广泛验证。** 仅提交前、跨模块架构改动、测试基础设施改动、Gradle 配置大改或用户明确要求时，跑 `:core:test test :core:detekt detekt`；发布前才跑 `releaseCheck`。
 - **不要把未运行写成通过。** 任何没跑的测试必须记录为“未运行 + 原因”；共享审查文档只能记录真实执行过的 PASS/FAIL/timeout。
+- **测试总数只能从干净的全量输出统计。** 定向 `--tests` 或增量运行可保留旧 XML；更新测试总数前先运行 `:core:cleanTest cleanTest`，再运行完整 `:core:test test`，不要把旧报告当作本次通过证据。
 
 ```bash
 ./gradlew quickCheck
@@ -119,7 +120,7 @@ RUN_RELEASE_CHECK_ON_PUSH=1 git push  # 需要 push 时同时跑 releaseCheck �
 - 分支名校验 (`isValidBranchName`)。
 - 云端新增子模块切换改为先更新主仓，再递归同步、初始化和切换子模块；普通子目录不再误判为父 Git 仓库。
 - 新增 MIT `LICENSE`、`quickCheck` + `releaseCheck` Gradle task、git pre-commit/pre-push hooks（push 默认只跑 quickCheck，releaseCheck 手动或 opt-in）。
-- 288 tests / 28 classes 覆盖：145 个 core pure JVM 测试 + 143 个平台/集成测试（含 6 个 Kotest 属性测试），含真实 Git 集成、取消、rollback、derive 安全、通知决策、stash+rollback、远端新增子模块和 50 子模块调用预算。
+- 290 tests / 26 classes 覆盖：148 个 core pure JVM 测试 + 142 个平台/集成测试（含 6 个 Kotest 属性测试；不含 benchmark），含真实 Git 集成、取消、rollback、derive 安全、通知决策、stash+rollback、远端新增子模块和 50 子模块调用预算。
 
 ## 会话流程规则
 

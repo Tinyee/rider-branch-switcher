@@ -61,14 +61,6 @@ class SwitchStepTest {
     // ---- CheckoutStep ----
 
     @Test
-    fun `checkout step skip when already on target`() {
-        val c = context()
-        val step = CheckoutStep()
-        val result = step.execute(c)
-        assertEquals(StepResult.Success, result) // main==dev should be true in fake, but target is "dev" and current is "main" - wait, current==main, target==dev so it should checkout
-    }
-
-    @Test
     fun `checkout step skip when already on target branch`() {
         val sameGit = object : GitClient by fakeGit {
             override fun currentBranch(workDir: File): String? = "dev"

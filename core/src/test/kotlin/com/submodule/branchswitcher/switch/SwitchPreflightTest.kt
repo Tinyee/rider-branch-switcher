@@ -162,6 +162,20 @@ class SwitchPreflightTest {
         assertEquals(-1, rows[0].dirtyCount)
         assertFalse(rows[0].hasLocal)
         assertTrue("should be branchMissing", rows[0].branchMissing)
+        assertEquals("IOException: git failed", rows[0].probeError)
+    }
+
+    @Test
+    fun `probe caps diagnostic text when git exception message is long`() {
+        val throwingGit = object : GitClient by fakeGit {
+            override fun dirtyFileCount(workDir: File): Int =
+                throw IllegalStateException("x".repeat(400))
+        }
+
+        val rows = SwitchPreflight(throwingGit).probe(projectRoot, Preset("test", "main"))
+
+        assertEquals(300, rows.single().probeError!!.length)
+        assertTrue(rows.single().probeError!!.startsWith("IllegalStateException: "))
     }
 
     @Test(expected = java.util.concurrent.CancellationException::class)

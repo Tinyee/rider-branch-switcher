@@ -78,6 +78,7 @@ class SwitchPreflight(
                 dirtyCount = -1,
                 hasLocal = false,
                 hasRemote = false,
+                probeError = "${e.javaClass.simpleName}: ${e.message.orEmpty()}".take(300),
             )
         }
     }
