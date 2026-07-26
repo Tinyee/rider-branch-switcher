@@ -5,7 +5,7 @@
 **Submodule Branch Switcher 是一个 JetBrains IDE 插件，用来一键把主仓库和所有子模块切换到预设的分支组合。**
 
 ![version](https://img.shields.io/badge/version-0.7.0-blue)
-![tests](https://img.shields.io/badge/tests-279-green)
+![tests](https://img.shields.io/badge/tests-290-green)
 ![JetBrains](https://img.shields.io/badge/JetBrains-2026.1-blue)
 
 它适合这类项目：一个主仓库下挂着多个 Git 子模块，日常需要在 `main`、`develop`、发布分支、功能分支之间整组切换。你可以把每组分支保存成 preset，然后在 Tool Window 里直接切换。
@@ -41,16 +41,6 @@ preset 存在 `.idea/branch-presets.json`，可以随项目提交，让团队成
 | Rider | 兼容验证目标 | `plugin.verifier.ideCodes=RD` 覆盖；发布前保留 Rider 沙箱手工冒烟。 |
 | IntelliJ IDEA Ultimate | 预期兼容 | 使用同一套 Platform + Git API，但暂未列为主要 verifier 目标。 |
 | PyCharm / WebStorm / CLion | 暂不宣称支持 | 宣传 Marketplace 支持前，需要增加 verifier codes 和手工冒烟证据。 |
-
-默认开发 SDK：
-
-```properties
-platform.type=IC
-platform.version=2026.1.3
-plugin.sinceBuild=261
-plugin.untilBuild=261.*
-plugin.verifier.ideCodes=RD
-```
 
 ## 安装
 
@@ -110,51 +100,8 @@ build/distributions/submodule-branch-switcher-0.7.0.zip
 | Pull after switch | 开启 | 切换后执行 `git pull --ff-only`。 |
 | Confirm before init | 关闭 | 初始化缺失子模块前先确认。 |
 
-## 开发与验证
+## 参与开发
 
-```bash
-# clone 后启用本地 hooks
-git config core.hooksPath .githooks
-
-# 快速结构检查
-./gradlew quickCheck
-
-# core 纯 JVM 测试
-./gradlew pureTest
-
-# 平台/集成测试
-./gradlew test
-
-# 构建插件 ZIP
-./gradlew buildPlugin
-
-# 启动带插件的沙箱 IDE
-./gradlew runIde
-```
-
-日常开发优先跑轻量检查：
-
-```bash
-./gradlew quickCheck
-./gradlew :core:test --tests "<ClassOrMethod>" --max-workers=1 --no-parallel
-./gradlew test --tests "<ClassOrMethod>" --max-workers=2 --no-parallel
-```
-
-发布前再跑完整检查：
-
-```bash
-./gradlew :core:test test :core:detekt detekt --max-workers=2 --no-parallel
-./gradlew releaseCheck
-```
-
-手动重型诊断：
-
-```bash
-# 大仓真实耗时基准
-./gradlew benchmark
-
-# 范围化变异测试
-./gradlew pitestCore
-```
-
-`benchmark` 和 `pitestCore` 不进入普通 `test` 或 `releaseCheck`。
+本地环境、架构边界、验证方式和审查约定见
+[CONTRIBUTING.md](CONTRIBUTING.md)。日常开发可直接运行
+`./gradlew runIde` 启动带插件的沙箱 IDE。

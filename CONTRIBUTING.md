@@ -15,6 +15,8 @@ submodules to a saved branch preset.
   property tests; benchmark excluded)
 
 Use JDK 21. The Gradle build configures the Kotlin toolchain accordingly.
+The default SDK configuration is in `gradle.properties` (`platform.type=IC`,
+`platform.version=2026.1.3`); use `platform.localPath` for a local IDE install.
 
 ## Architecture
 
