@@ -1,6 +1,6 @@
 package com.submodule.branchswitcher.switch
 
-import com.submodule.branchswitcher.git.GitClient
+import com.submodule.branchswitcher.git.SwitchGitClient
 import com.submodule.branchswitcher.log.AppLogger
 import com.submodule.branchswitcher.model.Preset
 import com.submodule.branchswitcher.model.SwitchOptions
@@ -56,7 +56,7 @@ data class SwitchContext(
     val projectRoot: Path,
     val preset: Preset,
     val options: SwitchOptions,
-    val git: GitClient,
+    val git: SwitchGitClient,
     val log: AppLogger,
     val cancellationHandle: CancellationHandle? = null,
     val progressHandle: ProgressHandle? = null,

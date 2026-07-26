@@ -4,7 +4,7 @@ import com.intellij.openapi.progress.ProgressIndicator
 import com.intellij.openapi.project.Project
 import com.submodule.branchswitcher.Bundle
 import com.submodule.branchswitcher.TaskBridge
-import com.submodule.branchswitcher.git.GitClient
+import com.submodule.branchswitcher.git.SwitchOperationGitClient
 import com.submodule.branchswitcher.log.AppLogger
 import com.submodule.branchswitcher.model.ResolvedSwitchRequest
 import com.submodule.branchswitcher.switch.SwitchExecutionResult
@@ -36,7 +36,7 @@ data class SwitchRecoveryResult(
 class SwitchRunner(
     private val project: Project,
     private val root: Path,
-    private val gitClient: GitClient,
+    private val gitClient: SwitchOperationGitClient,
     private val taskRunner: TaskBridge.TaskRunner = TaskBridge.TaskRunner.DEFAULT,
 ) {
     @Suppress("TooGenericExceptionCaught")

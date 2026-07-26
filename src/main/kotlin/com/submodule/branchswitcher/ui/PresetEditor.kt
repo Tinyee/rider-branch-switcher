@@ -5,7 +5,7 @@ import com.intellij.ui.JBColor
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.NamedColorUtil
 import com.submodule.branchswitcher.Bundle
-import com.submodule.branchswitcher.git.GitClient
+import com.submodule.branchswitcher.git.PresetDiscoveryGitClient
 import com.submodule.branchswitcher.log.AppLogger
 import com.submodule.branchswitcher.model.Preset
 import com.submodule.branchswitcher.model.isValidBranchName
@@ -55,7 +55,7 @@ class PresetEditor(
     private val onDelete: () -> Unit,
     private val onDerive: (preset: Preset, branchName: String) -> Unit = { _, _ -> },
     private val nameValidator: (String) -> Boolean = { true },
-    private val gitClient: GitClient,
+    private val gitClient: PresetDiscoveryGitClient,
     private val scope: CoroutineScope,
     private val onSwitchOnly: (path: String, target: String) -> Unit = { _, _ -> },
 ) : JPanel() {

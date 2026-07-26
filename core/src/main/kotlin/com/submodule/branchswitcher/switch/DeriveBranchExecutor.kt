@@ -1,7 +1,7 @@
 package com.submodule.branchswitcher.switch
 
 import com.submodule.branchswitcher.switch.CancellationClassifier
-import com.submodule.branchswitcher.git.GitClient
+import com.submodule.branchswitcher.git.DeriveGitClient
 import com.submodule.branchswitcher.log.AppLogger
 import com.submodule.branchswitcher.model.Preset
 import com.submodule.branchswitcher.model.RepoTarget
@@ -22,7 +22,7 @@ import java.nio.file.Path
 class DeriveBranchExecutor(
     private val projectRoot: Path,
     private val log: AppLogger,
-    private val git: GitClient,
+    private val git: DeriveGitClient,
     private val cancelled: (() -> Boolean)? = null,
     private val requireClean: Boolean = true,
     private val classifier: CancellationClassifier = CancellationClassifier.DEFAULT,
