@@ -103,7 +103,7 @@ The final broad review found no unresolved P1 or P2 issue. Follow-up fixes:
 - The local-only statistics feature was removed from source, persistence, UI,
   i18n, tests, and active documentation.
 
-Two P3 architecture observations are accepted:
+Two P3 architecture observations were accepted at that point:
 
 - Write-operation setup remains specialized at each entry point because the
   workflows have materially different UI and rollback behavior.
@@ -117,6 +117,37 @@ Validation recorded at the end of this review:
 - Core and platform Detekt reports: empty.
 - `quickCheck`: passed.
 - `git diff --check`: passed.
+
+## 2026-07-26 - Deep Architecture Refactor
+
+The deferred architecture work was completed without changing user-facing
+switch behavior:
+
+- Switch execution now returns a structured status, checkpoint, failures, and
+  final state instead of relying on loosely related flags.
+- Pipeline steps explicitly pass an immutable `SwitchState`; stash, skip, and
+  checkout state no longer live in mutable shared context.
+- Git capabilities are split by workflow while `GitClient` remains the
+  aggregate implementation boundary.
+- Each background write receives an isolated `GitOperationSession`, so
+  cancellation no longer leaks into concurrent reads or later operations.
+- The write gate returns an idempotent scoped `WriteLease`.
+- `GitBackgroundRunner` centralizes operation open, cancel, close, exception,
+  and completed-value handling for every background Git write.
+- Legacy `beginOperation` / `endOperation` APIs were removed. `quickCheck`
+  prevents direct production use of `TaskBridge.runBackground` outside the
+  runner and prevents the old lifecycle from returning.
+
+Workflow-specific UI, confirmation, notification, refresh, and rollback
+decisions remain at their existing entry points. Only their mechanical
+resource lifecycle is shared.
+
+Validation:
+
+- Clean full suite: 296 tests in 28 classes (153 core, 143 platform).
+- Core and platform Detekt: passed.
+- `quickCheck` and all 7 rule fixtures: passed.
+- Plugin ZIP build: passed.
 
 ## Maintenance
 

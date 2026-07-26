@@ -11,7 +11,7 @@ submodules to a saved branch preset.
 - Kotlin 2.3, Gradle 8.13, IntelliJ Platform Gradle Plugin 2.2.1
 - Target: JetBrains IDEs 2026.1 (build 261)
 - Default SDK: IntelliJ IDEA Community; Rider is a compatibility target
-- Tests: 297 tests / 28 classes (153 core, 144 platform/integration; 4 Kotest
+- Tests: 296 tests / 28 classes (153 core, 143 platform/integration; 4 Kotest
   property tests; benchmark excluded)
 
 Use JDK 21. The Gradle build configures the Kotlin toolchain accordingly.
@@ -30,16 +30,21 @@ i18n.
 
 Key boundaries:
 
-- All Git operations go through `GitClient`; `GitOps` is the CLI implementation.
-- `SwitchExecutor` runs ordered `SwitchStep`s. Only `Fatal` stops the pipeline;
-  `Partial` records failures and continues where safe.
+- Git consumers depend on workflow-specific interfaces; `GitClient` is the
+  aggregate implementation boundary and `GitOps` is the CLI implementation.
+- `SwitchExecutor` runs ordered `SwitchStep`s and returns a structured
+  `SwitchExecutionResult`. Steps explicitly return the immutable `SwitchState`
+  passed to the next step.
 - Presets live in `.idea/branch-presets.json`; options use a
   `PersistentStateComponent`.
-- A write operation must use the complete lifecycle:
-  `tryStartWrite` -> `beginOperation` -> cancellable background task ->
-  `endOperation` -> `endWrite` in `finally`.
-- Cancellation exceptions must be rethrown, never converted into ordinary
-  errors. Safety probes fail closed when state cannot be determined.
+- A write operation acquires a scoped `WriteLease`, runs Git work through
+  `GitBackgroundRunner`, and closes the lease in `finally`.
+- `GitBackgroundRunner` owns an isolated `GitOperationSession`, including
+  cancellation and close handling. Production code must not call
+  `TaskBridge.runBackground` directly.
+- Cancellation must be rethrown or converted into an explicit cancelled
+  outcome, never an ordinary error. Safety probes fail closed when state cannot
+  be determined.
 
 ## Setup And Commands
 
@@ -102,8 +107,9 @@ current invocation:
 - For switch, derive, rollback, and cancellation changes, enumerate success,
   partial failure, fatal failure, cancellation, and cleanup outcomes before
   implementation.
-- New `GitClient` methods should normally have a conservative default
-  implementation so test fakes remain source compatible.
+- Add Git capabilities to the narrowest workflow interface that needs them.
+  Conservative defaults may be used when they keep test fakes source
+  compatible without weakening production safety.
 - After changing exception propagation, inspect broad `catch` blocks in callers
   so cancellation cannot be swallowed.
 - Keep i18n keys symmetric in both locale files.
