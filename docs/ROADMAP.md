@@ -23,8 +23,8 @@
 - **动态远端名**：自动检测 remote 名，不再硬编码 origin
 - IntelliJ 原生图标（AllIcons），主题感知色
 - i18n 中英双语（DynamicBundle + @PropertyKey 编译时校验）
-- 290 测试 / 26 个测试类（148 个 core pure JVM + 142 个平台/集成；含 6 个 Kotest 属性测试，不含 benchmark）
-- GitHub Actions CI（ubuntu/macOS/Windows）+ Qodana 静态分析
+- 297 测试 / 28 个测试类（153 个 core pure JVM + 144 个平台/集成；含 4 个 Kotest 属性测试，不含 benchmark）
+- GitHub Actions CI（ubuntu/macOS/Windows）+ Detekt 静态分析
 
 下面按「切换体验 / 状态可视化 / UI / 工作流 / 质量」五块梳理后续要做的功能点，优先级 **P0(致命) / P1(高价值) / P2(锦上添花)**；状态列标记 v0.x 已落地或下阶段候选。
 
@@ -320,7 +320,7 @@ com.submodule.branchswitcher/
 | M4 | 加 Exception Analyzer | 极低 | `plugin.xml` 加一行 `<errorHandler>`，崩溃自动上报 Marketplace | ✅ v0.6 |
 | M5 | 插件图标 | 低 | 40×40 SVG，不模仿 JetBrains 产品 logo | ✅ v0.6 |
 | M6 | 英文描述 + 截图 | 中 | 1280×800 (16:10)，不带设备边框；描述已更新到 plugin.xml，README 已嵌入 Tool Window、Dry-run 和 Settings 三张截图 | ✅ v0.7 |
-| M7 | CI 加 Qodana/InspectCode | 低 | 静态分析在每次 push 自动跑 | ✅ v0.6 |
+| M7 | CI 加 Detekt | 低 | 静态分析在每次 push 自动跑 | ✅ v0.6 |
 
 ### P2 — 生产级打磨
 
@@ -344,13 +344,13 @@ com.submodule.branchswitcher/
 
 ### 当前状态
 
-- ✅ 290 测试，26 个测试类：`./gradlew :core:test` 跑 148 个 core 纯 JVM 测试，`./gradlew :test` 跑 142 个平台/集成测试
+- ✅ 297 测试，28 个测试类：`./gradlew :core:test` 跑 153 个 core 纯 JVM 测试，`./gradlew :test` 跑 144 个平台/集成测试
 - ✅ `GitClient` 接口 + Fake 实现 → 架构已隔离 IntelliJ 运行时
 - ✅ 真实 git 临时仓库集成测试（`SwitchIntegrationTest`）
 - ✅ 50 目标仓库 Switch/Preflight Git 调用预算测试（`LargeRepoScalabilityTest`，counting fake）
 - ✅ 大仓真实耗时基准（`./gradlew benchmark`，独立 Gradle task，51 个独立 git 仓库真实 GitOps wall-clock）
 - ✅ GitHub Actions CI（ubuntu/macOS/Windows）+ Detekt + quickCheck + checkQuickCheck + verifyPlugin
-- ✅ `quickCheck`：7 条 grep 结构性检查 + `checkQuickCheck` 自测（5 fixture）
+- ✅ `quickCheck`：8 条结构性检查 + `checkQuickCheck` 自测（6 fixture）
 - ⚠ 已覆盖 UI 规则与 Swing 几何约束，尚无 Rider fixture / 截图测试
 - ✅ `TaskBridge.runBackground` 生命周期已覆盖（`TaskBridgeLifecycleTest`，9 用例）
 
@@ -364,11 +364,11 @@ com.submodule.branchswitcher/
 
 `io.kotest:kotest-runner-junit5:5.9.1` + `io.kotest:kotest-property:5.9.1`
 
-5 个不变性：Preset JSON 往返、.gitmodules 解析鲁棒性、GitResult.ok 契约、PreflightRow 可计算属性、子模块路径提取。
+4 个属性测试：Preset JSON 往返（单个和多个 preset）、.gitmodules 解析鲁棒性、子模块路径提取。
 
 **3. 结构性检查** ✅
 
-`quickCheck`（7 条规则）+ `checkQuickCheck`（5 fixture 自测），pre-commit hook 自动运行。
+`quickCheck`（8 条规则）+ `checkQuickCheck`（6 fixture 自测），pre-commit hook 自动运行。
 
 **4. PITest 变异测试** ✅
 
@@ -444,7 +444,7 @@ com.submodule.branchswitcher/
 34. ✅ **README.md** — 功能列表、安装方式、快速上手、JSON 格式、开发指南
 35. ✅ **CHANGELOG.md** — v0.1.0 → v0.5.0 完整变更记录
 36. ✅ **F7** — git PATH 检查（首次打开面板异步检测）
-37. ✅ **Qodana** — GitHub Actions 静态分析
+37. ✅ **Detekt** — GitHub Actions 静态分析（替换早期静态分析配置）
 
 ### 无法交付
 
