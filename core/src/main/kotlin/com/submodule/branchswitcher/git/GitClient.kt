@@ -41,10 +41,14 @@ interface GitRepositoryQuery {
     fun revParseHead(workDir: File): String?
 }
 
-/** Git operations required by the branch-switch pipeline. */
-interface SwitchGitClient : GitRepositoryQuery, GitCancellation {
+/** Read-only Git operations used to detect the current repository state. */
+interface RepositoryStateGitClient : GitRepositoryQuery {
     /** True if the working tree has uncommitted changes. Throws when status cannot be inspected. */
     fun isDirty(workDir: File): Boolean
+}
+
+/** Git operations required by the branch-switch pipeline. */
+interface SwitchGitClient : RepositoryStateGitClient, GitCancellation {
     /** Checks whether refs/heads/<branch> exists (plumbing: show-ref --verify). */
     fun localBranchExists(workDir: File, branch: String): Boolean
     /** Checks whether refs/remotes/origin/<branch> exists (plumbing: show-ref --verify). */

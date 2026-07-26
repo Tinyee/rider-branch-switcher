@@ -16,7 +16,6 @@ import com.submodule.branchswitcher.model.Preset
 import com.submodule.branchswitcher.model.PresetFile
 import java.nio.file.Path
 import java.util.concurrent.atomic.AtomicBoolean
-import java.util.concurrent.atomic.AtomicLong
 
 /**
  * Central project-level service for the Branch Switcher plugin.
@@ -24,8 +23,8 @@ import java.util.concurrent.atomic.AtomicLong
  * Composition root that owns persistent state and delegates to sub-components:
  * - [PresetRepository] for preset loading/saving/caching
  *
- * Also manages: write gate, switch history, GitClient cache, detect-gen counter,
- * and persistent switch options via [PersistentStateComponent].
+ * Also manages: write gate, switch history, GitClient cache, and persistent
+ * switch options via [PersistentStateComponent].
  */
 @Service(Service.Level.PROJECT)
 @State(
@@ -146,18 +145,6 @@ class BranchSwitcherService(
 
     fun getHistory(): List<SwitchHistoryEntry> = options.history.toList()
 
-    // -- Stale-detection for async branch probes --
-
-    /**
-     * Monotonically increasing generation counter (atomic for thread safety).
-     * Each [detectCurrentState] call increments it via [nextDetectGen].
-     * Async probe callbacks check [getDetectGen] — if a newer probe started,
-     * the old result is discarded to avoid updating the UI with stale data.
-     */
-    private val detectGen = AtomicLong(0)
-
-    fun nextDetectGen(): Long = detectGen.incrementAndGet()
-    fun getDetectGen(): Long = detectGen.get()
     fun resolveSwitchRequest(preset: Preset): ResolvedSwitchRequest =
         ResolvedSwitchRequest.resolve(
             preset,
