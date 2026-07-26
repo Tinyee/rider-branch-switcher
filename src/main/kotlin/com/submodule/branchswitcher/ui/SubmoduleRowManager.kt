@@ -47,8 +47,6 @@ class SubmoduleRowManager(
         var panel: JPanel,
         var deleted: Boolean = false,
         var loaded: Boolean = false,
-        /** The preset's target branch for this submodule. Used by context menu "switch only this". */
-        var targetBranch: String = "",
         val statusDot: JLabel = JLabel("●").apply {
             font = font.deriveFont(8f)
             foreground = JBColor(0x9E9E9E, 0x757575)
@@ -64,11 +62,12 @@ class SubmoduleRowManager(
     /** Creates and registers a submodule row UI + data. */
     fun buildSubRow(path: String, initialBranch: String): SubRow {
         val combo = makeBranchCombo(onDirty)
+        combo.selectedItem = initialBranch
         val dot = JLabel("●").apply {
             font = font.deriveFont(8f)
             foreground = JBColor(0x9E9E9E, 0x757575)
         }
-        val row = SubRow(path, combo, JPanel(), targetBranch = initialBranch, statusDot = dot)
+        val row = SubRow(path, combo, JPanel(), statusDot = dot)
         val rowPanel = object : JPanel(BorderLayout()) {
             override fun getMaximumSize(): Dimension =
                 Dimension(Short.MAX_VALUE.toInt(), preferredSize.height)
@@ -196,7 +195,6 @@ class SubmoduleRowManager(
                 row.deleted = false
                 row.panel.isVisible = true
                 row.combo.selectedItem = preset.submodules[row.path]
-                row.targetBranch = preset.submodules[row.path] ?: ""
             } else {
                 orphan += row.path
             }
@@ -257,7 +255,7 @@ class SubmoduleRowManager(
 
     internal fun requestSwitchOnly(path: String) {
         val row = subRows[path] ?: return
-        val target = row.targetBranch.ifEmpty { row.combo.selectedItem as? String ?: "" }
+        val target = (row.combo.selectedItem as? String)?.trim().orEmpty()
         if (target.isEmpty()) {
             log.warn("[switch] $path: target branch is empty")
             return

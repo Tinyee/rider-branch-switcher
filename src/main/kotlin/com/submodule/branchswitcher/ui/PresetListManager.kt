@@ -88,7 +88,7 @@ class PresetListManager(
             onSwitch = { onSwitch(it) },
             onSave = { updated -> saveAll(editor, updated) },
             onDelete = { deleteEditor(editor, presetsInner) },
-            onDerive = { branchName -> onDerive(root, editor.currentPreset(), branchName) },
+            onDerive = { draft, branchName -> onDerive(root, draft, branchName) },
             nameValidator = { newName -> editors.none { it !== editor && it.currentPreset().name == newName } },
             gitClient = service.gitClient,
             scope = service.scope,

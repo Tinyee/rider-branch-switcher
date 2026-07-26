@@ -53,7 +53,7 @@ class PresetEditor(
     private val onSwitch: (Preset) -> Unit,
     private val onSave: (Preset) -> Unit,
     private val onDelete: () -> Unit,
-    private val onDerive: (branchName: String) -> Unit = {},
+    private val onDerive: (preset: Preset, branchName: String) -> Unit = { _, _ -> },
     private val nameValidator: (String) -> Boolean = { true },
     private val gitClient: GitClient,
     private val scope: CoroutineScope,
@@ -441,7 +441,7 @@ class PresetEditor(
                 Bundle.msg("dialog.derive"))
             return
         }
-        onDerive(name)
+        onDerive(preset, name)
     }
 
 
