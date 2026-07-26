@@ -8,8 +8,8 @@ class PullStep(
 
     override fun execute(context: SwitchContext): StepResult {
         if (!context.options.pull) {
-            popStashes(context)
-            return StepResult.Success
+            val failures = restoreTrackedStashes(context)
+            return if (failures.isEmpty()) StepResult.Success else StepResult.Partial(failures)
         }
 
         val failures = LinkedHashMap<String, String>()
@@ -34,28 +34,44 @@ class PullStep(
                 failures[target.path] = "pull had warnings"
             }
         }
-        popStashes(context)
+        failures.putAll(restoreTrackedStashes(context))
         return if (failures.isEmpty()) StepResult.Success else StepResult.Partial(failures)
     }
 
     /** Pop stashes that were created during DirtyHandlingStep, now that checkout + pull are done. */
-    private fun popStashes(context: SwitchContext) {
+    private fun restoreTrackedStashes(context: SwitchContext): Map<String, String> {
         val selectedPaths = context.preset.targetsFor(scope).mapTo(hashSetOf()) { it.path }
-        for ((path, msg) in context.state.stashesSnapshot()) {
-            if (path !in selectedPaths) continue
-            val dir = resolveGitDir(context.projectRoot, path)
-            if (!dir.exists() || !context.git.isGitRepo(dir)) {
-                context.log.warn(" stash pop skipped - dir gone for $path ($msg)")
-                context.state.consumeStash(path)
-                continue
-            }
-            val popResult = context.git.stashPop(dir)
-            if (popResult.ok) {
-                context.log.info("stash pop ok ($msg)")
-                context.state.consumeStash(path)
-            } else {
-                context.log.warn("[fail] stash pop failed for $path: ${popResult.diagnostic()}")
-            }
+        return restoreTrackedStashes(
+            context.projectRoot, context.git, context.log, context.state, selectedPaths,
+        )
+    }
+}
+
+/** Restores tracked stashes and retains failed entries so a later recovery can retry them. */
+internal fun restoreTrackedStashes(
+    projectRoot: java.nio.file.Path,
+    git: com.submodule.branchswitcher.git.GitClient,
+    log: com.submodule.branchswitcher.log.AppLogger,
+    state: SwitchPipelineState,
+    selectedPaths: Set<String>? = null,
+): Map<String, String> {
+    val failures = linkedMapOf<String, String>()
+    for ((path, msg) in state.stashesSnapshot()) {
+        if (selectedPaths != null && path !in selectedPaths) continue
+        val dir = resolveGitDir(projectRoot, path)
+        if (!dir.exists() || !git.isGitRepo(dir)) {
+            log.warn("[fail] stash pop skipped - repository unavailable for $path ($msg)")
+            failures[path] = "stash repository unavailable"
+            continue
+        }
+        val popResult = git.stashPop(dir)
+        if (popResult.ok) {
+            log.info("stash pop ok ($msg)")
+            state.consumeStash(path)
+        } else {
+            log.warn("[fail] stash pop failed for $path: ${popResult.diagnostic()}")
+            failures[path] = "stash pop failed"
         }
     }
+    return failures
 }

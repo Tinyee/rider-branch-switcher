@@ -43,8 +43,12 @@ class SwitchExecutor @JvmOverloads constructor(
 ) {
 
     private var lastCheckpoint: Map<String, CheckpointEntry>? = null
+    private var lastState: SwitchPipelineState? = null
+    var wasCancelled: Boolean = false
+        private set
 
     fun execute(request: ResolvedSwitchRequest): Boolean {
+        wasCancelled = false
         val preset = request.preset
         val options = request.options
         log.activity("=== switching to preset: ${preset.name} ===")
@@ -60,6 +64,7 @@ class SwitchExecutor @JvmOverloads constructor(
             confirmBeforeInit = options.confirmBeforeInit,
             onConfirmSubmoduleInit = onConfirmSubmoduleInit,
         )
+        lastState = context.state
 
         // Do not mutate any existing repository unless it has rollback coverage.
         lastCheckpoint = recordCheckpoint(preset)
@@ -78,6 +83,7 @@ class SwitchExecutor @JvmOverloads constructor(
             if (context.cancelled()) {
                 git.cancel() // terminate in-flight command if any
                 log.info("[cancelled] before step: ${step.name}")
+                wasCancelled = true
                 overallSuccess = false
                 break
             }
@@ -103,6 +109,12 @@ class SwitchExecutor @JvmOverloads constructor(
     }
 
     fun getCheckpoint(): Map<String, CheckpointEntry>? = lastCheckpoint
+
+    /** Retries any stash restores left incomplete by cancellation or a failed pipeline tail. */
+    fun restoreTrackedStashes(): Map<String, String> {
+        val state = lastState ?: return emptyMap()
+        return restoreTrackedStashes(projectRoot, git, log, state)
+    }
 
     fun rollback(): Boolean {
         val checkpoint = lastCheckpoint

@@ -110,7 +110,20 @@ class SwitchFlowCoordinator(
                     title = Bundle.msg("progress.switching"), request = request, log = log,
                 )
                 uiLater {
-                    if (result.cancelled) { onFinished?.invoke(); return@uiLater }
+                    if (result.cancelled) {
+                        result.recovery?.let { recovery ->
+                            if (recovery.ok) {
+                                Notifier.info(project, Bundle.msg("switch.cancelled"),
+                                    Bundle.msg("notify.switch.cancelled.recovered"))
+                            } else {
+                                Notifier.error(project, Bundle.msg("switch.cancelled"),
+                                    Bundle.msg("notify.switch.cancelled.partial"))
+                            }
+                        }
+                        onFinished?.invoke()
+                        refreshVcsRepos(project, root, preset.submodules.keys)
+                        return@uiLater
+                    }
                     if (result.ok) {
                         service.addHistory(preset.name, preset.id)
                         onSuccess?.invoke()
@@ -154,7 +167,7 @@ class SwitchFlowCoordinator(
                         block = { indicator ->
                             indicator.isIndeterminate = true
                             indicator.text = Bundle.msg("progress.rollback")
-                            rollbackOk = executor.rollback()
+                            rollbackOk = executor.rollback() && executor.restoreTrackedStashes().isEmpty()
                         },
                         onCancel = { gitClient.cancel() },
                         onFinished = { gitClient.endOperation() },

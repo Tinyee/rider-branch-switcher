@@ -15,7 +15,15 @@ data class SwitchRunResult(
     val ok: Boolean,
     val cancelled: Boolean,
     val executor: SwitchExecutor?,
+    val recovery: SwitchRecoveryResult? = null,
 )
+
+data class SwitchRecoveryResult(
+    val rollbackOk: Boolean,
+    val stashFailures: Map<String, String>,
+) {
+    val ok: Boolean get() = rollbackOk && stashFailures.isEmpty()
+}
 
 /**
  * Shared execution path for all switch entry points.
@@ -40,6 +48,7 @@ class SwitchRunner(
         var ok = false
         var cancelled = false
         var executor: SwitchExecutor? = null
+        var recovery: SwitchRecoveryResult? = null
 
         gitClient.beginOperation()
         try {
@@ -86,6 +95,27 @@ class SwitchRunner(
             ok = false
         }
 
-        return SwitchRunResult(ok = ok, cancelled = cancelled, executor = executor)
+        if (executor?.wasCancelled == true) cancelled = true
+        if (cancelled && executor != null) {
+            recovery = recoverCancelledSwitch(executor, log)
+        }
+
+        return SwitchRunResult(ok = ok, cancelled = cancelled, executor = executor, recovery = recovery)
+    }
+
+    @Suppress("TooGenericExceptionCaught") // cancellation recovery must return a report instead of escaping
+    private fun recoverCancelledSwitch(executor: SwitchExecutor, log: AppLogger): SwitchRecoveryResult {
+        gitClient.beginOperation()
+        return try {
+            val checkpoint = executor.getCheckpoint()
+            val rollbackOk = checkpoint.isNullOrEmpty() || executor.rollback()
+            val stashFailures = executor.restoreTrackedStashes()
+            SwitchRecoveryResult(rollbackOk, stashFailures)
+        } catch (e: RuntimeException) {
+            log.error("cancel recovery: ${e.javaClass.simpleName}: ${e.message}")
+            SwitchRecoveryResult(rollbackOk = false, stashFailures = mapOf("." to "recovery exception"))
+        } finally {
+            gitClient.endOperation()
+        }
     }
 }
