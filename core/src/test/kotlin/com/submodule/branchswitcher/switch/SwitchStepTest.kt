@@ -293,6 +293,21 @@ class SwitchStepTest {
     }
 
     @Test
+    fun `stash pop failure makes pull partial and keeps recovery state`() {
+        val popGit = object : GitClient by fakeGit {
+            override fun stashPop(workDir: File): GitResult =
+                GitResult("pop", 1, "", "conflict")
+        }
+        val c = context(SwitchOptions(DirtyAction.Stash, pull = false)).copy(git = popGit)
+        c.state.trackStash(".", "before -> dev")
+
+        val result = PullStep().execute(c)
+
+        assertTrue(result is StepResult.Partial)
+        assertTrue(c.state.hasStashes())
+    }
+
+    @Test
     fun `staged pull restores only stashes in its target scope`() {
         val popped = mutableListOf<String>()
         projectRoot.resolve("SubA").toFile().mkdirs()

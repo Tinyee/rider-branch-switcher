@@ -357,6 +357,7 @@ class SwitchExecutorTest {
         assertFalse(result)
         assertEquals(listOf("first"), executed)
         assertEquals(1, cancelCalls)
+        assertTrue(executor.wasCancelled)
         assertTrue(log.any { it.contains("[cancelled] before step: second") })
     }
 

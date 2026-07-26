@@ -165,8 +165,40 @@ class SwitchRunnerTest {
         assertEquals(1, git.endCount)
     }
 
-    private fun request(fetchFirst: Boolean = true, pull: Boolean = true) = ResolvedSwitchRequest.resolve(
-        Preset("dev", "main"),
+    @Test
+    fun `cancellation after checkout rolls back branch and restores stash`() = runBlocking {
+        val root = Files.createTempDirectory("switch-runner-recover")
+        initGitRepo(root.toFile())
+        val git = object : RecordingGit() {
+            override fun isDirty(workDir: File): Boolean = true
+        }
+        val runner = SwitchRunner(
+            project,
+            root,
+            git,
+            immediateTaskRunner(cancellingAfterCheckoutIndicator(git)),
+        )
+
+        val result = runner.execute(
+            title = "Switching",
+            request = request(target = "dev", fetchFirst = false, pull = false),
+            log = createStringAppender {},
+        )
+
+        assertTrue(result.cancelled)
+        assertTrue(result.recovery?.ok == true)
+        assertEquals("main", git.branch)
+        assertEquals(1, git.stashPopCount)
+        assertEquals(2, git.beginCount)
+        assertEquals(2, git.endCount)
+    }
+
+    private fun request(
+        target: String = "main",
+        fetchFirst: Boolean = true,
+        pull: Boolean = true,
+    ) = ResolvedSwitchRequest.resolve(
+        Preset("dev", target),
         SwitchOptions(fetchFirst = fetchFirst, pull = pull),
     )
 
@@ -179,7 +211,7 @@ class SwitchRunnerTest {
         assertEquals("git init should succeed", 0, proc.exitValue())
     }
 
-    private fun immediateTaskRunner(): TaskBridge.TaskRunner =
+    private fun immediateTaskRunner(taskIndicator: ProgressIndicator = indicator): TaskBridge.TaskRunner =
         object : TaskBridge.TaskRunner {
             override fun run(
                 project: Project?,
@@ -189,10 +221,27 @@ class SwitchRunnerTest {
                 onFinished: () -> Unit,
                 onCancel: () -> Unit,
             ) {
-                onRun(indicator)
+                onRun(taskIndicator)
                 onFinished()
             }
         }
+
+    private fun cancellingAfterCheckoutIndicator(git: RecordingGit): ProgressIndicator =
+        Proxy.newProxyInstance(
+            ProgressIndicator::class.java.classLoader,
+            arrayOf(ProgressIndicator::class.java),
+        ) { _, method, _ ->
+            if (method.name == "checkCanceled" && git.checkoutCount > 0) {
+                throw com.intellij.openapi.progress.ProcessCanceledException()
+            }
+            when (method.returnType) {
+                java.lang.Boolean.TYPE -> false
+                java.lang.Double.TYPE -> 0.0
+                java.lang.Integer.TYPE -> 0
+                java.lang.Long.TYPE -> 0L
+                else -> null
+            }
+        } as ProgressIndicator
 
     private fun cancellingTaskRunner(): TaskBridge.TaskRunner =
         object : TaskBridge.TaskRunner {
@@ -209,24 +258,31 @@ class SwitchRunnerTest {
             }
         }
 
-    private class RecordingGit : GitClient {
+    private open class RecordingGit : GitClient {
         var beginCount = 0
         var cancelCount = 0
         var endCount = 0
         var submoduleSyncCount = 0
+        var checkoutCount = 0
+        var stashPopCount = 0
+        var branch = "main"
 
         override fun beginOperation() { beginCount++ }
         override fun cancel() { cancelCount++ }
         override fun endOperation() { endCount++ }
 
-        override fun currentBranch(workDir: File): String? = "main"
+        override fun currentBranch(workDir: File): String? = branch
         override fun isDirty(workDir: File): Boolean = false
         override fun dirtyFileCount(workDir: File): Int = 0
         override fun stash(workDir: File, message: String): GitResult = ok("stash")
         override fun fetch(workDir: File): GitResult = ok("fetch")
         override fun localBranchExists(workDir: File, branch: String): Boolean = true
         override fun remoteBranchExists(workDir: File, branch: String): Boolean = false
-        override fun checkoutExisting(workDir: File, branch: String): GitResult = ok("checkout")
+        override fun checkoutExisting(workDir: File, branch: String): GitResult {
+            checkoutCount++
+            this.branch = branch
+            return ok("checkout")
+        }
         override fun checkoutFromRemote(workDir: File, branch: String): GitResult = ok("checkout")
         override fun pullFf(workDir: File, branch: String): GitResult = ok("pull")
         override fun submoduleSync(gitRoot: File): GitResult {
@@ -237,7 +293,10 @@ class SwitchRunnerTest {
         override fun listSubmodulePaths(gitRoot: File): List<String> = emptyList()
         override fun listAllBranches(workDir: File): List<String> = listOf("main")
         override fun revParseHead(workDir: File): String? = "abc123"
-        override fun stashPop(workDir: File): GitResult = ok("stash pop")
+        override fun stashPop(workDir: File): GitResult {
+            stashPopCount++
+            return ok("stash pop")
+        }
         override fun checkoutNewBranch(workDir: File, branch: String): GitResult = ok("checkout -b")
         override fun deleteBranch(workDir: File, branch: String): GitResult = ok("branch -d")
 
