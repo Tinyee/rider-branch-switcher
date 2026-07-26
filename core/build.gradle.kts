@@ -41,7 +41,7 @@ pitest {
     targetClasses.set(
         setOf(
             "com.submodule.branchswitcher.settings.SettingsRulesKt",
-            "com.submodule.branchswitcher.switch.BranchNameRulesKt",
+            "com.submodule.branchswitcher.model.PresetValidationKt",
             "com.submodule.branchswitcher.switch.DeriveNotification*",
             "com.submodule.branchswitcher.ui.PresetImportResultKt",
             "com.submodule.branchswitcher.ui.UiLayoutRulesKt",

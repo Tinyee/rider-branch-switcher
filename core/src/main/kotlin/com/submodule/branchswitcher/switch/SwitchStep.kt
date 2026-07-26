@@ -4,6 +4,7 @@ import com.submodule.branchswitcher.git.GitClient
 import com.submodule.branchswitcher.log.AppLogger
 import com.submodule.branchswitcher.model.Preset
 import com.submodule.branchswitcher.model.SwitchOptions
+import com.submodule.branchswitcher.model.isValidSubmodulePath
 import java.nio.file.Path
 
 sealed class StepResult {
@@ -97,5 +98,15 @@ internal fun scopedStepName(action: String, scope: SwitchTargetScope): String = 
 }
 
 /** Resolve a target path to a [java.io.File] relative to the project root. */
-fun resolveGitDir(root: java.nio.file.Path, path: String): java.io.File =
-    if (path == ".") root.toFile() else root.resolve(path).toFile()
+fun resolveGitDir(root: java.nio.file.Path, path: String): java.io.File {
+    val rootFile = root.toFile()
+    if (path == ".") return rootFile
+    require(isValidSubmodulePath(path)) { "invalid submodule path: '$path'" }
+    val candidate = rootFile.resolve(path)
+    val canonicalRoot = rootFile.canonicalFile
+    val canonicalCandidate = candidate.canonicalFile
+    require(canonicalCandidate != canonicalRoot && canonicalCandidate.toPath().startsWith(canonicalRoot.toPath())) {
+        "submodule path escapes project root: '$path'"
+    }
+    return candidate
+}

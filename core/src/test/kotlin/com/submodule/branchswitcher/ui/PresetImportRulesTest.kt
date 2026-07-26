@@ -108,4 +108,18 @@ class PresetImportRulesTest {
         assertTrue(result.invalidNames.isEmpty())
         assertTrue(result.conflictingNames.isEmpty())
     }
+
+    @Test
+    fun `unsafe paths and invalid branches are rejected during import`() {
+        val result = parsePresetImport(
+            """{"presets":[
+                {"name":"escape","main":"main","submodules":{"../outside":"dev"}},
+                {"name":"bad-branch","main":"-force"}
+            ]}""",
+            emptySet(),
+        )
+
+        assertTrue(result.presets.isEmpty())
+        assertEquals(listOf("escape", "bad-branch"), result.invalidNames)
+    }
 }

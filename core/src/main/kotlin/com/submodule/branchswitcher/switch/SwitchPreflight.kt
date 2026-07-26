@@ -38,8 +38,7 @@ class SwitchPreflight(
 
     @Suppress("TooGenericExceptionCaught") // safety probe: isolate per-repo git failures
     private fun probeOne(projectRoot: Path, target: RepoTarget): PreflightRow {
-        val dir = if (target.path == ".") projectRoot.toFile()
-                  else projectRoot.resolve(target.path).toFile()
+        val dir = resolveGitDir(projectRoot, target.path)
         val label = if (target.path == ".") projectRoot.fileName.toString() else shortLabel(target.path)
         if (!dir.exists() || !git.isGitRepo(dir)) {
             return PreflightRow(

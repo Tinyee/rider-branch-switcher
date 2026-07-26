@@ -60,7 +60,12 @@ fun parsePresetImport(
             conflicts += name
             continue
         }
-        presets += presetDto.toPreset(explicitId = idGenerator())
+        val preset = runCatching { presetDto.toPreset(explicitId = idGenerator()) }.getOrNull()
+        if (preset == null) {
+            invalid += name
+            continue
+        }
+        presets += preset
     }
     return PresetImportResult(presets, invalid, conflicts)
 }

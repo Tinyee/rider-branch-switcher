@@ -5,6 +5,7 @@ import com.google.gson.JsonSyntaxException
 import com.submodule.branchswitcher.model.Preset
 import com.submodule.branchswitcher.model.PresetFile
 import com.submodule.branchswitcher.model.PresetFileDto
+import com.submodule.branchswitcher.model.requireValidPreset
 import java.nio.file.Files
 import java.nio.file.Path
 
@@ -102,6 +103,7 @@ object PresetLoader {
 
     /** Writes [presetFile] to [file] atomically (temp file + rename). */
     fun save(file: Path, presetFile: PresetFile) {
+        presetFile.presets.forEach(::requireValidPreset)
         val gson = com.google.gson.GsonBuilder().setPrettyPrinting().create()
         val payload = gson.toJson(presetFile) + "\n"
         val parent = file.parent ?: throw IllegalStateException("preset file has no parent: $file")

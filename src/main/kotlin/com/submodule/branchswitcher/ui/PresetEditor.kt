@@ -8,7 +8,7 @@ import com.submodule.branchswitcher.Bundle
 import com.submodule.branchswitcher.git.GitClient
 import com.submodule.branchswitcher.log.AppLogger
 import com.submodule.branchswitcher.model.Preset
-import com.submodule.branchswitcher.switch.isValidBranchName
+import com.submodule.branchswitcher.model.isValidBranchName
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import javax.swing.SwingUtilities
