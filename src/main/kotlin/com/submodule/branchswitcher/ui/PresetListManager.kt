@@ -6,16 +6,13 @@ import com.intellij.ui.JBColor
 import com.intellij.util.ui.JBUI
 import com.submodule.branchswitcher.Bundle
 import com.submodule.branchswitcher.Notifier
-import com.submodule.branchswitcher.git.GitResult
 import com.submodule.branchswitcher.log.AppLogger
 import com.submodule.branchswitcher.model.Preset
-import com.submodule.branchswitcher.platform.GitBackgroundResult
-import com.submodule.branchswitcher.platform.GitBackgroundRunner
+import com.submodule.branchswitcher.platform.SingleRepositorySkipReason
+import com.submodule.branchswitcher.platform.SingleRepositorySwitchResult
+import com.submodule.branchswitcher.platform.SingleRepositorySwitcher
 import com.submodule.branchswitcher.platform.refreshVcsRepos
 import com.submodule.branchswitcher.service.BranchSwitcherService
-import com.submodule.branchswitcher.switch.resolveGitDir
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
 import java.awt.BorderLayout
 import java.awt.FlowLayout
 import java.awt.Font
@@ -45,6 +42,11 @@ internal class PresetListManager(
     var onStateChanged: (() -> Unit)? = null
 
     private val actions = PresetCollectionActions(project, service, gitRoot, log, this)
+    private val singleRepositorySwitcher = SingleRepositorySwitcher(
+        project = project,
+        gitClient = { service.gitClient },
+        tryAcquireWrite = service::tryAcquireWrite,
+    )
 
     fun reload() = actions.reload()
     fun addPreset() = actions.addPreset()
@@ -123,49 +125,10 @@ internal class PresetListManager(
     }
 
     private fun switchSubmodule(root: Path, path: String, target: String) {
-        val writeLease = service.tryAcquireWrite()
-        if (writeLease == null) {
-            Notifier.warn(project, Bundle.msg("notify.write.busy"), Bundle.msg("notify.write.busy.msg"))
-            return
-        }
-        service.scope.launch(Dispatchers.Default) {
-            val dir = resolveGitDir(root, path)
-            var result: GitResult? = null
-            var skipped: String? = null
-            try {
-                when (val background = GitBackgroundRunner(project, service.gitClient).run(
-                    Bundle.msg("progress.switching.to", target),
-                ) { indicator, operation ->
-                    indicator.isIndeterminate = true
-                    when {
-                        !dir.exists() || !operation.isGitRepo(dir) ->
-                            skipped = "repository is not initialized"
-                        operation.isDirty(dir) -> skipped = "working tree dirty"
-                        operation.currentBranch(dir) == target -> skipped = "already on $target"
-                        operation.localBranchExists(dir, target) ->
-                            result = operation.checkoutExisting(dir, target)
-                        operation.remoteBranchExists(dir, target) ->
-                            result = operation.checkoutFromRemote(dir, target)
-                        else -> result = GitResult("checkout", 1, "", "branch $target not found")
-                    }
-                }) {
-                    is GitBackgroundResult.Completed -> Unit
-                    is GitBackgroundResult.Cancelled -> {
-                        skipped = "cancelled"
-                        log.info("[switch] $path: cancelled")
-                    }
-                    is GitBackgroundResult.Failed -> {
-                        val error = background.error
-                        skipped = "${error.javaClass.simpleName}: ${error.message}"
-                        log.error("[switch] $path: $skipped")
-                    }
-                }
-            } finally {
-                writeLease.close()
-            }
+        val started = singleRepositorySwitcher.start(service.scope, root, path, target) { result ->
             project.invokeLaterIfAlive {
-                when {
-                    result?.ok == true -> {
+                when (result) {
+                    is SingleRepositorySwitchResult.Success -> {
                         log.debug("[switch] $path -> $target ok")
                         Notifier.info(
                             project,
@@ -173,19 +136,43 @@ internal class PresetListManager(
                             Bundle.msg("notify.switch.only.complete", path, target),
                         )
                     }
-                    result != null -> {
-                        log.warn("[switch] $path failed: ${result.diagnostic()}")
+                    is SingleRepositorySwitchResult.GitFailure -> {
+                        log.warn("[switch] $path failed: ${result.result.diagnostic()}")
                         Notifier.warn(
                             project,
                             Bundle.msg("switch.failed"),
                             Bundle.msg("notify.switch.only.failed", path, target),
                         )
                     }
-                    else -> log.warn("[switch] $path skipped: $skipped")
+                    is SingleRepositorySwitchResult.Skipped -> {
+                        val reason = when (result.reason) {
+                            SingleRepositorySkipReason.NOT_INITIALIZED -> "repository is not initialized"
+                            SingleRepositorySkipReason.DIRTY -> "working tree dirty"
+                            SingleRepositorySkipReason.ALREADY_ON_TARGET -> "already on $target"
+                        }
+                        log.warn("[switch] $path skipped: $reason")
+                    }
+                    SingleRepositorySwitchResult.Cancelled -> {
+                        log.info("[switch] $path: cancelled")
+                        log.warn("[switch] $path skipped: cancelled")
+                    }
+                    is SingleRepositorySwitchResult.Unexpected -> {
+                        val error = result.error
+                        val detail = "${error.javaClass.simpleName}: ${error.message}"
+                        log.error("[switch] $path: $detail")
+                        log.warn("[switch] $path skipped: $detail")
+                    }
                 }
                 refreshVcsRepos(project, root, setOf(path))
                 notifyStateChanged()
             }
+        }
+        if (!started) {
+            Notifier.warn(
+                project,
+                Bundle.msg("notify.write.busy"),
+                Bundle.msg("notify.write.busy.msg"),
+            )
         }
     }
 
