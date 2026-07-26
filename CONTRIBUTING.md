@@ -20,13 +20,18 @@ The default SDK configuration is in `gradle.properties` (`platform.type=IC`,
 
 ## Architecture
 
+The current architecture is documented in
+[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md). Read it before changing package
+ownership, Git lifecycle, switch state, or recovery behavior.
+
 `core/` is a pure JVM module and must not depend on IntelliJ APIs. It contains
 the preset model and persistence, Git interfaces, switch pipeline, preflight,
 and pure UI decision rules.
 
 `src/` is the IntelliJ Platform module. Its `git/` package implements CLI
 access, `platform/` contains IntelliJ adapters, `workflow/` contains application
-use cases, and `service/` and `ui/` own persistence and presentation.
+use cases, `service/` owns project-scoped state and preset access, and `ui/`
+owns presentation and user interaction.
 
 Key boundaries:
 
@@ -44,8 +49,8 @@ Key boundaries:
 - Application workflows may depend on platform adapters, while `platform/` and
   `service/` must not depend back on `workflow/` or `ui/`; `quickCheck` enforces
   these package directions.
-- Presets live in `.idea/branch-presets.json`; options use a
-  `PersistentStateComponent`.
+- Presets use project-local JSON resolved by `PresetLoader`; global options use
+  a `PersistentStateComponent`.
 - A write operation acquires a scoped `WriteLease`, runs Git work through
   `GitBackgroundRunner`, and closes the lease in `finally`.
 - `GitBackgroundRunner` owns an isolated `GitOperationSession`, including
@@ -85,8 +90,8 @@ in parallel.
 | --- | --- |
 | Documentation only | `git diff --check` |
 | Build scripts, i18n, lightweight call-site changes | `quickCheck` + `git diff --check` |
-| Pure JVM rules, JSON, import, settings | Related `:core:test --tests ... --rerun-tasks` |
-| Platform, persistence, Git, cancellation, controller, or action behavior | Related `test --tests ... --rerun-tasks` |
+| Pure JVM rules, JSON, validation, core switch decisions | `./gradlew :core:test --tests "<ClassOrMethod>" --rerun-tasks` |
+| Platform, persistence, Git process, controller, or action behavior | `./gradlew :test --tests "<ClassOrMethod>" -x :core:test --rerun-tasks` |
 | Cross-module or test-infrastructure changes | `:core:test test :core:detekt detekt --rerun-tasks` |
 
 Use low-load limits for broad local validation:
@@ -140,4 +145,6 @@ number.
 
 Keep active findings in the relevant issue or pull request. Durable
 architecture, safety, and testing decisions from completed reviews are
-consolidated in `docs/review-history.md`.
+consolidated in `docs/review-history.md`. The documentation index is
+`docs/README.md`; dated planning documents listed there are historical, not
+active task lists.

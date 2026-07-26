@@ -6,7 +6,7 @@ This project is a generic JetBrains IDE plugin. It is no longer built against Ri
 
 | Requirement | Notes |
 | --- | --- |
-| JDK 17 or 21 | Gradle toolchain uses JDK 17. Newer JetBrains IDEs may warn about JDK 21, but builds still run with 17. |
+| JDK 21 | The Kotlin/JVM toolchain and CI both use Java 21 for IntelliJ Platform 2026.1. |
 | Git CLI | Required by the plugin runtime and integration tests. |
 | JetBrains IDE | Optional for local sandbox testing. Gradle can download the configured platform SDK automatically. |
 
@@ -88,8 +88,13 @@ Use the low-load flow during development:
 ```bash
 ./gradlew quickCheck
 ./gradlew pureTest --max-workers=1 --no-parallel
-./gradlew test --tests "<ClassOrMethod>" --max-workers=1 --no-parallel
+./gradlew :test --tests "<PlatformClassOrMethod>" -x :core:test --max-workers=1 --no-parallel
+./gradlew :core:test --tests "<CoreClassOrMethod>" --max-workers=1 --no-parallel
 ```
+
+Use `-x :core:test` for a filtered platform test. Without it, Gradle can pass
+the same `--tests` filter to the core task and fail because that class does not
+exist in `core`.
 
 Before commit or broad architecture changes:
 

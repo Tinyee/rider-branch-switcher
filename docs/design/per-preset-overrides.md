@@ -4,6 +4,10 @@ Status: **removed before first public release** (2026-06-19).
 
 This design used to describe per-preset overrides for dirty strategy, pull, and fetch. The feature was removed because it made the Tool Window visually noisy and duplicated global Settings in a way that was hard to understand.
 
+This file is retained only as a historical product decision. It is not part of
+the current architecture or roadmap; see [Architecture](../ARCHITECTURE.md) and
+[Roadmap](../ROADMAP.md) for current guidance.
+
 Current rule:
 
 - Presets only store branch targets: `name`, `main`, `submodules`, and stable `id`.

@@ -1,172 +1,137 @@
 # Changelog
 
-## [Unreleased]
+## [0.7.0] - In development
+
+### Added
+
+- Update the main repository before submodule sync and initialization, allowing
+  a submodule added only on the remote parent branch to be initialized and
+  switched in the same operation.
+- Recursively initialize missing submodules, with an optional confirmation
+  setting.
+- Block current-state preset creation when a required repository has no
+  readable branch, preventing incomplete presets.
+- Add focused recovery tests for cancellation, stash restoration, detached
+  HEAD, same-branch SHA drift, dirty reset protection, and real Git rollback.
+
+### Changed
+
+- Split pure domain and switch logic into the `core` JVM module; IntelliJ,
+  process, service, workflow, and UI concerns remain in the plugin module.
+- Return structured switch status, checkpoint, failures, and immutable state
+  from the switch pipeline.
+- Separate checkpoint capture and recovery from forward switch execution.
+- Split Git capabilities by workflow while retaining `GitClient` as the
+  aggregate implementation boundary.
+- Give each background write an isolated Git operation session with centralized
+  open, cancel, close, and exception handling.
+- Split reusable workflows for full-preset switching, single-repository
+  switching, and repository-state detection from screen-specific UI.
+- Separate preset collection commands from preset list rendering.
+- Require JDK 21 for IntelliJ Platform 2026.1 builds and CI.
 
 ### Fixed
-- Pull and update the main repository before syncing and initializing submodules, so a submodule added only on the remote parent branch can be cloned and switched in the same operation
-- Treat plain child directories as missing submodules instead of mistakenly resolving them to the parent Git repository
-- Initialize missing submodules recursively and block "New Preset from Current State" from silently saving incomplete presets
 
-## [0.7.0] — 2026-06-16
+- Preserve the latest stash and checkout state when cancellation or a Git query
+  fails in the middle of a switch step.
+- Attempt stash restoration even when repository rollback fails.
+- Restore the exact checkpoint SHA when the branch name is unchanged, while
+  refusing destructive reset when the worktree is dirty.
+- Restore detached HEAD state correctly.
+- Close background Git operations exactly once.
+- Terminate interrupted Git processes promptly and preserve the thread
+  interruption signal.
+- Correct submodule-row context-menu hit handling.
+- Treat non-text clipboard content as an empty preset import with a clear
+  message instead of logging `Unicode String`.
 
-### Per-Preset Option Overrides (#29)
-- Each preset can override global dirty/pull/fetch-first settings via new `PresetOverrides` data model
-- Legacy `"pull":false` JSON auto-migrates to `overrides.pull:false` with write-back
-- `ResolvedSwitchRequest` type guard — `SwitchExecutor.execute()` only accepts resolved request, preventing entry points from bypassing override merge
-- Force dirty strategy shows confirmation dialog in panel preview and shortcut (Ctrl+Alt+B); fail-closed for unknown dirty state
-- UI: gear toggle on preset card expands Dirty/Pull/Fetch override combos with independent labels and i18n tooltips
-- Settings change refreshes "Use global" labels without discarding uncommitted edits
-- `PresetFileDto.presets` made nullable (Gson-safe); all DTO→domain paths unified through `PresetDto.toPreset(explicitId)`
+### Removed
 
-### Quick Switch Without Preset (#31)
-- New text field + button in the tool window action row: type a branch name, press Enter, and all repos switch to it — no preset needed
-- Git submodule discovery runs on background coroutine (not EDT)
-- Branch name validated with existing `isValidBranchName()` rules
-
-### Quality
-- `PullStep` simplified to single `options.pull` check (legacy `pullEnabled` field removed)
-- 25 new tests: `effectiveOptions` merge matrix, `ResolvedSwitchRequest` contract, Force warning conditions, migration write-back verification, import overrides/malformed/null-entry, service resolver mapping
-- `constructorThreshold` raised to 13 (12 params after aggregating 3 global label callbacks into `GlobalOptionLabels`)
-
-### Process
-- Added `docs/templates/design-review-checklist.md` (Designer Pre-flight + 8 review sections + PASS hash gate)
-- Added `docs/templates/implementation-review-checklist.md` (6 review sections + completion gate)
-- CLAUDE.md refactored: automatable rules separated from lessons-learned; `quickCheck`→`quickCheck detekt` across all commands
-
-## [0.6.0] — 2026-06-13
-
-### Architecture
-- Structured logging: `AppLogger` interface (info/warn/error/debug/activity) replaces `(String) -> Unit`
-- `ToolWindowLogger` routes to both IntelliJ diagnostic log and tool window panel
-- `LogEntry.Level` enum replaces string-prefix color matching
-- `Activity` level restores blue color for switch/rollback/derive operations
-- `jButton()` factory in `UiUtil.kt` eliminates scattered `.noFocusRing()` calls
-
-### Features
-- **Stable Preset ID**: `Preset.id` (UUID) survives renames — undo history works even after renaming
-- **Cancellable Git commands**: user cancel terminates the running `git` process within ~100ms
-- Old JSON auto-generates IDs and writes back immediately on load
-- `onCancel` callback in `TaskBridge.runBackground` for reliable cancel wiring
+- Remove per-preset dirty/fetch/pull overrides before public release; these
+  options remain global Settings.
+- Remove the experimental quick-switch text field and local telemetry feature
+  before public release.
+- Remove repository-local AI instruction and skill files; durable contributor
+  guidance is consolidated in project documentation.
 
 ### Quality
-- `error()` uses `ideaLogger.warn()` to avoid triggering Rider Fatal Errors for business failures
-- Log levels assigned by semantics: failures → warn, diagnostics → debug, activities → activity
-- `AppLoggerTest` (13 cases): level contract tests for fetch/checkout/stash/pull failures, Fatal, Partial, Activity
-- `GitOps.run()` uses operation-scoped cancellation that blocks commands reached after cancellation
-- `beginOperation`/`endOperation` lifecycle: nested operations don't clear each other's cancel state
-- Review fixes: 3 rounds of log-level migration corrections
 
-### Refactoring
-- `normalizePresetIds` handles blank/duplicate preset IDs in old JSON
-- `parsePresetImport` pure function extracted from `PresetListManager` → `PresetImportResult.kt`
-- `mergeBranchChoices` pure function in `BranchComboUtil.kt` with testable `scheduleUi` callback
-- `GitOps` constructor accepts injectable `processStarter` for controlled-process testing
-- `SwitchExecutor` constructor accepts injectable `cancelled` lambda (no ProgressIndicator needed in tests)
+- 310 automated tests in 30 classes: 159 core and 151 platform/integration.
+- CI runs tests, plugin build, Detekt, structural checks, and Plugin Verifier
+  across the supported matrix.
+- `quickCheck` enforces module direction, background Git lifecycle, write-lease
+  pairing, i18n symmetry, and deprecated lifecycle removal.
 
-### Tests
-- 270 tests (JUnit 4 + Kotest property-based), 21 test classes
-- `GitOpsTest`: ControllableProcess for running-process cancel verification
-- `SwitchExecutorTest`: 5 new — rollback SHA fallback, detached HEAD, submodule partial rollback, pipeline cancel
-- `PresetLoaderTest`: 3 new — blank/duplicate ID normalization, valid ID no-op
-- `BranchComboUtilTest`: 6 new — branch choice merging, async load success/exception/disposed
-- `AppLoggerTest`: 13 log-level contract tests
-- `PresetImportRulesTest`: import parsing rules
+## [0.6.0] - 2026-06-13
 
-### AI Constraint System
-- `CLAUDE.md`: 16 behavioral rules (不准) + design-first mandate + pre-commit self-audit
-- `.claude/rules/derive-constraints.md`: auto-loaded state matrix template, grep commands, deprecated API list
-- `.claude/skills/intellij-plugin-dev.md`: IntelliJ SDK patterns, operation lifecycle templates, gotchas
-- Git hooks: pre-commit (`quickCheck`), pre-push (`releaseCheck`)
-- `quickCheck` Gradle task: 7 grep-based structural checks (cancel symmetry, write gate, switch/ui boundary, raw git, i18n symmetry, allOk cancelled check, deprecated API)
-- `checkQuickCheck` Gradle task: fixture-based self-test — injects violation fixtures, verifies detection
-- Research-backed: negative constraints > positive directives, "must not" > "try to avoid", 0-50 rules shows no degradation
-- Low-load test rules: `--max-workers=2 --no-parallel` default, fan-down to 1 worker, no Kotest iteration reduction
+### Added
 
-### Test Cleanup
-- 270 tests (JUnit 4 + Kotest property-based), 21 test classes
-- Removed `HistoryTest` (3 data-class-verification-only tests) and 3 weak tests from `PresetJsonTest`
-- Added `BranchSwitcherServiceTest` (23 tests): write gate, detectGen, history capping, settings persistence, gitClient caching, concurrent contracts
-- All new tests use `Proxy.newProxyInstance` for Project mock — zero mocking framework dependency
+- Stable preset IDs with automatic migration of legacy JSON.
+- Cancellable Git commands and cancellation-aware background tasks.
+- Structured logging for the Tool Window and IntelliJ diagnostic log.
+- Settings page, persistent recent history, and first-run guidance.
+- Scoped mutation testing, large-repository call-budget coverage, and manual
+  benchmark tasks.
 
-### Docs
-- README, ROADMAP, CHANGELOG synchronized to 0.6.0
-- `plugin.xml` vendor updated to match GitHub remote (Tinyee)
-- Historical review docs (`code-review-2026-06-08.md`, `ui-redesign-plan-2026-06-09.md`) marked archived
-- `test-review-2026-06-13.md` tracks test gaps and recommendations
+### Changed
 
-## [0.5.0] — 2026-06-07
+- Centralized button construction and localized user-facing messages.
+- Extracted pure preset import, branch-choice, settings, and UI decision rules.
+- Made Git process startup injectable for deterministic lifecycle tests.
 
-### Architecture
-- Split God Class `BranchSwitcherPanel` (793→362 lines) into `SwitchController`, `PresetListManager`, `SubmoduleRowManager`
-- Unified async model to 100% coroutines with `TaskBridge` suspend wrappers
-- 6-package structure: `ui/`, `switch/`, `service/`, `git/`, `model/`, `action/`
-- Dependency injection via constructors throughout
+## [0.5.0] - 2026-06-07
 
-### Features
-- **Settings Configurable** — File → Settings → VCS → Submodule Branch Switcher
-- **History persistence** — switch history survives IDE restarts (undo still works)
-- **Dynamic remote name** — detects actual remote instead of hardcoding `origin`
-- **Preflight warnings** — Ctrl+Alt+B shortcut shows missing dirs/branches before switching
-- **Preset rename validation** — prevents duplicate names
-- **Import count fix** — shows actual imported count, not JSON total
+### Added
 
-### Quality
-- **28 bug fixes** across all layers (double-resume crash, DirtyAction ignored in shortcut, toolWindow ID i18n leak, etc.)
-- **131 tests** (JUnit 4 + Kotest property-based)
-- Kotest 5.9.1 property-based testing (6 generators)
-- Gradle wrapper 8.13
-- GitHub Actions CI with test artifacts on ubuntu/macOS/Windows
-- `@PropertyKey` compile-time i18n key validation
-- `@SerializedName("pull")` backward-compatible field rename
-- HiDPI-aware column widths
+- Settings configurable under Version Control.
+- Persistent switch history and undo.
+- Dynamic remote-name detection.
+- Shortcut preflight warnings.
+- Preset rename validation and clipboard import/export.
 
-### Docs
-- ROADMAP with 50-item review findings, v1.0 Marketplace prep, testing strategy
+### Changed
 
-## [0.4.0] — 2026-06-06
+- Split the original Tool Window class into panel, switch controller, preset
+  list, preset editor, and submodule row responsibilities.
+- Unified asynchronous IDE work behind coroutine and TaskBridge adapters.
+- Organized production code into domain-oriented packages.
 
-### Features
-- **Stash auto-pop**: switch back to original branch → `git stash pop` automatically
-- **Progress visualization**: progress bar with step name, repo name, and fraction
-- **Keyboard shortcut** `Ctrl+Alt+B`: pop-up preset picker from anywhere
-- **Derive feature branch**: `checkout -b` on main + all submodules from a preset
-- **UI polish**: `JBUI.scale` layouts, `JBUI.Borders`, `JProgressBar` for switch progress
-- **Context menu**: right-click submodule row → switch only this / open in Explorer
-- **Drag-to-reorder**: ↑↓ buttons for preset ordering
-- **Undo switch**: rollback to previous preset from history
+## [0.4.0] - 2026-06-06
 
-### Architecture
-- `BranchSwitchListener` + `MessageBus` for cross-component events
-- `CoroutineScope` platform injection in `BranchSwitcherService`
+### Added
 
-### Tests
-- 93 tests (BundleTest, SubmoduleRowManagerTest, SwitchStepTest, SwitchIntegrationTest, etc.)
+- Automatic restoration of stashes created during switching.
+- Per-repository progress display.
+- `Ctrl+Alt+B` preset switch action.
+- Feature-branch derivation across the main repository and submodules.
+- Submodule context menu, preset reordering, and recent-switch undo.
+- Project message-bus notifications for switch completion.
 
-## [0.3.0] — 2026-06-05
+## [0.3.0] - 2026-06-05
 
-### Features
-- **Per-preset main diff label**: shows `current → preset.main` in orange in the header
-- **Partial failure rollback**: checkpoint before switch → rollback action in failure notification
-- **Configurable timeout**: 30/60/120/300s options in the tool window
-- **Cancellable switch**: pipeline steps check `indicator.isCanceled`
-- **Persistent switch options**: dirty/fetch/pull/timeout stored in `branch-switcher.xml`
+### Added
 
-## [0.2.0] — 2026-06-04
+- Main-branch difference labels on preset cards.
+- Checkpoint-based rollback after partial failure.
+- Configurable Git timeout and cancellable switch steps.
+- Persistent dirty, fetch, pull, and timeout settings.
 
-### Features
-- **Dry-run preview table**: per-repo `current → target`, dirty count, branch source
-- **Submodule auto-sync**: `git submodule sync` after main checkout
-- **Auto-init missing dirs**: `git submodule update --init` for missing submodules
-- **"From Current State" preset creation**: one-click preset from live HEAD branches
-- **IDE notifications**: errors, partial failures with rollback action
-- **Theme-aware colors**: `JBColor` throughout, no hardcoded hex
-- **AllIcons**: replaced ▶/▼/✕ characters with IntelliJ native icons
+## [0.2.0] - 2026-06-04
 
-## [0.1.0] — 2026-06-02
+### Added
 
-### Initial release
-- Multi-preset persistence (JSON)
-- One-click switch main + submodules
-- Branch combo with type-to-filter
-- Current preset highlighting + switch button auto-disable
-- Basic dirty/fetch/pull options
+- Preflight preview for current and target branches, dirty state, and branch
+  source.
+- Submodule sync and initialization.
+- Preset creation from current repository state.
+- IDE notifications, current-preset highlighting, theme-aware colors, and
+  IntelliJ native icons.
+
+## [0.1.0] - 2026-06-02
+
+### Added
+
+- Project-local JSON presets.
+- One-click switching for a main repository and its submodules.
+- Filterable branch selectors.
+- Basic dirty, fetch, and pull options.

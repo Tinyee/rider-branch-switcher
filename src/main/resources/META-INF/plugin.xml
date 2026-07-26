@@ -29,7 +29,8 @@
             <li>i18n: English and Chinese via IntelliJ DynamicBundle</li>
             <li>HiDPI-aware, theme-aware (dark/light) UI with IntelliJ native icons</li>
         </ul>
-        Presets are stored in <code>.idea/branch-presets.json</code> so team members can share them via git.
+        Presets use project-local JSON, normally <code>.idea/branch-presets.json</code> or
+        <code>.branch-presets.json</code>, so team members can share them via git.
         <br><br>
         Configure global options at <i>File | Settings | Version Control | Submodule Branch Switcher</i>.
         <br><br>
