@@ -106,7 +106,7 @@ class BranchSwitcherPanel(
 
     // ── Delegates (after UI fields to resolve init order) ──────
     private val presetManager = PresetListManager(
-        project, service, ::gitRoot, logger,
+        project, service, ::gitRoot, logger, presetsInner,
         onSwitch = { preset -> switchController.runSwitch(preset) },
         onDerive = { root, preset, name -> switchController.derivePresetBranch(root, preset, name) },
     )
@@ -128,7 +128,7 @@ class BranchSwitcherPanel(
         add(presetsScroll, BorderLayout.CENTER)
         add(createLogPanel(), BorderLayout.SOUTH)
 
-        presetManager.reload(presetsInner)
+        presetManager.reload()
         detectCurrentState()
         refreshStrategySummary()
         wireEventSubscriptions()
@@ -160,11 +160,11 @@ class BranchSwitcherPanel(
             isOpaque = false
             add(jButton(Bundle.msg("action.from.current"), AllIcons.Vcs.Branch) {
                 toolTipText = Bundle.msg("action.from.current.tip")
-                addActionListener { presetManager.addPresetFromCurrent(presetsInner) }
+                addActionListener { presetManager.addPresetFromCurrent() }
             })
             add(Box.createHorizontalStrut(4))
             add(jButton(Bundle.msg("action.add.preset"), AllIcons.General.Add) {
-                addActionListener { presetManager.addPreset(presetsInner) }
+                addActionListener { presetManager.addPreset() }
             })
 
             add(Box.createHorizontalGlue())
@@ -189,12 +189,12 @@ class BranchSwitcherPanel(
         return JPopupMenu().apply {
             border = JBUI.Borders.empty(4, 0)
             add(menuItem(Bundle.msg("action.reload")) {
-                presetManager.reload(presetsInner)
+                presetManager.reload()
                 detectCurrentState()
             })
             add(menuItem(Bundle.msg("action.open.config")) { presetManager.openConfig() })
             addSeparator()
-            add(menuItem(Bundle.msg("action.import")) { presetManager.importPresets(presetsContainer) })
+            add(menuItem(Bundle.msg("action.import")) { presetManager.importPresets() })
             add(menuItem(Bundle.msg("action.export")) { presetManager.exportPresets() })
             addSeparator()
             add(menuItem(Bundle.msg("action.undo")) { switchController.undoLastSwitch() })
