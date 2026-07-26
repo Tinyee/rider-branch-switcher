@@ -8,6 +8,10 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.awt.Dimension
+import java.awt.datatransfer.Clipboard
+import java.awt.datatransfer.DataFlavor
+import java.awt.datatransfer.StringSelection
+import java.awt.datatransfer.Transferable
 import javax.swing.JComboBox
 import javax.swing.JLabel
 
@@ -57,7 +61,21 @@ class UiRulesTest {
         assertTrue(full.contains("300s"))
     }
 
+    @Test
+    fun `clipboard text reader accepts text and rejects non-text contents`() {
+        val clipboard = Clipboard("test")
+        clipboard.setContents(StringSelection("""{"presets":[]}"""), null)
+        assertEquals("""{"presets":[]}""", clipboardTextOrNull(clipboard))
 
+        clipboard.setContents(NonTextTransferable, null)
+        assertNull(clipboardTextOrNull(clipboard))
+    }
 
+    private object NonTextTransferable : Transferable {
+        override fun getTransferDataFlavors(): Array<DataFlavor> = arrayOf(DataFlavor.imageFlavor)
 
+        override fun isDataFlavorSupported(flavor: DataFlavor): Boolean = flavor == DataFlavor.imageFlavor
+
+        override fun getTransferData(flavor: DataFlavor): Any = error("not needed")
+    }
 }

@@ -12,8 +12,10 @@ import com.submodule.branchswitcher.log.AppLogger
 import com.submodule.branchswitcher.service.BranchSwitcherService
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import java.awt.datatransfer.Clipboard
 import java.awt.datatransfer.DataFlavor
 import java.awt.datatransfer.StringSelection
+import java.awt.datatransfer.UnsupportedFlavorException
 import java.io.File
 import java.nio.file.Path
 
@@ -217,7 +219,7 @@ internal class PresetCollectionActions(
     fun importPresets() {
         try {
             val clipboard = java.awt.Toolkit.getDefaultToolkit().systemClipboard
-            val text = clipboard.getData(DataFlavor.stringFlavor) as? String
+            val text = clipboardTextOrNull(clipboard)
             if (text.isNullOrBlank()) {
                 Messages.showInfoMessage(project, Bundle.msg("dialog.import.empty"), Bundle.msg("dialog.import"))
                 return
@@ -337,4 +339,14 @@ internal class PresetCollectionActions(
         val submodules: LinkedHashMap<String, String>,
         val skipped: List<String>,
     )
+}
+
+internal fun clipboardTextOrNull(clipboard: Clipboard): String? {
+    if (!clipboard.isDataFlavorAvailable(DataFlavor.stringFlavor)) return null
+    return try {
+        clipboard.getData(DataFlavor.stringFlavor) as? String
+    } catch (_: UnsupportedFlavorException) {
+        // Clipboard contents can change between the availability check and the read.
+        null
+    }
 }
