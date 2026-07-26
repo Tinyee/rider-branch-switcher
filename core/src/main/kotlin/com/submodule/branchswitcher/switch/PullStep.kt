@@ -62,7 +62,7 @@ data class StashRestoreResult(
 /** Restores tracked stashes and retains failed entries so a later recovery can retry them. */
 internal fun restoreTrackedStashes(
     projectRoot: java.nio.file.Path,
-    git: com.submodule.branchswitcher.git.GitClient,
+    git: com.submodule.branchswitcher.git.SwitchGitClient,
     log: com.submodule.branchswitcher.log.AppLogger,
     state: SwitchState,
     selectedPaths: Set<String>? = null,

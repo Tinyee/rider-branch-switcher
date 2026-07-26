@@ -1,6 +1,6 @@
 package com.submodule.branchswitcher.switch
 
-import com.submodule.branchswitcher.git.GitClient
+import com.submodule.branchswitcher.git.SwitchGitClient
 import com.submodule.branchswitcher.log.AppLogger
 import com.submodule.branchswitcher.model.Preset
 import com.submodule.branchswitcher.model.ResolvedSwitchRequest
@@ -42,7 +42,7 @@ data class SwitchExecutionResult(
 class SwitchExecutor @JvmOverloads constructor(
     private val projectRoot: Path,
     private val log: AppLogger,
-    private val git: GitClient,
+    private val git: SwitchGitClient,
     private val cancellationHandle: CancellationHandle? = null,
     private val progressHandle: ProgressHandle? = null,
     private val cancelled: (() -> Boolean)? = null,

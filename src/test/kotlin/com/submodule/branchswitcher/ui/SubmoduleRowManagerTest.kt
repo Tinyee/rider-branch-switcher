@@ -1,6 +1,6 @@
 package com.submodule.branchswitcher.ui
 
-import com.submodule.branchswitcher.git.GitClient
+import com.submodule.branchswitcher.git.PresetDiscoveryGitClient
 import com.submodule.branchswitcher.log.createStringAppender
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -65,10 +65,10 @@ class SubmoduleRowManagerTest {
             listOf(root)
         }
 
-    private fun emptyGit(): GitClient =
+    private fun emptyGit(): PresetDiscoveryGitClient =
         Proxy.newProxyInstance(
-            GitClient::class.java.classLoader,
-            arrayOf(GitClient::class.java),
+            PresetDiscoveryGitClient::class.java.classLoader,
+            arrayOf(PresetDiscoveryGitClient::class.java),
         ) { _, method, _ ->
             when (method.returnType) {
                 Boolean::class.javaPrimitiveType -> false
@@ -76,5 +76,5 @@ class SubmoduleRowManagerTest {
                 List::class.java -> emptyList<String>()
                 else -> null
             }
-        } as GitClient
+        } as PresetDiscoveryGitClient
 }

@@ -4,7 +4,7 @@ import com.intellij.ui.JBColor
 import com.intellij.util.ui.JBUI
 import com.submodule.branchswitcher.Bundle
 import com.submodule.branchswitcher.log.AppLogger
-import com.submodule.branchswitcher.git.GitClient
+import com.submodule.branchswitcher.git.PresetDiscoveryGitClient
 import com.submodule.branchswitcher.model.Preset
 import com.submodule.branchswitcher.switch.shortLabel
 import kotlinx.coroutines.CoroutineScope
@@ -33,7 +33,7 @@ import javax.swing.SwingUtilities
  */
 class SubmoduleRowManager(
     private val gitRoot: Path,
-    private val gitClient: GitClient,
+    private val gitClient: PresetDiscoveryGitClient,
     private val scope: CoroutineScope,
     private val body: JPanel,
     private val log: AppLogger,

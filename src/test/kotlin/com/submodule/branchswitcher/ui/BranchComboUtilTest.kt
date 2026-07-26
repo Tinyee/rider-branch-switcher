@@ -1,6 +1,6 @@
 package com.submodule.branchswitcher.ui
 
-import com.submodule.branchswitcher.git.GitClient
+import com.submodule.branchswitcher.git.PresetDiscoveryGitClient
 import com.submodule.branchswitcher.log.createStringAppender
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -131,11 +131,11 @@ class BranchComboUtilTest {
             override fun isDisplayable(): Boolean = displayable
         }
 
-    private fun branchGit(load: () -> List<String>): GitClient =
+    private fun branchGit(load: () -> List<String>): PresetDiscoveryGitClient =
         Proxy.newProxyInstance(
-            GitClient::class.java.classLoader,
-            arrayOf(GitClient::class.java),
+            PresetDiscoveryGitClient::class.java.classLoader,
+            arrayOf(PresetDiscoveryGitClient::class.java),
         ) { _, method, _ ->
             if (method.name == "listAllBranches") load() else null
-        } as GitClient
+        } as PresetDiscoveryGitClient
 }

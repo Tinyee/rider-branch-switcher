@@ -31,40 +31,28 @@ enum class GitFailureKind { NONE, CANCELLED, TIMEOUT, START_FAILED, GIT_FAILED }
 /** A Git read/query failed and cannot be safely interpreted as a normal negative result. */
 class GitQueryException(val result: GitResult) : RuntimeException(result.diagnostic())
 
-interface GitQueryClient {
+/** Repository metadata shared by multiple Git workflows. */
+interface GitRepositoryQuery {
     /** True when [workDir] is a usable git repository. */
     fun isGitRepo(workDir: File): Boolean = File(workDir, ".git").exists()
     /** Returns the current branch name, or null on detached HEAD. Throws when Git cannot inspect HEAD. */
     fun currentBranch(workDir: File): String?
-    /** True if the working tree has uncommitted changes. Throws when status cannot be inspected. */
-    fun isDirty(workDir: File): Boolean
-    /** Number of dirty files (0 = clean). Uses `git status --porcelain`. */
-    fun dirtyFileCount(workDir: File): Int
-    /** Checks whether refs/heads/<branch> exists (plumbing: show-ref --verify). */
-    fun localBranchExists(workDir: File, branch: String): Boolean
-    /** Tri-state probe for safety gates: true=exists, false=not, null=unknown/error. Implementations must opt in. */
-    fun localBranchProbe(workDir: File, branch: String): Boolean? = null
-    /** Tri-state probe for safety gates: true=dirty, false=clean, null=unknown/error. Implementations must opt in. */
-    fun dirtyProbe(workDir: File): Boolean? = null
-    /** Checks whether refs/remotes/origin/<branch> exists (plumbing: show-ref --verify). */
-    fun remoteBranchExists(workDir: File, branch: String): Boolean
-    /**
-     * Lists all branches (local + remote), deduplicated and sorted.
-     * Filters out `origin/HEAD` entries and strips `origin/` prefix.
-     */
-    fun listAllBranches(workDir: File): List<String>
     /** Returns the SHA of HEAD, or null if the repo has no commits. */
     fun revParseHead(workDir: File): String?
 }
 
-interface GitWorkingTreeClient {
+/** Git operations required by the branch-switch pipeline. */
+interface SwitchGitClient : GitRepositoryQuery, GitCancellation {
+    /** True if the working tree has uncommitted changes. Throws when status cannot be inspected. */
+    fun isDirty(workDir: File): Boolean
+    /** Checks whether refs/heads/<branch> exists (plumbing: show-ref --verify). */
+    fun localBranchExists(workDir: File, branch: String): Boolean
+    /** Checks whether refs/remotes/origin/<branch> exists (plumbing: show-ref --verify). */
+    fun remoteBranchExists(workDir: File, branch: String): Boolean
     /** Stashes all changes including untracked files (-u). */
     fun stash(workDir: File, message: String): GitResult
     /** Pops the latest stash. */
     fun stashPop(workDir: File): GitResult
-}
-
-interface GitBranchClient {
     /** Runs `git fetch --prune`. */
     fun fetch(workDir: File): GitResult
     /** Checks out an existing local branch by name. */
@@ -73,36 +61,65 @@ interface GitBranchClient {
     fun checkoutFromRemote(workDir: File, branch: String): GitResult
     /** Pulls with --ff-only from origin for the given branch. */
     fun pullFf(workDir: File, branch: String): GitResult
-    /** Creates a new branch from current HEAD and checks it out. */
-    fun checkoutNewBranch(workDir: File, branch: String): GitResult
-    /** Safely deletes a local branch (`git branch -d`). Fails if branch has unmerged changes. */
-    fun deleteBranch(workDir: File, branch: String): GitResult
-}
-
-interface GitSubmoduleClient {
     /** Runs `git submodule sync --recursive`. */
     fun submoduleSync(gitRoot: File): GitResult
     /** Runs `git submodule update --init --recursive -- <path>`. */
     fun submoduleInitPath(gitRoot: File, path: String): GitResult
+}
+
+/** Git operations required by derive-branch preflight, execution, and rollback. */
+interface DeriveGitClient : GitRepositoryQuery {
+    /** Tri-state probe for safety gates: true=exists, false=not, null=unknown/error. */
+    fun localBranchProbe(workDir: File, branch: String): Boolean? = null
+    /** Tri-state probe for safety gates: true=dirty, false=clean, null=unknown/error. */
+    fun dirtyProbe(workDir: File): Boolean? = null
+    /** Creates a new branch from current HEAD and checks it out. */
+    fun checkoutNewBranch(workDir: File, branch: String): GitResult
+    /** Checks out an existing local branch or commit. */
+    fun checkoutExisting(workDir: File, branch: String): GitResult
+    /** Safely deletes a local branch (`git branch -d`). Fails if branch has unmerged changes. */
+    fun deleteBranch(workDir: File, branch: String): GitResult
+}
+
+/** Read-only Git operations used while editing and discovering preset targets. */
+interface PresetDiscoveryGitClient : GitRepositoryQuery {
+    /**
+     * Lists all branches (local + remote), deduplicated and sorted.
+     * Filters out the remote HEAD entry and strips the remote prefix.
+     */
+    fun listAllBranches(workDir: File): List<String>
     /** Recursively parses .gitmodules to list all submodule paths, including nested ones. */
     fun listSubmodulePaths(gitRoot: File): List<String>
 }
 
-interface GitOperationLifecycle {
-    /** Starts a cancellable multi-command operation and clears stale cancellation state. */
-    fun beginOperation() {}
+/** Read-only Git operations used by the pre-switch preview. */
+interface SwitchPreflightGitClient : GitRepositoryQuery {
+    /** Number of dirty files (0 = clean). Uses `git status --porcelain`. */
+    fun dirtyFileCount(workDir: File): Int
+    fun localBranchExists(workDir: File, branch: String): Boolean
+    fun remoteBranchExists(workDir: File, branch: String): Boolean
+}
+
+interface GitCancellation {
     /**
      * Cancels the active operation and its currently running git command (if any).
-     * Commands started before [endOperation] should fail without spawning a process.
      * Default is a no-op for test doubles that don't spawn real processes.
      */
     fun cancel() {}
+}
+
+interface GitOperationLifecycle : GitCancellation {
+    /** Starts a cancellable multi-command operation and clears stale cancellation state. */
+    fun beginOperation() {}
     /** Ends the active cancellable operation and clears its cancellation state. */
     fun endOperation() {}
 }
 
+/** Switch commands plus the lifecycle boundary required by platform runners. */
+interface SwitchOperationGitClient : SwitchGitClient, GitOperationLifecycle
+
 /**
- * Aggregate Git abstraction, enabling mock-based unit testing.
+ * Aggregate implementation boundary. Consumers should depend on a workflow interface above.
  *
  * Implementations: [com.submodule.branchswitcher.git.GitOps] (CLI via ProcessBuilder).
  *
@@ -116,8 +133,7 @@ interface GitOperationLifecycle {
  * - [stash] pushes with -u (includes untracked files)
  */
 interface GitClient :
-    GitQueryClient,
-    GitWorkingTreeClient,
-    GitBranchClient,
-    GitSubmoduleClient,
-    GitOperationLifecycle
+    SwitchOperationGitClient,
+    DeriveGitClient,
+    PresetDiscoveryGitClient,
+    SwitchPreflightGitClient

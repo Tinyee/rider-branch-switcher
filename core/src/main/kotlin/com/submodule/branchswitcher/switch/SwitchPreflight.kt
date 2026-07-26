@@ -1,6 +1,6 @@
 package com.submodule.branchswitcher.switch
 
-import com.submodule.branchswitcher.git.GitQueryClient
+import com.submodule.branchswitcher.git.SwitchPreflightGitClient
 import com.submodule.branchswitcher.model.PreflightRow
 import com.submodule.branchswitcher.model.Preset
 import com.submodule.branchswitcher.model.RepoTarget
@@ -13,7 +13,7 @@ import java.nio.file.Path
  * progress display via [onProgress] callback, error labels via [probeErrorSuffix].
  */
 class SwitchPreflight(
-    private val git: GitQueryClient,
+    private val git: SwitchPreflightGitClient,
     private val probeErrorSuffix: String = "[probe error]",
     private val classifier: CancellationClassifier = CancellationClassifier.DEFAULT,
 ) {
