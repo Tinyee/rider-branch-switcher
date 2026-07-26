@@ -1,4 +1,4 @@
-package com.submodule.branchswitcher.platform
+package com.submodule.branchswitcher.workflow
 
 import com.intellij.openapi.progress.ProgressIndicator
 import com.intellij.openapi.project.Project
@@ -7,6 +7,11 @@ import com.submodule.branchswitcher.TaskBridge
 import com.submodule.branchswitcher.git.GitOperationProvider
 import com.submodule.branchswitcher.log.AppLogger
 import com.submodule.branchswitcher.model.ResolvedSwitchRequest
+import com.submodule.branchswitcher.platform.GitBackgroundResult
+import com.submodule.branchswitcher.platform.GitBackgroundRunner
+import com.submodule.branchswitcher.platform.ProgressCancellationHandle
+import com.submodule.branchswitcher.platform.ProgressIndicatorHandle
+import com.submodule.branchswitcher.platform.platformCancellationClassifier
 import com.submodule.branchswitcher.switch.SwitchExecutionResult
 import com.submodule.branchswitcher.switch.SwitchExecutor
 import com.submodule.branchswitcher.switch.SwitchRecoveryExecutor

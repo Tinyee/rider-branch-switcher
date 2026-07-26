@@ -15,13 +15,13 @@ import com.submodule.branchswitcher.switch.SwitchPreflight
 import com.submodule.branchswitcher.platform.ProgressCancellationHandle
 import com.submodule.branchswitcher.platform.GitBackgroundResult
 import com.submodule.branchswitcher.platform.GitBackgroundRunner
-import com.submodule.branchswitcher.platform.SwitchRunner
-import com.submodule.branchswitcher.platform.SwitchRunResult
 import com.submodule.branchswitcher.platform.platformCancellationClassifier
 import com.submodule.branchswitcher.platform.refreshVcsRepos
 import com.submodule.branchswitcher.switch.SwitchExecutor
 import com.submodule.branchswitcher.switch.SwitchRecoveryExecutor
 import com.submodule.branchswitcher.switch.SwitchExecutionResult
+import com.submodule.branchswitcher.workflow.SwitchRunner
+import com.submodule.branchswitcher.workflow.SwitchRunResult
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import java.nio.file.Path

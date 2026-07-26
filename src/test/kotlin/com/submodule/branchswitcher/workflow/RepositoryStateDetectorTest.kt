@@ -1,4 +1,4 @@
-package com.submodule.branchswitcher.platform
+package com.submodule.branchswitcher.workflow
 
 import com.submodule.branchswitcher.git.RepositoryStateGitClient
 import com.submodule.branchswitcher.log.createStringAppender

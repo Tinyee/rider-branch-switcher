@@ -1,7 +1,8 @@
-package com.submodule.branchswitcher.platform
+package com.submodule.branchswitcher.workflow
 
 import com.submodule.branchswitcher.git.RepositoryStateGitClient
 import com.submodule.branchswitcher.log.AppLogger
+import com.submodule.branchswitcher.platform.platformCancellationClassifier
 import com.submodule.branchswitcher.switch.CancellationClassifier
 import com.submodule.branchswitcher.switch.rethrowIfCancellation
 import java.nio.file.Path

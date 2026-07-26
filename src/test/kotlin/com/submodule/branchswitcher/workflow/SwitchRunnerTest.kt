@@ -1,9 +1,8 @@
-package com.submodule.branchswitcher.switch
+package com.submodule.branchswitcher.workflow
 
 import com.intellij.openapi.progress.ProgressIndicator
 import com.intellij.openapi.project.Project
 import com.submodule.branchswitcher.TaskBridge
-import com.submodule.branchswitcher.platform.SwitchRunner
 import com.submodule.branchswitcher.git.GitClient
 import com.submodule.branchswitcher.git.GitOperationSession
 import com.submodule.branchswitcher.git.GitResult
