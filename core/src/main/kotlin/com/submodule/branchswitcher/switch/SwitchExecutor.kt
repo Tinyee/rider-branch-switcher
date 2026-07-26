@@ -131,10 +131,10 @@ class SwitchExecutor @JvmOverloads constructor(
                 log.activity("$label: checking out branch ${entry.branch} (was ${cur ?: "(detached)"})")
                 val br = git.checkoutExisting(dir, entry.branch)
                 if (!br.ok) {
-                    log.warn("[rollback] $label branch checkout failed: ${br.stderr}, falling back to SHA")
+                    log.warn("[rollback] $label branch checkout failed: ${br.diagnostic()}, falling back to SHA")
                     val shaR = git.checkoutExisting(dir, entry.sha)
                     if (!shaR.ok) {
-                        log.warn("[rollback] $label SHA checkout also failed: ${shaR.stderr}")
+                        log.warn("[rollback] $label SHA checkout also failed: ${shaR.diagnostic()}")
                         allOk = false
                     }
                 }
@@ -144,7 +144,7 @@ class SwitchExecutor @JvmOverloads constructor(
                     log.activity("$label: resetting to ${entry.sha} (was on ${cur ?: "(detached)"})")
                     val r = git.checkoutExisting(dir, entry.sha)
                     if (!r.ok) {
-                        log.warn("[rollback] $label checkout failed: ${r.stderr}")
+                        log.warn("[rollback] $label checkout failed: ${r.diagnostic()}")
                         allOk = false
                     }
                 }

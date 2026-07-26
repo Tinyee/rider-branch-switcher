@@ -40,8 +40,7 @@ class DirtyHandlingStep : SwitchStep {
                             if (r.ok) {
                                 context.log.info("stash: ok (${target.path})")
                             } else {
-                                context.log.warn("stash: FAIL (${target.path})")
-                                if (r.stderr.isNotBlank()) context.log.warn(r.stderr)
+                                context.log.warn("stash: FAIL (${target.path}): ${r.diagnostic()}")
                             }
                             if (!r.ok) {
                                 failures[target.path] = "stash failed"

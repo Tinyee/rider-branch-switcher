@@ -28,7 +28,12 @@ class SwitchPresetAction : AnAction() {
     override fun actionPerformed(e: AnActionEvent) {
         val project = e.project ?: return
         val service = project.service<BranchSwitcherService>()
-        service.loadPresets()
+        val loadResult = service.loadPresets()
+        if (loadResult.isFailure) {
+            Notifier.error(project, Bundle.msg("preset.load.failed"),
+                loadResult.exceptionOrNull()?.message ?: Bundle.msg("dialog.import.failed"))
+            return
+        }
         val presets = service.presets
         if (presets.isEmpty()) {
             Messages.showInfoMessage(project, Bundle.msg("action.no.presets"), Bundle.msg("plugin.title"))
