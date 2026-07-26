@@ -1,6 +1,7 @@
 
 package com.submodule.branchswitcher.log
 import com.submodule.branchswitcher.executeTest
+import com.submodule.branchswitcher.executeResultTest
 
 import com.submodule.branchswitcher.git.GitClient
 import com.submodule.branchswitcher.git.GitResult
@@ -212,10 +213,12 @@ class AppLoggerTest {
         val executor = SwitchExecutor(projectRoot,
             createStringAppender { logCollector += it },
             okGit)
-        executor.executeTest(Preset("test", "dev"),
-            SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false))
+        val result = executor.executeResultTest(
+            Preset("test", "dev"),
+            SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false),
+        )
         logCollector.clear()
-        executor.rollback()
+        executor.rollback(result)
         assertTrue("Rollback start should be ACTIVITY (bare), got: $logCollector",
             logCollector.any { it.startsWith("=== rolling back to pre-switch state ===") })
     }

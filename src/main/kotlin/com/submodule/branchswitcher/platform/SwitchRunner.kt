@@ -7,16 +7,18 @@ import com.submodule.branchswitcher.TaskBridge
 import com.submodule.branchswitcher.git.GitClient
 import com.submodule.branchswitcher.log.AppLogger
 import com.submodule.branchswitcher.model.ResolvedSwitchRequest
+import com.submodule.branchswitcher.switch.SwitchExecutionResult
 import com.submodule.branchswitcher.switch.SwitchExecutor
 import kotlinx.coroutines.CancellationException
 import java.nio.file.Path
 
 data class SwitchRunResult(
-    val ok: Boolean,
     val cancelled: Boolean,
-    val executor: SwitchExecutor?,
+    val execution: SwitchExecutionResult?,
     val recovery: SwitchRecoveryResult? = null,
-)
+) {
+    val ok: Boolean get() = !cancelled && execution?.ok == true
+}
 
 data class SwitchRecoveryResult(
     val rollbackOk: Boolean,
@@ -45,9 +47,8 @@ class SwitchRunner(
         progress: (ProgressIndicator) -> ProgressIndicator = { it },
         beforeExecute: (ProgressIndicator) -> Boolean = { true },
     ): SwitchRunResult {
-        var ok = false
         var cancelled = false
-        var executor: SwitchExecutor? = null
+        var execution: SwitchExecutionResult? = null
         var recovery: SwitchRecoveryResult? = null
 
         gitClient.beginOperation()
@@ -74,10 +75,15 @@ class SwitchRunner(
                             }
                         result.get() == com.intellij.openapi.ui.Messages.YES
                     }
-                    val currentExecutor = SwitchExecutor(root, log, gitClient, cancelHandle, progHandle,
+                    val executor = SwitchExecutor(
+                        root,
+                        log,
+                        gitClient,
+                        cancelHandle,
+                        progHandle,
+                        cancellationClassifier = platformCancellationClassifier,
                         onConfirmSubmoduleInit = initConfirm)
-                    executor = currentExecutor
-                    ok = currentExecutor.execute(request)
+                    execution = executor.execute(request)
                 },
                 onCancel = { gitClient.cancel() },
                 onFinished = { gitClient.endOperation() },
@@ -92,24 +98,26 @@ class SwitchRunner(
             // Boundary catch: convert unexpected switch failures into a result so UI callers
             // can notify consistently without leaking coroutine failures.
             log.error("switch: ${e.javaClass.simpleName}: ${e.message}")
-            ok = false
         }
 
-        if (executor?.wasCancelled == true) cancelled = true
-        if (cancelled && executor != null) {
-            recovery = recoverCancelledSwitch(executor, log)
+        if (execution?.cancelled == true) cancelled = true
+        if (cancelled && execution != null) {
+            recovery = recoverCancelledSwitch(execution, log)
         }
 
-        return SwitchRunResult(ok = ok, cancelled = cancelled, executor = executor, recovery = recovery)
+        return SwitchRunResult(cancelled = cancelled, execution = execution, recovery = recovery)
     }
 
     @Suppress("TooGenericExceptionCaught") // cancellation recovery must return a report instead of escaping
-    private fun recoverCancelledSwitch(executor: SwitchExecutor, log: AppLogger): SwitchRecoveryResult {
+    private fun recoverCancelledSwitch(
+        execution: SwitchExecutionResult,
+        log: AppLogger,
+    ): SwitchRecoveryResult {
         gitClient.beginOperation()
         return try {
-            val checkpoint = executor.getCheckpoint()
-            val rollbackOk = checkpoint.isNullOrEmpty() || executor.rollback()
-            val stashFailures = executor.restoreTrackedStashes()
+            val executor = SwitchExecutor(root, log, gitClient)
+            val rollbackOk = execution.checkpoint.isNullOrEmpty() || executor.rollback(execution)
+            val stashFailures = executor.restoreTrackedStashes(execution)
             SwitchRecoveryResult(rollbackOk, stashFailures)
         } catch (e: RuntimeException) {
             log.error("cancel recovery: ${e.javaClass.simpleName}: ${e.message}")

@@ -54,7 +54,7 @@ class SwitchRunnerTest {
 
         assertFalse("missing git repo should fail through executor", result.ok)
         assertFalse(result.cancelled)
-        assertNotNull("executor should be available for rollback decisions", result.executor)
+        assertNotNull("execution should be available for rollback decisions", result.execution)
         assertEquals(1, git.beginCount)
         assertEquals(1, git.endCount)
         assertEquals(0, git.cancelCount)
@@ -73,7 +73,7 @@ class SwitchRunnerTest {
 
         assertFalse(result.ok)
         assertTrue(result.cancelled)
-        assertNull("cancel before run should not create executor", result.executor)
+        assertNull("cancel before run should not create an execution result", result.execution)
         assertEquals(1, git.beginCount)
         assertEquals(1, git.cancelCount)
         assertEquals(1, git.endCount)
@@ -93,7 +93,7 @@ class SwitchRunnerTest {
 
         assertFalse(result.ok)
         assertTrue(result.cancelled)
-        assertNull(result.executor)
+        assertNull(result.execution)
         assertEquals(1, git.beginCount)
         assertEquals(1, git.endCount)
         assertEquals(0, git.cancelCount)
@@ -114,7 +114,7 @@ class SwitchRunnerTest {
 
         assertTrue(result.ok)
         assertFalse(result.cancelled)
-        assertNotNull(result.executor)
+        assertNotNull(result.execution)
         assertEquals(1, git.beginCount)
         assertEquals(1, git.endCount)
         assertEquals(1, git.submoduleSyncCount)
@@ -159,7 +159,7 @@ class SwitchRunnerTest {
 
         assertTrue("should be cancelled", result.cancelled)
         assertFalse("should not be ok", result.ok)
-        assertNull("executor should not be created", result.executor)
+        assertNull("execution result should not be created", result.execution)
         assertEquals("onCancel must fire gitClient.cancel()", 1, git.cancelCount)
         assertEquals(1, git.beginCount)
         assertEquals(1, git.endCount)

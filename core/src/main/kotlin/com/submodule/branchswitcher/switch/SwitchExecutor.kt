@@ -11,6 +11,23 @@ data class CheckpointEntry(
     val branch: String?,
 )
 
+enum class SwitchExecutionStatus {
+    SUCCESS,
+    PARTIAL,
+    FAILED,
+    CANCELLED,
+}
+
+data class SwitchExecutionResult(
+    val status: SwitchExecutionStatus,
+    val checkpoint: Map<String, CheckpointEntry>?,
+    val state: SwitchPipelineState,
+    val failures: Map<String, String> = emptyMap(),
+) {
+    val ok: Boolean get() = status == SwitchExecutionStatus.SUCCESS
+    val cancelled: Boolean get() = status == SwitchExecutionStatus.CANCELLED
+}
+
 /**
  * Orchestrates a branch switch by running a pipeline of [SwitchStep]s.
  *
@@ -29,6 +46,7 @@ class SwitchExecutor @JvmOverloads constructor(
     private val cancellationHandle: CancellationHandle? = null,
     private val progressHandle: ProgressHandle? = null,
     private val cancelled: (() -> Boolean)? = null,
+    private val cancellationClassifier: CancellationClassifier = CancellationClassifier.DEFAULT,
     private val onConfirmSubmoduleInit: ((String) -> Boolean)? = null,
     private val steps: List<SwitchStep> = listOf(
         DirtyHandlingStep(),
@@ -42,13 +60,8 @@ class SwitchExecutor @JvmOverloads constructor(
     ),
 ) {
 
-    private var lastCheckpoint: Map<String, CheckpointEntry>? = null
-    private var lastState: SwitchPipelineState? = null
-    var wasCancelled: Boolean = false
-        private set
-
-    fun execute(request: ResolvedSwitchRequest): Boolean {
-        wasCancelled = false
+    @Suppress("TooGenericExceptionCaught") // platform cancellation type is recognized through the injected classifier
+    fun execute(request: ResolvedSwitchRequest): SwitchExecutionResult {
         val preset = request.preset
         val options = request.options
         log.activity("=== switching to preset: ${preset.name} ===")
@@ -64,60 +77,72 @@ class SwitchExecutor @JvmOverloads constructor(
             confirmBeforeInit = options.confirmBeforeInit,
             onConfirmSubmoduleInit = onConfirmSubmoduleInit,
         )
-        lastState = context.state
 
         // Do not mutate any existing repository unless it has rollback coverage.
-        lastCheckpoint = recordCheckpoint(preset)
-        if (lastCheckpoint == null) {
+        val checkpoint = recordCheckpoint(preset)
+        if (checkpoint == null) {
             log.error("[checkpoint] switch aborted: unable to record every existing repository")
             log.activity("=== done with errors ===")
-            return false
+            return SwitchExecutionResult(
+                status = SwitchExecutionStatus.FAILED,
+                checkpoint = null,
+                state = context.state,
+                failures = mapOf("." to "unable to record every existing repository"),
+            )
         }
 
         context.progressHandle?.isIndeterminate = false
 
-        var overallSuccess = true
+        var status = SwitchExecutionStatus.SUCCESS
+        val failures = linkedMapOf<String, String>()
         for (step in steps) {
             context.progressHandle?.text = step.name
-            cancellationHandle?.checkCanceled()
+            try {
+                cancellationHandle?.checkCanceled()
+            } catch (e: RuntimeException) {
+                if (!cancellationClassifier.isCancellation(e)) throw e
+                git.cancel()
+                log.info("[cancelled] before step: ${step.name}")
+                status = SwitchExecutionStatus.CANCELLED
+                break
+            }
             if (context.cancelled()) {
                 git.cancel() // terminate in-flight command if any
                 log.info("[cancelled] before step: ${step.name}")
-                wasCancelled = true
-                overallSuccess = false
+                status = SwitchExecutionStatus.CANCELLED
                 break
             }
             log.info("--- ${step.name} ---")
             when (val result = step.execute(context)) {
                 is StepResult.Fatal -> {
                     log.error(" ${result.reason}")
-                    overallSuccess = false
+                    failures[step.name] = result.reason
+                    status = SwitchExecutionStatus.FAILED
                     break
                 }
                 is StepResult.Partial -> {
                     result.failures.forEach { (path, msg) ->
                         log.warn("$path: $msg")
                     }
-                    overallSuccess = false
+                    failures.putAll(result.failures)
+                    if (status == SwitchExecutionStatus.SUCCESS) {
+                        status = SwitchExecutionStatus.PARTIAL
+                    }
                 }
                 is StepResult.Success -> { /* continue */ }
             }
         }
         log.info("")
-        log.activity(if (overallSuccess) "=== done ===" else "=== done with errors ===")
-        return overallSuccess
+        log.activity(if (status == SwitchExecutionStatus.SUCCESS) "=== done ===" else "=== done with errors ===")
+        return SwitchExecutionResult(status, checkpoint, context.state, failures)
     }
-
-    fun getCheckpoint(): Map<String, CheckpointEntry>? = lastCheckpoint
 
     /** Retries any stash restores left incomplete by cancellation or a failed pipeline tail. */
-    fun restoreTrackedStashes(): Map<String, String> {
-        val state = lastState ?: return emptyMap()
-        return restoreTrackedStashes(projectRoot, git, log, state)
-    }
+    fun restoreTrackedStashes(result: SwitchExecutionResult): Map<String, String> =
+        restoreTrackedStashes(projectRoot, git, log, result.state)
 
-    fun rollback(): Boolean {
-        val checkpoint = lastCheckpoint
+    fun rollback(result: SwitchExecutionResult): Boolean {
+        val checkpoint = result.checkpoint
         if (checkpoint == null || checkpoint.isEmpty()) {
             log.debug("[rollback] no checkpoint available")
             return false
