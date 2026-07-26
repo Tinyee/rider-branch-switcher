@@ -74,39 +74,52 @@ class SwitchController(
             var rollbackFailures = emptyList<String>()
 
             try {
-                gitClient.beginOperation()
+                val operation = gitClient.openOperation()
                 try {
                     TaskBridge.runBackground(project, Bundle.msg("progress.derive", branchName), true,
                         block = { indicator ->
                             indicator.isIndeterminate = true
-                            val executor = DeriveBranchExecutor(root, log, gitClient, cancelled = { indicator.isCanceled }, classifier = platformCancellationClassifier)
+                            val executor = DeriveBranchExecutor(
+                                root,
+                                log,
+                                operation,
+                                cancelled = { indicator.isCanceled },
+                                classifier = platformCancellationClassifier,
+                            )
                             result = executor.execute(preset, branchName)
                             if (!result.allOk && result.succeeded.isNotEmpty()) {
                                 log.activity("[derive] rolling back ${result.succeeded.size} succeeded repo(s)...")
                                 rollbackFailures = executor.rollbackSucceeded(result, branchName)
                             }
                         },
-                        onCancel = { gitClient.cancel() },
-                        onFinished = { gitClient.endOperation() },
+                        onCancel = { operation.cancel() },
+                        onFinished = { operation.close() },
                     )
                 } catch (_: CancellationException) {
                     log.info("[cancelled] derive cancelled by user")
                     cancelled = true
                 } catch (e: Exception) {
                     log.error("derive: ${e.javaClass.simpleName}: ${e.message}")
+                } finally {
+                    operation.close()
                 }
 
                 if (cancelled && result != null && result!!.succeeded.isNotEmpty()) {
-                    gitClient.beginOperation()
+                    val rollbackOperation = gitClient.openOperation()
                     try {
-                        val executor = DeriveBranchExecutor(root, log, gitClient, classifier = platformCancellationClassifier)
+                        val executor = DeriveBranchExecutor(
+                            root,
+                            log,
+                            rollbackOperation,
+                            classifier = platformCancellationClassifier,
+                        )
                         log.activity("[derive] rolling back ${result!!.succeeded.size} succeeded repo(s) after cancel...")
                         rollbackFailures = executor.rollbackSucceeded(result!!, branchName)
                     } catch (e: Exception) {
                         log.error("derive rollback after cancel: ${e.javaClass.simpleName}: ${e.message}")
                         rollbackFailures = listOf("(exception)")
                     } finally {
-                        gitClient.endOperation()
+                        rollbackOperation.close()
                     }
                 }
             } finally {

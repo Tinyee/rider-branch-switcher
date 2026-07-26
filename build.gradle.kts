@@ -132,18 +132,18 @@ fun scanQuickChecks(
 
     fun fail(msg: String) { failures.add(msg) }
 
-    // 1. Cancel symmetry - per-file: every file with runBackground must have beginOperation + onCancel + onFinished + endOperation
+    // 1. Cancel symmetry - each background Git operation must own and close an isolated session.
     for (f in fileTree(srcRoot).filter { it.extension == "kt" && !it.name.contains("TaskBridge") }) {
         val lines = f.readLines()
         if (lines.any { "TaskBridge.runBackground" in it }) {
-            if (lines.none { "beginOperation()" in it || "beginOperation(" in it })
-                fail("${f.name}: runBackground without beginOperation")
+            if (lines.none { "openOperation()" in it || "openOperation(" in it })
+                fail("${f.name}: runBackground without openOperation")
             if (lines.none { "onCancel" in it })
                 fail("${f.name}: runBackground without onCancel")
             if (lines.none { "onFinished" in it })
                 fail("${f.name}: runBackground without onFinished")
-            if (lines.none { "endOperation()" in it || "endOperation(" in it })
-                fail("${f.name}: runBackground without endOperation")
+            if (lines.none { ".close()" in it })
+                fail("${f.name}: runBackground without session close")
         }
     }
 

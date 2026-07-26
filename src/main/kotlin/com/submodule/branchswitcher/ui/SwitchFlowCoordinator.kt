@@ -158,25 +158,24 @@ class SwitchFlowCoordinator(
             uiLater { Notifier.warn(project, Bundle.msg("notify.write.busy"), Bundle.msg("notify.write.busy.msg")) }
             return
         }
-        val gitClient = service.gitClient
         service.scope.launch(Dispatchers.Default) {
+            val operation = service.gitClient.openOperation()
             try {
                 var rollbackOk = false
-                gitClient.beginOperation()
                 try {
                     TaskBridge.runBackground(project, Bundle.msg("progress.rollback"), true,
                         block = { indicator ->
                             indicator.isIndeterminate = true
                             indicator.text = Bundle.msg("progress.rollback")
-                            val executor = SwitchExecutor(root, log, gitClient)
+                            val executor = SwitchExecutor(root, log, operation)
                             rollbackOk = if (executor.rollback(execution)) {
                                 executor.restoreTrackedStashes(execution).failures.isEmpty()
                             } else {
                                 false
                             }
                         },
-                        onCancel = { gitClient.cancel() },
-                        onFinished = { gitClient.endOperation() },
+                        onCancel = { operation.cancel() },
+                        onFinished = { operation.close() },
                     )
                 } catch (_: CancellationException) {}
                 catch (_: com.intellij.openapi.progress.ProcessCanceledException) {}
@@ -190,6 +189,7 @@ class SwitchFlowCoordinator(
                         Bundle.msg("notify.rollback.partial.msg"))
                 }
             } finally {
+                operation.close()
                 service.endWrite()
             }
         }

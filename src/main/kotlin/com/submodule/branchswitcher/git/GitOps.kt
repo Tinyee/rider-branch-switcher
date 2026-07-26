@@ -29,6 +29,7 @@ class GitOps(
 
     private val operationCancelled = AtomicBoolean(false)
     private val activeOperations = AtomicInteger(0)
+    private val sessionCancellation = ThreadLocal<AtomicBoolean?>()
 
     companion object {
         private val LOG = Logger.getLogger(GitOps::class.java.name)
@@ -56,10 +57,69 @@ class GitOps(
         }
     }
 
+    override fun openOperation(): GitOperationSession = OperationSession()
+
+    private inner class OperationSession : GitOperationSession {
+        private val cancelled = AtomicBoolean(false)
+
+        private fun <T> call(block: GitOps.() -> T): T {
+            val previous = sessionCancellation.get()
+            sessionCancellation.set(cancelled)
+            return try {
+                this@GitOps.block()
+            } finally {
+                if (previous == null) {
+                    sessionCancellation.remove()
+                } else {
+                    sessionCancellation.set(previous)
+                }
+            }
+        }
+
+        override fun cancel() {
+            cancelled.set(true)
+        }
+
+        override fun close() {
+            cancelled.set(true)
+        }
+
+        override fun isGitRepo(workDir: File): Boolean = call { isGitRepo(workDir) }
+        override fun currentBranch(workDir: File): String? = call { currentBranch(workDir) }
+        override fun revParseHead(workDir: File): String? = call { revParseHead(workDir) }
+        override fun isDirty(workDir: File): Boolean = call { isDirty(workDir) }
+        override fun localBranchExists(workDir: File, branch: String): Boolean =
+            call { localBranchExists(workDir, branch) }
+        override fun remoteBranchExists(workDir: File, branch: String): Boolean =
+            call { remoteBranchExists(workDir, branch) }
+        override fun stash(workDir: File, message: String): GitResult = call { stash(workDir, message) }
+        override fun stashPop(workDir: File): GitResult = call { stashPop(workDir) }
+        override fun fetch(workDir: File): GitResult = call { fetch(workDir) }
+        override fun checkoutExisting(workDir: File, branch: String): GitResult =
+            call { checkoutExisting(workDir, branch) }
+        override fun checkoutFromRemote(workDir: File, branch: String): GitResult =
+            call { checkoutFromRemote(workDir, branch) }
+        override fun pullFf(workDir: File, branch: String): GitResult = call { pullFf(workDir, branch) }
+        override fun submoduleSync(gitRoot: File): GitResult = call { submoduleSync(gitRoot) }
+        override fun submoduleInitPath(gitRoot: File, path: String): GitResult =
+            call { submoduleInitPath(gitRoot, path) }
+        override fun localBranchProbe(workDir: File, branch: String): Boolean? =
+            call { localBranchProbe(workDir, branch) }
+        override fun dirtyProbe(workDir: File): Boolean? = call { dirtyProbe(workDir) }
+        override fun checkoutNewBranch(workDir: File, branch: String): GitResult =
+            call { checkoutNewBranch(workDir, branch) }
+        override fun deleteBranch(workDir: File, branch: String): GitResult =
+            call { deleteBranch(workDir, branch) }
+        override fun listAllBranches(workDir: File): List<String> = call { listAllBranches(workDir) }
+        override fun listSubmodulePaths(gitRoot: File): List<String> = call { listSubmodulePaths(gitRoot) }
+        override fun dirtyFileCount(workDir: File): Int = call { dirtyFileCount(workDir) }
+    }
+
     /** Executes `git [args]` in [workDir], polling for cancellation and timeout every 100ms. */
     private fun run(workDir: File, vararg args: String): GitResult {
         val cmdLabel = "git ${args.joinToString(" ")}"
-        if (operationCancelled.get()) {
+        val cancellation = sessionCancellation.get() ?: operationCancelled
+        if (cancellation.get()) {
             return GitResult(cmdLabel, -1, "", "cancelled")
         }
         val pb = ProcessBuilder("git", *args)
@@ -92,7 +152,7 @@ class GitOps(
                 exitCode = process.exitValue()
                 break
             }
-            if (operationCancelled.get()) {
+            if (cancellation.get()) {
                 process.destroyForcibly()
                 process.waitFor(5, TimeUnit.SECONDS)
                 return GitResult(cmdLabel, -1, "", "cancelled")
