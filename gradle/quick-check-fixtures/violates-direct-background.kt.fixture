@@ -1,0 +1,14 @@
+// FIXTURE: a fully paired lifecycle that still bypasses GitBackgroundRunner
+import com.submodule.branchswitcher.TaskBridge
+
+fun directBackgroundCall() {
+    val operation = git.openOperation()
+    TaskBridge.runBackground(
+        null,
+        "broken",
+        true,
+        onCancel = { operation.cancel() },
+        onFinished = { operation.close() },
+        block = { operation.currentBranch(root) },
+    )
+}

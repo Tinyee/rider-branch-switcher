@@ -136,6 +136,8 @@ fun scanQuickChecks(
     for (f in fileTree(srcRoot).filter { it.extension == "kt" && !it.name.contains("TaskBridge") }) {
         val lines = f.readLines()
         if (lines.any { "TaskBridge.runBackground" in it }) {
+            if (f.name != "GitBackgroundRunner.kt")
+                fail("${f.name}: direct TaskBridge.runBackground outside GitBackgroundRunner")
             if (lines.none { "openOperation()" in it || "openOperation(" in it })
                 fail("${f.name}: runBackground without openOperation")
             if (lines.none { "onCancel" in it })
@@ -211,7 +213,9 @@ fun scanQuickChecks(
         .flatMap { it.readLines() }.filter {
             it.contains("project.coroutineScope") && !it.contains("//") ||
             it.contains("SwingUtilities.invokeLater") && !it.contains("//") ||
-            it.contains("ServiceLevel.PROJECT") && !it.contains("//")
+            it.contains("ServiceLevel.PROJECT") && !it.contains("//") ||
+            it.contains("beginOperation(") && !it.contains("//") ||
+            it.contains("endOperation(") && !it.contains("//")
         }
     if (deprecated.isNotEmpty())
         fail("Deprecated API usage: ${deprecated.take(3)}")
@@ -305,6 +309,7 @@ tasks {
 
                     if (shouldBeCaught) {
                         val diagnostic = when {
+                            name.contains("direct-background") -> "direct TaskBridge.runBackground"
                             name.contains("cancel") -> "runBackground without"
                             name.contains("write") -> "tryAcquireWrite without writeLease.close"
                             name.contains("switch") -> "switch/ imports ui/"

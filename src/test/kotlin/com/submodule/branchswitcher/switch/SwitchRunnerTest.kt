@@ -5,7 +5,9 @@ import com.intellij.openapi.project.Project
 import com.submodule.branchswitcher.TaskBridge
 import com.submodule.branchswitcher.platform.SwitchRunner
 import com.submodule.branchswitcher.git.GitClient
+import com.submodule.branchswitcher.git.GitOperationSession
 import com.submodule.branchswitcher.git.GitResult
+import com.submodule.branchswitcher.git.GitWorkflowClient
 import com.submodule.branchswitcher.log.createStringAppender
 import com.submodule.branchswitcher.model.Preset
 import com.submodule.branchswitcher.model.ResolvedSwitchRequest
@@ -55,8 +57,8 @@ class SwitchRunnerTest {
         assertFalse("missing git repo should fail through executor", result.ok)
         assertFalse(result.cancelled)
         assertNotNull("execution should be available for rollback decisions", result.execution)
-        assertEquals(1, git.beginCount)
-        assertEquals(1, git.endCount)
+        assertEquals(1, git.openCount)
+        assertEquals(1, git.closeCount)
         assertEquals(0, git.cancelCount)
     }
 
@@ -74,9 +76,9 @@ class SwitchRunnerTest {
         assertFalse(result.ok)
         assertTrue(result.cancelled)
         assertNull("cancel before run should not create an execution result", result.execution)
-        assertEquals(1, git.beginCount)
+        assertEquals(1, git.openCount)
         assertEquals(1, git.cancelCount)
-        assertEquals(1, git.endCount)
+        assertEquals(1, git.closeCount)
     }
 
     @Test
@@ -94,8 +96,8 @@ class SwitchRunnerTest {
         assertFalse(result.ok)
         assertTrue(result.cancelled)
         assertNull(result.execution)
-        assertEquals(1, git.beginCount)
-        assertEquals(1, git.endCount)
+        assertEquals(1, git.openCount)
+        assertEquals(1, git.closeCount)
         assertEquals(0, git.cancelCount)
     }
 
@@ -115,8 +117,8 @@ class SwitchRunnerTest {
         assertTrue(result.ok)
         assertFalse(result.cancelled)
         assertNotNull(result.execution)
-        assertEquals(1, git.beginCount)
-        assertEquals(1, git.endCount)
+        assertEquals(1, git.openCount)
+        assertEquals(1, git.closeCount)
         assertEquals(1, git.submoduleSyncCount)
     }
 
@@ -161,8 +163,8 @@ class SwitchRunnerTest {
         assertFalse("should not be ok", result.ok)
         assertNull("execution result should not be created", result.execution)
         assertEquals("onCancel must fire gitClient.cancel()", 1, git.cancelCount)
-        assertEquals(1, git.beginCount)
-        assertEquals(1, git.endCount)
+        assertEquals(1, git.openCount)
+        assertEquals(1, git.closeCount)
     }
 
     @Test
@@ -189,8 +191,8 @@ class SwitchRunnerTest {
         assertTrue(result.recovery?.ok == true)
         assertEquals("main", git.branch)
         assertEquals(1, git.stashPopCount)
-        assertEquals(2, git.beginCount)
-        assertEquals(2, git.endCount)
+        assertEquals(2, git.openCount)
+        assertEquals(2, git.closeCount)
     }
 
     private fun request(
@@ -259,17 +261,29 @@ class SwitchRunnerTest {
         }
 
     private open class RecordingGit : GitClient {
-        var beginCount = 0
+        var openCount = 0
         var cancelCount = 0
-        var endCount = 0
+        var closeCount = 0
         var submoduleSyncCount = 0
         var checkoutCount = 0
         var stashPopCount = 0
         var branch = "main"
 
-        override fun beginOperation() { beginCount++ }
         override fun cancel() { cancelCount++ }
-        override fun endOperation() { endCount++ }
+        override fun openOperation(): GitOperationSession {
+            openCount++
+            val delegate = this
+            val closed = AtomicBoolean(false)
+            return object : GitOperationSession, GitWorkflowClient by delegate {
+                override fun cancel() = delegate.cancel()
+
+                override fun close() {
+                    if (closed.compareAndSet(false, true)) {
+                        closeCount++
+                    }
+                }
+            }
+        }
 
         override fun currentBranch(workDir: File): String? = branch
         override fun isDirty(workDir: File): Boolean = false
