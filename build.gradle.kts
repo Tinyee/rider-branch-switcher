@@ -179,12 +179,12 @@ fun scanQuickChecks(
             fail("switch/ imports ui/: ${violations.take(3)}")
     }
 
-    // 5. No raw git ProcessBuilder outside GitOps
+    // 5. Git process execution belongs to GitProcessRunner; GitOps may only probe --version.
     val rawGit = fileTree(srcRoot).filter {
-        it.extension == "kt" && !it.name.contains("GitOps") && !it.name.contains("ToolWindowFactory")
+        it.extension == "kt" && it.name !in setOf("GitProcessRunner.kt", "GitOps.kt")
     }.flatMap { it.readLines() }.filter { it.contains("ProcessBuilder") && it.contains("\"git") }
     if (rawGit.isNotEmpty())
-        fail("Raw git ProcessBuilder outside GitOps: ${rawGit.take(3)}")
+        fail("Raw git ProcessBuilder outside GitProcessRunner: ${rawGit.take(3)}")
 
     // 6. i18n key count symmetry
     val enFile = file("$msgDir/BranchSwitcherBundle.properties")
