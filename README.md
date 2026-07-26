@@ -42,16 +42,6 @@ The plugin uses IntelliJ Platform APIs plus the bundled `Git4Idea` plugin.
 | IntelliJ IDEA Ultimate | Expected compatible | Same platform + Git APIs, but not listed as a primary verifier target yet. |
 | PyCharm / WebStorm / CLion | Not claimed yet | Add verifier codes and manual smoke checks before Marketplace support is advertised. |
 
-Default development SDK:
-
-```properties
-platform.type=IC
-platform.version=2026.1.3
-plugin.sinceBuild=261
-plugin.untilBuild=261.*
-plugin.verifier.ideCodes=RD
-```
-
 ## Install
 
 Marketplace publication is planned later. For now, install from disk:
@@ -110,54 +100,8 @@ Configure global behavior at `Settings | Version Control | Submodule Branch Swit
 | Pull after switch | On | Run `git pull --ff-only` after checkout. |
 | Confirm before init | Off | Ask before initializing missing submodule directories. |
 
-## Development
+## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for the development environment,
-architecture boundaries, validation levels, and review conventions.
-
-```bash
-# Enable local hooks once after clone
-git config core.hooksPath .githooks
-
-# Fast structural checks
-./gradlew quickCheck
-
-# Core pure JVM tests
-./gradlew pureTest
-
-# Platform/integration tests
-./gradlew test
-
-# Build plugin zip
-./gradlew buildPlugin
-
-# Launch sandbox IDE with the plugin installed
-./gradlew runIde
-```
-
-Use low-load validation during normal development:
-
-```bash
-./gradlew quickCheck
-./gradlew :core:test --tests "<ClassOrMethod>" --max-workers=1 --no-parallel
-./gradlew test --tests "<ClassOrMethod>" --max-workers=2 --no-parallel
-```
-
-Before broad changes or release preparation:
-
-```bash
-./gradlew :core:test test :core:detekt detekt --max-workers=2 --no-parallel
-./gradlew releaseCheck
-```
-
-Manual heavy diagnostics:
-
-```bash
-# Large-repo wall-clock benchmark
-./gradlew benchmark
-
-# Scoped mutation testing
-./gradlew pitestCore
-```
-
-`benchmark` and `pitestCore` are intentionally not part of normal `test` or `releaseCheck`.
+For local setup, architecture boundaries, validation, and review conventions,
+see [CONTRIBUTING.md](CONTRIBUTING.md). The usual local development loop is
+`./gradlew runIde`.
