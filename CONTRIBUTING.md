@@ -123,6 +123,6 @@ Synchronize current test counts and status across active documentation in one
 batch. Do not rewrite historical review records merely to update a current
 number.
 
-For substantial review findings, record active issues and their evidence in
-`docs/ai-review-current.md`; preserve only current details there and archive
-only material design or safety decisions.
+Keep active findings in the relevant issue or pull request. Durable
+architecture, safety, and testing decisions from completed reviews are
+consolidated in `docs/review-history.md`.

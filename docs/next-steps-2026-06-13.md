@@ -22,13 +22,13 @@
 
 - `build.gradle.kts`、README、CHANGELOG 和 ROADMAP 已同步到 `0.7.0`。
 - README Release 链接和 `plugin.xml` vendor 地址均指向 `Tinyee/rider-branch-switcher`。
-- `docs/code-review-2026-06-08.md` 已标记为历史归档。
+- 已完成的代码、测试和架构审查已合并到 `docs/review-history.md`。
 - `noFocusRing()` 工厂化、CI、Detekt、Plugin Verifier、Settings、结构化日志等状态已在 ROADMAP 中反映。
 - 当前测试数量已同步为 283 tests / 27 classes（2026-07-15 更新；142 个 core pure JVM + 141 个平台/集成；已清理 11 个低价值结构测试及 9 个无产品闭环的本地统计测试）。
 
 仍需保持：
 
-- 每次测试数量或版本号变化后，同步 README badge、AGENTS、ROADMAP、CHANGELOG。
+- 每次测试数量或版本号变化后，同步 README、CONTRIBUTING、ROADMAP、CHANGELOG。
 - 历史评审文档只作为问题发现记录，不重新当作当前待办列表。
 
 验收标准：
