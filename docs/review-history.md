@@ -137,6 +137,16 @@ switch behavior:
 - Legacy `beginOperation` / `endOperation` APIs were removed. `quickCheck`
   prevents direct production use of `TaskBridge.runBackground` outside the
   runner and prevents the old lifecycle from returning.
+- Repository-state detection, single-repository switching, and shared switch
+  execution now live in an explicit `workflow/` package; collection commands
+  are separated from preset list rendering.
+- Checkpoint capture and rollback/stash recovery are separate collaborators
+  instead of secondary responsibilities on `SwitchExecutor`.
+- `GitOps` is now a small facade over `GitCommandClient` and
+  `GitProcessRunner`; operation sessions no longer rely on `ThreadLocal` or
+  duplicate every Git method.
+- `quickCheck` enforces the one-way `workflow -> platform` package direction
+  and keeps `service` independent from workflow and UI code.
 
 Workflow-specific UI, confirmation, notification, refresh, and rollback
 decisions remain at their existing entry points. Only their mechanical
@@ -144,9 +154,9 @@ resource lifecycle is shared.
 
 Validation:
 
-- Clean full suite: 296 tests in 28 classes (153 core, 143 platform).
+- Clean full suite: 301 tests in 30 classes (153 core, 148 platform).
 - Core and platform Detekt: passed.
-- `quickCheck` and all 7 rule fixtures: passed.
+- `quickCheck` and all 8 rule fixtures: passed.
 - Plugin ZIP build: passed.
 
 ## Maintenance

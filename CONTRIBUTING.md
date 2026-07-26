@@ -11,7 +11,7 @@ submodules to a saved branch preset.
 - Kotlin 2.3, Gradle 8.13, IntelliJ Platform Gradle Plugin 2.2.1
 - Target: JetBrains IDEs 2026.1 (build 261)
 - Default SDK: IntelliJ IDEA Community; Rider is a compatibility target
-- Tests: 296 tests / 28 classes (153 core, 143 platform/integration; 4 Kotest
+- Tests: 301 tests / 30 classes (153 core, 148 platform/integration; 4 Kotest
   property tests; benchmark excluded)
 
 Use JDK 21. The Gradle build configures the Kotlin toolchain accordingly.
@@ -24,17 +24,26 @@ The default SDK configuration is in `gradle.properties` (`platform.type=IC`,
 the preset model and persistence, Git interfaces, switch pipeline, preflight,
 and pure UI decision rules.
 
-`src/` is the IntelliJ Platform module. It implements Git CLI access,
-project services, background-task adapters, IDE UI, actions, notifications, and
-i18n.
+`src/` is the IntelliJ Platform module. Its `git/` package implements CLI
+access, `platform/` contains IntelliJ adapters, `workflow/` contains application
+use cases, and `service/` and `ui/` own persistence and presentation.
 
 Key boundaries:
 
 - Git consumers depend on workflow-specific interfaces; `GitClient` is the
   aggregate implementation boundary and `GitOps` is the CLI implementation.
+- `GitOps` is a facade over `GitCommandClient`; only `GitProcessRunner` owns
+  command process lifecycle. Each operation receives its own command client and
+  cancellation token.
 - `SwitchExecutor` runs ordered `SwitchStep`s and returns a structured
   `SwitchExecutionResult`. Steps explicitly return the immutable `SwitchState`
   passed to the next step.
+- Checkpoint capture and recovery are separate from forward execution:
+  `SwitchCheckpointRecorder` records rollback state and
+  `SwitchRecoveryExecutor` owns rollback and pending stash restoration.
+- Application workflows may depend on platform adapters, while `platform/` and
+  `service/` must not depend back on `workflow/` or `ui/`; `quickCheck` enforces
+  these package directions.
 - Presets live in `.idea/branch-presets.json`; options use a
   `PersistentStateComponent`.
 - A write operation acquires a scoped `WriteLease`, runs Git work through

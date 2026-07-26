@@ -23,7 +23,7 @@
 - **动态远端名**：自动检测 remote 名，不再硬编码 origin
 - IntelliJ 原生图标（AllIcons），主题感知色
 - i18n 中英双语（DynamicBundle + @PropertyKey 编译时校验）
-- 296 测试 / 28 个测试类（153 个 core pure JVM + 143 个平台/集成；含 4 个 Kotest 属性测试，不含 benchmark）
+- 301 测试 / 30 个测试类（153 个 core pure JVM + 148 个平台/集成；含 4 个 Kotest 属性测试，不含 benchmark）
 - GitHub Actions CI（ubuntu/macOS/Windows）+ Detekt 静态分析
 
 下面按「切换体验 / 状态可视化 / UI / 工作流 / 质量」五块梳理后续要做的功能点，优先级 **P0(致命) / P1(高价值) / P2(锦上添花)**；状态列标记 v0.x 已落地或下阶段候选。
@@ -345,13 +345,13 @@ com.submodule.branchswitcher/
 
 ### 当前状态
 
-- ✅ 296 测试，28 个测试类：`./gradlew :core:test` 跑 153 个 core 纯 JVM 测试，`./gradlew :test` 跑 143 个平台/集成测试
+- ✅ 301 测试，30 个测试类：`./gradlew :core:test` 跑 153 个 core 纯 JVM 测试，`./gradlew :test` 跑 148 个平台/集成测试
 - ✅ Git 能力按 switch / derive / preset discovery / preflight 工作流拆分，`GitClient` 仅作为聚合实现边界
 - ✅ 真实 git 临时仓库集成测试（`SwitchIntegrationTest`）
 - ✅ 50 目标仓库 Switch/Preflight Git 调用预算测试（`LargeRepoScalabilityTest`，counting fake）
 - ✅ 大仓真实耗时基准（`./gradlew benchmark`，独立 Gradle task，51 个独立 git 仓库真实 GitOps wall-clock）
 - ✅ GitHub Actions CI（ubuntu/macOS/Windows）+ Detekt + quickCheck + checkQuickCheck + verifyPlugin
-- ✅ `quickCheck`：8 条结构性检查 + `checkQuickCheck` 自测（7 fixture）
+- ✅ `quickCheck`：9 条结构性检查 + `checkQuickCheck` 自测（8 fixture）
 - ⚠ 已覆盖 UI 规则与 Swing 几何约束，尚无 Rider fixture / 截图测试
 - ✅ `TaskBridge.runBackground` 生命周期已覆盖（`TaskBridgeLifecycleTest`，10 用例）
 
@@ -369,7 +369,7 @@ com.submodule.branchswitcher/
 
 **3. 结构性检查** ✅
 
-`quickCheck`（8 条规则）+ `checkQuickCheck`（6 fixture 自测），pre-commit hook 自动运行。
+`quickCheck`（9 条规则）+ `checkQuickCheck`（8 fixture 自测），pre-commit hook 自动运行。
 
 **4. PITest 变异测试** ✅
 
