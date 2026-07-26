@@ -20,6 +20,7 @@ import com.submodule.branchswitcher.platform.SwitchRunResult
 import com.submodule.branchswitcher.platform.platformCancellationClassifier
 import com.submodule.branchswitcher.platform.refreshVcsRepos
 import com.submodule.branchswitcher.switch.SwitchExecutor
+import com.submodule.branchswitcher.switch.SwitchRecoveryExecutor
 import com.submodule.branchswitcher.switch.SwitchExecutionResult
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -168,9 +169,9 @@ class SwitchFlowCoordinator(
                 ) { indicator, operation ->
                     indicator.isIndeterminate = true
                     indicator.text = Bundle.msg("progress.rollback")
-                    val executor = SwitchExecutor(root, log, operation)
-                    rollbackOk = if (executor.rollback(execution)) {
-                        executor.restoreTrackedStashes(execution).failures.isEmpty()
+                    val recovery = SwitchRecoveryExecutor(root, log, operation)
+                    rollbackOk = if (recovery.rollback(execution)) {
+                        recovery.restoreTrackedStashes(execution).failures.isEmpty()
                     } else {
                         false
                     }

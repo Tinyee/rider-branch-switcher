@@ -2,7 +2,6 @@ package com.submodule.branchswitcher.switch
 
 import com.submodule.branchswitcher.git.SwitchGitClient
 import com.submodule.branchswitcher.log.AppLogger
-import com.submodule.branchswitcher.model.Preset
 import com.submodule.branchswitcher.model.ResolvedSwitchRequest
 import java.nio.file.Path
 
@@ -59,6 +58,7 @@ class SwitchExecutor @JvmOverloads constructor(
         PullStep(SwitchTargetScope.SUBMODULES),
     ),
 ) {
+    private val checkpointRecorder = SwitchCheckpointRecorder(projectRoot, log, git)
 
     @Suppress("TooGenericExceptionCaught") // platform cancellation type is recognized through the injected classifier
     fun execute(request: ResolvedSwitchRequest): SwitchExecutionResult {
@@ -80,7 +80,7 @@ class SwitchExecutor @JvmOverloads constructor(
         )
 
         // Do not mutate any existing repository unless it has rollback coverage.
-        val checkpoint = recordCheckpoint(preset)
+        val checkpoint = checkpointRecorder.record(preset)
         if (checkpoint == null) {
             log.error("[checkpoint] switch aborted: unable to record every existing repository")
             log.activity("=== done with errors ===")
@@ -140,79 +140,4 @@ class SwitchExecutor @JvmOverloads constructor(
         return SwitchExecutionResult(status, checkpoint, state, failures)
     }
 
-    /** Retries any stash restores left incomplete by cancellation or a failed pipeline tail. */
-    fun restoreTrackedStashes(result: SwitchExecutionResult): StashRestoreResult =
-        restoreTrackedStashes(projectRoot, git, log, result.state)
-
-    fun rollback(result: SwitchExecutionResult): Boolean {
-        val checkpoint = result.checkpoint
-        if (checkpoint == null || checkpoint.isEmpty()) {
-            log.debug("[rollback] no checkpoint available")
-            return false
-        }
-        log.activity("=== rolling back to pre-switch state ===")
-        var allOk = true
-        for ((path, entry) in checkpoint) {
-            val dir = resolveGitDir(projectRoot, path)
-            val label = if (path == ".") projectRoot.fileName.toString() else path
-            if (!dir.exists() || !git.isGitRepo(dir)) {
-                log.debug("[rollback] skip $label - dir missing or not a repo")
-                allOk = false
-                continue
-            }
-            val cur = git.currentBranch(dir)
-            // Already on the same branch as checkpoint - nothing to roll back
-            if (entry.branch != null && entry.branch == cur) {
-                log.debug("$label: still on ${entry.branch}, skip")
-                continue
-            }
-            // Try to restore the original branch
-            if (entry.branch != null) {
-                log.activity("$label: checking out branch ${entry.branch} (was ${cur ?: "(detached)"})")
-                val br = git.checkoutExisting(dir, entry.branch)
-                if (!br.ok) {
-                    log.warn("[rollback] $label branch checkout failed: ${br.diagnostic()}, falling back to SHA")
-                    val shaR = git.checkoutExisting(dir, entry.sha)
-                    if (!shaR.ok) {
-                        log.warn("[rollback] $label SHA checkout also failed: ${shaR.diagnostic()}")
-                        allOk = false
-                    }
-                }
-            } else {
-                // Was detached HEAD originally - restore to SHA only if different
-                if (cur != entry.sha) {
-                    log.activity("$label: resetting to ${entry.sha} (was on ${cur ?: "(detached)"})")
-                    val r = git.checkoutExisting(dir, entry.sha)
-                    if (!r.ok) {
-                        log.warn("[rollback] $label checkout failed: ${r.diagnostic()}")
-                        allOk = false
-                    }
-                }
-            }
-        }
-        log.activity(if (allOk) "=== rollback done ===" else "=== rollback done with errors ===")
-        return allOk
-    }
-
-    /**
-     * Returns null when an existing Git repository cannot be checkpointed.
-     * Missing submodule directories are intentionally excluded: they have no state to restore
-     * and may be initialized later in the switch pipeline.
-     */
-    private fun recordCheckpoint(preset: Preset): Map<String, CheckpointEntry>? {
-        val map = LinkedHashMap<String, CheckpointEntry>()
-        for (target in preset.targets()) {
-            val dir = resolveGitDir(projectRoot, target.path)
-            if (!dir.exists() || !git.isGitRepo(dir)) continue
-            val label = if (target.path == ".") projectRoot.fileName.toString() else target.path
-            val sha = git.revParseHead(dir)
-            if (sha == null) {
-                log.error("[checkpoint] $label: unable to read HEAD")
-                return null
-            }
-            val branch = git.currentBranch(dir)
-            map[target.path] = CheckpointEntry(sha, branch)
-        }
-        return map
-    }
 }

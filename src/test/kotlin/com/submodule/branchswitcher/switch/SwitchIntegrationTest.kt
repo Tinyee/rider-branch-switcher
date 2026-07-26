@@ -30,6 +30,9 @@ class SwitchIntegrationTest {
     private lateinit var git: GitOps
     private val log = mutableListOf<String>()
 
+    private fun recovery(root: File) =
+        SwitchRecoveryExecutor(root.toPath(), createStringAppender { log += it }, git)
+
     @Before
     fun setUp() {
         tmpDir = Files.createTempDirectory("switch-it-")
@@ -297,7 +300,7 @@ class SwitchIntegrationTest {
         )
         assertEquals("dev", git.currentBranch(root))
 
-        val rbOk = executor.rollback(result)
+        val rbOk = recovery(root).rollback(result)
         assertTrue("Rollback should succeed", rbOk)
         assertEquals("main", git.currentBranch(root))
     }
@@ -310,7 +313,7 @@ class SwitchIntegrationTest {
             Preset("test", "main"),
             SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false),
         ).copy(checkpoint = null)
-        assertFalse("Rollback without checkpoint should return false", executor.rollback(result))
+        assertFalse("Rollback without checkpoint should return false", recovery(root).rollback(result))
     }
 
     // ---- Derive branch ----
@@ -891,7 +894,7 @@ class SwitchIntegrationTest {
         assertFalse("Switch should fail due to missing branch on SubA", result.ok)
 
         // Rollback
-        val rollbackOk = executor.rollback(result)
+        val rollbackOk = recovery(root).rollback(result)
         assertTrue("Rollback should succeed", rollbackOk)
 
         // Both repos back on original branch
@@ -919,7 +922,7 @@ class SwitchIntegrationTest {
         val result = executor.executeResultTest(preset, opts)
         assertFalse("Switch should fail", result.ok)
 
-        val rollbackOk = executor.rollback(result)
+        val rollbackOk = recovery(root).rollback(result)
         assertTrue("Rollback should succeed", rollbackOk)
         assertEquals("main", git.currentBranch(root))
 
@@ -941,7 +944,7 @@ class SwitchIntegrationTest {
         val result = executor.executeResultTest(preset, opts)
         assertFalse("Switch should fail", result.ok)
 
-        val rollbackOk = executor.rollback(result)
+        val rollbackOk = recovery(root).rollback(result)
         assertTrue("Rollback should succeed", rollbackOk)
         assertEquals("main", git.currentBranch(root))
 
