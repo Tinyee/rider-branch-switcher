@@ -9,54 +9,59 @@ import java.io.File
 class DirtyHandlingStep : SwitchStep {
     override val name = "dirty handling"
 
+    @Suppress("TooGenericExceptionCaught") // preserve state for cancellation and Git query failures
     override fun execute(context: SwitchContext, state: SwitchState): StepExecution {
         val failures = LinkedHashMap<String, String>()
         var nextState = state
-        val targets = context.preset.targets()
-        val total = targets.size
-        for ((idx, target) in targets.withIndex()) {
-            context.progressHandle?.apply {
-                fraction = idx.toDouble() / total
-                text2 = if (target.path == ".") context.projectRoot.fileName.toString() else target.path
-            }
-            context.cancellationHandle?.checkCanceled()
-            val dir = resolveGitDir(context.projectRoot, target.path)
-            if (!dir.exists()) continue
-            if (!context.git.isGitRepo(dir)) continue
+        try {
+            val targets = context.preset.targets()
+            val total = targets.size
+            for ((idx, target) in targets.withIndex()) {
+                context.progressHandle?.apply {
+                    fraction = idx.toDouble() / total
+                    text2 = if (target.path == ".") context.projectRoot.fileName.toString() else target.path
+                }
+                context.cancellationHandle?.checkCanceled()
+                val dir = resolveGitDir(context.projectRoot, target.path)
+                if (!dir.exists()) continue
+                if (!context.git.isGitRepo(dir)) continue
 
-            if (context.git.isDirty(dir)) {
-                when (context.options.dirty) {
-                    DirtyAction.Skip -> {
-                        context.log.info("[skip] working tree dirty - ${target.path}")
-                        failures[target.path] = "working tree dirty"
-                        nextState = nextState.withSkipped(target.path)
-                        continue
-                    }
-                    DirtyAction.Stash -> {
-                        val cur = context.git.currentBranch(dir)
-                        if (cur != null && cur == target.branch) {
-                            context.log.info("already on '${target.branch}', no stash needed")
-                        } else {
-                            val r = context.git.stash(dir, "branch-switcher: before -> ${target.branch}")
-                            if (r.ok) {
-                                context.log.info("stash: ok (${target.path})")
-                            } else {
-                                context.log.warn("stash: FAIL (${target.path}): ${r.diagnostic()}")
-                            }
-                            if (!r.ok) {
-                                failures[target.path] = "stash failed"
-                                nextState = nextState.withSkipped(target.path)
-                                continue
-                            }
-                            nextState = nextState.withTrackedStash(
-                                target.path,
-                                "before -> ${target.branch}",
-                            )
+                if (context.git.isDirty(dir)) {
+                    when (context.options.dirty) {
+                        DirtyAction.Skip -> {
+                            context.log.info("[skip] working tree dirty - ${target.path}")
+                            failures[target.path] = "working tree dirty"
+                            nextState = nextState.withSkipped(target.path)
+                            continue
                         }
+                        DirtyAction.Stash -> {
+                            val cur = context.git.currentBranch(dir)
+                            if (cur != null && cur == target.branch) {
+                                context.log.info("already on '${target.branch}', no stash needed")
+                            } else {
+                                val r = context.git.stash(dir, "branch-switcher: before -> ${target.branch}")
+                                if (r.ok) {
+                                    context.log.info("stash: ok (${target.path})")
+                                } else {
+                                    context.log.warn("stash: FAIL (${target.path}): ${r.diagnostic()}")
+                                }
+                                if (!r.ok) {
+                                    failures[target.path] = "stash failed"
+                                    nextState = nextState.withSkipped(target.path)
+                                    continue
+                                }
+                                nextState = nextState.withTrackedStash(
+                                    target.path,
+                                    "before -> ${target.branch}",
+                                )
+                            }
+                        }
+                        DirtyAction.Force -> context.log.info("[force] proceeding with dirty tree - ${target.path}")
                     }
-                    DirtyAction.Force -> context.log.info("[force] proceeding with dirty tree - ${target.path}")
                 }
             }
+        } catch (e: RuntimeException) {
+            throw SwitchStepException(nextState, e)
         }
         val result = if (failures.isEmpty()) StepResult.Success else StepResult.Partial(failures)
         return StepExecution(result, nextState)

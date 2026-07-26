@@ -52,6 +52,17 @@ data class StepExecution(
     val state: SwitchState,
 )
 
+/**
+ * Carries the latest immutable state across an exceptional step boundary.
+ *
+ * Stateful steps wrap failures after every completed side effect so the
+ * executor can still return a recoverable structured result.
+ */
+internal class SwitchStepException(
+    val latestState: SwitchState,
+    override val cause: RuntimeException,
+) : RuntimeException(cause)
+
 data class SwitchContext(
     val projectRoot: Path,
     val preset: Preset,

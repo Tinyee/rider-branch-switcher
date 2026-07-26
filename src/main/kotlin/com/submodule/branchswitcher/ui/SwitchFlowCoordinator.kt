@@ -170,11 +170,7 @@ class SwitchFlowCoordinator(
                     indicator.isIndeterminate = true
                     indicator.text = Bundle.msg("progress.rollback")
                     val recovery = SwitchRecoveryExecutor(root, log, operation)
-                    rollbackOk = if (recovery.rollback(execution)) {
-                        recovery.restoreTrackedStashes(execution).failures.isEmpty()
-                    } else {
-                        false
-                    }
+                    rollbackOk = recovery.recover(execution).ok
                 }) {
                     is GitBackgroundResult.Completed,
                     is GitBackgroundResult.Cancelled -> Unit

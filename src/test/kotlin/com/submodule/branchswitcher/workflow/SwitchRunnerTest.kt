@@ -272,14 +272,11 @@ class SwitchRunnerTest {
         override fun openOperation(): GitOperationSession {
             openCount++
             val delegate = this
-            val closed = AtomicBoolean(false)
             return object : GitOperationSession, GitWorkflowClient by delegate {
                 override fun cancel() = delegate.cancel()
 
                 override fun close() {
-                    if (closed.compareAndSet(false, true)) {
-                        closeCount++
-                    }
+                    closeCount++
                 }
             }
         }

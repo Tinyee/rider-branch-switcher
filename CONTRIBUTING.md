@@ -11,7 +11,7 @@ submodules to a saved branch preset.
 - Kotlin 2.3, Gradle 8.13, IntelliJ Platform Gradle Plugin 2.2.1
 - Target: JetBrains IDEs 2026.1 (build 261)
 - Default SDK: IntelliJ IDEA Community; Rider is a compatibility target
-- Tests: 301 tests / 30 classes (153 core, 148 platform/integration; 4 Kotest
+- Tests: 309 tests / 30 classes (159 core, 150 platform/integration; 4 Kotest
   property tests; benchmark excluded)
 
 Use JDK 21. The Gradle build configures the Kotlin toolchain accordingly.

@@ -42,7 +42,7 @@ class GitBackgroundRunner(
                     cancelled = true
                     operation.cancel()
                 },
-                onFinished = { operation.close() },
+                onFinished = null,
             )
             when {
                 cancelled || completed == null -> GitBackgroundResult.Cancelled(completed?.value)
