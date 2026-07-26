@@ -112,7 +112,8 @@ class PresetListManager(
     }
 
     private fun switchSubmodule(root: Path, path: String, target: String) {
-        if (!service.tryStartWrite()) {
+        val writeLease = service.tryAcquireWrite()
+        if (writeLease == null) {
             Notifier.warn(project, Bundle.msg("notify.write.busy"), Bundle.msg("notify.write.busy.msg"))
             return
         }
@@ -153,7 +154,7 @@ class PresetListManager(
                 }
             } finally {
                 operation.close()
-                service.endWrite()
+                writeLease.close()
             }
             project.invokeLaterIfAlive {
                 when {

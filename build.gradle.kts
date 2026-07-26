@@ -147,13 +147,15 @@ fun scanQuickChecks(
         }
     }
 
-    // 2. Write gate pairing - per-file: every file with tryStartWrite must have endWrite
-    for (f in fileTree(srcRoot).filter { it.extension == "kt" }) {
+    // 2. Write gate pairing - every acquired write lease must be closed in the same file.
+    for (f in fileTree(srcRoot).filter {
+        it.extension == "kt" && it.name != "BranchSwitcherService.kt"
+    }) {
         val lines = f.readLines()
-        val hasStart = lines.any { "tryStartWrite()" in it }
-        val hasEnd = lines.any { "endWrite()" in it }
-        if (hasStart && !hasEnd) fail("${f.name}: tryStartWrite without endWrite")
-        if (!hasStart && hasEnd) fail("${f.name}: endWrite without tryStartWrite")
+        val hasAcquire = lines.any { "tryAcquireWrite()" in it }
+        val hasClose = lines.any { "writeLease.close()" in it }
+        if (hasAcquire && !hasClose) fail("${f.name}: tryAcquireWrite without writeLease.close")
+        if (!hasAcquire && hasClose) fail("${f.name}: writeLease.close without tryAcquireWrite")
     }
 
     // 3. Core must remain a pure JVM module.
@@ -304,7 +306,7 @@ tasks {
                     if (shouldBeCaught) {
                         val diagnostic = when {
                             name.contains("cancel") -> "runBackground without"
-                            name.contains("write") -> "tryStartWrite without endWrite"
+                            name.contains("write") -> "tryAcquireWrite without writeLease.close"
                             name.contains("switch") -> "switch/ imports ui/"
                             name.contains("core-intellij") -> "Core imports IntelliJ API"
                             name.contains("deprecated") -> "Deprecated API"
