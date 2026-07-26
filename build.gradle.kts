@@ -122,7 +122,12 @@ pitest {
 
 // Extracted scan logic shared by quickCheck (production scan) and checkQuickCheck (fixture test).
 // Returns list of failure messages, empty = all clear.
-fun scanQuickChecks(srcRoot: File, msgDir: File): List<String> {
+fun scanQuickChecks(
+    srcRoot: File,
+    msgDir: File,
+    enforceCoreBoundary: Boolean = false,
+    checkMessages: Boolean = true,
+): List<String> {
     val failures = mutableListOf<String>()
 
     fun fail(msg: String) { failures.add(msg) }
@@ -151,7 +156,17 @@ fun scanQuickChecks(srcRoot: File, msgDir: File): List<String> {
         if (!hasStart && hasEnd) fail("${f.name}: endWrite without tryStartWrite")
     }
 
-    // 3. switch/ must not import ui/
+    // 3. Core must remain a pure JVM module.
+    if (enforceCoreBoundary) {
+        val intellijImports = fileTree(srcRoot).filter { it.extension == "kt" }
+            .flatMap { it.readLines() }
+            .filter { it.trimStart().startsWith("import com.intellij") }
+        if (intellijImports.isNotEmpty()) {
+            fail("Core imports IntelliJ API: ${intellijImports.take(3)}")
+        }
+    }
+
+    // 4. switch/ must not import ui/
     val switchDir = file("$srcRoot/com/submodule/branchswitcher/switch")
     if (switchDir.exists()) {
         val violations = fileTree(switchDir).filter { it.extension == "kt" }
@@ -160,17 +175,17 @@ fun scanQuickChecks(srcRoot: File, msgDir: File): List<String> {
             fail("switch/ imports ui/: ${violations.take(3)}")
     }
 
-    // 4. No raw git ProcessBuilder outside GitOps
+    // 5. No raw git ProcessBuilder outside GitOps
     val rawGit = fileTree(srcRoot).filter {
         it.extension == "kt" && !it.name.contains("GitOps") && !it.name.contains("ToolWindowFactory")
     }.flatMap { it.readLines() }.filter { it.contains("ProcessBuilder") && it.contains("\"git") }
     if (rawGit.isNotEmpty())
         fail("Raw git ProcessBuilder outside GitOps: ${rawGit.take(3)}")
 
-    // 5. i18n key count symmetry
+    // 6. i18n key count symmetry
     val enFile = file("$msgDir/BranchSwitcherBundle.properties")
     val zhFile = file("$msgDir/BranchSwitcherBundle_zh.properties")
-    if (enFile.exists() && zhFile.exists()) {
+    if (checkMessages && enFile.exists() && zhFile.exists()) {
         val enKeys = enFile.readLines()
             .filter { it.matches(Regex("^[a-z.]+=.*")) }.map { it.substringBefore("=") }.toSet()
         val zhKeys = zhFile.readLines()
@@ -181,7 +196,7 @@ fun scanQuickChecks(srcRoot: File, msgDir: File): List<String> {
         if (onlyZh.isNotEmpty()) fail("Keys only in ZH: $onlyZh")
     }
 
-    // 6. allOk must include cancelled check
+    // 7. allOk must include cancelled check
     val allOkDefs = fileTree(srcRoot).filter { it.extension == "kt" }
         .flatMap { it.readLines() }.filter { it.contains("val allOk") || it.contains("val allClean") }
     for (def in allOkDefs) {
@@ -189,7 +204,7 @@ fun scanQuickChecks(srcRoot: File, msgDir: File): List<String> {
             fail("allOk/allClean missing cancelled check: $def")
     }
 
-    // 7. Deprecated IntelliJ API patterns
+    // 8. Deprecated IntelliJ API patterns
     val deprecated = fileTree(srcRoot).filter { it.extension == "kt" }
         .flatMap { it.readLines() }.filter {
             it.contains("project.coroutineScope") && !it.contains("//") ||
@@ -230,7 +245,14 @@ tasks {
         description = "Lightweight structural checks (seconds, no compilation). Run before every commit."
 
         doLast {
-            val failures = scanQuickChecks(file("src/main/kotlin"), file("src/main/resources/messages"))
+            val msgDir = file("src/main/resources/messages")
+            val failures = scanQuickChecks(file("src/main/kotlin"), msgDir) +
+                scanQuickChecks(
+                    file("core/src/main/kotlin"),
+                    msgDir,
+                    enforceCoreBoundary = true,
+                    checkMessages = false,
+                )
             failures.forEach { logger.error("  FAIL: $it") }
             if (failures.isNotEmpty()) throw GradleException("quickCheck failed - ${failures.size} violation(s), see errors above")
             logger.lifecycle("quickCheck PASSED: all rules clean")
@@ -275,7 +297,7 @@ tasks {
 
                     // Direct scan - no Gradle subprocess. Eliminates all the problems
                     // with nested processes (stderr blocking, timeouts, path resolution).
-                    val violations = scanQuickChecks(tempRoot, msgDir)
+                    val violations = scanQuickChecks(tempRoot, msgDir, enforceCoreBoundary = true)
 
                     target.delete()
 
@@ -284,6 +306,7 @@ tasks {
                             name.contains("cancel") -> "runBackground without"
                             name.contains("write") -> "tryStartWrite without endWrite"
                             name.contains("switch") -> "switch/ imports ui/"
+                            name.contains("core-intellij") -> "Core imports IntelliJ API"
                             name.contains("deprecated") -> "Deprecated API"
                             else -> name
                         }

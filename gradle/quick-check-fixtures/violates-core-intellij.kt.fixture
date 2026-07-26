@@ -1,0 +1,5 @@
+package com.submodule.branchswitcher.fixture
+
+import com.intellij.openapi.project.Project
+
+fun leakedProject(project: Project): String = project.name
