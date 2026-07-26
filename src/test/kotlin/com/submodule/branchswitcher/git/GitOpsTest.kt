@@ -453,8 +453,25 @@ class GitOpsTest {
         assertTrue(git.fetch(tmpDir.toFile()).ok)
     }
 
+    @Test
+    fun `thread interruption terminates process and remains visible to caller`() {
+        val runningProcess = ControllableProcess(finished = false, interruptOnWait = true)
+        git = GitOps(timeoutSeconds = 10) { runningProcess }
+
+        try {
+            val result = git.fetch(tmpDir.toFile())
+
+            assertEquals(GitFailureKind.INTERRUPTED, result.failureKind)
+            assertTrue(runningProcess.destroyed)
+            assertTrue("runner must preserve the interruption signal", Thread.currentThread().isInterrupted)
+        } finally {
+            Thread.interrupted()
+        }
+    }
+
     private class ControllableProcess(
         private val finished: Boolean,
+        private val interruptOnWait: Boolean = false,
     ) : Process() {
         val waitStarted = CountDownLatch(1)
         @Volatile var destroyed = false
@@ -465,6 +482,7 @@ class GitOpsTest {
         override fun waitFor(): Int = 0
         override fun waitFor(timeout: Long, unit: TimeUnit): Boolean {
             waitStarted.countDown()
+            if (interruptOnWait) throw InterruptedException("test interrupt")
             return finished || destroyed
         }
         override fun exitValue(): Int = 0

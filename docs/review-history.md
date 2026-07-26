@@ -154,7 +154,7 @@ resource lifecycle is shared.
 
 Validation:
 
-- Clean full suite: 301 tests in 30 classes (153 core, 148 platform).
+- Clean full suite: 309 tests in 30 classes (159 core, 150 platform).
 - Core and platform Detekt: passed.
 - `quickCheck` and all 8 rule fixtures: passed.
 - Plugin ZIP build: passed.

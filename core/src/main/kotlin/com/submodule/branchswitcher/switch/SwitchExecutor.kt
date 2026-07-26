@@ -114,7 +114,24 @@ class SwitchExecutor @JvmOverloads constructor(
                 break
             }
             log.info("--- ${step.name} ---")
-            val execution = step.execute(context, state)
+            val execution = try {
+                step.execute(context, state)
+            } catch (e: RuntimeException) {
+                val stepFailure = e as? SwitchStepException
+                state = stepFailure?.latestState ?: state
+                val error = stepFailure?.cause ?: e
+                if (cancellationClassifier.isCancellation(error)) {
+                    git.cancel()
+                    log.info("[cancelled] during step: ${step.name}")
+                    status = SwitchExecutionStatus.CANCELLED
+                } else {
+                    val reason = "${error.javaClass.simpleName}: ${error.message}"
+                    log.error("[failed] ${step.name}: $reason")
+                    failures[step.name] = reason
+                    status = SwitchExecutionStatus.FAILED
+                }
+                break
+            }
             state = execution.state
             when (val result = execution.result) {
                 is StepResult.Fatal -> {

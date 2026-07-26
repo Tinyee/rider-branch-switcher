@@ -127,6 +127,9 @@ internal class GitCommandClient(
     override fun checkoutExisting(workDir: File, branch: String): GitResult =
         run(workDir, "checkout", branch)
 
+    override fun resetHard(workDir: File, revision: String): GitResult =
+        run(workDir, "reset", "--hard", revision)
+
     override fun checkoutFromRemote(workDir: File, branch: String): GitResult =
         run(workDir, "checkout", "-b", branch, "${remoteName(workDir)}/$branch")
 

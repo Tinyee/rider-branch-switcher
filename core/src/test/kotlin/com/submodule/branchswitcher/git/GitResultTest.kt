@@ -30,6 +30,13 @@ class GitResultTest {
     }
 
     @Test
+    fun `interrupted result has a distinct failure kind`() {
+        val result = GitResult("git fetch --prune", -1, "", "interrupted")
+
+        assertEquals(GitFailureKind.INTERRUPTED, result.failureKind)
+    }
+
+    @Test
     fun `diagnostic bounds multi-line stderr`() {
         val result = GitResult("git checkout dev", 1, "", "first\nsecond\nthird")
 

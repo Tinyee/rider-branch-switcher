@@ -16,7 +16,6 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import java.lang.reflect.Proxy
-import java.util.concurrent.atomic.AtomicBoolean
 
 class SingleRepositorySwitcherTest {
 
@@ -205,14 +204,13 @@ class SingleRepositorySwitcherTest {
         }
 
         private fun newOperation(): GitOperationSession {
-            val closed = AtomicBoolean(false)
             return Proxy.newProxyInstance(
                 GitOperationSession::class.java.classLoader,
                 arrayOf(GitOperationSession::class.java),
             ) { _, method, _ ->
                 when (method.name) {
                     "close" -> {
-                        if (closed.compareAndSet(false, true)) closeCount++
+                        closeCount++
                         null
                     }
                     "cancel" -> {

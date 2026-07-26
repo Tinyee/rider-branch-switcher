@@ -60,6 +60,7 @@ data class StashRestoreResult(
 )
 
 /** Restores tracked stashes and retains failed entries so a later recovery can retry them. */
+@Suppress("TooGenericExceptionCaught") // preserve successfully restored entries if a later Git query fails
 internal fun restoreTrackedStashes(
     projectRoot: java.nio.file.Path,
     git: com.submodule.branchswitcher.git.SwitchGitClient,
@@ -69,22 +70,26 @@ internal fun restoreTrackedStashes(
 ): StashRestoreResult {
     val failures = linkedMapOf<String, String>()
     var nextState = state
-    for ((path, msg) in state.stashesSnapshot()) {
-        if (selectedPaths != null && path !in selectedPaths) continue
-        val dir = resolveGitDir(projectRoot, path)
-        if (!dir.exists() || !git.isGitRepo(dir)) {
-            log.warn("[fail] stash pop skipped - repository unavailable for $path ($msg)")
-            failures[path] = "stash repository unavailable"
-            continue
+    try {
+        for ((path, msg) in state.stashesSnapshot()) {
+            if (selectedPaths != null && path !in selectedPaths) continue
+            val dir = resolveGitDir(projectRoot, path)
+            if (!dir.exists() || !git.isGitRepo(dir)) {
+                log.warn("[fail] stash pop skipped - repository unavailable for $path ($msg)")
+                failures[path] = "stash repository unavailable"
+                continue
+            }
+            val popResult = git.stashPop(dir)
+            if (popResult.ok) {
+                log.info("stash pop ok ($msg)")
+                nextState = nextState.withoutStash(path)
+            } else {
+                log.warn("[fail] stash pop failed for $path: ${popResult.diagnostic()}")
+                failures[path] = "stash pop failed"
+            }
         }
-        val popResult = git.stashPop(dir)
-        if (popResult.ok) {
-            log.info("stash pop ok ($msg)")
-            nextState = nextState.withoutStash(path)
-        } else {
-            log.warn("[fail] stash pop failed for $path: ${popResult.diagnostic()}")
-            failures[path] = "stash pop failed"
-        }
+    } catch (e: RuntimeException) {
+        throw SwitchStepException(nextState, e)
     }
     return StashRestoreResult(nextState, failures)
 }

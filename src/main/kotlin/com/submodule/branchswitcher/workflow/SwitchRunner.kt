@@ -123,9 +123,11 @@ class SwitchRunner(
         val operation = gitClient.openOperation()
         return try {
             val recovery = SwitchRecoveryExecutor(root, log, operation)
-            val rollbackOk = execution.checkpoint.isNullOrEmpty() || recovery.rollback(execution)
-            val restore = recovery.restoreTrackedStashes(execution)
-            execution.copy(state = restore.state) to SwitchRecoveryResult(rollbackOk, restore.failures)
+            val outcome = recovery.recover(execution)
+            execution.copy(state = outcome.stashRestore.state) to SwitchRecoveryResult(
+                outcome.rollbackOk,
+                outcome.stashRestore.failures,
+            )
         } catch (e: RuntimeException) {
             log.error("cancel recovery: ${e.javaClass.simpleName}: ${e.message}")
             execution to SwitchRecoveryResult(

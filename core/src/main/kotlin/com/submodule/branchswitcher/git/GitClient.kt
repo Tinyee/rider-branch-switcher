@@ -14,6 +14,7 @@ data class GitResult(
         get() = when {
             ok -> GitFailureKind.NONE
             stderr == "cancelled" -> GitFailureKind.CANCELLED
+            stderr == "interrupted" -> GitFailureKind.INTERRUPTED
             stderr.startsWith("timeout after ") -> GitFailureKind.TIMEOUT
             stderr.startsWith("failed to start: ") -> GitFailureKind.START_FAILED
             else -> GitFailureKind.GIT_FAILED
@@ -26,7 +27,7 @@ data class GitResult(
     }
 }
 
-enum class GitFailureKind { NONE, CANCELLED, TIMEOUT, START_FAILED, GIT_FAILED }
+enum class GitFailureKind { NONE, CANCELLED, INTERRUPTED, TIMEOUT, START_FAILED, GIT_FAILED }
 
 /** A Git read/query failed and cannot be safely interpreted as a normal negative result. */
 class GitQueryException(val result: GitResult) : RuntimeException(result.diagnostic())
@@ -61,6 +62,9 @@ interface SwitchGitClient : RepositoryStateGitClient, GitCancellation {
     fun fetch(workDir: File): GitResult
     /** Checks out an existing local branch by name. */
     fun checkoutExisting(workDir: File, branch: String): GitResult
+    /** Resets the current branch and worktree to a checkpoint commit. */
+    fun resetHard(workDir: File, revision: String): GitResult =
+        GitResult("git reset --hard $revision", 1, "", "resetHard not implemented")
     /** Creates a local branch from origin/<branch> and checks it out. */
     fun checkoutFromRemote(workDir: File, branch: String): GitResult
     /** Pulls with --ff-only from origin for the given branch. */

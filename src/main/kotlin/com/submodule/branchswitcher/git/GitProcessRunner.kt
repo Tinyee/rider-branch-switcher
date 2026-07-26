@@ -49,8 +49,14 @@ internal class GitProcessRunner(
             val finished = try {
                 process.waitFor(100, TimeUnit.MILLISECONDS)
             } catch (_: InterruptedException) {
+                process.destroyForcibly()
+                try {
+                    process.waitFor(5, TimeUnit.SECONDS)
+                } catch (_: InterruptedException) {
+                    // The interrupt flag is restored below after cleanup.
+                }
                 Thread.currentThread().interrupt()
-                false
+                return GitResult(commandLabel, -1, "", "interrupted")
             }
             if (finished) {
                 exitCode = process.exitValue()

@@ -306,6 +306,28 @@ class SwitchIntegrationTest {
     }
 
     @Test
+    fun `rollback restores checkpoint HEAD when current branch name is unchanged`() {
+        val root = createRepo(tmpDir, "project")
+        val executor = SwitchExecutor(root.toPath(), createStringAppender { log += it }, git)
+        val result = executor.executeResultTest(
+            Preset("test", "main"),
+            SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false),
+        )
+        val checkpointSha = result.checkpoint?.get(".")?.sha
+        assertNotNull(checkpointSha)
+
+        File(root, "later.txt").writeText("later\n")
+        gitOk(root, "add", "later.txt")
+        gitOk(root, "commit", "-m", "advance main")
+        assertNotEquals(checkpointSha, git.revParseHead(root))
+
+        assertTrue(recovery(root).rollback(result))
+        assertEquals("main", git.currentBranch(root))
+        assertEquals(checkpointSha, git.revParseHead(root))
+        assertFalse(File(root, "later.txt").exists())
+    }
+
+    @Test
     fun `rollback without checkpoint returns false`() {
         val root = createRepo(tmpDir, "project")
         val executor = SwitchExecutor(root.toPath(), createStringAppender { log += it }, git)

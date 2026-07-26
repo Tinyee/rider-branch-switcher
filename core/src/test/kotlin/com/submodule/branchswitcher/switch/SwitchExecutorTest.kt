@@ -14,6 +14,7 @@ import org.junit.Before
 import org.junit.Test
 import java.io.File
 import java.nio.file.Path
+import java.util.concurrent.CancellationException
 
 class SwitchExecutorTest {
 
@@ -349,6 +350,43 @@ class SwitchExecutorTest {
         assertTrue(rollbackCalls.contains("SubB" to "main"))
     }
 
+    @Test
+    fun `recovery restores stashes even when one repository rollback fails`() {
+        initGitRepo(File(projectRoot.toFile(), "SubA"))
+        val stashPopCalls = mutableListOf<String>()
+        val recoveryGit = object : GitClient by fakeGit {
+            override fun currentBranch(workDir: File): String? =
+                if (workDir == projectRoot.toFile()) "dev" else "main"
+
+            override fun checkoutExisting(workDir: File, branch: String): GitResult =
+                if (workDir == projectRoot.toFile()) {
+                    error("restore failed")
+                } else {
+                    GitResult("checkout", 0, "", "")
+                }
+
+            override fun stashPop(workDir: File): GitResult {
+                stashPopCalls += workDir.name
+                return GitResult("stash pop", 0, "", "")
+            }
+        }
+        val execution = SwitchExecutionResult(
+            status = SwitchExecutionStatus.FAILED,
+            checkpoint = mapOf(
+                "." to CheckpointEntry("main-sha", "main"),
+                "SubA" to CheckpointEntry("sub-sha", "main"),
+            ),
+            state = SwitchState().withTrackedStash("SubA", "before -> dev"),
+        )
+
+        val outcome = recovery(recoveryGit).recover(execution)
+
+        assertFalse(outcome.rollbackOk)
+        assertTrue(outcome.stashRestore.failures.isEmpty())
+        assertEquals(listOf("SubA"), stashPopCalls)
+        assertFalse(outcome.stashRestore.state.hasStashes())
+    }
+
     // ---- Cancel ----
 
     @Test
@@ -394,6 +432,70 @@ class SwitchExecutorTest {
         assertEquals(listOf("first"), executed)
         assertEquals(1, cancelCalls)
         assertTrue(log.any { it.contains("[cancelled] before step: second") })
+    }
+
+    @Test
+    fun `cancellation inside dirty step retains stash state for recovery`() {
+        initGitRepo(File(projectRoot.toFile(), "SubA"))
+        var checks = 0
+        var cancelCalls = 0
+        val cancellation = object : CancellationHandle {
+            override fun checkCanceled() {
+                checks++
+                if (checks == 3) throw CancellationException("cancel after first target")
+            }
+
+            override val isCanceled = false
+        }
+        val dirtyGit = object : GitClient by fakeGit {
+            override fun isDirty(workDir: File): Boolean = true
+            override fun cancel() {
+                cancelCalls++
+            }
+        }
+        val executor = SwitchExecutor(
+            projectRoot,
+            createStringAppender { log += it },
+            dirtyGit,
+            cancellationHandle = cancellation,
+            steps = listOf(DirtyHandlingStep()),
+        )
+
+        val result = executor.executeResultTest(
+            Preset("sub", "dev", mapOf("SubA" to "dev")),
+            SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false),
+        )
+
+        assertTrue(result.cancelled)
+        assertEquals(setOf("."), result.state.stashesSnapshot().keys)
+        assertEquals(1, cancelCalls)
+    }
+
+    @Test
+    fun `Git exception inside dirty step returns failed execution with latest state`() {
+        initGitRepo(File(projectRoot.toFile(), "SubA"))
+        val dirtyGit = object : GitClient by fakeGit {
+            override fun isDirty(workDir: File): Boolean {
+                if (workDir.name == "SubA") error("query failed")
+                return true
+            }
+        }
+        val executor = SwitchExecutor(
+            projectRoot,
+            createStringAppender { log += it },
+            dirtyGit,
+            steps = listOf(DirtyHandlingStep()),
+        )
+
+        val result = executor.executeResultTest(
+            Preset("sub", "dev", mapOf("SubA" to "dev")),
+            SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false),
+        )
+
+        assertEquals(SwitchExecutionStatus.FAILED, result.status)
+        assertNotNull(result.checkpoint)
+        assertEquals(setOf("."), result.state.stashesSnapshot().keys)
+        assertTrue(result.failures.getValue("dirty handling").contains("query failed"))
     }
 
     @Test
@@ -548,16 +650,70 @@ class SwitchExecutorTest {
     }
 
     @Test
-    fun `rollback skips when branch already matches`() {
+    fun `rollback skips when branch and HEAD already match checkpoint`() {
+        var resetCalls = 0
+        val matchingGit = object : GitClient by fakeGit {
+            override fun resetHard(workDir: File, revision: String): GitResult {
+                resetCalls++
+                return GitResult("reset", 0, "", "")
+            }
+        }
         val executor = SwitchExecutor(projectRoot, createStringAppender { log += it }, fakeGit)
         val execution = executor.executeResultTest(
             preset,
             SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false),
         )
-        // fakeGit.currentBranch returns "main", checkpoint also has "main"
-        // Rollback should skip without calling checkout
-        val result = recovery().rollback(execution)
-        assertTrue("Rollback should succeed when already on checkpoint branch", result)
+        val result = recovery(matchingGit).rollback(execution)
+        assertTrue("Rollback should succeed when branch and HEAD match", result)
+        assertEquals(0, resetCalls)
+    }
+
+    @Test
+    fun `rollback resets same branch when HEAD advanced after checkpoint`() {
+        var currentSha = "before"
+        val resetCalls = mutableListOf<String>()
+        val advancedGit = object : GitClient by fakeGit {
+            override fun currentBranch(workDir: File): String? = "main"
+            override fun revParseHead(workDir: File): String? = currentSha
+            override fun resetHard(workDir: File, revision: String): GitResult {
+                resetCalls += revision
+                currentSha = revision
+                return GitResult("reset", 0, "", "")
+            }
+        }
+        val execution = SwitchExecutionResult(
+            status = SwitchExecutionStatus.FAILED,
+            checkpoint = mapOf("." to CheckpointEntry("before", "main")),
+            state = SwitchState(),
+        )
+        currentSha = "after"
+
+        assertTrue(recovery(advancedGit).rollback(execution))
+        assertEquals(listOf("before"), resetCalls)
+        assertEquals("before", currentSha)
+    }
+
+    @Test
+    fun `rollback refuses hard reset when working tree is dirty`() {
+        var resetCalls = 0
+        val dirtyGit = object : GitClient by fakeGit {
+            override fun currentBranch(workDir: File): String? = "main"
+            override fun revParseHead(workDir: File): String? = "after"
+            override fun isDirty(workDir: File): Boolean = true
+            override fun resetHard(workDir: File, revision: String): GitResult {
+                resetCalls++
+                return GitResult("reset", 0, "", "")
+            }
+        }
+        val execution = SwitchExecutionResult(
+            status = SwitchExecutionStatus.FAILED,
+            checkpoint = mapOf("." to CheckpointEntry("before", "main")),
+            state = SwitchState(),
+        )
+
+        assertFalse(recovery(dirtyGit).rollback(execution))
+        assertEquals(0, resetCalls)
+        assertTrue(log.any { it.contains("reset blocked") && it.contains("dirty") })
     }
 
     // -- confirmBeforeInit fail-closed ---------------------------------
