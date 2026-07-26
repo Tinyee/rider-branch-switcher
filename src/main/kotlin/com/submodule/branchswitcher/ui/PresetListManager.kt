@@ -117,27 +117,29 @@ class PresetListManager(
             return
         }
         service.scope.launch(Dispatchers.Default) {
-            val git = service.gitClient
+            val operation = service.gitClient.openOperation()
             val dir = resolveGitDir(root, path)
             var result: GitResult? = null
             var skipped: String? = null
             try {
-                git.beginOperation()
                 try {
                     TaskBridge.runBackground(project, Bundle.msg("progress.switching.to", target), true,
                         block = { indicator ->
                             indicator.isIndeterminate = true
                             when {
-                                !dir.exists() || !git.isGitRepo(dir) -> skipped = "repository is not initialized"
-                                git.isDirty(dir) -> skipped = "working tree dirty"
-                                git.currentBranch(dir) == target -> skipped = "already on $target"
-                                git.localBranchExists(dir, target) -> result = git.checkoutExisting(dir, target)
-                                git.remoteBranchExists(dir, target) -> result = git.checkoutFromRemote(dir, target)
+                                !dir.exists() || !operation.isGitRepo(dir) ->
+                                    skipped = "repository is not initialized"
+                                operation.isDirty(dir) -> skipped = "working tree dirty"
+                                operation.currentBranch(dir) == target -> skipped = "already on $target"
+                                operation.localBranchExists(dir, target) ->
+                                    result = operation.checkoutExisting(dir, target)
+                                operation.remoteBranchExists(dir, target) ->
+                                    result = operation.checkoutFromRemote(dir, target)
                                 else -> result = GitResult("checkout", 1, "", "branch $target not found")
                             }
                         },
-                        onCancel = { git.cancel() },
-                        onFinished = { git.endOperation() },
+                        onCancel = { operation.cancel() },
+                        onFinished = { operation.close() },
                     )
                 } catch (_: kotlinx.coroutines.CancellationException) {
                     skipped = "cancelled"
@@ -150,6 +152,7 @@ class PresetListManager(
                     log.error("[switch] $path: $skipped")
                 }
             } finally {
+                operation.close()
                 service.endWrite()
             }
             project.invokeLaterIfAlive {

@@ -405,62 +405,51 @@ class GitOpsTest {
     }
 
     @Test
-    fun `cancelled operation rejects subsequent commands until operation ends`() {
-        git.beginOperation()
-        git.cancel()
+    fun `cancelled session rejects its subsequent commands until closed`() {
+        val operation = git.openOperation()
+        operation.cancel()
 
-        val cancelled = git.fetch(tmpDir.toFile())
+        val cancelled = operation.fetch(tmpDir.toFile())
         assertEquals(-1, cancelled.exitCode)
         assertEquals("cancelled", cancelled.stderr)
 
-        git.endOperation()
+        operation.close()
         val afterEnd = git.fetch(tmpDir.toFile())
         assertNotEquals("cancelled", afterEnd.stderr)
     }
 
     @Test
-    fun `begin operation clears stale cancellation state`() {
-        git.cancel()
-        git.beginOperation()
+    fun `cancelling one session does not affect another session`() {
+        val cancelledOperation = git.openOperation()
+        val activeOperation = git.openOperation()
+        cancelledOperation.cancel()
 
-        val result = git.fetch(tmpDir.toFile())
+        assertEquals("cancelled", cancelledOperation.fetch(tmpDir.toFile()).stderr)
+        assertNotEquals("cancelled", activeOperation.fetch(tmpDir.toFile()).stderr)
 
-        assertNotEquals("cancelled", result.stderr)
+        cancelledOperation.close()
+        activeOperation.close()
     }
 
     @Test
-    fun `nested operation cannot clear cancellation until all operations end`() {
-        git.beginOperation()
-        git.cancel()
-        git.beginOperation()
-
-        assertEquals("cancelled", git.fetch(tmpDir.toFile()).stderr)
-        git.endOperation()
-        assertEquals("cancelled", git.fetch(tmpDir.toFile()).stderr)
-
-        git.endOperation()
-        assertNotEquals("cancelled", git.fetch(tmpDir.toFile()).stderr)
-    }
-
-    @Test
-    fun `cancel terminates running process and allows commands after operation ends`() {
+    fun `session cancel terminates running process and leaves direct commands available`() {
         val runningProcess = ControllableProcess(finished = false)
         var starts = 0
         git = GitOps(timeoutSeconds = 10) {
             starts++
             if (starts == 1) runningProcess else ControllableProcess(finished = true)
         }
-        git.beginOperation()
+        val operation = git.openOperation()
 
-        val resultFuture = CompletableFuture.supplyAsync { git.fetch(tmpDir.toFile()) }
+        val resultFuture = CompletableFuture.supplyAsync { operation.fetch(tmpDir.toFile()) }
         assertTrue(runningProcess.waitStarted.await(5, TimeUnit.SECONDS))
-        git.cancel()
+        operation.cancel()
 
         val cancelled = resultFuture.get(5, TimeUnit.SECONDS)
         assertEquals("cancelled", cancelled.stderr)
         assertTrue(runningProcess.destroyed)
 
-        git.endOperation()
+        operation.close()
         assertTrue(git.fetch(tmpDir.toFile()).ok)
     }
 

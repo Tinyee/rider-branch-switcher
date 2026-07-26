@@ -4,7 +4,7 @@ import com.intellij.openapi.progress.ProgressIndicator
 import com.intellij.openapi.project.Project
 import com.submodule.branchswitcher.Bundle
 import com.submodule.branchswitcher.TaskBridge
-import com.submodule.branchswitcher.git.SwitchOperationGitClient
+import com.submodule.branchswitcher.git.GitOperationProvider
 import com.submodule.branchswitcher.log.AppLogger
 import com.submodule.branchswitcher.model.ResolvedSwitchRequest
 import com.submodule.branchswitcher.switch.SwitchExecutionResult
@@ -36,7 +36,7 @@ data class SwitchRecoveryResult(
 class SwitchRunner(
     private val project: Project,
     private val root: Path,
-    private val gitClient: SwitchOperationGitClient,
+    private val gitClient: GitOperationProvider,
     private val taskRunner: TaskBridge.TaskRunner = TaskBridge.TaskRunner.DEFAULT,
 ) {
     @Suppress("TooGenericExceptionCaught")
@@ -51,7 +51,7 @@ class SwitchRunner(
         var execution: SwitchExecutionResult? = null
         var recovery: SwitchRecoveryResult? = null
 
-        gitClient.beginOperation()
+        val operation = gitClient.openOperation()
         try {
             TaskBridge.runBackground(taskRunner, project, title, true,
                 block = { indicator ->
@@ -78,15 +78,15 @@ class SwitchRunner(
                     val executor = SwitchExecutor(
                         root,
                         log,
-                        gitClient,
+                        operation,
                         cancelHandle,
                         progHandle,
                         cancellationClassifier = platformCancellationClassifier,
                         onConfirmSubmoduleInit = initConfirm)
                     execution = executor.execute(request)
                 },
-                onCancel = { gitClient.cancel() },
-                onFinished = { gitClient.endOperation() },
+                onCancel = { operation.cancel() },
+                onFinished = { operation.close() },
             )
         } catch (_: CancellationException) {
             log.info("[cancelled] switch cancelled by user")
@@ -98,6 +98,8 @@ class SwitchRunner(
             // Boundary catch: convert unexpected switch failures into a result so UI callers
             // can notify consistently without leaking coroutine failures.
             log.error("switch: ${e.javaClass.simpleName}: ${e.message}")
+        } finally {
+            operation.close()
         }
 
         if (execution?.cancelled == true) cancelled = true
@@ -116,9 +118,9 @@ class SwitchRunner(
         execution: SwitchExecutionResult,
         log: AppLogger,
     ): Pair<SwitchExecutionResult, SwitchRecoveryResult> {
-        gitClient.beginOperation()
+        val operation = gitClient.openOperation()
         return try {
-            val executor = SwitchExecutor(root, log, gitClient)
+            val executor = SwitchExecutor(root, log, operation)
             val rollbackOk = execution.checkpoint.isNullOrEmpty() || executor.rollback(execution)
             val restore = executor.restoreTrackedStashes(execution)
             execution.copy(state = restore.state) to SwitchRecoveryResult(rollbackOk, restore.failures)
@@ -129,7 +131,7 @@ class SwitchRunner(
                 stashFailures = mapOf("." to "recovery exception"),
             )
         } finally {
-            gitClient.endOperation()
+            operation.close()
         }
     }
 }

@@ -1,6 +1,7 @@
 package com.submodule.branchswitcher.git
 
 import java.io.File
+import java.util.concurrent.atomic.AtomicBoolean
 
 /** Result of a git CLI command. [ok] is true when exitCode == 0. */
 data class GitResult(
@@ -115,8 +116,33 @@ interface GitOperationLifecycle : GitCancellation {
     fun endOperation() {}
 }
 
-/** Switch commands plus the lifecycle boundary required by platform runners. */
-interface SwitchOperationGitClient : SwitchGitClient, GitOperationLifecycle
+/** All workflow capabilities exposed by a concrete Git implementation or operation session. */
+interface GitWorkflowClient :
+    SwitchGitClient,
+    DeriveGitClient,
+    PresetDiscoveryGitClient,
+    SwitchPreflightGitClient
+
+/** Isolated cancellable view used for one background operation. */
+interface GitOperationSession : GitWorkflowClient, AutoCloseable
+
+interface GitOperationProvider {
+    fun openOperation(): GitOperationSession
+}
+
+private class LegacyGitOperationSession(
+    private val client: GitClient,
+) : GitOperationSession, GitWorkflowClient by client {
+    private val closed = AtomicBoolean(false)
+
+    override fun cancel() = client.cancel()
+
+    override fun close() {
+        if (closed.compareAndSet(false, true)) {
+            client.endOperation()
+        }
+    }
+}
 
 /**
  * Aggregate implementation boundary. Consumers should depend on a workflow interface above.
@@ -133,7 +159,15 @@ interface SwitchOperationGitClient : SwitchGitClient, GitOperationLifecycle
  * - [stash] pushes with -u (includes untracked files)
  */
 interface GitClient :
-    SwitchOperationGitClient,
-    DeriveGitClient,
-    PresetDiscoveryGitClient,
-    SwitchPreflightGitClient
+    GitWorkflowClient,
+    GitOperationLifecycle,
+    GitOperationProvider {
+    /**
+     * Compatibility adapter for test doubles and alternate implementations.
+     * [GitOps] overrides this with a cancellation-isolated session.
+     */
+    override fun openOperation(): GitOperationSession {
+        beginOperation()
+        return LegacyGitOperationSession(this)
+    }
+}
