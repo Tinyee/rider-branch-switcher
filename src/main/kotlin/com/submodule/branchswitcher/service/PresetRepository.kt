@@ -9,7 +9,19 @@ import java.nio.file.Path
 /**
  * Cached preset file loader/saver.
  */
-class PresetRepository(private val project: Project) {
+class PresetRepository internal constructor(
+    private val basePath: () -> Path?,
+    private val loader: (Path) -> Result<Pair<Path, PresetFile>>,
+    private val ensureFile: (Path) -> Path,
+    private val saver: (Path, PresetFile) -> Unit,
+) {
+
+    constructor(project: Project) : this(
+        basePath = { project.basePath?.let(java.nio.file.Paths::get) },
+        loader = { PresetLoader.load(it) },
+        ensureFile = PresetLoader::ensureFile,
+        saver = PresetLoader::save,
+    )
 
     private var presetFile: PresetFile = PresetFile()
     private var savedFilePath: Path? = null
@@ -17,9 +29,9 @@ class PresetRepository(private val project: Project) {
     val presets: List<Preset> get() = presetFile.presets
 
     fun load(): Result<Pair<Path, PresetFile>> {
-        val base = project.basePath?.let { java.nio.file.Paths.get(it) }
+        val base = basePath()
             ?: return Result.failure(IllegalStateException("project base path is null"))
-        return PresetLoader.load(base).onSuccess { (file, parsed) ->
+        return loader(base).onSuccess { (file, parsed) ->
             savedFilePath = file
             presetFile = parsed
         }
@@ -27,13 +39,13 @@ class PresetRepository(private val project: Project) {
 
     fun save(newPresets: List<Preset>) {
         val file = savedFilePath ?: run {
-            val base = project.basePath?.let { java.nio.file.Paths.get(it) }
+            val base = basePath()
                 ?: throw IllegalStateException("project base path is null — cannot save presets")
-            val resolved = PresetLoader.ensureFile(base)
-            savedFilePath = resolved
-            resolved
+            ensureFile(base)
         }
-        presetFile = presetFile.copy(presets = newPresets)
-        PresetLoader.save(file, presetFile)
+        val updated = presetFile.copy(presets = newPresets)
+        saver(file, updated)
+        savedFilePath = file
+        presetFile = updated
     }
 }

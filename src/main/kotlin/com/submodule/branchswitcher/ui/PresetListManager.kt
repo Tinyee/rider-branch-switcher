@@ -86,7 +86,14 @@ class PresetListManager(
             initial = preset,
             log = log,
             onSwitch = { onSwitch(it) },
-            onSave = { updated -> saveAll(editor, updated) },
+            onSave = { updated ->
+                try {
+                    saveAll(editor, updated)
+                } catch (e: Exception) {
+                    reportSaveFailure(e)
+                    throw e
+                }
+            },
             onDelete = { deleteEditor(editor, presetsInner) },
             onDerive = { draft, branchName -> onDerive(root, draft, branchName) },
             nameValidator = { newName -> editors.none { it !== editor && it.currentPreset().name == newName } },
@@ -174,6 +181,8 @@ class PresetListManager(
             Messages.getWarningIcon(),
         )
         if (confirm != Messages.YES) return
+        val remaining = editors.filter { it !== editor }.map { it.currentPreset() }
+        if (!persistOrReport(remaining)) return
         editors.remove(editor)
         // Remove wrapper panel (editor + strut) to avoid orphaned struts
         val wrapper = editor.parent
@@ -182,7 +191,6 @@ class PresetListManager(
         } else {
             presetsInner.remove(editor)
         }
-        saveAll()
         if (editors.isEmpty()) {
             val panel = createEmptyState(presetsInner)
             emptyStatePanel = panel
@@ -191,6 +199,7 @@ class PresetListManager(
         presetsInner.revalidate()
         presetsInner.repaint()
         log.debug("[deleted] $name")
+        onStateChanged?.invoke()
     }
 
     fun saveAll(pendingEditor: PresetEditor? = null, pendingPreset: Preset? = null) {
@@ -219,11 +228,12 @@ class PresetListManager(
             submodules = template?.submodules ?: emptyMap(),
         )
         val root = gitRoot() ?: return
+        if (!persistOrReport(editors.map { it.currentPreset() } + newPreset)) return
         addEditorRow(root, newPreset, presetsInner)
         presetsInner.parent?.revalidate()
         presetsInner.parent?.repaint()
-        saveAll()
         log.debug("[added] $name (展开后可编辑各子模块分支)")
+        onStateChanged?.invoke()
     }
 
     fun addPresetFromCurrent(presetsInner: JPanel) {
@@ -293,10 +303,12 @@ class PresetListManager(
                     main = mb,
                     submodules = result.submodules,
                 )
+                if (!persistOrReport(editors.map { it.currentPreset() } + newPreset)) {
+                    return@invokeLaterIfAlive
+                }
                 addEditorRow(root, newPreset, presetsInner)
                 presetsInner.parent?.revalidate()
                 presetsInner.parent?.repaint()
-                saveAll()
                 log.debug("[added from current] $name -> 主仓=$mb, ${result.submodules.size} 个子模块")
                 onStateChanged?.invoke()
             })
@@ -358,13 +370,15 @@ class PresetListManager(
             }
             val root = gitRoot() ?: return
             val presetsInner = (presetsContainer.getComponent(0) as? JPanel) ?: return
+            val combined = editors.map { it.currentPreset() } + result.presets
+            if (!persistOrReport(combined)) return
             result.presets.forEach { preset ->
                 addEditorRow(root, preset, presetsInner)
             }
             presetsContainer.revalidate()
             presetsContainer.repaint()
-            saveAll()
             log.debug("[imported] ${result.presets.size} preset(s) from clipboard")
+            onStateChanged?.invoke()
             Notifier.info(project, Bundle.msg("notify.import.complete"), Bundle.msg("notify.imported", result.presets.size))
         } catch (e: Exception) {
             log.error("[import] error: ${e.message}")
@@ -379,6 +393,24 @@ class PresetListManager(
             return editors.none { it.currentPreset().name == n }
         }
         override fun canClose(input: String?): Boolean = checkInput(input)
+    }
+
+    private fun persistOrReport(presets: List<Preset>): Boolean = try {
+        service.savePresets(presets)
+        log.debug("[saved]")
+        true
+    } catch (e: Exception) {
+        reportSaveFailure(e)
+        false
+    }
+
+    private fun reportSaveFailure(error: Exception) {
+        log.error("preset save failed: ${error.javaClass.simpleName}: ${error.message}")
+        Notifier.error(
+            project,
+            Bundle.msg("preset.save.failed"),
+            error.message ?: error.javaClass.simpleName,
+        )
     }
 
     private fun createEmptyState(parent: JPanel): JPanel {
