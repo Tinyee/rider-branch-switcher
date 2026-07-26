@@ -4,20 +4,23 @@ package com.submodule.branchswitcher.switch
 class SubmoduleSyncStep : SwitchStep {
     override val name = "submodule sync"
 
-    override fun execute(context: SwitchContext): StepResult {
+    override fun execute(context: SwitchContext, state: SwitchState): StepExecution {
         // Only sync if main checkout succeeded - otherwise .gitmodules may reflect old branch
-        if (!context.state.checkoutSucceeded(".")) {
+        if (!state.checkoutSucceeded(".")) {
             context.log.info("[skip] submodule sync - main checkout did not succeed")
-            return StepResult.Partial(mapOf("." to "sync skipped: main checkout failed"))
+            return StepExecution(
+                StepResult.Partial(mapOf("." to "sync skipped: main checkout failed")),
+                state,
+            )
         }
         val dir = context.projectRoot.toFile()
         val s = context.git.submoduleSync(dir)
         if (s.ok) {
             context.log.info("submodule sync ok")
-            return StepResult.Success
+            return StepExecution(StepResult.Success, state)
         } else {
             context.log.warn(" submodule sync failed: ${s.diagnostic()}")
-            return StepResult.Partial(mapOf("." to "submodule sync failed"))
+            return StepExecution(StepResult.Partial(mapOf("." to "submodule sync failed")), state)
         }
     }
 }

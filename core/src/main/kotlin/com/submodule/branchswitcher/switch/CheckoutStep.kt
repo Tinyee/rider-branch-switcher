@@ -10,9 +10,10 @@ class CheckoutStep(
 ) : SwitchStep {
     override val name = scopedStepName("checkout", scope)
 
-    override fun execute(context: SwitchContext): StepResult {
+    override fun execute(context: SwitchContext, state: SwitchState): StepExecution {
         val failures = LinkedHashMap<String, String>()
-        var mainCheckoutOk = context.state.checkoutSucceeded(".")
+        var nextState = state
+        var mainCheckoutOk = state.checkoutSucceeded(".")
         val targets = context.preset.targetsFor(scope)
         val total = targets.size
 
@@ -27,7 +28,7 @@ class CheckoutStep(
             val label = if (isMain) context.projectRoot.fileName.toString() else target.path
 
             // Skip paths marked by DirtyHandlingStep (skip / stash-fail)
-            if (context.state.isSkipped(target.path)) {
+            if (nextState.isSkipped(target.path)) {
                 context.log.info("[skip] $label - skipped by dirty handling")
                 continue
             }
@@ -83,7 +84,7 @@ class CheckoutStep(
             if (cur != null && cur == target.branch) {
                 context.log.info("already on '${target.branch}', skipping checkout")
                 if (isMain) mainCheckoutOk = true
-                context.state.markCheckoutSuccessful(target.path)
+                nextState = nextState.withSuccessfulCheckout(target.path)
                 continue
             }
 
@@ -97,10 +98,11 @@ class CheckoutStep(
                 context.log.warn("[fail] branch '${target.branch}' not found locally or on origin")
                 failures[target.path] = "branch not found"
                 // Still try to pop stash if this path was stashed - don't leave orphaned stashes
-                context.state.consumeStash(target.path)?.let { msg ->
+                nextState.trackedStash(target.path)?.let { msg ->
                     val popResult = context.git.stashPop(dir)
                     if (popResult.ok) {
                         context.log.info("stash pop ok (recovered after branch-not-found: $msg)")
+                        nextState = nextState.withoutStash(target.path)
                     } else {
                         context.log.warn("[fail] stash pop also failed: ${popResult.diagnostic()}")
                         failures[target.path] = "branch not found + stash pop failed"
@@ -115,8 +117,9 @@ class CheckoutStep(
             }
             context.log.info("checkout ok")
             if (isMain) mainCheckoutOk = true
-            context.state.markCheckoutSuccessful(target.path)
+            nextState = nextState.withSuccessfulCheckout(target.path)
         }
-        return if (failures.isEmpty()) StepResult.Success else StepResult.Partial(failures)
+        val result = if (failures.isEmpty()) StepResult.Success else StepResult.Partial(failures)
+        return StepExecution(result, nextState)
     }
 }

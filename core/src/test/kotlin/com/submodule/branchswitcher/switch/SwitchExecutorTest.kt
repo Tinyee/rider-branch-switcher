@@ -360,17 +360,17 @@ class SwitchExecutorTest {
         }
         val first = object : SwitchStep {
             override val name = "first"
-            override fun execute(context: SwitchContext): StepResult {
+            override fun execute(context: SwitchContext, state: SwitchState): StepExecution {
                 executed += name
                 cancelled = true
-                return StepResult.Success
+                return StepExecution(StepResult.Success, state)
             }
         }
         val second = object : SwitchStep {
             override val name = "second"
-            override fun execute(context: SwitchContext): StepResult {
+            override fun execute(context: SwitchContext, state: SwitchState): StepExecution {
                 executed += name
-                return StepResult.Success
+                return StepExecution(StepResult.Success, state)
             }
         }
         val executor = SwitchExecutor(

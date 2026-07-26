@@ -42,6 +42,11 @@ class SwitchStepTest {
     private fun context(opts: SwitchOptions = SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false)) =
         SwitchContext(projectRoot, Preset("test", "dev"), opts, fakeGit, createStringAppender { log += it })
 
+    private fun SwitchStep.run(
+        context: SwitchContext,
+        state: SwitchState = SwitchState(),
+    ): StepExecution = execute(context, state)
+
     @Before
     fun setup() {
         log.clear()
@@ -67,9 +72,10 @@ class SwitchStepTest {
         }
         val c = context().copy(git = sameGit)
         val step = CheckoutStep()
-        assertTrue(step.execute(c) is StepResult.Success)
+        val execution = step.run(c)
+        assertTrue(execution.result is StepResult.Success)
         assertTrue(log.any { it.contains("already on") })
-        assertTrue(c.state.checkoutSucceeded("."))
+        assertTrue(execution.state.checkoutSucceeded("."))
     }
 
     @Test
@@ -80,7 +86,7 @@ class SwitchStepTest {
         }
         val c = context().copy(git = missingGit)
         val step = CheckoutStep()
-        assertTrue(step.execute(c) is StepResult.Partial)
+        assertTrue(step.run(c).result is StepResult.Partial)
     }
 
     @Test
@@ -91,7 +97,7 @@ class SwitchStepTest {
         }
         val c = context().copy(git = remoteOnlyGit)
         val step = CheckoutStep()
-        assertTrue(step.execute(c) is StepResult.Success)
+        assertTrue(step.run(c).result is StepResult.Success)
         assertTrue(log.any { it.contains("local branch missing") })
     }
 
@@ -105,11 +111,12 @@ class SwitchStepTest {
             }
         }
         val c = context().copy(git = trackingGit)
-        c.state.markSkipped(".")
+        val state = SwitchState().withSkipped(".")
 
-        assertTrue(CheckoutStep().execute(c) is StepResult.Success)
+        val execution = CheckoutStep().run(c, state)
+        assertTrue(execution.result is StepResult.Success)
         assertEquals(0, checkoutCalls)
-        assertFalse(c.state.checkoutSucceeded("."))
+        assertFalse(execution.state.checkoutSucceeded("."))
     }
 
     @Test
@@ -120,8 +127,9 @@ class SwitchStepTest {
         }
         val c = context().copy(git = failingGit)
 
-        assertTrue(CheckoutStep().execute(c) is StepResult.Partial)
-        assertFalse(c.state.checkoutSucceeded("."))
+        val execution = CheckoutStep().run(c)
+        assertTrue(execution.result is StepResult.Partial)
+        assertFalse(execution.state.checkoutSucceeded("."))
     }
 
     @Test
@@ -136,11 +144,12 @@ class SwitchStepTest {
             }
         }
         val c = context().copy(git = missingGit)
-        c.state.trackStash(".", "before -> dev")
+        val state = SwitchState().withTrackedStash(".", "before -> dev")
 
-        assertTrue(CheckoutStep().execute(c) is StepResult.Partial)
+        val execution = CheckoutStep().run(c, state)
+        assertTrue(execution.result is StepResult.Partial)
         assertEquals(1, popCalls)
-        assertFalse(c.state.stashesSnapshot().containsKey("."))
+        assertFalse(execution.state.stashesSnapshot().containsKey("."))
     }
 
     // ---- DirtyHandlingStep ----
@@ -149,7 +158,7 @@ class SwitchStepTest {
     fun `dirty step skip clean repo`() {
         val c = context()
         val step = DirtyHandlingStep()
-        assertTrue(step.execute(c) is StepResult.Success)
+        assertTrue(step.run(c).result is StepResult.Success)
     }
 
     @Test
@@ -159,7 +168,7 @@ class SwitchStepTest {
         }
         val c = context(SwitchOptions(DirtyAction.Stash)).copy(git = dirtyGit)
         val step = DirtyHandlingStep()
-        assertTrue(step.execute(c) is StepResult.Success)
+        assertTrue(step.run(c).result is StepResult.Success)
         assertTrue(log.any { it.contains("stash: ok") })
     }
 
@@ -170,8 +179,11 @@ class SwitchStepTest {
         }
         val c = context(SwitchOptions(DirtyAction.Skip)).copy(git = dirtyGit)
         val step = DirtyHandlingStep()
-        assertTrue(step.execute(c) is StepResult.Partial)
-        assertTrue(c.state.isSkipped("."))
+        val initialState = SwitchState()
+        val execution = step.run(c, initialState)
+        assertTrue(execution.result is StepResult.Partial)
+        assertTrue(execution.state.isSkipped("."))
+        assertFalse(initialState.isSkipped("."))
     }
 
     @Test
@@ -183,9 +195,10 @@ class SwitchStepTest {
         }
         val c = context(SwitchOptions(DirtyAction.Stash)).copy(git = dirtyGit)
 
-        assertTrue(DirtyHandlingStep().execute(c) is StepResult.Partial)
-        assertTrue(c.state.isSkipped("."))
-        assertTrue(!c.state.hasStashes())
+        val execution = DirtyHandlingStep().run(c)
+        assertTrue(execution.result is StepResult.Partial)
+        assertTrue(execution.state.isSkipped("."))
+        assertFalse(execution.state.hasStashes())
     }
 
     // ---- FetchStep ----
@@ -194,7 +207,7 @@ class SwitchStepTest {
     fun `fetch step skip when option disabled`() {
         val c = context(SwitchOptions(DirtyAction.Stash, fetchFirst = false))
         val step = FetchStep()
-        assertTrue(step.execute(c) is StepResult.Success)
+        assertTrue(step.run(c).result is StepResult.Success)
     }
 
     @Test
@@ -209,7 +222,7 @@ class SwitchStepTest {
         }
         val c = context(SwitchOptions(DirtyAction.Stash, fetchFirst = true)).copy(git = alreadyGit)
         val step = FetchStep()
-        assertTrue(step.execute(c) is StepResult.Success)
+        assertTrue(step.run(c).result is StepResult.Success)
         assertEquals(1, fetchCalls)
     }
 
@@ -217,7 +230,7 @@ class SwitchStepTest {
     fun `fetch step performs fetch when needed`() {
         val c = context(SwitchOptions(DirtyAction.Stash, fetchFirst = true))
         val step = FetchStep()
-        assertTrue(step.execute(c) is StepResult.Success)
+        assertTrue(step.run(c).result is StepResult.Success)
     }
 
     // ---- PullStep ----
@@ -226,7 +239,7 @@ class SwitchStepTest {
     fun `pull step skip when option disabled`() {
         val c = context(SwitchOptions(DirtyAction.Stash, pull = false))
         val step = PullStep()
-        assertTrue(step.execute(c) is StepResult.Success)
+        assertTrue(step.run(c).result is StepResult.Success)
     }
 
     @Test
@@ -237,7 +250,7 @@ class SwitchStepTest {
         val noPullPreset = Preset("test", "dev", emptyMap())
         val c = context(SwitchOptions(DirtyAction.Stash, pull = false)).copy(git = noPullGit, preset = noPullPreset)
         val step = PullStep()
-        assertTrue(step.execute(c) is StepResult.Success) // options.pull = false -> skip
+        assertTrue(step.run(c).result is StepResult.Success) // options.pull = false -> skip
     }
 
     @Test
@@ -252,9 +265,9 @@ class SwitchStepTest {
         }
         val pullPreset = Preset("test", "dev", emptyMap())
         val c = context(SwitchOptions(DirtyAction.Stash, pull = true)).copy(git = pullGit, preset = pullPreset)
-        c.state.markCheckoutSuccessful(".")
+        val state = SwitchState().withSuccessfulCheckout(".")
         val step = PullStep()
-        assertTrue(step.execute(c) is StepResult.Success)
+        assertTrue(step.run(c, state).result is StepResult.Success)
         assertEquals(listOf("dev"), calls)
     }
 
@@ -271,7 +284,7 @@ class SwitchStepTest {
         val pullPreset = Preset("test", "dev", emptyMap())
         val c = context(SwitchOptions(DirtyAction.Stash, pull = true)).copy(git = pullGit, preset = pullPreset)
 
-        assertTrue(PullStep().execute(c) is StepResult.Success)
+        assertTrue(PullStep().run(c).result is StepResult.Success)
         assertEquals(0, pullCalls)
     }
 
@@ -285,11 +298,12 @@ class SwitchStepTest {
             }
         }
         val c = context(SwitchOptions(DirtyAction.Stash, pull = false)).copy(git = popGit)
-        c.state.trackStash(".", "before -> dev")
+        val state = SwitchState().withTrackedStash(".", "before -> dev")
 
-        assertTrue(PullStep().execute(c) is StepResult.Success)
+        val execution = PullStep().run(c, state)
+        assertTrue(execution.result is StepResult.Success)
         assertEquals(1, popCalls)
-        assertTrue(!c.state.hasStashes())
+        assertFalse(execution.state.hasStashes())
     }
 
     @Test
@@ -299,12 +313,12 @@ class SwitchStepTest {
                 GitResult("pop", 1, "", "conflict")
         }
         val c = context(SwitchOptions(DirtyAction.Stash, pull = false)).copy(git = popGit)
-        c.state.trackStash(".", "before -> dev")
+        val state = SwitchState().withTrackedStash(".", "before -> dev")
 
-        val result = PullStep().execute(c)
+        val execution = PullStep().run(c, state)
 
-        assertTrue(result is StepResult.Partial)
-        assertTrue(c.state.hasStashes())
+        assertTrue(execution.result is StepResult.Partial)
+        assertTrue(execution.state.hasStashes())
     }
 
     @Test
@@ -322,16 +336,19 @@ class SwitchStepTest {
             git = popGit,
             preset = Preset("test", "dev", mapOf("SubA" to "dev")),
         )
-        c.state.trackStash(".", "before -> dev")
-        c.state.trackStash("SubA", "before -> dev")
+        val initialState = SwitchState()
+            .withTrackedStash(".", "before -> dev")
+            .withTrackedStash("SubA", "before -> dev")
 
-        assertTrue(PullStep(SwitchTargetScope.MAIN).execute(c) is StepResult.Success)
+        val mainExecution = PullStep(SwitchTargetScope.MAIN).run(c, initialState)
+        assertTrue(mainExecution.result is StepResult.Success)
         assertEquals(listOf("."), popped)
-        assertEquals(setOf("SubA"), c.state.stashesSnapshot().keys)
+        assertEquals(setOf("SubA"), mainExecution.state.stashesSnapshot().keys)
 
-        assertTrue(PullStep(SwitchTargetScope.SUBMODULES).execute(c) is StepResult.Success)
+        val submoduleExecution = PullStep(SwitchTargetScope.SUBMODULES).run(c, mainExecution.state)
+        assertTrue(submoduleExecution.result is StepResult.Success)
         assertEquals(listOf(".", "SubA"), popped)
-        assertFalse(c.state.hasStashes())
+        assertFalse(submoduleExecution.state.hasStashes())
     }
 
     @Test
@@ -357,9 +374,9 @@ class SwitchStepTest {
     @Test
     fun `submodule sync step always runs`() {
         val c = context()
-        c.state.markCheckoutSuccessful(".")
+        val state = SwitchState().withSuccessfulCheckout(".")
         val step = SubmoduleSyncStep()
-        assertTrue(step.execute(c) is StepResult.Success)
+        assertTrue(step.run(c, state).result is StepResult.Success)
     }
 
     @Test
@@ -368,10 +385,10 @@ class SwitchStepTest {
             override fun submoduleSync(gitRoot: File): GitResult = GitResult("sync", 1, "", "error")
         }
         val c = context().copy(git = failGit)
-        c.state.markCheckoutSuccessful(".")
+        val state = SwitchState().withSuccessfulCheckout(".")
         val step = SubmoduleSyncStep()
         // SubmoduleSyncStep now returns Partial on failure, consistent with FetchStep/PullStep
-        assertTrue(step.execute(c) is StepResult.Partial)
+        assertTrue(step.run(c, state).result is StepResult.Partial)
     }
 
     @Test
@@ -385,7 +402,7 @@ class SwitchStepTest {
         }
         val c = context().copy(git = trackingGit)
 
-        assertTrue(SubmoduleSyncStep().execute(c) is StepResult.Partial)
+        assertTrue(SubmoduleSyncStep().run(c).result is StepResult.Partial)
         assertEquals(0, syncCalls)
     }
 

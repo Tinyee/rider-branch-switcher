@@ -101,8 +101,11 @@ class SwitchRunner(
         }
 
         if (execution?.cancelled == true) cancelled = true
-        if (cancelled && execution != null) {
-            recovery = recoverCancelledSwitch(execution, log)
+        val cancelledExecution = execution
+        if (cancelled && cancelledExecution != null) {
+            val recovered = recoverCancelledSwitch(cancelledExecution, log)
+            execution = recovered.first
+            recovery = recovered.second
         }
 
         return SwitchRunResult(cancelled = cancelled, execution = execution, recovery = recovery)
@@ -112,16 +115,19 @@ class SwitchRunner(
     private fun recoverCancelledSwitch(
         execution: SwitchExecutionResult,
         log: AppLogger,
-    ): SwitchRecoveryResult {
+    ): Pair<SwitchExecutionResult, SwitchRecoveryResult> {
         gitClient.beginOperation()
         return try {
             val executor = SwitchExecutor(root, log, gitClient)
             val rollbackOk = execution.checkpoint.isNullOrEmpty() || executor.rollback(execution)
-            val stashFailures = executor.restoreTrackedStashes(execution)
-            SwitchRecoveryResult(rollbackOk, stashFailures)
+            val restore = executor.restoreTrackedStashes(execution)
+            execution.copy(state = restore.state) to SwitchRecoveryResult(rollbackOk, restore.failures)
         } catch (e: RuntimeException) {
             log.error("cancel recovery: ${e.javaClass.simpleName}: ${e.message}")
-            SwitchRecoveryResult(rollbackOk = false, stashFailures = mapOf("." to "recovery exception"))
+            execution to SwitchRecoveryResult(
+                rollbackOk = false,
+                stashFailures = mapOf("." to "recovery exception"),
+            )
         } finally {
             gitClient.endOperation()
         }
