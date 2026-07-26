@@ -98,7 +98,8 @@ class SwitchFlowCoordinator(
         onFinished: (() -> Unit)? = null,
     ) {
         val preset = request.preset
-        if (!service.tryStartWrite()) {
+        val writeLease = service.tryAcquireWrite()
+        if (writeLease == null) {
             uiLater {
                 Notifier.warn(project, Bundle.msg("notify.write.busy"), Bundle.msg("notify.write.busy.msg"))
                 onFinished?.invoke()
@@ -147,14 +148,15 @@ class SwitchFlowCoordinator(
                     refreshVcsRepos(project, root, preset.submodules.keys)
                 }
             } finally {
-                service.endWrite()
+                writeLease.close()
             }
         }
     }
 
     @Suppress("TooGenericExceptionCaught")
     private fun rollbackSwitch(root: Path, execution: SwitchExecutionResult, log: AppLogger) {
-        if (!service.tryStartWrite()) {
+        val writeLease = service.tryAcquireWrite()
+        if (writeLease == null) {
             uiLater { Notifier.warn(project, Bundle.msg("notify.write.busy"), Bundle.msg("notify.write.busy.msg")) }
             return
         }
@@ -190,7 +192,7 @@ class SwitchFlowCoordinator(
                 }
             } finally {
                 operation.close()
-                service.endWrite()
+                writeLease.close()
             }
         }
     }

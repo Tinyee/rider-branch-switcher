@@ -37,24 +37,30 @@ class BranchSwitcherServiceTest {
     // ── Write gate ───────────────────────────────────────────────────
 
     @Test
-    fun `tryStartWrite returns true once then false until released`() {
-        assertTrue("first acquisition should succeed", service.tryStartWrite())
-        assertFalse("second acquisition should fail (gate held)", service.tryStartWrite())
-        assertFalse("third acquisition should still fail", service.tryStartWrite())
+    fun `write lease can be acquired only once until released`() {
+        val lease = service.tryAcquireWrite()
+        assertNotNull("first acquisition should succeed", lease)
+        assertNull("second acquisition should fail while held", service.tryAcquireWrite())
+        assertNull("third acquisition should still fail", service.tryAcquireWrite())
+        lease?.close()
     }
 
     @Test
-    fun `endWrite releases gate allowing next tryStartWrite`() {
-        service.tryStartWrite()
-        service.endWrite()
-        assertTrue("should re-acquire after release", service.tryStartWrite())
+    fun `closing write lease allows reacquisition`() {
+        service.tryAcquireWrite()?.close()
+        assertNotNull("should re-acquire after release", service.tryAcquireWrite())
     }
 
     @Test
-    fun `endWrite is idempotent`() {
-        service.endWrite()
-        service.endWrite()
-        assertTrue("gate should be free after idempotent endWrite", service.tryStartWrite())
+    fun `old write lease cannot release a newly acquired lease`() {
+        val oldLease = requireNotNull(service.tryAcquireWrite())
+        oldLease.close()
+        val newLease = requireNotNull(service.tryAcquireWrite())
+
+        oldLease.close()
+
+        assertNull("new lease must remain held", service.tryAcquireWrite())
+        newLease.close()
     }
 
     // ── Detect generation (stale-detection) ──────────────────────────
@@ -206,7 +212,7 @@ class BranchSwitcherServiceTest {
     // downgrading AtomicBoolean/AtomicLong to plain Boolean/Long.
 
     @Test
-    fun `concurrent tryStartWrite grants exactly one winner`() {
+    fun `concurrent write acquisition grants exactly one winner`() {
         val threads = 8
         val pool = Executors.newFixedThreadPool(threads)
         val latch = CountDownLatch(1)
@@ -214,18 +220,18 @@ class BranchSwitcherServiceTest {
 
         try {
             val futures = (0 until threads).map {
-                pool.submit<Boolean> {
+                pool.submit<BranchSwitcherService.WriteLease?> {
                     latch.await()
-                    service.tryStartWrite()
+                    service.tryAcquireWrite()
                 }
             }
             latch.countDown() // release all threads simultaneously
 
-            for (f in futures) {
-                if (f.get(5, TimeUnit.SECONDS)) winners.incrementAndGet()
-            }
+            val leases = futures.map { it.get(5, TimeUnit.SECONDS) }
+            leases.filterNotNull().forEach { winners.incrementAndGet() }
 
             assertEquals("exactly one thread should acquire the gate", 1, winners.get())
+            leases.filterNotNull().forEach { it.close() }
         } finally {
             pool.shutdownNow()
         }

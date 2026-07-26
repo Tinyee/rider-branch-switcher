@@ -4,10 +4,11 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 class BrokenWriteGate {
     private val gate = AtomicBoolean(false)
-    fun tryStartWrite() = gate.compareAndSet(false, true)
+    fun tryAcquireWrite() =
+        if (gate.compareAndSet(false, true)) AutoCloseable { gate.set(false) } else null
 
     fun doWork() {
-        tryStartWrite()
+        val writeLease = tryAcquireWrite()
         // no cleanup call present
     }
 }

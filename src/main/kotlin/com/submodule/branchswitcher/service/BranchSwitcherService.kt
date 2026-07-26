@@ -43,11 +43,21 @@ class BranchSwitcherService(
     /** Prevents overlapping write operations (switch, derive, rollback). */
     private val writeGate = AtomicBoolean(false)
 
-    /** Returns true if a write operation can start (locks the gate). */
-    fun tryStartWrite(): Boolean = writeGate.compareAndSet(false, true)
+    class WriteLease internal constructor(
+        private val gate: AtomicBoolean,
+    ) : AutoCloseable {
+        private val closed = AtomicBoolean(false)
 
-    /** Releases the write gate. Must be called in finally. */
-    fun endWrite() { writeGate.set(false) }
+        override fun close() {
+            if (closed.compareAndSet(false, true)) {
+                gate.set(false)
+            }
+        }
+    }
+
+    /** Acquires the write gate, returning an idempotent scoped lease on success. */
+    fun tryAcquireWrite(): WriteLease? =
+        if (writeGate.compareAndSet(false, true)) WriteLease(writeGate) else null
 
     override fun dispose() {
         // Platform manages injected [cs] lifecycle; nothing else to clean up.
