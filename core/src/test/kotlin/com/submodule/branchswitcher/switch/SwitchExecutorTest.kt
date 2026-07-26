@@ -44,6 +44,9 @@ class SwitchExecutorTest {
     private val projectRoot = java.nio.file.Files.createTempDirectory("test-executor")
     private val preset = Preset("test", "dev", emptyMap())
 
+    private fun recovery(git: GitClient = fakeGit) =
+        SwitchRecoveryExecutor(projectRoot, createStringAppender { log += it }, git)
+
     @Before
     fun setup() {
         log.clear()
@@ -202,7 +205,7 @@ class SwitchExecutorTest {
             preset,
             SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false),
         ).copy(checkpoint = null)
-        assertFalse("Rollback without checkpoint should return false", executor.rollback(result))
+        assertFalse("Rollback without checkpoint should return false", recovery().rollback(result))
     }
 
     @Test
@@ -241,7 +244,7 @@ class SwitchExecutorTest {
         checkoutCalls.clear()
         // Now branch = "dev", checkpoint has branch = "main" (recorded before switch)
         // Rollback should checkout "main"
-        executor.rollback(result)
+        recovery(trackGit).rollback(result)
         assertTrue("Should call checkout for main branch, got: $checkoutCalls", "main" in checkoutCalls)
     }
 
@@ -267,7 +270,7 @@ class SwitchExecutorTest {
             SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false),
         )
 
-        assertTrue(executor.rollback(result))
+        assertTrue(recovery(rollbackGit).rollback(result))
         assertEquals(listOf("main", "abc123"), rollbackCalls)
     }
 
@@ -290,7 +293,7 @@ class SwitchExecutorTest {
             SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false),
         )
 
-        assertFalse(executor.rollback(result))
+        assertFalse(recovery(rollbackGit).rollback(result))
         assertTrue(log.any { it.contains("SHA checkout also failed") })
     }
 
@@ -313,7 +316,7 @@ class SwitchExecutorTest {
         )
         checkoutCalls.clear()
 
-        assertTrue(executor.rollback(result))
+        assertTrue(recovery(detachedGit).rollback(result))
         assertEquals(listOf("abc123"), checkoutCalls)
     }
 
@@ -342,7 +345,7 @@ class SwitchExecutorTest {
             SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false),
         )
 
-        assertFalse(executor.rollback(result))
+        assertFalse(recovery(partialGit).rollback(result))
         assertTrue(rollbackCalls.contains("SubB" to "main"))
     }
 
@@ -540,7 +543,7 @@ class SwitchExecutorTest {
         )
         // Delete the .git dir to simulate missing repo
         File(projectRoot.toFile(), ".git").deleteRecursively()
-        val result = executor.rollback(execution)
+        val result = recovery(skipGit).rollback(execution)
         assertFalse("Rollback cannot report success when a repo was not restored", result)
     }
 
@@ -553,7 +556,7 @@ class SwitchExecutorTest {
         )
         // fakeGit.currentBranch returns "main", checkpoint also has "main"
         // Rollback should skip without calling checkout
-        val result = executor.rollback(execution)
+        val result = recovery().rollback(execution)
         assertTrue("Rollback should succeed when already on checkpoint branch", result)
     }
 

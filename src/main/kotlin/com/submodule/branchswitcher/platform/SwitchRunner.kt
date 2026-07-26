@@ -9,6 +9,7 @@ import com.submodule.branchswitcher.log.AppLogger
 import com.submodule.branchswitcher.model.ResolvedSwitchRequest
 import com.submodule.branchswitcher.switch.SwitchExecutionResult
 import com.submodule.branchswitcher.switch.SwitchExecutor
+import com.submodule.branchswitcher.switch.SwitchRecoveryExecutor
 import java.nio.file.Path
 
 data class SwitchRunResult(
@@ -116,9 +117,9 @@ class SwitchRunner(
     ): Pair<SwitchExecutionResult, SwitchRecoveryResult> {
         val operation = gitClient.openOperation()
         return try {
-            val executor = SwitchExecutor(root, log, operation)
-            val rollbackOk = execution.checkpoint.isNullOrEmpty() || executor.rollback(execution)
-            val restore = executor.restoreTrackedStashes(execution)
+            val recovery = SwitchRecoveryExecutor(root, log, operation)
+            val rollbackOk = execution.checkpoint.isNullOrEmpty() || recovery.rollback(execution)
+            val restore = recovery.restoreTrackedStashes(execution)
             execution.copy(state = restore.state) to SwitchRecoveryResult(rollbackOk, restore.failures)
         } catch (e: RuntimeException) {
             log.error("cancel recovery: ${e.javaClass.simpleName}: ${e.message}")

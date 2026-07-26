@@ -11,6 +11,7 @@ import com.submodule.branchswitcher.model.SwitchOptions
 import com.submodule.branchswitcher.switch.SwitchExecutor
 import com.submodule.branchswitcher.switch.StepResult
 import com.submodule.branchswitcher.switch.SwitchContext
+import com.submodule.branchswitcher.switch.SwitchRecoveryExecutor
 import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Test
@@ -223,7 +224,7 @@ class AppLoggerTest {
             SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false),
         )
         logCollector.clear()
-        executor.rollback(result)
+        SwitchRecoveryExecutor(projectRoot, createStringAppender { logCollector += it }, okGit).rollback(result)
         assertTrue("Rollback start should be ACTIVITY (bare), got: $logCollector",
             logCollector.any { it.startsWith("=== rolling back to pre-switch state ===") })
     }
