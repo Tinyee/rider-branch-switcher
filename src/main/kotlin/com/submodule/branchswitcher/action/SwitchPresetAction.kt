@@ -12,6 +12,7 @@ import com.submodule.branchswitcher.Notifier
 import com.submodule.branchswitcher.log.AppLogger
 import com.submodule.branchswitcher.log.LogEntry
 import com.submodule.branchswitcher.model.Preset
+import com.submodule.branchswitcher.platform.gitRootPath
 import com.submodule.branchswitcher.service.BranchSwitcherService
 import com.submodule.branchswitcher.ui.invokeLaterIfAlive
 import com.submodule.branchswitcher.ui.ShortcutPresetLoadDecision
@@ -59,7 +60,10 @@ class SwitchPresetAction : AnAction() {
     }
 
     private fun executeSwitch(project: Project, service: BranchSwitcherService, preset: Preset) {
-        val root = project.basePath?.let { java.nio.file.Paths.get(it) } ?: return
+        val root = project.gitRootPath() ?: run {
+            Notifier.error(project, Bundle.msg("plugin.title"), Bundle.msg("git.root.not.found"))
+            return
+        }
         val collector = actionLogger(project)
         val coordinator = SwitchFlowCoordinator(project, service)
         service.scope.launch(Dispatchers.Default) {

@@ -17,6 +17,7 @@ import com.submodule.branchswitcher.log.AppLogger
 import com.submodule.branchswitcher.log.LogEntry
 import com.submodule.branchswitcher.log.ToolWindowLogger
 import com.submodule.branchswitcher.model.Preset
+import com.submodule.branchswitcher.platform.gitRootPath
 import com.submodule.branchswitcher.service.BranchSwitcherService
 import com.submodule.branchswitcher.settings.BranchSwitcherConfigurable
 import kotlinx.coroutines.CancellationException
@@ -26,7 +27,6 @@ import java.awt.Dimension
 import java.awt.FlowLayout
 import java.awt.Font
 import java.nio.file.Path
-import java.nio.file.Paths
 import javax.swing.BorderFactory
 import javax.swing.Box
 import javax.swing.BoxLayout
@@ -313,23 +313,14 @@ class BranchSwitcherPanel(
         // Alarm and listeners are registered as children of this panel.
     }
 
-    private fun ideBase(): Path? = project.basePath?.let { Paths.get(it) }
-
     private fun gitRoot(): Path? {
-        val base = ideBase() ?: return null
-        var cur: Path? = base
-        while (cur != null) {
-            val dotGit = cur.resolve(".git")
-            if (java.nio.file.Files.exists(dotGit)) {
-                if (!java.nio.file.Files.isDirectory(dotGit) && !worktreeInfoLogged) {
-                    worktreeInfoLogged = true
-                    logger.debug("[info] detected git worktree — .git is a file, not a directory")
-                }
-                return cur
-            }
-            cur = cur.parent
+        val root = project.gitRootPath() ?: return null
+        val dotGit = root.resolve(".git")
+        if (!java.nio.file.Files.isDirectory(dotGit) && !worktreeInfoLogged) {
+            worktreeInfoLogged = true
+            logger.debug("[info] detected git worktree — .git is a file, not a directory")
         }
-        return base
+        return root
     }
 
     /**
