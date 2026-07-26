@@ -4,7 +4,6 @@ import java.io.File
 import java.nio.charset.StandardCharsets
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
-import java.util.concurrent.atomic.AtomicInteger
 import java.util.logging.Logger
 
 fun selectRemoteName(remotes: List<String>): String = when {
@@ -19,16 +18,15 @@ fun safeTimeoutMillis(timeoutSeconds: Int): Int = timeoutSeconds.coerceIn(1, 360
  * CLI-based [GitClient] implementation using [ProcessBuilder] with cancellable polling.
  * All git commands inherit [timeoutSeconds] (default 60s).
  *
- * Cancellation remains active from [cancel] until [endOperation]. This ensures
- * commands reached after cancellation fail before spawning another process.
+ * Each [openOperation] call receives an isolated cancellation token. Commands
+ * reached after cancellation fail before spawning another process.
  */
 class GitOps(
     private val timeoutSeconds: Int = 60,
     private val processStarter: (ProcessBuilder) -> Process = { it.start() },
 ) : GitClient {
 
-    private val operationCancelled = AtomicBoolean(false)
-    private val activeOperations = AtomicInteger(0)
+    private val directCancellation = AtomicBoolean(false)
     private val sessionCancellation = ThreadLocal<AtomicBoolean?>()
 
     companion object {
@@ -42,20 +40,7 @@ class GitOps(
         } catch (_: Exception) { false }
     }
 
-    override fun beginOperation() {
-        if (activeOperations.incrementAndGet() == 1) {
-            operationCancelled.set(false)
-        }
-    }
-
-    override fun cancel() = operationCancelled.set(true)
-
-    override fun endOperation() {
-        val remaining = activeOperations.updateAndGet { count -> (count - 1).coerceAtLeast(0) }
-        if (remaining == 0) {
-            operationCancelled.set(false)
-        }
-    }
+    override fun cancel() = directCancellation.set(true)
 
     override fun openOperation(): GitOperationSession = OperationSession()
 
@@ -118,7 +103,7 @@ class GitOps(
     /** Executes `git [args]` in [workDir], polling for cancellation and timeout every 100ms. */
     private fun run(workDir: File, vararg args: String): GitResult {
         val cmdLabel = "git ${args.joinToString(" ")}"
-        val cancellation = sessionCancellation.get() ?: operationCancelled
+        val cancellation = sessionCancellation.get() ?: directCancellation
         if (cancellation.get()) {
             return GitResult(cmdLabel, -1, "", "cancelled")
         }

@@ -1,7 +1,6 @@
 package com.submodule.branchswitcher.git
 
 import java.io.File
-import java.util.concurrent.atomic.AtomicBoolean
 
 /** Result of a git CLI command. [ok] is true when exitCode == 0. */
 data class GitResult(
@@ -109,13 +108,6 @@ interface GitCancellation {
     fun cancel() {}
 }
 
-interface GitOperationLifecycle : GitCancellation {
-    /** Starts a cancellable multi-command operation and clears stale cancellation state. */
-    fun beginOperation() {}
-    /** Ends the active cancellable operation and clears its cancellation state. */
-    fun endOperation() {}
-}
-
 /** All workflow capabilities exposed by a concrete Git implementation or operation session. */
 interface GitWorkflowClient :
     SwitchGitClient,
@@ -130,18 +122,13 @@ interface GitOperationProvider {
     fun openOperation(): GitOperationSession
 }
 
-private class LegacyGitOperationSession(
+private class DelegatingGitOperationSession(
     private val client: GitClient,
 ) : GitOperationSession, GitWorkflowClient by client {
-    private val closed = AtomicBoolean(false)
 
     override fun cancel() = client.cancel()
 
-    override fun close() {
-        if (closed.compareAndSet(false, true)) {
-            client.endOperation()
-        }
-    }
+    override fun close() = Unit
 }
 
 /**
@@ -160,14 +147,12 @@ private class LegacyGitOperationSession(
  */
 interface GitClient :
     GitWorkflowClient,
-    GitOperationLifecycle,
     GitOperationProvider {
     /**
      * Compatibility adapter for test doubles and alternate implementations.
      * [GitOps] overrides this with a cancellation-isolated session.
      */
     override fun openOperation(): GitOperationSession {
-        beginOperation()
-        return LegacyGitOperationSession(this)
+        return DelegatingGitOperationSession(this)
     }
 }
