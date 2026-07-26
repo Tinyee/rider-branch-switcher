@@ -23,7 +23,7 @@
 - **动态远端名**：自动检测 remote 名，不再硬编码 origin
 - IntelliJ 原生图标（AllIcons），主题感知色
 - i18n 中英双语（DynamicBundle + @PropertyKey 编译时校验）
-- 297 测试 / 28 个测试类（153 个 core pure JVM + 144 个平台/集成；含 4 个 Kotest 属性测试，不含 benchmark）
+- 296 测试 / 28 个测试类（153 个 core pure JVM + 143 个平台/集成；含 4 个 Kotest 属性测试，不含 benchmark）
 - GitHub Actions CI（ubuntu/macOS/Windows）+ Detekt 静态分析
 
 下面按「切换体验 / 状态可视化 / UI / 工作流 / 质量」五块梳理后续要做的功能点，优先级 **P0(致命) / P1(高价值) / P2(锦上添花)**；状态列标记 v0.x 已落地或下阶段候选。
@@ -170,8 +170,9 @@
    之间多次变更签名，Rider 不同版本可能不可用。而 `Task.Backgroundable` 自 2015 年至今
    接口未变。
 
-3. **封装隔离已完成** — 6 个调用方只看到 `suspend fun runModal/runBackground`，
-   底层实现完全透明。将来新 API 稳定后，只需改 `TaskBridge.kt` 一个文件。
+3. **封装隔离已完成** — 后台 Git 调用统一经过 `GitBackgroundRunner`，只有该适配器
+   直接使用 `TaskBridge.runBackground`；modal 调用仍只依赖 suspend 封装。
+   将来新 API 稳定后，只需调整平台适配层。
 
 4. **风险收益不匹配** — 改为不稳定 API 需要重新验证所有 93 个测试、手动测试进度对话框
    行为、处理 Rider 不同版本的兼容性，收益仅为去掉一个内部实现细节。
@@ -344,15 +345,15 @@ com.submodule.branchswitcher/
 
 ### 当前状态
 
-- ✅ 297 测试，28 个测试类：`./gradlew :core:test` 跑 153 个 core 纯 JVM 测试，`./gradlew :test` 跑 144 个平台/集成测试
-- ✅ `GitClient` 接口 + Fake 实现 → 架构已隔离 IntelliJ 运行时
+- ✅ 296 测试，28 个测试类：`./gradlew :core:test` 跑 153 个 core 纯 JVM 测试，`./gradlew :test` 跑 143 个平台/集成测试
+- ✅ Git 能力按 switch / derive / preset discovery / preflight 工作流拆分，`GitClient` 仅作为聚合实现边界
 - ✅ 真实 git 临时仓库集成测试（`SwitchIntegrationTest`）
 - ✅ 50 目标仓库 Switch/Preflight Git 调用预算测试（`LargeRepoScalabilityTest`，counting fake）
 - ✅ 大仓真实耗时基准（`./gradlew benchmark`，独立 Gradle task，51 个独立 git 仓库真实 GitOps wall-clock）
 - ✅ GitHub Actions CI（ubuntu/macOS/Windows）+ Detekt + quickCheck + checkQuickCheck + verifyPlugin
-- ✅ `quickCheck`：8 条结构性检查 + `checkQuickCheck` 自测（6 fixture）
+- ✅ `quickCheck`：8 条结构性检查 + `checkQuickCheck` 自测（7 fixture）
 - ⚠ 已覆盖 UI 规则与 Swing 几何约束，尚无 Rider fixture / 截图测试
-- ✅ `TaskBridge.runBackground` 生命周期已覆盖（`TaskBridgeLifecycleTest`，9 用例）
+- ✅ `TaskBridge.runBackground` 生命周期已覆盖（`TaskBridgeLifecycleTest`，10 用例）
 
 ### 推荐方案（按投入排序）
 
