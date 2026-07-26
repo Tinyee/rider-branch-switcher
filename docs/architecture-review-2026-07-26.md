@@ -32,6 +32,19 @@ The architecture remains appropriate for the plugin's size. The pure `core` modu
 - This is fail-safe and transient; the UI uses later refreshes/reloads, so it is not a data-integrity risk.
 - Revisit only if users report branch lists or state indicators intermittently clearing during cancellation. The future design would use a separate read-only Git client or a scoped operation token.
 
+## Follow-up Fixes
+
+### ARCH-04 - VERIFIED - shortcut preset load failure was ignored
+
+- Evidence: `SwitchPresetAction` invoked `loadPresets()` then immediately read the cached list without checking the `Result`.
+- Risk: a read failure could be presented as an empty preset list, or allow a stale cached list to be used.
+- Resolution: the shortcut now shows the existing preset-load error notification and returns before selection when loading fails.
+
+### ARCH-05 - VERIFIED - diagnostic formatting was incomplete on edge write paths
+
+- Evidence: rollback, stash, and single-submodule switch failures still logged raw or first-line stderr after `GitResult.diagnostic()` had been introduced.
+- Resolution: all remaining write-failure logs now use the bounded diagnostic, including failure kind, command, and exit code.
+
 ## Review Rounds
 
 1. Module dependency direction: PASS.
@@ -45,5 +58,6 @@ The architecture remains appropriate for the plugin's size. The pure `core` modu
 ## Validation
 
 - `./gradlew compileKotlin detekt --rerun-tasks --max-workers=2 --no-parallel`: PASS.
+- `./gradlew :core:test test :core:detekt detekt --rerun-tasks --max-workers=2 --no-parallel`: PASS (288 tests).
 - `./gradlew quickCheck --max-workers=1 --no-parallel`: PASS.
 - `git diff --check`: PASS.

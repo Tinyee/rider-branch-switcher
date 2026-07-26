@@ -152,7 +152,7 @@ class PresetListManager(
                             Bundle.msg("notify.switch.only.complete", path, target))
                     }
                     result != null -> {
-                        log.warn("[switch] $path failed: ${result!!.stderr.lines().firstOrNull().orEmpty()}")
+                        log.warn("[switch] $path failed: ${result!!.diagnostic()}")
                         Notifier.warn(project, Bundle.msg("switch.failed"),
                             Bundle.msg("notify.switch.only.failed", path, target))
                     }

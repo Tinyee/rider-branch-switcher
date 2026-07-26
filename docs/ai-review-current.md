@@ -7,6 +7,7 @@
 - Result: `ACCEPTED` - all P1/P2 findings are verified; one P3 preview-diagnostic enhancement is deferred
 - Follow-up: the local-only statistics feature was fully removed; source, persisted fields, UI, i18n, tests, and active docs were checked with no new finding.
 - Architecture follow-up (2026-07-26): `ARCH-01` was fixed by removing an unreachable duplicate rollback path; `ARCH-02` and `ARCH-03` are accepted P3 observations in `docs/architecture-review-2026-07-26.md`.
+- Second-pass follow-up (2026-07-26): `ARCH-04` blocks shortcut switching when preset loading fails; `ARCH-05` completes structured Git diagnostics on rollback, stash, and single-submodule paths.
 
 ## Active Findings
 
@@ -26,6 +27,7 @@
 - `LOG-02` — VERIFIED: the shortcut action emits structured log entries through `BranchSwitchListener`, and the ToolWindow renders them in its existing log panel.
 - `LOG-03` — VERIFIED: current-state detection catches and logs non-cancellation failures per repository, then continues probing the remaining paths.
 - `LOG-05` / `LOG-06` — VERIFIED: `GitResult` classifies cancellation, timeout, startup, and Git failures; bounded diagnostics include the command and exit code, and core switch/derive failure logs use them.
+- `ARCH-04` / `ARCH-05` — VERIFIED: shortcut preset loading fails closed, and every remaining write-failure log uses the shared Git diagnostic format.
 
 - Main ToolWindow switch flow logs preset name, step boundaries, repo paths, skipped/partial/fatal results, and final success/error state.
 - `GitOps` captures command label, exit code, stdout, stderr, timeout, and cancellation in `GitResult`.
