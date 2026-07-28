@@ -4,7 +4,6 @@ import com.submodule.branchswitcher.git.SwitchPreflightGitClient
 import com.submodule.branchswitcher.model.PreflightRow
 import com.submodule.branchswitcher.model.Preset
 import com.submodule.branchswitcher.model.RepoTarget
-import java.io.File
 import java.nio.file.Path
 
 /**

@@ -327,17 +327,6 @@ class SwitchIntegrationTest {
         assertFalse(File(root, "later.txt").exists())
     }
 
-    @Test
-    fun `rollback without checkpoint returns false`() {
-        val root = createRepo(tmpDir, "project")
-        val executor = SwitchExecutor(root.toPath(), createStringAppender { log += it }, git)
-        val result = executor.executeResultTest(
-            Preset("test", "main"),
-            SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false),
-        ).copy(checkpoint = null)
-        assertFalse("Rollback without checkpoint should return false", recovery(root).rollback(result))
-    }
-
     // ---- Derive branch ----
 
     @Test

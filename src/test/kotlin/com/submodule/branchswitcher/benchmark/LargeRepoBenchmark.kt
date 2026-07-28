@@ -38,26 +38,21 @@ class LargeRepoBenchmark {
         private lateinit var tmpDir: Path
         private lateinit var git: GitOps
 
-        // Timings collected during setup, printed in the test
-        private var setupTimingMs: Long = -1
-
         @BeforeClass
         @JvmStatic
         fun setUp() {
-            setupTimingMs = measureTimeMillis {
-                tmpDir = Files.createTempDirectory("benchmark-")
-                val root = tmpDir.toFile()
-                root.mkdirs()
-                git = GitOps(timeoutSeconds = 60)
+            tmpDir = Files.createTempDirectory("benchmark-")
+            val root = tmpDir.toFile()
+            root.mkdirs()
+            git = GitOps(timeoutSeconds = 60)
 
-                // Main repo
-                createRepoWithSecondBranch(root, ".", "main", "dev")
+            // Main repo
+            createRepoWithSecondBranch(root, ".", "main", "dev")
 
-                // Target repos (independent repos, not git-submodule registered)
-                for (i in 1..targetRepoCount) {
-                    val subDir = root.resolve("sub-$i")
-                    createRepoWithSecondBranch(root, subDir.name, "main", "dev")
-                }
+            // Target repos (independent repos, not git-submodule registered)
+            for (i in 1..targetRepoCount) {
+                val subDir = root.resolve("sub-$i")
+                createRepoWithSecondBranch(root, subDir.name, "main", "dev")
             }
         }
 
@@ -177,17 +172,4 @@ class LargeRepoBenchmark {
         println("╚══════════════════════╝")
     }
 
-    @Test
-    fun `benchmark summary`() {
-        // Prints the combined summary. Individual timing values are printed by the tests above.
-        // (JUnit4 does not guarantee execution order; alphabetical happens to work here.)
-        println("╔══ Large-repo benchmark summary ══╗")
-        println("║ target repos:  $targetRepoCount (independent git repos, no .gitmodules)")
-        println("║ git backend:    real GitOps")
-        println("║ setup time:     ${formatMs(setupTimingMs)}")
-        println("║ machine:        ${Runtime.getRuntime().availableProcessors()} cores")
-        println("║ max memory:     ${Runtime.getRuntime().maxMemory() / (1024 * 1024)} MB")
-        println("╚══════════════════════════════════╝")
-    }
-
-    }
+}

@@ -1,7 +1,9 @@
 package com.submodule.branchswitcher.workflow
 
+import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.progress.ProgressIndicator
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.ui.Messages
 import com.submodule.branchswitcher.Bundle
 import com.submodule.branchswitcher.TaskBridge
 import com.submodule.branchswitcher.git.GitOperationProvider
@@ -16,6 +18,7 @@ import com.submodule.branchswitcher.switch.SwitchExecutionResult
 import com.submodule.branchswitcher.switch.SwitchExecutor
 import com.submodule.branchswitcher.switch.SwitchRecoveryExecutor
 import java.nio.file.Path
+import java.util.concurrent.atomic.AtomicInteger
 
 data class SwitchRunResult(
     val cancelled: Boolean,
@@ -32,6 +35,16 @@ data class SwitchRecoveryResult(
     val ok: Boolean get() = rollbackOk && stashFailures.isEmpty()
 }
 
+private data class BackgroundSwitchOutcome(
+    val cancelled: Boolean,
+    val execution: SwitchExecutionResult?,
+)
+
+private data class CancelledSwitchRecovery(
+    val execution: SwitchExecutionResult,
+    val recovery: SwitchRecoveryResult,
+)
+
 /**
  * Shared execution path for all switch entry points.
  *
@@ -44,6 +57,13 @@ class SwitchRunner(
     private val gitClient: GitOperationProvider,
     private val taskRunner: TaskBridge.TaskRunner = TaskBridge.TaskRunner.DEFAULT,
 ) {
+    /**
+     * Runs one resolved switch request inside the shared background lifecycle.
+     *
+     * [beforeExecute] may stop before mutation, for example when a shortcut
+     * confirmation is declined. Cancellation after mutation triggers a fresh
+     * Git session for rollback and pending stash restoration.
+     */
     suspend fun execute(
         title: String,
         request: ResolvedSwitchRequest,
@@ -51,10 +71,6 @@ class SwitchRunner(
         progress: (ProgressIndicator) -> ProgressIndicator = { it },
         beforeExecute: (ProgressIndicator) -> Boolean = { true },
     ): SwitchRunResult {
-        var cancelled = false
-        var execution: SwitchExecutionResult? = null
-        var recovery: SwitchRecoveryResult? = null
-
         val backgroundResult = GitBackgroundRunner(project, gitClient, taskRunner).run(
             title,
             task@{ indicator, operation ->
@@ -65,18 +81,6 @@ class SwitchRunner(
                 val wrapped = progress(indicator)
                 val cancelHandle = ProgressCancellationHandle(wrapped)
                 val progHandle = ProgressIndicatorHandle(wrapped)
-                val initConfirm: ((String) -> Boolean)? = { path ->
-                    val result = java.util.concurrent.atomic.AtomicInteger(com.intellij.openapi.ui.Messages.NO)
-                    com.intellij.openapi.application.ApplicationManager.getApplication()
-                        .invokeAndWait {
-                            result.set(com.intellij.openapi.ui.Messages.showYesNoDialog(
-                                Bundle.msg("dialog.init.submodule", path),
-                                Bundle.msg("dialog.init.title"),
-                                com.intellij.openapi.ui.Messages.getQuestionIcon(),
-                            ))
-                        }
-                    result.get() == com.intellij.openapi.ui.Messages.YES
-                }
                 SwitchExecutor(
                     root,
                     log,
@@ -84,55 +88,87 @@ class SwitchRunner(
                     cancelHandle,
                     progHandle,
                     cancellationClassifier = platformCancellationClassifier,
-                    onConfirmSubmoduleInit = initConfirm,
+                    onConfirmSubmoduleInit = ::confirmSubmoduleInitialization,
                 ).execute(request)
             },
         )
-        when (backgroundResult) {
-            is GitBackgroundResult.Completed -> {
-                execution = backgroundResult.value
-                if (execution == null) cancelled = true
-            }
-            is GitBackgroundResult.Cancelled -> {
-                execution = backgroundResult.value
-                log.info("[cancelled] switch cancelled by user")
-                cancelled = true
-            }
-            is GitBackgroundResult.Failed -> {
-                val error = backgroundResult.error
-                log.error("switch: ${error.javaClass.simpleName}: ${error.message}")
-            }
-        }
 
-        if (execution?.cancelled == true) cancelled = true
-        val cancelledExecution = execution
-        if (cancelled && cancelledExecution != null) {
-            val recovered = recoverCancelledSwitch(cancelledExecution, log)
-            execution = recovered.first
-            recovery = recovered.second
+        val backgroundOutcome = interpretBackgroundResult(backgroundResult, log)
+        var cancelled = backgroundOutcome.cancelled
+        var execution = backgroundOutcome.execution
+        var recovery: SwitchRecoveryResult? = null
+
+        if (execution?.cancelled == true) {
+            cancelled = true
+        }
+        if (cancelled && execution != null) {
+            val cancelledRecovery = recoverCancelledSwitch(execution, log)
+            execution = cancelledRecovery.execution
+            recovery = cancelledRecovery.recovery
         }
 
         return SwitchRunResult(cancelled = cancelled, execution = execution, recovery = recovery)
+    }
+
+    private fun interpretBackgroundResult(
+        result: GitBackgroundResult<SwitchExecutionResult?>,
+        log: AppLogger,
+    ): BackgroundSwitchOutcome {
+        return when (result) {
+            is GitBackgroundResult.Completed -> BackgroundSwitchOutcome(
+                cancelled = result.value == null,
+                execution = result.value,
+            )
+            is GitBackgroundResult.Cancelled -> {
+                log.info("[cancelled] switch cancelled by user")
+                BackgroundSwitchOutcome(cancelled = true, execution = result.value)
+            }
+            is GitBackgroundResult.Failed -> {
+                val error = result.error
+                log.error("switch: ${error.javaClass.simpleName}: ${error.message}")
+                BackgroundSwitchOutcome(cancelled = false, execution = null)
+            }
+        }
+    }
+
+    private fun confirmSubmoduleInitialization(path: String): Boolean {
+        val answer = AtomicInteger(Messages.NO)
+        ApplicationManager.getApplication().invokeAndWait {
+            answer.set(
+                Messages.showYesNoDialog(
+                    Bundle.msg("dialog.init.submodule", path),
+                    Bundle.msg("dialog.init.title"),
+                    Messages.getQuestionIcon(),
+                ),
+            )
+        }
+        return answer.get() == Messages.YES
     }
 
     @Suppress("TooGenericExceptionCaught") // cancellation recovery must return a report instead of escaping
     private fun recoverCancelledSwitch(
         execution: SwitchExecutionResult,
         log: AppLogger,
-    ): Pair<SwitchExecutionResult, SwitchRecoveryResult> {
+    ): CancelledSwitchRecovery {
         val operation = gitClient.openOperation()
         return try {
             val recovery = SwitchRecoveryExecutor(root, log, operation)
             val outcome = recovery.recover(execution)
-            execution.copy(state = outcome.stashRestore.state) to SwitchRecoveryResult(
-                outcome.rollbackOk,
-                outcome.stashRestore.failures,
+            CancelledSwitchRecovery(
+                execution = execution.copy(state = outcome.stashRestore.state),
+                recovery = SwitchRecoveryResult(
+                    rollbackOk = outcome.rollbackOk,
+                    stashFailures = outcome.stashRestore.failures,
+                ),
             )
         } catch (e: RuntimeException) {
             log.error("cancel recovery: ${e.javaClass.simpleName}: ${e.message}")
-            execution to SwitchRecoveryResult(
-                rollbackOk = false,
-                stashFailures = mapOf("." to "recovery exception"),
+            CancelledSwitchRecovery(
+                execution = execution,
+                recovery = SwitchRecoveryResult(
+                    rollbackOk = false,
+                    stashFailures = mapOf("." to "recovery exception"),
+                ),
             )
         } finally {
             operation.close()

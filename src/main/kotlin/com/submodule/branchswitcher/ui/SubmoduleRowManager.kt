@@ -19,8 +19,6 @@ import java.awt.event.MouseEvent
 import java.io.File
 import java.nio.file.Path
 import javax.swing.Box
-import javax.swing.BoxLayout
-import javax.swing.DefaultComboBoxModel
 import javax.swing.JButton
 import javax.swing.JComboBox
 import javax.swing.JLabel
@@ -163,7 +161,10 @@ class SubmoduleRowManager(
         val dir = gitRoot.resolve(path).toFile()
         if (!dir.exists()) {
             row.combo.selectedItem = ""
-            if (loadedOnce) { row.loaded = true; loadComboBranches(row.combo, dir, "") }
+            if (loadedOnce) {
+                row.loaded = true
+                loadComboBranches(row.combo, dir, "")
+            }
             onDirty()
         } else {
             row.combo.selectedItem = "loading..."
@@ -189,17 +190,17 @@ class SubmoduleRowManager(
 
     /** Syncs subRows to match [preset]'s submodule map. Restores rows and adds new ones. */
     fun applyPresetToUI(preset: Preset) {
-        val orphan = mutableListOf<String>()
+        val removedPaths = mutableListOf<String>()
         subRows.values.forEach { row ->
             if (preset.submodules.containsKey(row.path)) {
                 row.deleted = false
                 row.panel.isVisible = true
                 row.combo.selectedItem = preset.submodules[row.path]
             } else {
-                orphan += row.path
+                removedPaths += row.path
             }
         }
-        orphan.forEach { path ->
+        removedPaths.forEach { path ->
             val row = subRows.remove(path) ?: return@forEach
             body.remove(row.panel)
         }
@@ -210,7 +211,12 @@ class SubmoduleRowManager(
     /** Removes deleted rows from [body] and [subRows]. */
     fun removeDeletedRows() {
         subRows.entries.removeAll { (_, row) ->
-            if (row.deleted) { body.remove(row.panel); true } else false
+            if (row.deleted) {
+                body.remove(row.panel)
+                true
+            } else {
+                false
+            }
         }
     }
 
@@ -232,7 +238,10 @@ class SubmoduleRowManager(
     private fun loadComboBranches(combo: JComboBox<String>, dir: File, current: String) {
         loadComboBranches(combo, dir, current, gitClient, scope, log,
             onLoadStart = { loadingCount++ },
-            onLoadEnd = { loadingCount--; onDirty() },
+            onLoadEnd = {
+                loadingCount--
+                onDirty()
+            },
         )
     }
 

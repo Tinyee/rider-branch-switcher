@@ -7,16 +7,8 @@ import com.submodule.branchswitcher.Bundle
 import com.submodule.branchswitcher.Notifier
 import com.submodule.branchswitcher.PresetLoader
 import com.submodule.branchswitcher.model.Preset
-import com.submodule.branchswitcher.model.PresetFile
 import com.submodule.branchswitcher.log.AppLogger
 import com.submodule.branchswitcher.service.BranchSwitcherService
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import java.awt.datatransfer.Clipboard
-import java.awt.datatransfer.DataFlavor
-import java.awt.datatransfer.StringSelection
-import java.awt.datatransfer.UnsupportedFlavorException
-import java.io.File
 import java.nio.file.Path
 
 internal interface PresetCollectionHost {
@@ -39,6 +31,23 @@ internal class PresetCollectionActions(
     private val log: AppLogger,
     private val host: PresetCollectionHost,
 ) {
+    private val transferActions = PresetTransferActions(
+        project = project,
+        gitRoot = gitRoot,
+        log = log,
+        host = host,
+        persist = ::persistOrReport,
+    )
+    private val currentStatePresetCreator = CurrentStatePresetCreator(
+        project = project,
+        service = service,
+        gitRoot = gitRoot,
+        log = log,
+        host = host,
+        persist = ::persistOrReport,
+        nameValidator = ::newNameValidator,
+    )
+
     /** Load presets from file and rebuild the editor list. */
     fun reload() {
         host.clearEditors()
@@ -124,54 +133,7 @@ internal class PresetCollectionActions(
     }
 
     fun addPresetFromCurrent() {
-        val root = gitRoot() ?: return
-        service.scope.launch(Dispatchers.Default) {
-            val result = probeCurrentState(root) ?: return@launch
-            project.invokeLaterIfAlive {
-                val mainBranch = result.mainBranch
-                if (mainBranch.isNullOrEmpty()) {
-                    Messages.showWarningDialog(
-                        project,
-                        Bundle.msg("dialog.detached.head"),
-                        Bundle.msg("plugin.title"),
-                    )
-                    return@invokeLaterIfAlive
-                }
-                if (result.skipped.isNotEmpty()) {
-                    val details = result.skipped.joinToString("\n") { "- $it" }
-                    log.warn("[from current] incomplete preset blocked: ${result.skipped.joinToString(", ")}")
-                    Messages.showWarningDialog(
-                        project,
-                        Bundle.msg("dialog.from.current.incomplete", details),
-                        Bundle.msg("dialog.from.current"),
-                    )
-                    return@invokeLaterIfAlive
-                }
-                val name = Messages.showInputDialog(
-                    project,
-                    Bundle.msg("dialog.preset.name.rule"),
-                    Bundle.msg("dialog.from.current"),
-                    null,
-                    mainBranch,
-                    newNameValidator(),
-                )?.trim()
-                if (name.isNullOrEmpty()) return@invokeLaterIfAlive
-                val newPreset = Preset(
-                    name = name,
-                    main = mainBranch,
-                    submodules = result.submodules,
-                )
-                if (!persistOrReport(host.editors.map { it.currentPreset() } + newPreset)) {
-                    return@invokeLaterIfAlive
-                }
-                host.addEditor(root, newPreset)
-                host.refreshParent()
-                log.debug(
-                    "[added from current] $name -> 主仓=$mainBranch, ${result.submodules.size} 个子模块",
-                )
-                host.notifyStateChanged()
-            }
-        }
+        currentStatePresetCreator.create()
     }
 
     fun openConfig() {
@@ -192,118 +154,12 @@ internal class PresetCollectionActions(
         }
     }
 
-    @Suppress("TooGenericExceptionCaught") // Gson and the system clipboard expose unrelated failure types
     fun exportPresets() {
-        try {
-            val gson = com.google.gson.GsonBuilder().setPrettyPrinting().create()
-            val json = gson.toJson(PresetFile(host.editors.map { it.currentPreset() }))
-            val clipboard = java.awt.Toolkit.getDefaultToolkit().systemClipboard
-            clipboard.setContents(StringSelection(json), null)
-            log.debug("[exported] ${host.editors.size} preset(s) 已复制到剪贴板")
-            Notifier.info(
-                project,
-                Bundle.msg("notify.export.complete"),
-                Bundle.msg("notify.exported", host.editors.size),
-            )
-        } catch (e: Exception) {
-            log.error("[export] failed: ${e.message}")
-            Notifier.error(
-                project,
-                Bundle.msg("notify.export.complete"),
-                "${Bundle.msg("dialog.import.failed")}: ${e.message}",
-            )
-        }
+        transferActions.exportPresets()
     }
 
-    @Suppress("TooGenericExceptionCaught") // clipboard, parsing, persistence, and UI adapters share this boundary
     fun importPresets() {
-        try {
-            val clipboard = java.awt.Toolkit.getDefaultToolkit().systemClipboard
-            val text = clipboardTextOrNull(clipboard)
-            if (text.isNullOrBlank()) {
-                Messages.showInfoMessage(project, Bundle.msg("dialog.import.empty"), Bundle.msg("dialog.import"))
-                return
-            }
-            val result = parsePresetImport(text, host.editors.map { it.currentPreset().name }.toSet())
-            if (result.presets.isEmpty()) {
-                val message = if (result.hasRecognizedEntries) {
-                    Bundle.msg("dialog.import.none", result.conflictingNames.size, result.invalidNames.size)
-                } else {
-                    Bundle.msg("dialog.import.invalid")
-                }
-                Messages.showWarningDialog(project, message, Bundle.msg("dialog.import"))
-                return
-            }
-            if (result.invalidNames.isNotEmpty()) {
-                log.debug("[import] skipped ${result.invalidNames.size} invalid: ${result.invalidNames.joinToString(", ")}")
-            }
-            if (result.conflictingNames.isNotEmpty()) {
-                log.debug(
-                    "[import] skipped ${result.conflictingNames.size} conflicts: " +
-                        result.conflictingNames.joinToString(", "),
-                )
-            }
-            val root = gitRoot() ?: return
-            val combined = host.editors.map { it.currentPreset() } + result.presets
-            if (!persistOrReport(combined)) return
-            result.presets.forEach { host.addEditor(root, it) }
-            host.refreshParent()
-            log.debug("[imported] ${result.presets.size} preset(s) from clipboard")
-            host.notifyStateChanged()
-            Notifier.info(
-                project,
-                Bundle.msg("notify.import.complete"),
-                Bundle.msg("notify.imported", result.presets.size),
-            )
-        } catch (e: Exception) {
-            log.error("[import] error: ${e.message}")
-            Messages.showWarningDialog(
-                project,
-                "${Bundle.msg("dialog.import.failed")}: ${e.message}",
-                Bundle.msg("dialog.import"),
-            )
-        }
-    }
-
-    @Suppress("TooGenericExceptionCaught") // modal and Git adapters must report non-cancellation failures uniformly
-    private suspend fun probeCurrentState(root: Path): CurrentStateProbeResult? {
-        return try {
-            com.submodule.branchswitcher.TaskBridge.runModal(
-                project,
-                Bundle.msg("progress.read.current"),
-                false,
-            ) { indicator ->
-                indicator.isIndeterminate = true
-                indicator.text = Bundle.msg("progress.main.repo")
-                val rootFile = root.toFile()
-                val mainBranch = service.gitClient.currentBranch(rootFile)
-                val submodules = LinkedHashMap<String, String>()
-                val skipped = mutableListOf<String>()
-                service.gitClient.listSubmodulePaths(rootFile).forEach { path ->
-                    indicator.text = path
-                    val dir = root.resolve(path).toFile()
-                    if (!dir.exists() || (!dir.resolve(".git").exists() && !File(dir, ".git").isFile)) {
-                        skipped += "$path (${Bundle.msg("status.tooltip.not.init")})"
-                        return@forEach
-                    }
-                    val branch = service.gitClient.currentBranch(dir)
-                    if (branch.isNullOrEmpty()) {
-                        skipped += "$path (detached)"
-                        return@forEach
-                    }
-                    submodules[path] = branch
-                }
-                CurrentStateProbeResult(mainBranch, submodules, skipped)
-            }
-        } catch (_: kotlinx.coroutines.CancellationException) {
-            null
-        } catch (_: com.intellij.openapi.progress.ProcessCanceledException) {
-            null
-        } catch (e: Exception) {
-            log.error("probe current state failed: ${e.javaClass.simpleName}: ${e.message}")
-            Notifier.warn(project, Bundle.msg("plugin.title"), "${e.javaClass.simpleName}: ${e.message}")
-            null
-        }
+        transferActions.importPresets()
     }
 
     private fun newNameValidator(): InputValidator = object : InputValidator {
@@ -334,19 +190,4 @@ internal class PresetCollectionActions(
         )
     }
 
-    private data class CurrentStateProbeResult(
-        val mainBranch: String?,
-        val submodules: LinkedHashMap<String, String>,
-        val skipped: List<String>,
-    )
-}
-
-internal fun clipboardTextOrNull(clipboard: Clipboard): String? {
-    if (!clipboard.isDataFlavorAvailable(DataFlavor.stringFlavor)) return null
-    return try {
-        clipboard.getData(DataFlavor.stringFlavor) as? String
-    } catch (_: UnsupportedFlavorException) {
-        // Clipboard contents can change between the availability check and the read.
-        null
-    }
 }

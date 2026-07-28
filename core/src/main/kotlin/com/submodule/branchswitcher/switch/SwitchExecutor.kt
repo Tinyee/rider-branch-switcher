@@ -17,6 +17,12 @@ enum class SwitchExecutionStatus {
     CANCELLED,
 }
 
+/**
+ * Complete observable outcome of a switch pipeline.
+ *
+ * [checkpoint] describes the state before mutation. [state] describes side
+ * effects that actually completed and is used for pending stash recovery.
+ */
 data class SwitchExecutionResult(
     val status: SwitchExecutionStatus,
     val checkpoint: Map<String, CheckpointEntry>?,

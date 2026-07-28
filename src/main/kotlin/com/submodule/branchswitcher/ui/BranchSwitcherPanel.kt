@@ -16,7 +16,6 @@ import com.submodule.branchswitcher.Bundle
 import com.submodule.branchswitcher.log.AppLogger
 import com.submodule.branchswitcher.log.LogEntry
 import com.submodule.branchswitcher.log.ToolWindowLogger
-import com.submodule.branchswitcher.model.Preset
 import com.submodule.branchswitcher.platform.gitRootPath
 import com.submodule.branchswitcher.service.BranchSwitcherService
 import com.submodule.branchswitcher.workflow.RepositoryStateDetector
@@ -24,7 +23,6 @@ import com.submodule.branchswitcher.settings.BranchSwitcherConfigurable
 import kotlinx.coroutines.launch
 import java.awt.BorderLayout
 import java.awt.Dimension
-import java.awt.FlowLayout
 import java.awt.Font
 import java.nio.file.Path
 import javax.swing.BorderFactory
@@ -78,8 +76,10 @@ class BranchSwitcherPanel(
         init { layout = BoxLayout(this, BoxLayout.Y_AXIS) }
         override fun getPreferredSize(): Dimension {
             val pref = super.getPreferredSize()
-            val p = parent
-            if (p is javax.swing.JViewport) pref.height = maxOf(pref.height, p.height)
+            val viewport = parent
+            if (viewport is javax.swing.JViewport) {
+                pref.height = maxOf(pref.height, viewport.height)
+            }
             return pref
         }
     }.apply {
@@ -327,31 +327,37 @@ class BranchSwitcherPanel(
     /** Probes all editor paths in the background, then applies the latest snapshot. */
     private fun detectCurrentState() {
         val root = gitRoot() ?: return
-        val eds = presetManager.editors
-        val paths = LinkedHashSet<String>().apply { add(".") }
-        eds.forEach { paths.addAll(it.currentPreset().submodules.keys) }
-        val request = stateDetector.begin(root, paths)
-        val pinnedEditors = eds.toList()
+        val currentEditors = presetManager.editors
+        val repositoryPaths = LinkedHashSet<String>().apply { add(".") }
+        currentEditors.forEach {
+            repositoryPaths.addAll(it.currentPreset().submodules.keys)
+        }
+        val request = stateDetector.begin(root, repositoryPaths)
+        val pinnedEditors = currentEditors.toList()
         service.scope.launch {
             val snapshot = stateDetector.detect(request)
             com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater {
                 if (!stateDetector.isLatest(snapshot)) return@invokeLater
                 pinnedEditors.forEach { editor ->
-                    if (editor in eds) {
+                    if (editor in currentEditors) {
                         editor.applyCurrentState(snapshot.branches, snapshot.dirtyRepositories)
                     }
                 }
                 presetsInner.revalidate()
                 presetsInner.repaint()
-                logDetected(eds.toList(), snapshot.branches, snapshot.dirtyRepositories)
+                logDetected(currentEditors.toList(), snapshot.branches, snapshot.dirtyRepositories)
             }
         }
     }
 
-    private fun logDetected(eds: List<PresetEditor>, branches: Map<String, String?>, dirtyRepos: Map<String, Boolean>) {
+    private fun logDetected(
+        editors: List<PresetEditor>,
+        branches: Map<String, String?>,
+        dirtyRepos: Map<String, Boolean>,
+    ) {
         val main = branches["."] ?: "(detached)"
         val mainDirty = dirtyRepos["."] == true
-        val matched = eds.firstOrNull { it.matchesState(branches) }?.currentPreset()?.name
+        val matched = editors.firstOrNull { it.matchesState(branches) }?.currentPreset()?.name
         currentBranchLabel.text = "${Bundle.msg("label.main.branch")} $main"
         if (mainDirty) {
             currentBranchLabel.text += " · ${Bundle.msg("status.tooltip.dirty")}"

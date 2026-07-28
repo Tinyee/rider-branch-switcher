@@ -113,8 +113,12 @@ class BranchSwitcherServiceTest {
     // ── Settings getters/setters ─────────────────────────────────────
 
     @Test
-    fun `dirtyAction defaults to Stash`() {
+    fun `settings use expected defaults`() {
         assertEquals(DirtyAction.Stash, service.dirtyAction)
+        assertTrue(service.fetchFirst)
+        assertTrue(service.pullAfterSwitch)
+        assertEquals(60, service.timeoutSeconds)
+        assertFalse(service.confirmBeforeInit)
     }
 
     @Test
@@ -126,18 +130,6 @@ class BranchSwitcherServiceTest {
         service.dirtyAction = DirtyAction.Stash
         assertEquals(DirtyAction.Stash, service.dirtyAction)
     }
-
-    @Test
-    fun `fetchFirst defaults to true`() { assertTrue(service.fetchFirst) }
-
-    @Test
-    fun `pullAfterSwitch defaults to true`() { assertTrue(service.pullAfterSwitch) }
-
-    @Test
-    fun `timeoutSeconds defaults to 60`() { assertEquals(60, service.timeoutSeconds) }
-
-    @Test
-    fun `confirmBeforeInit defaults to false`() { assertFalse(service.confirmBeforeInit) }
 
     @Test
     fun `loadState restores all persisted settings`() {

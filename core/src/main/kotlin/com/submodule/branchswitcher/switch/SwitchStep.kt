@@ -7,6 +7,12 @@ import com.submodule.branchswitcher.model.SwitchOptions
 import com.submodule.branchswitcher.model.isValidSubmodulePath
 import java.nio.file.Path
 
+/**
+ * Control-flow result returned by one pipeline step.
+ *
+ * A partial result records per-repository failures but allows later repositories
+ * and cleanup steps to run. A fatal result stops the whole pipeline.
+ */
 sealed class StepResult {
     /** Step completed successfully, continue pipeline. */
     object Success : StepResult()
@@ -16,7 +22,12 @@ sealed class StepResult {
     data class Partial(val failures: Map<String, String>) : StepResult()
 }
 
-/** Immutable state passed explicitly between switch pipeline steps. */
+/**
+ * Immutable record of side effects completed by earlier pipeline steps.
+ *
+ * Recovery depends on this state after exceptions and cancellation, so a step
+ * must return a new instance immediately after each successful side effect.
+ */
 class SwitchState private constructor(
     private val stashedPaths: Map<String, String>,
     private val skippedPaths: Set<String>,
@@ -47,6 +58,7 @@ class SwitchState private constructor(
     fun hasStashes(): Boolean = stashedPaths.isNotEmpty()
 }
 
+/** The decision and updated state produced by one [SwitchStep]. */
 data class StepExecution(
     val result: StepResult,
     val state: SwitchState,
@@ -63,6 +75,12 @@ internal class SwitchStepException(
     override val cause: RuntimeException,
 ) : RuntimeException(cause)
 
+/**
+ * Stable dependencies and request data shared by all steps in one switch.
+ *
+ * Mutable operation progress belongs in [SwitchState], not in this context.
+ * IntelliJ-specific progress and dialogs enter core through narrow callbacks.
+ */
 data class SwitchContext(
     val projectRoot: Path,
     val preset: Preset,
@@ -80,6 +98,12 @@ data class SwitchContext(
     val onConfirmSubmoduleInit: ((path: String) -> Boolean)? = null,
 )
 
+/**
+ * One ordered stage of a preset switch.
+ *
+ * Implementations may touch several repositories, but must report every
+ * completed state change through [StepExecution.state].
+ */
 interface SwitchStep {
     /** Human-readable name for logging/progress display. */
     val name: String
