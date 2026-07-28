@@ -1,28 +1,31 @@
 # Documentation
 
-## Current
+Each subject has one source of truth. Link to the owning document instead of
+copying version numbers, command matrices, architecture rules, or completed
+work into another file.
 
-- [`ARCHITECTURE.md`](ARCHITECTURE.md): module boundaries, package ownership,
-  switch lifecycle, Git cancellation, and change guidance.
-- [`SETUP.md`](SETUP.md): JDK, platform SDK, local sandbox, validation, and
-  compatibility setup.
-- [`ROADMAP.md`](ROADMAP.md): current status, release priorities, and deferred
-  design work.
-- [`../CONTRIBUTING.md`](../CONTRIBUTING.md): contributor workflow, review
-  expectations, and verification commands.
-- [`encoding-and-line-endings.md`](encoding-and-line-endings.md): repository
-  text-format policy.
+## Current Documents
+
+| Document | Owns |
+| --- | --- |
+| [`../README.md`](../README.md) | User-facing features, installation, quick start, settings, and screenshots |
+| [`../README.zh-CN.md`](../README.zh-CN.md) | Chinese translation of the user README |
+| [`ARCHITECTURE.md`](ARCHITECTURE.md) | Module boundaries, package ownership, switch lifecycle, and change placement |
+| [`SETUP.md`](SETUP.md) | JDK, platform SDK, local sandbox, and compatibility configuration |
+| [`../CONTRIBUTING.md`](../CONTRIBUTING.md) | Contributor workflow, validation matrix, review rules, and commit checklist |
+| [`ROADMAP.md`](ROADMAP.md) | Future priorities and explicit non-goals |
+| [`../CHANGELOG.md`](../CHANGELOG.md) | Versioned delivered changes |
+| [`encoding-and-line-endings.md`](encoding-and-line-endings.md) | Repository text-format policy |
+
+The English and Chinese READMEs intentionally mirror each other. Other current
+documents should summarize another subject only when a reader needs orientation
+and should link to its owner for details.
 
 ## Historical Decisions
 
-- [`review-history.md`](review-history.md): completed code, test, and
-  architecture reviews.
-- [`ui-redesign-plan-2026-06-09.md`](ui-redesign-plan-2026-06-09.md): archived
-  UI redesign proposal and delivered outcome.
-- [`next-steps-2026-06-13.md`](next-steps-2026-06-13.md): archived planning
-  snapshot superseded by the current roadmap.
-- [`design/per-preset-overrides.md`](design/per-preset-overrides.md): rationale
-  for removing per-preset switch-option overrides before public release.
+[`review-history.md`](review-history.md) records durable outcomes from completed
+code, test, architecture, and UI reviews. It explains why decisions were made
+but does not redefine current behavior.
 
-Historical documents explain decisions made at the time. They are not current
-task lists, compatibility claims, or test-count references.
+Superseded plans and detailed review drafts remain available in Git history;
+they are not kept as parallel sources of current project facts.

@@ -31,7 +31,9 @@ flowchart LR
 
 The enforced rule is one-way dependency flow. `core` knows nothing about the
 IDE. `workflow`, `platform`, and `service` do not depend back on UI.
-`quickCheck` verifies the important package boundaries.
+`quickCheck` verifies the important package boundaries; the
+[contributor validation guide](../CONTRIBUTING.md#validation) defines when to
+run broader checks.
 
 ## Package Ownership
 
@@ -126,16 +128,3 @@ Use the narrowest owner for a change:
 Avoid introducing a shared abstraction only to reduce line count. The current
 boundaries are intended to isolate side effects and safety decisions, not to
 eliminate every small duplication.
-
-## Verification
-
-- `./gradlew quickCheck` checks dependency and lifecycle rules.
-- `./gradlew pureTest` runs the pure JVM module.
-- `./gradlew test` runs the full normal suite.
-- `./gradlew :core:test test :core:detekt detekt --max-workers=2 --no-parallel`
-  is the broad pre-commit validation command.
-- `./gradlew releaseCheck` adds plugin build, verifier, metadata, and structural
-  self-tests for release preparation.
-
-Current test totals are maintained in `CONTRIBUTING.md` and `ROADMAP.md`;
-historical totals in review and release records are intentionally not rewritten.

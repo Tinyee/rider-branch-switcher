@@ -51,8 +51,6 @@
   options remain global Settings.
 - Remove the experimental quick-switch text field and local telemetry feature
   before public release.
-- Remove repository-local AI instruction and skill files; durable contributor
-  guidance is consolidated in project documentation.
 
 ### Quality
 

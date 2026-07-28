@@ -59,19 +59,11 @@ For Rider-specific sandbox testing, point `platform.localPath` at Rider or set `
 ## First Run
 
 ```bash
-git config core.hooksPath .githooks
-
-./gradlew quickCheck
 ./gradlew buildPlugin
 ```
 
-The plugin ZIP is written to:
-
-```text
-build/distributions/submodule-branch-switcher-0.7.0.zip
-```
-
-Install it with `Settings | Plugins | Install Plugin from Disk...`.
+This resolves the configured SDK and verifies that the plugin package can be
+built. Installation instructions remain in the project README.
 
 ## Sandbox IDE
 
@@ -81,36 +73,16 @@ Install it with `Settings | Plugins | Install Plugin from Disk...`.
 
 `runIde` launches a sandbox for the configured platform SDK or `platform.localPath`.
 
-## Validation Levels
+## Validation
 
-Use the low-load flow during development:
+Contributor validation commands and the change-to-test matrix live in
+[`../CONTRIBUTING.md`](../CONTRIBUTING.md). This document only owns environment
+and compatibility configuration.
 
-```bash
-./gradlew quickCheck
-./gradlew pureTest --max-workers=1 --no-parallel
-./gradlew :test --tests "<PlatformClassOrMethod>" -x :core:test --max-workers=1 --no-parallel
-./gradlew :core:test --tests "<CoreClassOrMethod>" --max-workers=1 --no-parallel
-```
-
-Use `-x :core:test` for a filtered platform test. Without it, Gradle can pass
-the same `--tests` filter to the core task and fail because that class does not
-exist in `core`.
-
-Before commit or broad architecture changes:
-
-```bash
-./gradlew :core:test test :core:detekt detekt --max-workers=2 --no-parallel
-git diff --check
-```
-
-Before release:
-
-```bash
-./gradlew releaseCheck
-```
-
-`releaseCheck` also runs `verifyPlugin` for the product codes in `plugin.verifier.ideCodes`. Keep that list short during local development to avoid heavy downloads.
-The GitHub Actions matrix still runs tests, build, detekt, quickCheck, and checkQuickCheck on ubuntu/windows/macOS; only `verifyPlugin` is Linux-only because plugin verifier checks binary/API compatibility and does not need to download IDE distributions on every OS.
+`releaseCheck` runs Plugin Verifier for the product codes in
+`plugin.verifier.ideCodes`. Keep that list short during local development to
+avoid heavy downloads. CI runs tests, plugin build, Detekt, and structural
+checks on Ubuntu, Windows, and macOS; Plugin Verifier runs only on Linux.
 
 ## Compatibility Notes
 

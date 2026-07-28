@@ -4,10 +4,6 @@
 
 **Submodule Branch Switcher 是一个 JetBrains IDE 插件，用来一键把主仓库和所有子模块切换到预设的分支组合。**
 
-![version](https://img.shields.io/badge/version-0.7.0-blue)
-![tests](https://img.shields.io/badge/tests-310-green)
-![JetBrains](https://img.shields.io/badge/JetBrains-2026.1-blue)
-
 它适合这类项目：一个主仓库下挂着多个 Git 子模块，日常需要在 `main`、`develop`、发布分支、功能分支之间整组切换。你可以把每组分支保存成 preset，然后在 Tool Window 里直接切换。
 
 preset 是项目内的 JSON 文件。首选位置是 `.idea/branch-presets.json`，也支持项目根目录的
@@ -35,14 +31,9 @@ preset 文件提交到 Git。
 
 ## 支持的 IDE
 
-插件使用 IntelliJ Platform API 和内置 `Git4Idea` 插件。
-
-| IDE 系列 | 状态 | 说明 |
-| --- | --- | --- |
-| IntelliJ IDEA Community | 主要构建目标 | 本地开发和 CI 兼容构建默认使用。 |
-| Rider | 兼容验证目标 | `plugin.verifier.ideCodes=RD` 覆盖；发布前保留 Rider 沙箱手工冒烟。 |
-| IntelliJ IDEA Ultimate | 预期兼容 | 使用同一套 Platform + Git API，但暂未列为主要 verifier 目标。 |
-| PyCharm / WebStorm / CLion | 暂不宣称支持 | 宣传 Marketplace 支持前，需要增加 verifier codes 和手工冒烟证据。 |
+插件使用 IntelliJ Platform API 和内置 `Git4Idea` 插件。IntelliJ IDEA
+Community 是主要构建目标，Rider 是当前兼容验证目标。其他 IDE 系列的支持声明及所需证据见
+[兼容性矩阵](docs/SETUP.md#support-matrix-policy)。
 
 ## 安装
 
@@ -62,7 +53,7 @@ preset 文件提交到 Git。
 输出文件：
 
 ```text
-build/distributions/submodule-branch-switcher-0.7.0.zip
+build/distributions/submodule-branch-switcher-*.zip
 ```
 
 ## 快速开始
