@@ -4,10 +4,6 @@
 
 **JetBrains IDE plugin for switching a main repository and all submodules to a saved branch preset in one click.**
 
-![version](https://img.shields.io/badge/version-0.7.0-blue)
-![tests](https://img.shields.io/badge/tests-310-green)
-![JetBrains](https://img.shields.io/badge/JetBrains-2026.1-blue)
-
 Submodule Branch Switcher is built for teams that keep several related repositories in one Git project and need to move them between known branch combinations, such as `main`, `develop`, release branches, or feature branches.
 
 Presets are project-local JSON. The preferred location is
@@ -36,14 +32,11 @@ configuration cleanup and be shared by the team.
 
 ## Supported IDEs
 
-The plugin uses IntelliJ Platform APIs plus the bundled `Git4Idea` plugin.
-
-| IDE family | Status | Notes |
-| --- | --- | --- |
-| IntelliJ IDEA Community | Primary build target | Default SDK for local development and CI-compatible builds. |
-| Rider | Compatibility target | Covered by `plugin.verifier.ideCodes=RD`; keep manual smoke checks before release. |
-| IntelliJ IDEA Ultimate | Expected compatible | Same platform + Git APIs, but not listed as a primary verifier target yet. |
-| PyCharm / WebStorm / CLion | Not claimed yet | Add verifier codes and manual smoke checks before Marketplace support is advertised. |
+The plugin uses IntelliJ Platform APIs and the bundled `Git4Idea` plugin.
+IntelliJ IDEA Community is the primary build target and Rider is the current
+compatibility target. See the
+[support matrix](docs/SETUP.md#support-matrix-policy) for the evidence required
+before claiming support for another IDE family.
 
 ## Install
 
@@ -63,7 +56,7 @@ Build the ZIP locally:
 The output is written to:
 
 ```text
-build/distributions/submodule-branch-switcher-0.7.0.zip
+build/distributions/submodule-branch-switcher-*.zip
 ```
 
 ## Quick Start
