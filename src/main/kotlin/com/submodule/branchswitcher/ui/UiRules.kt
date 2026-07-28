@@ -2,10 +2,6 @@ package com.submodule.branchswitcher.ui
 
 import com.submodule.branchswitcher.Bundle
 import com.submodule.branchswitcher.model.DirtyAction
-import java.awt.Dimension
-import java.awt.LayoutManager
-import javax.swing.JComponent
-import javax.swing.JPanel
 
 enum class RepoStatusTone {
     NOT_INITIALIZED,

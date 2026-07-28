@@ -13,6 +13,8 @@
   readable branch, preventing incomplete presets.
 - Add focused recovery tests for cancellation, stash restoration, detached
   HEAD, same-branch SHA drift, dirty reset protection, and real Git rollback.
+- Add a Chinese architecture and Kotlin code-reading guide for new
+  contributors.
 
 ### Changed
 
@@ -28,6 +30,12 @@
 - Split reusable workflows for full-preset switching, single-repository
   switching, and repository-state detection from screen-specific UI.
 - Separate preset collection commands from preset list rendering.
+- Split checkout orchestration from missing-submodule initialization and branch
+  selection, and make background result handling explicit.
+- Split derive into explicit preflight, checkpoint, and execution phases, with
+  platform cancellation and rollback owned by `DeriveBranchRunner`.
+- Separate preset clipboard transfer and current-state creation from collection
+  persistence, and clarify the preset editor construction flow.
 - Require JDK 21 for IntelliJ Platform 2026.1 builds and CI.
 
 ### Fixed

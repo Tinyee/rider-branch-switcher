@@ -2,7 +2,6 @@ package com.submodule.branchswitcher
 
 import com.google.gson.Gson
 import com.google.gson.JsonSyntaxException
-import com.submodule.branchswitcher.model.Preset
 import com.submodule.branchswitcher.model.PresetFile
 import com.submodule.branchswitcher.model.PresetFileDto
 import com.submodule.branchswitcher.model.requireValidPreset
@@ -35,13 +34,13 @@ object PresetLoader {
         )
         for (c in direct) if (Files.exists(c)) return c
 
-        var cur: Path? = ideBase.parent
+        var currentDirectory: Path? = ideBase.parent
         var depth = 0
-        while (cur != null && depth < 6) {
-            val candidate = cur.resolve(FILE_NAME)
+        while (currentDirectory != null && depth < 6) {
+            val candidate = currentDirectory.resolve(FILE_NAME)
             if (Files.exists(candidate)) return candidate
-            if (Files.exists(cur.resolve(".git"))) return null
-            cur = cur.parent
+            if (Files.exists(currentDirectory.resolve(".git"))) return null
+            currentDirectory = currentDirectory.parent
             depth++
         }
         return null

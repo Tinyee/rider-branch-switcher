@@ -123,9 +123,14 @@ interface GitWorkflowClient :
     PresetDiscoveryGitClient,
     SwitchPreflightGitClient
 
-/** Isolated cancellable view used for one background operation. */
+/**
+ * Isolated cancellable Git view used by one background operation.
+ *
+ * Closing a session releases its process ownership; callers must not reuse it.
+ */
 interface GitOperationSession : GitWorkflowClient, AutoCloseable
 
+/** Factory boundary that gives each background write its own operation session. */
 interface GitOperationProvider {
     fun openOperation(): GitOperationSession
 }

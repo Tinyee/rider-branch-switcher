@@ -42,6 +42,11 @@ class BranchSwitcherService(
     /** Prevents overlapping write operations (switch, derive, rollback). */
     private val writeGate = AtomicBoolean(false)
 
+    /**
+     * Idempotent ownership token for the project write gate.
+     *
+     * Every successful acquisition must be closed from `finally`.
+     */
     class WriteLease internal constructor(
         private val gate: AtomicBoolean,
     ) : AutoCloseable {

@@ -9,12 +9,10 @@ import com.submodule.branchswitcher.Bundle
 import com.submodule.branchswitcher.model.Preset
 import com.submodule.branchswitcher.service.BranchSwitcherService
 import com.submodule.branchswitcher.platform.refreshVcsRepos
-import com.submodule.branchswitcher.platform.GitBackgroundResult
-import com.submodule.branchswitcher.platform.GitBackgroundRunner
-import com.submodule.branchswitcher.switch.DeriveBranchExecutor
-import com.submodule.branchswitcher.platform.platformCancellationClassifier
 import com.submodule.branchswitcher.switch.DeriveNotification
 import com.submodule.branchswitcher.switch.deriveNotification
+import com.submodule.branchswitcher.workflow.DeriveBranchRunner
+import com.submodule.branchswitcher.workflow.DeriveRunResult
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -70,101 +68,93 @@ class SwitchController(
             return
         }
         service.scope.launch(Dispatchers.Default) {
-            val gitClient = service.gitClient
-            var result: com.submodule.branchswitcher.switch.DeriveResult? = null
-            var cancelled = false
-            var rollbackFailures = emptyList<String>()
-
-            try {
-                when (val background = GitBackgroundRunner(project, gitClient).run(
-                    Bundle.msg("progress.derive", branchName),
-                ) { indicator, operation ->
-                    indicator.isIndeterminate = true
-                    val executor = DeriveBranchExecutor(
-                        root,
-                        log,
-                        operation,
-                        cancelled = { indicator.isCanceled },
-                        classifier = platformCancellationClassifier,
-                    )
-                    result = executor.execute(preset, branchName)
-                    if (!result.allOk && result.succeeded.isNotEmpty()) {
-                        log.activity("[derive] rolling back ${result.succeeded.size} succeeded repo(s)...")
-                        rollbackFailures = executor.rollbackSucceeded(result, branchName)
-                    }
-                }) {
-                    is GitBackgroundResult.Completed -> Unit
-                    is GitBackgroundResult.Cancelled -> {
-                        log.info("[cancelled] derive cancelled by user")
-                        cancelled = true
-                    }
-                    is GitBackgroundResult.Failed -> {
-                        val e = background.error
-                        log.error("derive: ${e.javaClass.simpleName}: ${e.message}")
-                    }
-                }
-
-                val cancelledResult = result
-                if (cancelled && cancelledResult != null && cancelledResult.succeeded.isNotEmpty()) {
-                    val rollbackOperation = gitClient.openOperation()
-                    try {
-                        val executor = DeriveBranchExecutor(
-                            root,
-                            log,
-                            rollbackOperation,
-                            classifier = platformCancellationClassifier,
-                        )
-                        log.activity(
-                            "[derive] rolling back ${cancelledResult.succeeded.size} succeeded repo(s) after cancel..."
-                        )
-                        rollbackFailures = executor.rollbackSucceeded(cancelledResult, branchName)
-                    } catch (e: Exception) {
-                        log.error("derive rollback after cancel: ${e.javaClass.simpleName}: ${e.message}")
-                        rollbackFailures = listOf("(exception)")
-                    } finally {
-                        rollbackOperation.close()
-                    }
-                }
+            val runResult = try {
+                DeriveBranchRunner(project, root, service.gitClient).execute(
+                    title = Bundle.msg("progress.derive", branchName),
+                    preset = preset,
+                    branchName = branchName,
+                    log = log,
+                )
             } finally {
                 writeLease.close()
             }
 
-            val r = result
-            val rfCount = rollbackFailures.size
             invokeLaterIfProjectAlive {
                 onStateChanged()
                 refreshVcs(root, preset)
-                when (val d = deriveNotification(cancelled, r, rfCount, branchName)) {
-                    is DeriveNotification.Success -> {
-                        Notifier.info(project,
-                            Bundle.msg("notify.derive.complete"),
-                            Bundle.msg("notify.derive.created", d.branchName, d.repoCount))
-                    }
-                    is DeriveNotification.Failure -> {
-                        Notifier.warn(project,
-                            Bundle.msg("notify.derive.partial"),
-                            when (d.reason) {
-                                DeriveNotification.Reason.ROLLBACK_FAILED ->
-                                    Bundle.msg("notify.derive.rollback.failed", d.count)
-                                DeriveNotification.Reason.UNEXPECTED ->
-                                    Bundle.msg("notify.derive.unexpected")
-                                DeriveNotification.Reason.PARTIAL ->
-                                    Bundle.msg("notify.derive.partial.msg", d.branchName)
-                            })
-                    }
-                    is DeriveNotification.Blocked -> {
-                        val parts = mutableListOf<String>()
-                        if (d.branchExistsCount > 0) parts.add(Bundle.msg("notify.derive.blocked.exists", d.branchExistsCount))
-                        if (d.skippedCount > 0) parts.add(Bundle.msg("notify.derive.blocked.skipped", d.skippedCount))
-                        if (d.dirtyCount > 0) parts.add(Bundle.msg("notify.derive.blocked.dirty", d.dirtyCount))
-                        if (d.branchMismatchCount > 0) parts.add(Bundle.msg("notify.derive.blocked.mismatch", d.branchMismatchCount))
-                        if (d.preflightErrorCount > 0) parts.add(Bundle.msg("notify.derive.blocked.error", d.preflightErrorCount))
-                        if (d.checkpointFailedCount > 0) parts.add(Bundle.msg("notify.derive.blocked.checkpoint", d.checkpointFailedCount))
-                        Notifier.warn(project, Bundle.msg("notify.derive.blocked"), parts.joinToString("\n"))
-                    }
-                    is DeriveNotification.Silent -> {}
-                }
+                showDeriveNotification(runResult, branchName)
             }
+        }
+    }
+
+    private fun showDeriveNotification(runResult: DeriveRunResult, branchName: String) {
+        val notification = deriveNotification(
+            cancelled = runResult.cancelled,
+            result = runResult.execution,
+            rollbackFailureCount = runResult.rollbackFailures.size,
+            branchName = branchName,
+        )
+        when (notification) {
+            is DeriveNotification.Success -> {
+                Notifier.info(
+                    project,
+                    Bundle.msg("notify.derive.complete"),
+                    Bundle.msg(
+                        "notify.derive.created",
+                        notification.branchName,
+                        notification.repoCount,
+                    ),
+                )
+            }
+            is DeriveNotification.Failure -> {
+                Notifier.warn(
+                    project,
+                    Bundle.msg("notify.derive.partial"),
+                    when (notification.reason) {
+                        DeriveNotification.Reason.ROLLBACK_FAILED ->
+                            Bundle.msg("notify.derive.rollback.failed", notification.count)
+                        DeriveNotification.Reason.UNEXPECTED ->
+                            Bundle.msg("notify.derive.unexpected")
+                        DeriveNotification.Reason.PARTIAL ->
+                            Bundle.msg("notify.derive.partial.msg", notification.branchName)
+                    },
+                )
+            }
+            is DeriveNotification.Blocked -> {
+                val blockedReasons = mutableListOf<String>()
+                if (notification.branchExistsCount > 0) {
+                    blockedReasons.add(
+                        Bundle.msg("notify.derive.blocked.exists", notification.branchExistsCount),
+                    )
+                }
+                if (notification.skippedCount > 0) {
+                    blockedReasons.add(Bundle.msg("notify.derive.blocked.skipped", notification.skippedCount))
+                }
+                if (notification.dirtyCount > 0) {
+                    blockedReasons.add(Bundle.msg("notify.derive.blocked.dirty", notification.dirtyCount))
+                }
+                if (notification.branchMismatchCount > 0) {
+                    blockedReasons.add(
+                        Bundle.msg("notify.derive.blocked.mismatch", notification.branchMismatchCount),
+                    )
+                }
+                if (notification.preflightErrorCount > 0) {
+                    blockedReasons.add(
+                        Bundle.msg("notify.derive.blocked.error", notification.preflightErrorCount),
+                    )
+                }
+                if (notification.checkpointFailedCount > 0) {
+                    blockedReasons.add(
+                        Bundle.msg("notify.derive.blocked.checkpoint", notification.checkpointFailedCount),
+                    )
+                }
+                Notifier.warn(
+                    project,
+                    Bundle.msg("notify.derive.blocked"),
+                    blockedReasons.joinToString("\n"),
+                )
+            }
+            is DeriveNotification.Silent -> Unit
         }
     }
 
@@ -210,8 +200,8 @@ class SwitchController(
     private fun invokeLaterIfProjectAlive(action: () -> Unit) = project.invokeLaterIfAlive(action)
 
     private fun setSwitchInProgress(inProgress: Boolean) {
-        val tw = com.intellij.openapi.wm.ToolWindowManager.getInstance(project)
+        val toolWindow = com.intellij.openapi.wm.ToolWindowManager.getInstance(project)
             .getToolWindow("SubmoduleBranches") ?: return
-        tw.setIcon(if (inProgress) AllIcons.Process.Step_4 else AllIcons.Vcs.Branch)
+        toolWindow.setIcon(if (inProgress) AllIcons.Process.Step_4 else AllIcons.Vcs.Branch)
     }
 }

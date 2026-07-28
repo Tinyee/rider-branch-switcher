@@ -28,9 +28,30 @@ class DeriveBranchExecutor(
     private val classifier: CancellationClassifier = CancellationClassifier.DEFAULT,
 ) {
 
-    @Suppress("TooGenericExceptionCaught")
     fun execute(preset: Preset, branchName: String): DeriveResult {
-        val targets = preset.targets()
+        val preflight = runPreflight(preset.targets(), branchName)
+        if (preflight.cancelled) {
+            return preflight.toDeriveResult(cancelled = true)
+        }
+        if (preflight.hasIssues) {
+            log.warn("[derive] preflight blocked - no repos modified")
+            return preflight.toDeriveResult()
+        }
+
+        val checkpoint = captureCheckpoint(preflight.validTargets)
+        if (checkpoint.cancelled) {
+            return checkpoint.toDeriveResult(cancelled = true)
+        }
+        if (checkpoint.failedPaths.isNotEmpty()) {
+            log.warn("[derive] checkpoint incomplete for ${checkpoint.failedPaths.size} repo(s) - blocked")
+            return checkpoint.toDeriveResult(includeEntries = false)
+        }
+
+        return createBranches(preflight.validTargets, branchName, checkpoint.entries)
+    }
+
+    @Suppress("TooGenericExceptionCaught") // Git query adapters vary; cancellation is rethrown
+    private fun runPreflight(targets: List<RepoTarget>, branchName: String): DerivePreflightResult {
         val validTargets = mutableListOf<RepoTarget>()
         val branchExists = mutableListOf<String>()
         val skipped = mutableListOf<String>()
@@ -38,74 +59,76 @@ class DeriveBranchExecutor(
         val branchMismatch = mutableListOf<String>()
         val preflightError = mutableListOf<String>()
 
-        // -- Phase 1: Preflight (atomic gate) ----------------------------------
         for (target in targets) {
-            if (cancelled?.invoke() == true) break
-            val dir = resolveGitDir(projectRoot, target.path)
-            val label = if (target.path == ".") projectRoot.fileName.toString() else target.path
+            if (isCancelled()) break
+            val repositoryDirectory = resolveGitDir(projectRoot, target.path)
+            val repositoryLabel = labelFor(target.path)
 
-            if (!dir.exists() || !git.isGitRepo(dir)) {
-                log.warn("[derive] $label: not a git repo - blocked")
+            if (!repositoryDirectory.exists() || !git.isGitRepo(repositoryDirectory)) {
+                log.warn("[derive] $repositoryLabel: not a git repo - blocked")
                 skipped.add(target.path)
                 continue
             }
 
             // Base branch gate: repo must be on the preset's named target branch.
             val expectedBranch = target.branch
-            val current = try {
-                git.currentBranch(dir)
+            val currentBranch = try {
+                git.currentBranch(repositoryDirectory)
             } catch (e: Exception) {
                 rethrowIfCancellation(e)
-                log.warn("[derive] $label: cannot detect current branch - ${e.message}")
+                log.warn("[derive] $repositoryLabel: cannot detect current branch - ${e.message}")
                 preflightError.add(target.path)
                 continue
             }
-            if (current == null) {
-                log.warn("[derive] $label: detached HEAD or current branch unavailable - blocked")
+            if (currentBranch == null) {
+                log.warn("[derive] $repositoryLabel: detached HEAD or current branch unavailable - blocked")
                 branchMismatch.add(target.path)
                 continue
             }
-            if (current != expectedBranch) {
-                log.warn("[derive] $label: expected branch '$expectedBranch', actual '$current' - blocked")
+            if (currentBranch != expectedBranch) {
+                log.warn(
+                    "[derive] $repositoryLabel: expected branch '$expectedBranch', " +
+                        "actual '$currentBranch' - blocked",
+                )
                 branchMismatch.add(target.path)
                 continue
             }
 
             // Branch existence probe (fail-closed: null -> error)
-            val probe = try {
-                git.localBranchProbe(dir, branchName)
+            val branchAlreadyExists = try {
+                git.localBranchProbe(repositoryDirectory, branchName)
             } catch (e: Exception) {
                 rethrowIfCancellation(e)
-                log.warn("[derive] $label: branch existence probe failed - ${e.message}")
+                log.warn("[derive] $repositoryLabel: branch existence probe failed - ${e.message}")
                 null
             }
-            if (probe == null) {
-                log.warn("[derive] $label: cannot check branch existence - blocked")
+            if (branchAlreadyExists == null) {
+                log.warn("[derive] $repositoryLabel: cannot check branch existence - blocked")
                 preflightError.add(target.path)
                 continue
             }
-            if (probe) {
-                log.warn("[derive] $label: branch '$branchName' already exists - blocked")
+            if (branchAlreadyExists) {
+                log.warn("[derive] $repositoryLabel: branch '$branchName' already exists - blocked")
                 branchExists.add(target.path)
                 continue
             }
 
             // Dirty probe (fail-closed when requireClean: null -> error)
             if (requireClean) {
-                val dp = try {
-                    git.dirtyProbe(dir)
+                val isDirty = try {
+                    git.dirtyProbe(repositoryDirectory)
                 } catch (e: Exception) {
                     rethrowIfCancellation(e)
-                    log.warn("[derive] $label: dirty probe failed - ${e.message}")
+                    log.warn("[derive] $repositoryLabel: dirty probe failed - ${e.message}")
                     null
                 }
-                if (dp == null) {
-                    log.warn("[derive] $label: cannot check dirty status - blocked")
+                if (isDirty == null) {
+                    log.warn("[derive] $repositoryLabel: cannot check dirty status - blocked")
                     preflightError.add(target.path)
                     continue
                 }
-                if (dp) {
-                    log.warn("[derive] $label: working tree is dirty - blocked")
+                if (isDirty) {
+                    log.warn("[derive] $repositoryLabel: working tree is dirty - blocked")
                     dirty.add(target.path)
                     continue
                 }
@@ -114,112 +137,137 @@ class DeriveBranchExecutor(
             validTargets.add(target)
         }
 
-        if (cancelled?.invoke() == true) {
-            return DeriveResult(emptyList(), branchExists, skipped, dirty, branchMismatch, preflightError, emptyList(), emptyMap(), emptyMap(), cancelled = true)
-        }
+        return DerivePreflightResult(
+            validTargets = validTargets,
+            branchExists = branchExists,
+            skipped = skipped,
+            dirty = dirty,
+            branchMismatch = branchMismatch,
+            errors = preflightError,
+            cancelled = isCancelled(),
+        )
+    }
 
-        val anyPreflightIssue = branchExists.isNotEmpty() || skipped.isNotEmpty() || dirty.isNotEmpty() ||
-            branchMismatch.isNotEmpty() || preflightError.isNotEmpty()
-        if (anyPreflightIssue) {
-            log.warn("[derive] preflight blocked - no repos modified")
-            return DeriveResult(emptyList(), branchExists, skipped, dirty, branchMismatch, preflightError, emptyList(), emptyMap(), emptyMap())
-        }
+    @Suppress("TooGenericExceptionCaught") // Git query adapters vary; cancellation is rethrown
+    private fun captureCheckpoint(validTargets: List<RepoTarget>): DeriveCheckpointResult {
+        val entries = LinkedHashMap<String, DeriveCheckpointEntry>()
+        val failedPaths = mutableListOf<String>()
 
-        // -- Phase 2: Checkpoint (atomic gate) ---------------------------------
-        val checkpoint = LinkedHashMap<String, DeriveCheckpointEntry>()
-        val checkpointFailed = mutableListOf<String>()
         for (target in validTargets) {
-            if (cancelled?.invoke() == true) break
-            val dir = resolveGitDir(projectRoot, target.path)
-            val label = if (target.path == ".") projectRoot.fileName.toString() else target.path
+            if (isCancelled()) break
+            val repositoryDirectory = resolveGitDir(projectRoot, target.path)
+            val repositoryLabel = labelFor(target.path)
             try {
-                val sha = git.revParseHead(dir)
+                val sha = git.revParseHead(repositoryDirectory)
                 if (sha != null) {
-                    val branch = git.currentBranch(dir)
-                    checkpoint[target.path] = DeriveCheckpointEntry(sha, branch)
+                    val branch = git.currentBranch(repositoryDirectory)
+                    entries[target.path] = DeriveCheckpointEntry(sha, branch)
                 } else {
-                    log.warn("[derive] $label: no HEAD - cannot checkpoint")
-                    checkpointFailed.add(target.path)
+                    log.warn("[derive] $repositoryLabel: no HEAD - cannot checkpoint")
+                    failedPaths.add(target.path)
                 }
             } catch (e: Exception) {
                 rethrowIfCancellation(e)
-                log.warn("[derive] $label: checkpoint failed - ${e.message}")
-                checkpointFailed.add(target.path)
+                log.warn("[derive] $repositoryLabel: checkpoint failed - ${e.message}")
+                failedPaths.add(target.path)
             }
         }
 
-        if (cancelled?.invoke() == true) {
-            return DeriveResult(emptyList(), emptyList(), emptyList(), emptyList(), emptyList(), emptyList(), checkpointFailed, emptyMap(), checkpoint, cancelled = true)
-        }
+        return DeriveCheckpointResult(
+            entries = entries,
+            failedPaths = failedPaths,
+            cancelled = isCancelled(),
+        )
+    }
 
-        if (checkpointFailed.isNotEmpty()) {
-            log.warn("[derive] checkpoint incomplete for ${checkpointFailed.size} repo(s) - blocked")
-            return DeriveResult(emptyList(), emptyList(), emptyList(), emptyList(), emptyList(), emptyList(), checkpointFailed, emptyMap(), emptyMap())
-        }
-
-        // -- Phase 3: Execute (per-target safety) ------------------------------
+    @Suppress("TooGenericExceptionCaught") // preserve per-repository failures while rethrowing cancellation
+    private fun createBranches(
+        validTargets: List<RepoTarget>,
+        branchName: String,
+        checkpoint: Map<String, DeriveCheckpointEntry>,
+    ): DeriveResult {
         val succeeded = mutableListOf<String>()
         val failed = LinkedHashMap<String, String>()
-        var execCancelled = false
+        var executionCancelled = false
 
         for (target in validTargets) {
-            if (cancelled?.invoke() == true) { execCancelled = true; break }
-            val dir = resolveGitDir(projectRoot, target.path)
-            val label = if (target.path == ".") projectRoot.fileName.toString() else target.path
+            if (isCancelled()) {
+                executionCancelled = true
+                break
+            }
+            val repositoryDirectory = resolveGitDir(projectRoot, target.path)
+            val repositoryLabel = labelFor(target.path)
 
             try {
-                val r = git.checkoutNewBranch(dir, branchName)
-                if (r.ok) {
+                val checkoutResult = git.checkoutNewBranch(repositoryDirectory, branchName)
+                if (checkoutResult.ok) {
                     succeeded.add(target.path)
-                    log.activity("[derive] $label: created branch $branchName")
+                    log.activity("[derive] $repositoryLabel: created branch $branchName")
                 } else {
-                    val err = r.diagnostic()
-                    failed[target.path] = err
-                    log.warn("[derive] $label: FAILED - $err")
+                    val diagnostic = checkoutResult.diagnostic()
+                    failed[target.path] = diagnostic
+                    log.warn("[derive] $repositoryLabel: FAILED - $diagnostic")
                 }
             } catch (e: Exception) {
                 rethrowIfCancellation(e)
-                log.warn("[derive] $label: exception - ${e.javaClass.simpleName}: ${e.message}")
+                log.warn("[derive] $repositoryLabel: exception - ${e.javaClass.simpleName}: ${e.message}")
                 failed[target.path] = "${e.javaClass.simpleName}: ${e.message}"
             }
         }
 
-        return DeriveResult(succeeded, emptyList(), emptyList(), emptyList(), emptyList(), emptyList(), emptyList(), failed, checkpoint, cancelled = execCancelled)
+        return DeriveResult(
+            succeeded = succeeded,
+            branchExists = emptyList(),
+            skipped = emptyList(),
+            dirty = emptyList(),
+            branchMismatch = emptyList(),
+            preflightError = emptyList(),
+            checkpointFailed = emptyList(),
+            failed = failed,
+            checkpoint = checkpoint,
+            cancelled = executionCancelled,
+        )
     }
 
     /**
      * Rolls back succeeded repos: checkout original branch -> safe-delete derived branch.
      * Must be called in a non-cancelled operation for Git commands to execute.
      */
-    @Suppress("TooGenericExceptionCaught")
+    @Suppress("TooGenericExceptionCaught") // rollback must continue after one repository fails
     fun rollbackSucceeded(result: DeriveResult, branchName: String): List<String> {
         val rollbackFailures = mutableListOf<String>()
 
         for (path in result.succeeded) {
             try {
-                val dir = resolveGitDir(projectRoot, path)
-                val label = if (path == ".") projectRoot.fileName.toString() else path
+                val repositoryDirectory = resolveGitDir(projectRoot, path)
+                val repositoryLabel = labelFor(path)
                 val entry = result.checkpoint[path]
 
                 if (entry != null) {
                     val target = entry.branch ?: entry.sha
-                    val co = git.checkoutExisting(dir, target)
-                    if (!co.ok) {
-                        log.warn("[derive] $label: checkout rollback FAILED - ${co.diagnostic()}")
+                    val checkoutResult = git.checkoutExisting(repositoryDirectory, target)
+                    if (!checkoutResult.ok) {
+                        log.warn(
+                            "[derive] $repositoryLabel: checkout rollback FAILED - " +
+                                checkoutResult.diagnostic(),
+                        )
                         rollbackFailures.add(path)
                         continue
                     }
-                    log.activity("[derive] $label: rolled back to $target")
+                    log.activity("[derive] $repositoryLabel: rolled back to $target")
 
-                    val del = git.deleteBranch(dir, branchName)
-                    if (del.ok) {
-                        log.activity("[derive] $label: deleted branch $branchName")
+                    val deleteResult = git.deleteBranch(repositoryDirectory, branchName)
+                    if (deleteResult.ok) {
+                        log.activity("[derive] $repositoryLabel: deleted branch $branchName")
                     } else {
-                        log.warn("[derive] $label: could not delete branch $branchName - ${del.diagnostic()}")
+                        log.warn(
+                            "[derive] $repositoryLabel: could not delete branch $branchName - " +
+                                deleteResult.diagnostic(),
+                        )
                         rollbackFailures.add(path)
                     }
                 } else {
-                    log.warn("[derive] $label: no checkpoint entry, cannot rollback")
+                    log.warn("[derive] $repositoryLabel: no checkpoint entry, cannot rollback")
                     rollbackFailures.add(path)
                 }
             } catch (e: Exception) {
@@ -232,7 +280,64 @@ class DeriveBranchExecutor(
         return rollbackFailures
     }
 
+    private fun isCancelled(): Boolean = cancelled?.invoke() == true
+
+    private fun labelFor(path: String): String =
+        if (path == ".") projectRoot.fileName.toString() else path
+
     private fun rethrowIfCancellation(e: Exception) {
         if (classifier.isCancellation(e)) throw e
     }
+}
+
+private data class DerivePreflightResult(
+    val validTargets: List<RepoTarget>,
+    val branchExists: List<String>,
+    val skipped: List<String>,
+    val dirty: List<String>,
+    val branchMismatch: List<String>,
+    val errors: List<String>,
+    val cancelled: Boolean,
+) {
+    val hasIssues: Boolean
+        get() = branchExists.isNotEmpty() ||
+            skipped.isNotEmpty() ||
+            dirty.isNotEmpty() ||
+            branchMismatch.isNotEmpty() ||
+            errors.isNotEmpty()
+
+    fun toDeriveResult(cancelled: Boolean = false): DeriveResult = DeriveResult(
+        succeeded = emptyList(),
+        branchExists = branchExists,
+        skipped = skipped,
+        dirty = dirty,
+        branchMismatch = branchMismatch,
+        preflightError = errors,
+        checkpointFailed = emptyList(),
+        failed = emptyMap(),
+        checkpoint = emptyMap(),
+        cancelled = cancelled,
+    )
+}
+
+private data class DeriveCheckpointResult(
+    val entries: Map<String, DeriveCheckpointEntry>,
+    val failedPaths: List<String>,
+    val cancelled: Boolean,
+) {
+    fun toDeriveResult(
+        cancelled: Boolean = false,
+        includeEntries: Boolean = true,
+    ): DeriveResult = DeriveResult(
+        succeeded = emptyList(),
+        branchExists = emptyList(),
+        skipped = emptyList(),
+        dirty = emptyList(),
+        branchMismatch = emptyList(),
+        preflightError = emptyList(),
+        checkpointFailed = failedPaths,
+        failed = emptyMap(),
+        checkpoint = if (includeEntries) entries else emptyMap(),
+        cancelled = cancelled,
+    )
 }

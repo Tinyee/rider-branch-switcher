@@ -283,11 +283,7 @@ class PresetLoaderTest {
         val result = PresetLoader.load(tmpDir)
         assertTrue(result.isSuccess)
         val (_, restored) = result.getOrThrow()
-        assertEquals(2, restored.presets.size)
-        assertEquals("a", restored.presets[0].name)
-        assertEquals(mapOf("SubA" to "dev"), restored.presets[0].submodules)
-        assertEquals("b", restored.presets[1].name)
-        assertEquals(2, restored.presets[1].submodules.size)
+        assertEquals(original, restored)
     }
 
     @Test

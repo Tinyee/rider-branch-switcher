@@ -14,7 +14,6 @@ import javax.swing.BoxLayout
 import java.awt.Component
 import java.awt.Dimension
 import java.awt.Font
-import javax.swing.BorderFactory
 import javax.swing.JComponent
 import javax.swing.JLabel
 import javax.swing.JPanel
@@ -126,27 +125,31 @@ class SwitchPreviewDialog(
             table: JTable, value: Any?, isSelected: Boolean, hasFocus: Boolean,
             row: Int, column: Int,
         ): Component {
-            val r = value as PreflightRow
+            val preflightRow = value as PreflightRow
             val text = when (column) {
-                0 -> r.label
+                0 -> preflightRow.label
                 1 -> when {
-                    r.probeError != null -> r.probeError
-                    !r.exists -> Bundle.msg("status.missing.dir")
-                    else -> r.current ?: Bundle.msg("status.detached")
+                    preflightRow.probeError != null -> preflightRow.probeError
+                    !preflightRow.exists -> Bundle.msg("status.missing.dir")
+                    else -> preflightRow.current ?: Bundle.msg("status.detached")
                 }
                 else -> ""
             }
             super.getTableCellRendererComponent(table, text, isSelected, hasFocus, row, column)
             toolTipText = when {
-                column == 1 && r.probeError != null -> r.probeError
-                column == 0 && !r.isMain -> r.path
+                column == 1 && preflightRow.probeError != null -> preflightRow.probeError
+                column == 0 && !preflightRow.isMain -> preflightRow.path
                 else -> null
             }
-            font = if (r.isMain && column == 0) font.deriveFont(Font.BOLD) else font.deriveFont(Font.PLAIN)
+            font = if (preflightRow.isMain && column == 0) {
+                font.deriveFont(Font.BOLD)
+            } else {
+                font.deriveFont(Font.PLAIN)
+            }
             if (!isSelected) {
                 foreground = when {
-                    !r.exists || r.probeError != null -> warnColor
-                    !r.needsSwitch -> mutedColor
+                    !preflightRow.exists || preflightRow.probeError != null -> warnColor
+                    !preflightRow.needsSwitch -> mutedColor
                     else -> table.foreground
                 }
             }
@@ -159,16 +162,27 @@ class SwitchPreviewDialog(
             table: JTable, value: Any?, isSelected: Boolean, hasFocus: Boolean,
             row: Int, column: Int,
         ): Component {
-            val r = value as PreflightRow
-            super.getTableCellRendererComponent(table, r.target, isSelected, hasFocus, row, column)
+            val preflightRow = value as PreflightRow
+            super.getTableCellRendererComponent(
+                table,
+                preflightRow.target,
+                isSelected,
+                hasFocus,
+                row,
+                column,
+            )
             if (!isSelected) {
                 foreground = when {
-                    r.branchMissing -> warnColor
-                    r.needsSwitch -> accentColor
+                    preflightRow.branchMissing -> warnColor
+                    preflightRow.needsSwitch -> accentColor
                     else -> mutedColor
                 }
             }
-            font = if (r.needsSwitch) font.deriveFont(Font.BOLD) else font.deriveFont(Font.PLAIN)
+            font = if (preflightRow.needsSwitch) {
+                font.deriveFont(Font.BOLD)
+            } else {
+                font.deriveFont(Font.PLAIN)
+            }
             return this
         }
     }
@@ -181,18 +195,18 @@ class SwitchPreviewDialog(
             table: JTable, value: Any?, isSelected: Boolean, hasFocus: Boolean,
             row: Int, column: Int,
         ): Component {
-            val r = value as PreflightRow
+            val preflightRow = value as PreflightRow
             val text = when {
-                !r.exists -> "—"
-                r.dirtyCount < 0 -> "?"
-                r.dirtyCount == 0 -> Bundle.msg("status.clean")
-                else -> Bundle.msg("status.file.count", r.dirtyCount)
+                !preflightRow.exists -> "—"
+                preflightRow.dirtyCount < 0 -> "?"
+                preflightRow.dirtyCount == 0 -> Bundle.msg("status.clean")
+                else -> Bundle.msg("status.file.count", preflightRow.dirtyCount)
             }
             super.getTableCellRendererComponent(table, text, isSelected, hasFocus, row, column)
             if (!isSelected) {
                 foreground = when {
-                    !r.exists || r.dirtyCount < 0 -> mutedColor
-                    r.dirtyCount == 0 -> mutedColor
+                    !preflightRow.exists || preflightRow.dirtyCount < 0 -> mutedColor
+                    preflightRow.dirtyCount == 0 -> mutedColor
                     else -> warnColor
                 }
             }
@@ -205,19 +219,19 @@ class SwitchPreviewDialog(
             table: JTable, value: Any?, isSelected: Boolean, hasFocus: Boolean,
             row: Int, column: Int,
         ): Component {
-            val r = value as PreflightRow
+            val preflightRow = value as PreflightRow
             val text = when {
-                !r.exists -> "—"
-                r.hasLocal && r.hasRemote -> Bundle.msg("status.both")
-                r.hasLocal -> Bundle.msg("status.local.only")
-                r.hasRemote -> Bundle.msg("status.remote.only")
+                !preflightRow.exists -> "—"
+                preflightRow.hasLocal && preflightRow.hasRemote -> Bundle.msg("status.both")
+                preflightRow.hasLocal -> Bundle.msg("status.local.only")
+                preflightRow.hasRemote -> Bundle.msg("status.remote.only")
                 else -> Bundle.msg("status.none")
             }
             super.getTableCellRendererComponent(table, text, isSelected, hasFocus, row, column)
             if (!isSelected) {
                 foreground = when {
-                    !r.exists -> mutedColor
-                    r.branchMissing -> warnColor
+                    !preflightRow.exists -> mutedColor
+                    preflightRow.branchMissing -> warnColor
                     else -> table.foreground
                 }
             }

@@ -44,10 +44,10 @@ run broader checks.
 | `core/git` | Capability-oriented Git interfaces and results | `GitClient.kt` |
 | `core/ui` | Pure import, shortcut, preview, and layout decisions | `PresetImportResult.kt`, `SwitchPreviewRules.kt` |
 | `service` | Project-scoped state, preset repository, write lease | `BranchSwitcherService.kt`, `PresetRepository.kt` |
-| `workflow` | Reusable application use cases independent of a particular screen | `SwitchRunner.kt`, `SingleRepositorySwitcher.kt` |
+| `workflow` | Reusable application use cases independent of a particular screen | `SwitchRunner.kt`, `DeriveBranchRunner.kt`, `SingleRepositorySwitcher.kt` |
 | `platform` | IntelliJ progress/cancellation/background adapters | `GitBackgroundRunner.kt`, `SwitchAdapters.kt` |
 | `git` | CLI command construction and process lifecycle | `GitOps.kt`, `GitCommandClient.kt`, `GitProcessRunner.kt` |
-| `ui` | Tool Window, editors, dialogs, notifications, orchestration | `BranchSwitcherPanel.kt`, `SwitchFlowCoordinator.kt` |
+| `ui` | Tool Window, editors, dialogs, notifications, and screen commands | `BranchSwitcherPanel.kt`, `PresetEditor.kt`, `SwitchFlowCoordinator.kt` |
 | `action` | IDE actions such as `Ctrl+Alt+B` | `SwitchPresetAction.kt` |
 
 ## Preset Persistence
@@ -92,6 +92,41 @@ checkouts completed.
 `SwitchRecoveryExecutor` independently attempts repository rollback and stash
 restoration. It compares both branch and commit SHA, restores detached HEAD
 state, and refuses a destructive hard reset when the working tree is dirty.
+
+## Derive Flow
+
+Deriving a branch uses the same platform lifecycle boundary as switching:
+
+```text
+SwitchController
+  -> DeriveBranchRunner
+  -> GitBackgroundRunner
+  -> DeriveBranchExecutor
+```
+
+`DeriveBranchExecutor` has three explicit phases: preflight every target,
+checkpoint every accepted target, then create branches. The first two phases are
+atomic gates, so no branch is created when any repository is unsafe or cannot be
+checkpointed. `DeriveBranchRunner` owns task cancellation and retries rollback
+in a fresh Git session after the cancelled session closes. The controller owns
+only the project write lease, VCS refresh, and notification presentation.
+
+## Preset UI Responsibilities
+
+`PresetListManager` renders the collection and exposes stable commands to the
+Tool Window. Its collaborators divide those commands by side effect:
+
+- `PresetCollectionActions` owns load, save, add, delete, and persistence error
+  reporting.
+- `PresetTransferActions` owns clipboard import and export.
+- `CurrentStatePresetCreator` probes checked-out branches and creates a complete
+  preset from that snapshot.
+- `PresetEditor` renders and edits one preset; `SubmoduleRowManager` owns its
+  dynamic submodule rows.
+
+Import validation remains a pure rule in `core/ui`. UI collaborators delegate
+all writes through the collection persistence path, so save failures and screen
+refresh behavior remain consistent.
 
 ## Git And Cancellation
 

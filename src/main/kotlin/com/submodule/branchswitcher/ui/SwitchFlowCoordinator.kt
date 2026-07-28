@@ -17,11 +17,11 @@ import com.submodule.branchswitcher.platform.GitBackgroundResult
 import com.submodule.branchswitcher.platform.GitBackgroundRunner
 import com.submodule.branchswitcher.platform.platformCancellationClassifier
 import com.submodule.branchswitcher.platform.refreshVcsRepos
-import com.submodule.branchswitcher.switch.SwitchExecutor
 import com.submodule.branchswitcher.switch.SwitchRecoveryExecutor
 import com.submodule.branchswitcher.switch.SwitchExecutionResult
 import com.submodule.branchswitcher.workflow.SwitchRunner
 import com.submodule.branchswitcher.workflow.SwitchRunResult
+import com.submodule.branchswitcher.workflow.SwitchRecoveryResult
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import java.nio.file.Path
@@ -48,9 +48,9 @@ class SwitchFlowCoordinator(
         return TaskBridge.runModal(project, Bundle.msg("progress.preflight"), true) { indicator ->
             indicator.isIndeterminate = false
             SwitchPreflight(git, Bundle.msg("preflight.probe.error.suffix"), platformCancellationClassifier)
-                .probe(root, preset, ProgressCancellationHandle(indicator)) { idx, total, label ->
+                .probe(root, preset, ProgressCancellationHandle(indicator)) { index, total, label ->
                     indicator.text2 = label
-                    indicator.fraction = idx.toDouble() / total
+                    indicator.fraction = index.toDouble() / total
                 }
         }
     }
@@ -75,10 +75,12 @@ class SwitchFlowCoordinator(
         val missingBranches = probeResult.filter { it.branchMissing }
         if (missingDirs.isEmpty() && missingBranches.isEmpty()) return true
         val warnings = mutableListOf<String>()
-        if (missingDirs.isNotEmpty())
+        if (missingDirs.isNotEmpty()) {
             warnings += Bundle.msg("preflight.warn.dir.missing", missingDirs.joinToString(", ") { it.label })
-        if (missingBranches.isNotEmpty())
+        }
+        if (missingBranches.isNotEmpty()) {
             warnings += Bundle.msg("preflight.warn.branch.not.found", missingBranches.joinToString(", ") { it.label })
+        }
         val confirmed = booleanArrayOf(false)
         ApplicationManager.getApplication().invokeAndWait {
             confirmed[0] = Messages.showYesNoDialog(
@@ -90,7 +92,13 @@ class SwitchFlowCoordinator(
         return confirmed[0]
     }
 
-    /** Execute switch, then handle notifications and VCS refresh. */
+    /**
+     * Acquires the project write lease, executes the shared switch workflow,
+     * then maps its structured result to notifications and VCS refresh.
+     *
+     * Callbacks run on the UI thread. The write lease remains held until the
+     * background workflow has produced its final result.
+     */
     fun executeAndNotify(
         root: Path,
         request: ResolvedSwitchRequest,
@@ -114,44 +122,86 @@ class SwitchFlowCoordinator(
                     title = Bundle.msg("progress.switching"), request = request, log = log,
                 )
                 uiLater {
-                    if (result.cancelled) {
-                        result.recovery?.let { recovery ->
-                            if (recovery.ok) {
-                                Notifier.info(project, Bundle.msg("switch.cancelled"),
-                                    Bundle.msg("notify.switch.cancelled.recovered"))
-                            } else {
-                                Notifier.error(project, Bundle.msg("switch.cancelled"),
-                                    Bundle.msg("notify.switch.cancelled.partial"))
-                            }
-                        }
-                        onFinished?.invoke()
-                        refreshVcsRepos(project, root, preset.submodules.keys)
-                        return@uiLater
-                    }
-                    if (result.ok) {
-                        service.addHistory(preset.name, preset.id)
-                        onSuccess?.invoke()
-                        Notifier.info(project, Bundle.msg("switch.complete"),
-                            Bundle.msg("notify.switch.complete.msg", preset.name))
-                    } else {
-                        onFailure?.invoke(result)
-                        val execution = result.execution
-                        if (execution?.checkpoint != null) {
-                            Notifier.rollbackAction(project, Bundle.msg("switch.failed"),
-                                Bundle.msg("notify.switch.partial.msg", preset.name) +
-                                    Bundle.msg("notify.switch.rollback.hint")
-                            ) { rollbackSwitch(root, execution, log) }
-                        } else {
-                            Notifier.error(project, Bundle.msg("switch.failed"),
-                                Bundle.msg("notify.switch.partial.msg", preset.name))
-                        }
-                    }
-                    onFinished?.invoke()
-                    refreshVcsRepos(project, root, preset.submodules.keys)
+                    handleSwitchResult(
+                        root = root,
+                        preset = preset,
+                        result = result,
+                        log = log,
+                        onSuccess = onSuccess,
+                        onFailure = onFailure,
+                        onFinished = onFinished,
+                    )
                 }
             } finally {
                 writeLease.close()
             }
+        }
+    }
+
+    private fun handleSwitchResult(
+        root: Path,
+        preset: Preset,
+        result: SwitchRunResult,
+        log: AppLogger,
+        onSuccess: (() -> Unit)?,
+        onFailure: ((SwitchRunResult) -> Unit)?,
+        onFinished: (() -> Unit)?,
+    ) {
+        if (result.cancelled) {
+            notifyCancellation(result.recovery)
+        } else if (result.ok) {
+            service.addHistory(preset.name, preset.id)
+            onSuccess?.invoke()
+            Notifier.info(
+                project,
+                Bundle.msg("switch.complete"),
+                Bundle.msg("notify.switch.complete.msg", preset.name),
+            )
+        } else {
+            onFailure?.invoke(result)
+            notifySwitchFailure(root, preset, result.execution, log)
+        }
+
+        onFinished?.invoke()
+        refreshVcsRepos(project, root, preset.submodules.keys)
+    }
+
+    private fun notifyCancellation(recovery: SwitchRecoveryResult?) {
+        if (recovery == null) {
+            return
+        }
+        if (recovery.ok) {
+            Notifier.info(
+                project,
+                Bundle.msg("switch.cancelled"),
+                Bundle.msg("notify.switch.cancelled.recovered"),
+            )
+        } else {
+            Notifier.error(
+                project,
+                Bundle.msg("switch.cancelled"),
+                Bundle.msg("notify.switch.cancelled.partial"),
+            )
+        }
+    }
+
+    private fun notifySwitchFailure(
+        root: Path,
+        preset: Preset,
+        execution: SwitchExecutionResult?,
+        log: AppLogger,
+    ) {
+        val message = Bundle.msg("notify.switch.partial.msg", preset.name)
+        if (execution?.checkpoint == null) {
+            Notifier.error(project, Bundle.msg("switch.failed"), message)
+            return
+        }
+        Notifier.rollbackAction(
+            project,
+            Bundle.msg("switch.failed"),
+            message + Bundle.msg("notify.switch.rollback.hint"),
+        ) {
+            rollbackSwitch(root, execution, log)
         }
     }
 
@@ -163,27 +213,37 @@ class SwitchFlowCoordinator(
         }
         service.scope.launch(Dispatchers.Default) {
             try {
-                var rollbackOk = false
-                when (val background = GitBackgroundRunner(project, service.gitClient).run(
+                val background = GitBackgroundRunner(project, service.gitClient).run(
                     Bundle.msg("progress.rollback"),
                 ) { indicator, operation ->
                     indicator.isIndeterminate = true
                     indicator.text = Bundle.msg("progress.rollback")
                     val recovery = SwitchRecoveryExecutor(root, log, operation)
-                    rollbackOk = recovery.recover(execution).ok
-                }) {
-                    is GitBackgroundResult.Completed,
-                    is GitBackgroundResult.Cancelled -> Unit
+                    recovery.recover(execution).ok
+                }
+                val rollbackOk = when (background) {
+                    is GitBackgroundResult.Completed -> background.value
+                    is GitBackgroundResult.Cancelled -> background.value ?: false
                     is GitBackgroundResult.Failed -> {
-                        val e = background.error
-                        log.error("notification rollback: ${e.javaClass.simpleName}: ${e.message}")
+                        val error = background.error
+                        log.error("notification rollback: ${error.javaClass.simpleName}: ${error.message}")
+                        false
                     }
                 }
                 uiLater {
-                    if (rollbackOk) Notifier.info(project, Bundle.msg("rollback.complete"),
-                        Bundle.msg("notify.rollback.complete.msg"))
-                    else Notifier.error(project, Bundle.msg("rollback.failed"),
-                        Bundle.msg("notify.rollback.partial.msg"))
+                    if (rollbackOk) {
+                        Notifier.info(
+                            project,
+                            Bundle.msg("rollback.complete"),
+                            Bundle.msg("notify.rollback.complete.msg"),
+                        )
+                    } else {
+                        Notifier.error(
+                            project,
+                            Bundle.msg("rollback.failed"),
+                            Bundle.msg("notify.rollback.partial.msg"),
+                        )
+                    }
                 }
             } finally {
                 writeLease.close()

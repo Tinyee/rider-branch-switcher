@@ -7,13 +7,22 @@ import com.submodule.branchswitcher.git.GitOperationProvider
 import com.submodule.branchswitcher.git.GitOperationSession
 import kotlinx.coroutines.CancellationException
 
+/**
+ * Platform task outcome that preserves a value completed just before
+ * cancellation, when one exists.
+ */
 sealed class GitBackgroundResult<out T> {
     data class Completed<T>(val value: T) : GitBackgroundResult<T>()
     data class Cancelled<T>(val value: T? = null) : GitBackgroundResult<T>()
     data class Failed(val error: RuntimeException) : GitBackgroundResult<Nothing>()
 }
 
-/** Runs one background task against an isolated Git operation session. */
+/**
+ * Runs one IntelliJ background task against an isolated Git operation session.
+ *
+ * This class is the single owner of open, cancel, exception conversion, and
+ * close. Callers provide business work only and must not close the session.
+ */
 class GitBackgroundRunner(
     private val project: Project,
     private val git: GitOperationProvider,
@@ -21,6 +30,12 @@ class GitBackgroundRunner(
 ) {
     private data class ValueBox<T>(val value: T)
 
+    /**
+     * Executes [block] once and closes its Git session on every outcome.
+     *
+     * [ValueBox] distinguishes a successfully completed `null` value from a
+     * block that never completed.
+     */
     @Suppress("TooGenericExceptionCaught")
     suspend fun <T> run(
         title: String,
@@ -55,6 +70,8 @@ class GitBackgroundRunner(
         } catch (e: RuntimeException) {
             GitBackgroundResult.Failed(e)
         } finally {
+            // Cancellation stops the process; close releases ownership of the
+            // whole session. Both actions remain idempotent and independently required.
             operation.close()
         }
     }

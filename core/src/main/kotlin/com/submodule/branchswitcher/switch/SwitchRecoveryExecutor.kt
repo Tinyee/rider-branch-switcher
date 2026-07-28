@@ -11,7 +11,12 @@ data class SwitchRecoveryOutcome(
     val ok: Boolean get() = rollbackOk && stashRestore.failures.isEmpty()
 }
 
-/** Restores repository and stash state recorded by a switch execution. */
+/**
+ * Restores repository and stash state recorded by a switch execution.
+ *
+ * Repository rollback and stash restoration are intentionally independent:
+ * failure in one must not prevent the other from being attempted.
+ */
 class SwitchRecoveryExecutor(
     private val projectRoot: Path,
     private val log: AppLogger,
@@ -100,6 +105,8 @@ class SwitchRecoveryExecutor(
 
     private fun resetToCheckpoint(dir: java.io.File, label: String, sha: String): Boolean {
         if (git.revParseHead(dir) == sha) return true
+        // New edits may have appeared after the failed switch. Automatic
+        // recovery must never erase work that was not covered by its checkpoint.
         if (git.isDirty(dir)) {
             log.warn("[rollback] $label reset blocked: working tree is dirty")
             return false

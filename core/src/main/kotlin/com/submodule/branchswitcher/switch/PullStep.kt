@@ -19,23 +19,26 @@ class PullStep(
 
         val failures = LinkedHashMap<String, String>()
         for (target in context.preset.targetsFor(scope)) {
-            val dir = resolveGitDir(context.projectRoot, target.path)
-            if (!dir.exists() || !context.git.isGitRepo(dir)) continue
+            val repositoryDirectory = resolveGitDir(context.projectRoot, target.path)
+            if (!repositoryDirectory.exists() || !context.git.isGitRepo(repositoryDirectory)) continue
             // Only pull on repos where checkout actually succeeded
             if (!state.checkoutSucceeded(target.path)) {
                 context.log.info("[skip] pull - checkout did not succeed for ${target.path}")
                 continue
             }
-            val cur = context.git.currentBranch(dir)
-            if (cur != target.branch) {
-                context.log.info("[skip] pull - current branch is '${cur ?: "(detached)"}', expected '${target.branch}'")
+            val currentBranch = context.git.currentBranch(repositoryDirectory)
+            if (currentBranch != target.branch) {
+                context.log.info(
+                    "[skip] pull - current branch is '${currentBranch ?: "(detached)"}', " +
+                        "expected '${target.branch}'",
+                )
                 continue
             }
-            val p = context.git.pullFf(dir, target.branch)
-            if (p.ok) {
+            val pullResult = context.git.pullFf(repositoryDirectory, target.branch)
+            if (pullResult.ok) {
                 context.log.info("pull ok - ${target.path}")
             } else {
-                context.log.warn(" pull failed (kept local): ${p.diagnostic()}")
+                context.log.warn(" pull failed (kept local): ${pullResult.diagnostic()}")
                 failures[target.path] = "pull had warnings"
             }
         }
@@ -73,13 +76,13 @@ internal fun restoreTrackedStashes(
     try {
         for ((path, msg) in state.stashesSnapshot()) {
             if (selectedPaths != null && path !in selectedPaths) continue
-            val dir = resolveGitDir(projectRoot, path)
-            if (!dir.exists() || !git.isGitRepo(dir)) {
+            val repositoryDirectory = resolveGitDir(projectRoot, path)
+            if (!repositoryDirectory.exists() || !git.isGitRepo(repositoryDirectory)) {
                 log.warn("[fail] stash pop skipped - repository unavailable for $path ($msg)")
                 failures[path] = "stash repository unavailable"
                 continue
             }
-            val popResult = git.stashPop(dir)
+            val popResult = git.stashPop(repositoryDirectory)
             if (popResult.ok) {
                 log.info("stash pop ok ($msg)")
                 nextState = nextState.withoutStash(path)

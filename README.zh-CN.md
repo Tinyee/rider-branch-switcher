@@ -101,6 +101,7 @@ preset 加载时会先检查 `.idea/branch-presets.json`，再检查
 
 本地环境、架构边界、验证方式和审查约定见
 [CONTRIBUTING.md](CONTRIBUTING.md)。当前代码结构从
-[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) 开始阅读，完整文档索引见
+[中文代码架构与阅读指南](docs/ARCHITECTURE.zh-CN.md) 开始阅读，正式架构边界见
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)，完整文档索引见
 [docs/README.md](docs/README.md)。日常开发可直接运行 `./gradlew runIde`
 启动带插件的沙箱 IDE。

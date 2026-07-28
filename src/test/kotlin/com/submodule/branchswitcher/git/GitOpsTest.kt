@@ -100,38 +100,16 @@ class GitOpsTest {
     }
 
     @Test
-    fun `skips comment lines starting with hash`() {
+    fun `comments and blank lines do not produce paths`() {
         writeGitmodules("""
-            # this is a comment
-            [submodule "SubA"]
-                path = SubA
-            # another comment
-        """.trimIndent())
-        val paths = git.listSubmodulePaths(tmpDir.toFile())
-        assertEquals(listOf("SubA"), paths)
-    }
-
-    @Test
-    fun `skips comment lines starting with semicolon`() {
-        writeGitmodules("""
-            ; this is a comment
-            [submodule "SubA"]
-                path = SubA
-        """.trimIndent())
-        val paths = git.listSubmodulePaths(tmpDir.toFile())
-        assertEquals(listOf("SubA"), paths)
-    }
-
-    @Test
-    fun `skips blank lines`() {
-        writeGitmodules("""
+            # path = IgnoredHash
 
             [submodule "SubA"]
                 path = SubA
 
+            ; path = IgnoredSemicolon
         """.trimIndent())
-        val paths = git.listSubmodulePaths(tmpDir.toFile())
-        assertEquals(listOf("SubA"), paths)
+        assertEquals(listOf("SubA"), git.listSubmodulePaths(tmpDir.toFile()))
     }
 
     @Test
@@ -146,33 +124,17 @@ class GitOpsTest {
     }
 
     @Test
-    fun `trims trailing whitespace from path`() {
-        writeGitmodules("""
-            [submodule "SubA"]
-                path = SubA
-        """.trimIndent())
-        val paths = git.listSubmodulePaths(tmpDir.toFile())
-        assertEquals(listOf("SubA"), paths)
-    }
-
-    @Test
-    fun `path with spaces around equals`() {
-        writeGitmodules("""
-            [submodule "SubA"]
-                path=SubA
-        """.trimIndent())
-        val paths = git.listSubmodulePaths(tmpDir.toFile())
-        assertEquals(listOf("SubA"), paths)
-    }
-
-    @Test
-    fun `path with extra whitespace`() {
-        writeGitmodules("""
-            [submodule "SubA"]
-                   path    =    SubA
-        """.trimIndent())
-        val paths = git.listSubmodulePaths(tmpDir.toFile())
-        assertEquals(listOf("SubA"), paths)
+    fun `path assignment accepts supported whitespace variants`() {
+        val cases = listOf(
+            "path=SubA",
+            "path = SubA",
+            "   path    =    SubA",
+            "path = SubA   ",
+        )
+        for (assignment in cases) {
+            writeGitmodules("[submodule \"SubA\"]\n$assignment")
+            assertEquals("assignment: '$assignment'", listOf("SubA"), git.listSubmodulePaths(tmpDir.toFile()))
+        }
     }
 
     @Test

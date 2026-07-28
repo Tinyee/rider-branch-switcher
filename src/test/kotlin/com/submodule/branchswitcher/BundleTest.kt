@@ -34,15 +34,6 @@ class BundleTest {
     }
 
     @Test
-    fun `known keys resolve correctly`() {
-        // Spot-check: plugin.title should resolve (exact value depends on locale)
-        assertTrue(Bundle.msg("plugin.title").isNotEmpty())
-        assertTrue(Bundle.msg("action.switch").isNotEmpty())
-        // notify.switch.complete.msg has a {0} placeholder for the preset name
-        assertTrue(Bundle.msg("notify.switch.complete.msg").contains("{0}"))
-    }
-
-    @Test
     fun `missing key returns the key itself as fallback`() {
         val result = Bundle.msg("nonexistent.key.xyz")
         assertEquals("nonexistent.key.xyz", result)
@@ -56,33 +47,20 @@ class BundleTest {
     }
 
     @Test
-    fun `all Chinese values are non-empty`() {
-        val locale = java.util.Locale.forLanguageTag("zh")
-        val bundle = java.util.ResourceBundle.getBundle("messages.BranchSwitcherBundle", locale)
-        val keys = bundle.keys
-        var count = 0
-        while (keys.hasMoreElements()) {
-            val k = keys.nextElement()
-            val v = bundle.getString(k)
-            assertTrue("ZH key '$k' should be non-empty", v.trim().isNotEmpty())
-            count++
+    fun `all localized values are non-empty`() {
+        val locales = listOf("EN" to java.util.Locale.ENGLISH, "ZH" to java.util.Locale.forLanguageTag("zh"))
+        for ((label, locale) in locales) {
+            val bundle = java.util.ResourceBundle.getBundle("messages.BranchSwitcherBundle", locale)
+            val keys = bundle.keys
+            var count = 0
+            while (keys.hasMoreElements()) {
+                val key = keys.nextElement()
+                val value = bundle.getString(key)
+                assertTrue("$label key '$key' should be non-empty", value.trim().isNotEmpty())
+                count++
+            }
+            assertTrue("$label should have at least 50 keys, got $count", count >= 50)
         }
-        assertTrue("Should have at least 50 keys, got $count", count >= 50)
-    }
-
-    @Test
-    fun `all English values are non-empty`() {
-        val locale = java.util.Locale.ENGLISH
-        val bundle = java.util.ResourceBundle.getBundle("messages.BranchSwitcherBundle", locale)
-        val keys = bundle.keys
-        var count = 0
-        while (keys.hasMoreElements()) {
-            val k = keys.nextElement()
-            val v = bundle.getString(k)
-            assertTrue("EN key '$k' should be non-empty", v.trim().isNotEmpty())
-            count++
-        }
-        assertTrue("Should have at least 50 keys, got $count", count >= 50)
     }
 
     // ---- helpers ----

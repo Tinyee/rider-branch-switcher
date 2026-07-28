@@ -1,7 +1,6 @@
 package com.submodule.branchswitcher.switch
 
 import com.submodule.branchswitcher.model.DirtyAction
-import java.io.File
 
 /**
  * For each target with a dirty working tree, apply the configured strategy (stash / skip / force).
@@ -16,17 +15,17 @@ class DirtyHandlingStep : SwitchStep {
         try {
             val targets = context.preset.targets()
             val total = targets.size
-            for ((idx, target) in targets.withIndex()) {
+            for ((index, target) in targets.withIndex()) {
                 context.progressHandle?.apply {
-                    fraction = idx.toDouble() / total
+                    fraction = index.toDouble() / total
                     text2 = if (target.path == ".") context.projectRoot.fileName.toString() else target.path
                 }
                 context.cancellationHandle?.checkCanceled()
-                val dir = resolveGitDir(context.projectRoot, target.path)
-                if (!dir.exists()) continue
-                if (!context.git.isGitRepo(dir)) continue
+                val repositoryDirectory = resolveGitDir(context.projectRoot, target.path)
+                if (!repositoryDirectory.exists()) continue
+                if (!context.git.isGitRepo(repositoryDirectory)) continue
 
-                if (context.git.isDirty(dir)) {
+                if (context.git.isDirty(repositoryDirectory)) {
                     when (context.options.dirty) {
                         DirtyAction.Skip -> {
                             context.log.info("[skip] working tree dirty - ${target.path}")
@@ -35,17 +34,22 @@ class DirtyHandlingStep : SwitchStep {
                             continue
                         }
                         DirtyAction.Stash -> {
-                            val cur = context.git.currentBranch(dir)
-                            if (cur != null && cur == target.branch) {
+                            val currentBranch = context.git.currentBranch(repositoryDirectory)
+                            if (currentBranch != null && currentBranch == target.branch) {
                                 context.log.info("already on '${target.branch}', no stash needed")
                             } else {
-                                val r = context.git.stash(dir, "branch-switcher: before -> ${target.branch}")
-                                if (r.ok) {
+                                val stashResult = context.git.stash(
+                                    repositoryDirectory,
+                                    "branch-switcher: before -> ${target.branch}",
+                                )
+                                if (stashResult.ok) {
                                     context.log.info("stash: ok (${target.path})")
                                 } else {
-                                    context.log.warn("stash: FAIL (${target.path}): ${r.diagnostic()}")
+                                    context.log.warn(
+                                        "stash: FAIL (${target.path}): ${stashResult.diagnostic()}",
+                                    )
                                 }
-                                if (!r.ok) {
+                                if (!stashResult.ok) {
                                     failures[target.path] = "stash failed"
                                     nextState = nextState.withSkipped(target.path)
                                     continue
