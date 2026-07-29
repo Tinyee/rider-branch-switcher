@@ -20,7 +20,7 @@ data class DeriveRunResult(
 )
 
 private data class BackgroundDeriveOutcome(
-    val execution: DeriveResult,
+    val deriveResult: DeriveResult,
     val rollbackFailures: List<String>,
 )
 
@@ -33,7 +33,7 @@ private data class BackgroundDeriveOutcome(
  */
 class DeriveBranchRunner(
     private val project: Project,
-    private val root: Path,
+    private val projectRoot: Path,
     private val gitClient: GitOperationProvider,
     private val taskRunner: TaskBridge.TaskRunner = TaskBridge.TaskRunner.DEFAULT,
 ) {
@@ -43,39 +43,38 @@ class DeriveBranchRunner(
         branchName: String,
         log: AppLogger,
     ): DeriveRunResult {
-        val backgroundResult = GitBackgroundRunner(project, gitClient, taskRunner).run(title) {
-                indicator, operation ->
+        val backgroundResult = GitBackgroundRunner(project, gitClient, taskRunner).run(title) { indicator, gitOperation ->
             indicator.isIndeterminate = true
             val executor = DeriveBranchExecutor(
-                projectRoot = root,
+                projectRoot = projectRoot,
                 log = log,
-                git = operation,
+                git = gitOperation,
                 cancelled = { indicator.isCanceled },
                 classifier = platformCancellationClassifier,
             )
-            val execution = executor.execute(preset, branchName)
-            val rollbackFailures = if (!execution.allOk && execution.succeeded.isNotEmpty()) {
-                log.activity("[derive] rolling back ${execution.succeeded.size} succeeded repo(s)...")
-                executor.rollbackSucceeded(execution, branchName)
+            val deriveResult = executor.execute(preset, branchName)
+            val rollbackFailures = if (!deriveResult.allOk && deriveResult.succeeded.isNotEmpty()) {
+                log.activity("[derive] rolling back ${deriveResult.succeeded.size} succeeded repo(s)...")
+                executor.rollbackSucceeded(deriveResult, branchName)
             } else {
                 emptyList()
             }
-            BackgroundDeriveOutcome(execution, rollbackFailures)
+            BackgroundDeriveOutcome(deriveResult, rollbackFailures)
         }
 
         return when (backgroundResult) {
             is GitBackgroundResult.Completed -> DeriveRunResult(
                 cancelled = false,
-                execution = backgroundResult.value.execution,
+                execution = backgroundResult.value.deriveResult,
                 rollbackFailures = backgroundResult.value.rollbackFailures,
             )
             is GitBackgroundResult.Cancelled -> {
                 log.info("[cancelled] derive cancelled by user")
-                val execution = backgroundResult.value?.execution
+                val deriveResult = backgroundResult.value?.deriveResult
                 DeriveRunResult(
                     cancelled = true,
-                    execution = execution,
-                    rollbackFailures = rollbackAfterCancellation(execution, branchName, log),
+                    execution = deriveResult,
+                    rollbackFailures = rollbackAfterCancellation(deriveResult, branchName, log),
                 )
             }
             is GitBackgroundResult.Failed -> {
@@ -96,13 +95,15 @@ class DeriveBranchRunner(
             return emptyList()
         }
 
+        // The cancelled background session cannot run rollback commands. Open a
+        // fresh session after GitBackgroundRunner has closed the cancelled one.
         val rollbackOperation = gitClient.openOperation()
         return try {
             log.activity(
                 "[derive] rolling back ${execution.succeeded.size} succeeded repo(s) after cancel...",
             )
             DeriveBranchExecutor(
-                projectRoot = root,
+                projectRoot = projectRoot,
                 log = log,
                 git = rollbackOperation,
                 classifier = platformCancellationClassifier,
