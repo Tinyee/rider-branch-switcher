@@ -69,7 +69,7 @@ internal class PresetListManager(
         lateinit var editor: PresetEditor
         editor = PresetEditor(
             gitRoot = root,
-            initial = preset,
+            initialPreset = preset,
             log = log,
             onSwitch = onSwitch,
             onSave = { updated -> actions.saveEditor(editor, updated) },

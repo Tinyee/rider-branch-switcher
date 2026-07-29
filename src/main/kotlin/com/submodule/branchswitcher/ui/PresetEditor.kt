@@ -38,14 +38,14 @@ import javax.swing.border.Border
  * via [scope] coroutines.
  *
  * State tracking:
- * - [loadedOnce]: whether the branch combo lists have been loaded (lazy, on first expand)
- * - [loadingCount]: number of in-flight async branch loads; [updateDirty] suppresses
+ * - [branchesLoaded]: whether the branch combo lists have been loaded (lazy, on first expand)
+ * - [loadingCount]: number of in-flight async branch loads; [updateUnsavedState] suppresses
  *   the dirty check while any load is pending
- * - [initializing]: true during constructor; prevents false dirty flags during setup
+ * - [isInitializing]: true during constructor; prevents false dirty flags during setup
  */
 class PresetEditor(
     private val gitRoot: Path,
-    initial: Preset,
+    initialPreset: Preset,
     private val log: AppLogger,
     private val onSwitch: (Preset) -> Unit,
     private val onSave: (Preset) -> Unit,
@@ -57,15 +57,15 @@ class PresetEditor(
     private val onSwitchOnly: (path: String, target: String) -> Unit = { _, _ -> },
 ) : JPanel() {
 
-    private var original: Preset = initial
+    private var savedPreset: Preset = initialPreset
 
-    private val mainCombo = makeBranchCombo(::updateDirty)
+    private val mainCombo = makeBranchCombo(::updateUnsavedState)
     private val saveBtn = jButton(Bundle.msg("action.save"), AllIcons.Actions.MenuSaveall) { isEnabled = false }
     private val revertBtn = jButton(Bundle.msg("action.discard"), AllIcons.Actions.Rollback) { isEnabled = false }
     private val addSubBtn = jButton(Bundle.msg("action.add.submodule"), AllIcons.General.Add)
     private val arrow = JLabel(AllIcons.General.ArrowRight)
 
-    private val nameLabel = JLabel(initial.name).apply {
+    private val nameLabel = JLabel(initialPreset.name).apply {
         toolTipText = Bundle.msg("label.rename.tip")
         cursor = Cursor.getPredefinedCursor(Cursor.TEXT_CURSOR)
         addMouseListener(object : MouseAdapter() {
@@ -90,18 +90,19 @@ class PresetEditor(
         toolTipText = Bundle.msg("action.derive.tip")
         addActionListener { deriveBranch() }
     }
-    private var isCurrent = false
+    private val moreButton = createPresetMoreButton()
+    private var isCurrentPreset = false
 
     private val body = CompactHeightPanel().apply {
         layout = BoxLayout(this, BoxLayout.Y_AXIS)
         alignmentX = LEFT_ALIGNMENT
         isVisible = false
     }
-    private var loadedOnce = false
-    private var initializing = true
+    private var branchesLoaded = false
+    private var isInitializing = true
 
     private val submoduleManager = SubmoduleRowManager(
-        gitRoot, gitClient, scope, body, log, ::updateDirty, onSwitchOnly,
+        gitRoot, gitClient, scope, body, log, ::updateUnsavedState, onSwitchOnly,
     )
     private val submoduleRows get() = submoduleManager.subRows
     val loadingCount get() = submoduleManager.loadingCount
@@ -113,19 +114,32 @@ class PresetEditor(
 
         val header = createHeader()
         body.add(createMainRepositoryRow())
-        initial.submodules.forEach { (path, branch) ->
+        initialPreset.submodules.forEach { (path, branch) ->
             body.add(submoduleManager.buildSubRow(path, branch).panel)
         }
         body.add(createEditorActions())
         add(header)
         add(body)
 
-        applyOriginalToUI()
-        initializing = false
+        restoreSavedPresetToUi()
+        isInitializing = false
     }
 
     private fun createHeader(): JPanel {
-        val header = CompactHeightPanel().apply {
+        val header = createHeaderContainer()
+        val nameRow = createPresetNameRow()
+        val headerActions = createHeaderActions()
+
+        nameRow.add(Box.createHorizontalStrut(4))
+        nameRow.add(mainDiffLabel)
+        header.add(nameRow)
+        header.add(headerActions)
+        installResponsiveHeaderActions(header, headerActions)
+        return header
+    }
+
+    private fun createHeaderContainer(): JPanel =
+        CompactHeightPanel().apply {
             layout = BoxLayout(this, BoxLayout.Y_AXIS)
             alignmentX = LEFT_ALIGNMENT
             cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
@@ -135,7 +149,9 @@ class PresetEditor(
                 }
             })
         }
-        val nameRow = JPanel(FlowLayout(FlowLayout.LEFT, 4, 0)).apply {
+
+    private fun createPresetNameRow(): JPanel =
+        JPanel(FlowLayout(FlowLayout.LEFT, 4, 0)).apply {
             isOpaque = false
             add(arrow.apply {
                 addMouseListener(object : MouseAdapter() {
@@ -148,50 +164,52 @@ class PresetEditor(
                 override fun mouseClicked(e: MouseEvent) { toggle() }
             })
         }
-        val headerActions = CompactHeightPanel(FlowLayout(FlowLayout.RIGHT, 4, 0)).apply {
-            isOpaque = false
-        }
-        switchBtn.addActionListener { onSwitch(buildCurrent()) }
-        val moreBtn = createPresetMoreButton()
-        headerActions.add(switchBtn)
-        headerActions.add(deriveBtn)
-        headerActions.add(moreBtn)
 
-        nameRow.add(Box.createHorizontalStrut(4))
-        nameRow.add(mainDiffLabel)
-        header.add(nameRow)
-        header.add(headerActions)
-        fun requiredActionsWidth(): Int {
-            val flow = headerActions.layout as FlowLayout
-            val buttonsWidth = switchBtn.preferredSize.width +
-                deriveBtn.preferredSize.width +
-                moreBtn.preferredSize.width
-            return buttonsWidth +
-                flow.hgap * 4 +
-                headerActions.insets.left +
-                headerActions.insets.right +
-                JBUI.scale(16)
+    private fun createHeaderActions(): JPanel =
+        CompactHeightPanel(FlowLayout(FlowLayout.RIGHT, 4, 0)).apply {
+            isOpaque = false
+            switchBtn.addActionListener { onSwitch(buildEditedPreset()) }
+            add(switchBtn)
+            add(deriveBtn)
+            add(moreButton)
         }
-        fun updateResponsiveActions() {
-            val showDerive = shouldShowSecondaryAction(header.width, requiredActionsWidth())
-            if (deriveBtn.isVisible != showDerive) {
-                deriveBtn.isVisible = showDerive
-                headerActions.revalidate()
-                headerActions.repaint()
-            }
-        }
+
+    private fun installResponsiveHeaderActions(header: JPanel, headerActions: JPanel) {
         header.addComponentListener(object : ComponentAdapter() {
             override fun componentResized(e: ComponentEvent) {
-                updateResponsiveActions()
+                refreshResponsiveHeaderActions(header, headerActions)
             }
         })
-        val buttonMetricsChanged = java.beans.PropertyChangeListener { updateResponsiveActions() }
-        listOf(switchBtn, deriveBtn, moreBtn).forEach { button ->
+        val buttonMetricsChanged = java.beans.PropertyChangeListener {
+            refreshResponsiveHeaderActions(header, headerActions)
+        }
+        listOf(switchBtn, deriveBtn, moreButton).forEach { button ->
             button.addPropertyChangeListener("text", buttonMetricsChanged)
             button.addPropertyChangeListener("font", buttonMetricsChanged)
             button.addPropertyChangeListener("icon", buttonMetricsChanged)
         }
-        return header
+    }
+
+    private fun refreshResponsiveHeaderActions(header: JPanel, headerActions: JPanel) {
+        val requiredWidth = requiredHeaderActionsWidth(headerActions)
+        val showDerive = shouldShowSecondaryAction(header.width, requiredWidth)
+        if (deriveBtn.isVisible != showDerive) {
+            deriveBtn.isVisible = showDerive
+            headerActions.revalidate()
+            headerActions.repaint()
+        }
+    }
+
+    private fun requiredHeaderActionsWidth(headerActions: JPanel): Int {
+        val flowLayout = headerActions.layout as FlowLayout
+        val buttonsWidth = switchBtn.preferredSize.width +
+            deriveBtn.preferredSize.width +
+            moreButton.preferredSize.width
+        return buttonsWidth +
+            flowLayout.hgap * 4 +
+            headerActions.insets.left +
+            headerActions.insets.right +
+            JBUI.scale(16)
     }
 
     private fun createEditorActions(): JPanel {
@@ -203,7 +221,7 @@ class PresetEditor(
             border = JBUI.Borders.empty(8, 8, 4, 4)
         }
         addSubBtn.addActionListener {
-            submoduleManager.showAddSubmoduleMenu(addSubBtn, original)
+            submoduleManager.showAddSubmoduleMenu(addSubBtn, savedPreset)
         }
         revertBtn.addActionListener { revert() }
         saveBtn.addActionListener { saveChanges() }
@@ -218,17 +236,17 @@ class PresetEditor(
     }
 
     private fun saveChanges() {
-        val pendingPreset = buildCurrent()
+        val editedPreset = buildEditedPreset()
         try {
-            onSave(pendingPreset)
-            original = pendingPreset
+            onSave(editedPreset)
+            savedPreset = editedPreset
             submoduleManager.removeDeletedRows()
             body.revalidate()
             body.repaint()
         } catch (e: Exception) {
             log.error("save failed: ${e.message}")
         }
-        updateDirty()
+        updateUnsavedState()
     }
 
     private fun createMainRepositoryRow(): JPanel {
@@ -254,35 +272,38 @@ class PresetEditor(
             maximumSize = preferredSize
             minimumSize = preferredSize
             toolTipText = Bundle.msg("action.more.tip")
-            addActionListener {
-                JPopupMenu().apply {
-                    if (!deriveBtn.isVisible) {
-                        add(JMenuItem(Bundle.msg("action.derive"), AllIcons.Vcs.Branch).apply {
-                            addActionListener { deriveBranch() }
-                        })
-                        addSeparator()
-                    }
-                    add(JMenuItem(Bundle.msg("action.delete"), AllIcons.Actions.Cancel).apply {
-                        foreground = NamedColorUtil.getErrorForeground()
-                        addActionListener { onDelete() }
-                    })
-                }.show(this, 0, height)
-            }
+            addActionListener { showPresetMoreMenu(this) }
         }
     }
 
-    private fun applyOriginalToUI() {
-        mainCombo.selectedItem = original.main
-        submoduleManager.applyPresetToUI(original)
-        updateDirty()
+    private fun showPresetMoreMenu(anchor: JButton) {
+        val menu = JPopupMenu()
+        if (!deriveBtn.isVisible) {
+            val deriveItem = JMenuItem(Bundle.msg("action.derive"), AllIcons.Vcs.Branch)
+            deriveItem.addActionListener { deriveBranch() }
+            menu.add(deriveItem)
+            menu.addSeparator()
+        }
+
+        val deleteItem = JMenuItem(Bundle.msg("action.delete"), AllIcons.Actions.Cancel)
+        deleteItem.foreground = NamedColorUtil.getErrorForeground()
+        deleteItem.addActionListener { onDelete() }
+        menu.add(deleteItem)
+        menu.show(anchor, 0, anchor.height)
+    }
+
+    private fun restoreSavedPresetToUi() {
+        mainCombo.selectedItem = savedPreset.main
+        submoduleManager.applyPresetToUI(savedPreset)
+        updateUnsavedState()
     }
 
     /** Expands/collapses the preset detail panel. Loads branch lists lazily on first expand. */
     private fun toggle() {
         body.isVisible = !body.isVisible
         arrow.icon = if (body.isVisible) AllIcons.General.ArrowDown else AllIcons.General.ArrowRight
-        if (body.isVisible && !loadedOnce) {
-            loadedOnce = true
+        if (body.isVisible && !branchesLoaded) {
+            branchesLoaded = true
             submoduleManager.onFirstExpand()
             loadBranches()
         }
@@ -290,10 +311,10 @@ class PresetEditor(
         repaint()
     }
 
-    /** Lazy-loads branch lists for all combos on first expand. Must be guarded by [loadedOnce]. */
+    /** Lazy-loads branch lists for all combos on first expand. Must be guarded by [branchesLoaded]. */
     private fun loadBranches() {
-        loadComboBranches(mainCombo, gitRoot.toFile(), original.main)
-        submoduleManager.loadAllBranches(original)
+        loadComboBranches(mainCombo, gitRoot.toFile(), savedPreset.main)
+        submoduleManager.loadAllBranches(savedPreset)
     }
 
     /** Asynchronously loads branch names into [combo] via [scope], preserving [current] as selected item. */
@@ -302,30 +323,9 @@ class PresetEditor(
             onLoadStart = { submoduleManager.loadingCount++ },
             onLoadEnd = {
                 submoduleManager.loadingCount--
-                updateDirty()
+                updateUnsavedState()
             },
         )
-    }
-
-    companion object {
-        private fun makeBorder(highlighted: Boolean): Border {
-            val divider = BorderFactory.createMatteBorder(0, 0, 1, 0, JBColor.border())
-            return if (highlighted) {
-                BorderFactory.createCompoundBorder(
-                    BorderFactory.createCompoundBorder(
-                        divider,
-                        BorderFactory.createMatteBorder(0, 3, 0, 0,
-                            JBUI.CurrentTheme.Link.Foreground.ENABLED),
-                    ),
-                    JBUI.Borders.empty(4, 1, 10, 4),
-                )
-            } else {
-                BorderFactory.createCompoundBorder(
-                    divider,
-                    JBUI.Borders.empty(4, 4, 10, 4),
-                )
-            }
-        }
     }
 
     /**
@@ -337,12 +337,12 @@ class PresetEditor(
         setHighlighted(matchesState(currentBranches))
         val currentMain = currentBranches["."] ?: "(detached)"
         val mainDirty = dirtyRepos["."] == true
-        val mainStatus = mainStatusText(currentMain, original.main, mainDirty)
+        val mainStatus = mainStatusText(currentMain, savedPreset.main, mainDirty)
         mainDiffLabel.text = mainStatus
         mainDiffLabel.isVisible = mainStatus != null
         mainDiffLabel.foreground = JBColor(0xE07B00, 0xFFA726)
         // Update submodule status dots
-        original.submodules.forEach { (path, targetBranch) ->
+        savedPreset.submodules.forEach { (path, targetBranch) ->
             val row = submoduleRows[path] ?: return@forEach
             if (row.deleted) return@forEach
             val currentBranch = currentBranches[path]
@@ -358,16 +358,16 @@ class PresetEditor(
     }
 
     fun matchesState(currentBranches: Map<String, String?>): Boolean {
-        val mainMatches = currentBranches["."] == original.main
-        val subsMatch = original.submodules.all { (path, branch) ->
+        val mainMatches = currentBranches["."] == savedPreset.main
+        val subsMatch = savedPreset.submodules.all { (path, branch) ->
             currentBranches[path] == branch
         }
         return mainMatches && subsMatch
     }
 
     private fun setHighlighted(highlighted: Boolean) {
-        val changed = highlighted != isCurrent
-        isCurrent = highlighted
+        val changed = highlighted != isCurrentPreset
+        isCurrentPreset = highlighted
         currentBadge.isVisible = highlighted
         if (highlighted && switchBtn.isFocusOwner) {
             java.awt.KeyboardFocusManager.getCurrentKeyboardFocusManager().clearGlobalFocusOwner()
@@ -381,39 +381,39 @@ class PresetEditor(
         }
     }
 
-    private fun buildCurrent(): Preset {
+    private fun buildEditedPreset(): Preset {
         val selectedSubmoduleBranches = LinkedHashMap<String, String>()
         submoduleRows.values.forEach { row ->
             if (row.deleted) return@forEach
             selectedSubmoduleBranches[row.path] =
                 (row.combo.selectedItem as? String)?.trim() ?: ""
         }
-        return original.copy(
-            main = (mainCombo.selectedItem as? String)?.trim() ?: original.main,
+        return savedPreset.copy(
+            main = (mainCombo.selectedItem as? String)?.trim() ?: savedPreset.main,
             submodules = selectedSubmoduleBranches,
         )
     }
 
     private fun revert() {
-        applyOriginalToUI()
+        restoreSavedPresetToUi()
     }
 
-    private fun updateDirty() {
-        if (initializing || loadingCount > 0) {
+    private fun updateUnsavedState() {
+        if (isInitializing || loadingCount > 0) {
             saveBtn.isEnabled = false
             revertBtn.isEnabled = false
             return
         }
-        val pendingPreset = buildCurrent()
-        val hasUnsavedChanges = pendingPreset != original
+        val editedPreset = buildEditedPreset()
+        val hasUnsavedChanges = editedPreset != savedPreset
         saveBtn.isEnabled = hasUnsavedChanges
         revertBtn.isEnabled = hasUnsavedChanges
     }
 
-    fun currentPreset(): Preset = original
+    fun currentPreset(): Preset = savedPreset
 
     fun updatePresetName(newName: String) {
-        original = original.copy(name = newName)
+        savedPreset = savedPreset.copy(name = newName)
         nameLabel.text = newName
     }
 
@@ -421,11 +421,11 @@ class PresetEditor(
         val requestedName = com.intellij.openapi.ui.Messages.showInputDialog(
             Bundle.msg("dialog.rename") + ":",
             Bundle.msg("dialog.rename"),
-            null, original.name, null,
+            null, savedPreset.name, null,
         )
         if (requestedName.isNullOrBlank()) return
         val newName = requestedName.trim()
-        if (newName == original.name) return
+        if (newName == savedPreset.name) return
         if (!nameValidator(newName)) {
             com.intellij.openapi.ui.Messages.showWarningDialog(
                 Bundle.msg("dialog.preset.name.rule"),
@@ -433,7 +433,7 @@ class PresetEditor(
             )
             return
         }
-        val renamed = original.copy(name = newName)
+        val renamed = savedPreset.copy(name = newName)
         try {
             onSave(renamed)
             updatePresetName(newName)
@@ -443,7 +443,7 @@ class PresetEditor(
     }
 
     private fun deriveBranch() {
-        val preset = buildCurrent()
+        val preset = buildEditedPreset()
         val requestedBranchName = com.intellij.openapi.ui.Messages.showInputDialog(
             Bundle.msg("dialog.derive.message", preset.name),
             Bundle.msg("dialog.derive"),
@@ -464,4 +464,30 @@ class PresetEditor(
 
     override fun getMaximumSize(): Dimension =
         Dimension(Short.MAX_VALUE.toInt(), preferredSize.height)
+
+    companion object {
+        private fun makeBorder(highlighted: Boolean): Border {
+            val divider = BorderFactory.createMatteBorder(0, 0, 1, 0, JBColor.border())
+            return if (highlighted) {
+                BorderFactory.createCompoundBorder(
+                    BorderFactory.createCompoundBorder(
+                        divider,
+                        BorderFactory.createMatteBorder(
+                            0,
+                            3,
+                            0,
+                            0,
+                            JBUI.CurrentTheme.Link.Foreground.ENABLED,
+                        ),
+                    ),
+                    JBUI.Borders.empty(4, 1, 10, 4),
+                )
+            } else {
+                BorderFactory.createCompoundBorder(
+                    divider,
+                    JBUI.Borders.empty(4, 4, 10, 4),
+                )
+            }
+        }
+    }
 }
