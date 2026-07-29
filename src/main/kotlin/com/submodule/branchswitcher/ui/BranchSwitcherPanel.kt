@@ -219,7 +219,7 @@ class BranchSwitcherPanel(
         val connection = project.messageBus.connect(this)
         connection.subscribe(BranchSwitchListener.TOPIC, object : BranchSwitchListener {
             override fun onBranchSwitched() {
-                com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater { detectCurrentState() }
+                project.invokeLaterIfAlive(::detectCurrentState)
             }
 
             override fun onLog(entry: LogEntry) {
@@ -241,7 +241,7 @@ class BranchSwitcherPanel(
         }, this)
         addHierarchyListener { e ->
             if ((e.changeFlags and java.awt.event.HierarchyEvent.SHOWING_CHANGED.toLong()) != 0L && isShowing) {
-                com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater {
+                project.invokeLaterIfAlive {
                     detectCurrentState()
                     refreshStrategySummary()
                 }
@@ -249,7 +249,7 @@ class BranchSwitcherPanel(
         }
         addAncestorListener(object : javax.swing.event.AncestorListener {
             override fun ancestorAdded(event: javax.swing.event.AncestorEvent) {
-                com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater {
+                project.invokeLaterIfAlive {
                     val kfm = java.awt.KeyboardFocusManager.getCurrentKeyboardFocusManager()
                     val owner = kfm.focusOwner
                     if (owner != null && SwingUtilities.isDescendingFrom(owner, this@BranchSwitcherPanel)) {
@@ -294,8 +294,8 @@ class BranchSwitcherPanel(
         val pinnedEditors = currentEditors.toList()
         service.scope.launch {
             val snapshot = stateDetector.detect(request)
-            com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater {
-                if (!stateDetector.isLatest(snapshot)) return@invokeLater
+            project.invokeLaterIfAlive {
+                if (!stateDetector.isLatest(snapshot)) return@invokeLaterIfAlive
                 pinnedEditors.forEach { editor ->
                     if (editor in currentEditors) {
                         editor.applyCurrentState(snapshot.branches, snapshot.dirtyRepositories)
@@ -313,7 +313,7 @@ class BranchSwitcherPanel(
         branches: Map<String, String?>,
         dirtyRepos: Map<String, Boolean>,
     ) {
-        val main = branches["."] ?: "(detached)"
+        val main = branches["."] ?: Bundle.msg("status.detached")
         val mainDirty = dirtyRepos["."] == true
         val matched = editors.firstOrNull { it.matchesState(branches) }?.currentPreset()?.name
         currentBranchLabel.text = "${Bundle.msg("label.main.branch")} $main"

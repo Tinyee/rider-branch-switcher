@@ -1,4 +1,4 @@
-﻿package com.submodule.branchswitcher.action
+package com.submodule.branchswitcher.action
 
 import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnAction

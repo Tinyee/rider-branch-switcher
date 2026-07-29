@@ -75,7 +75,8 @@ internal class CurrentStatePresetCreator(
         host.addEditor(root, newPreset)
         host.refreshParent()
         log.debug(
-            "[added from current] $name -> 主仓=$mainBranch, ${currentState.submodules.size} 个子模块",
+            "[added from current] $name -> main=$mainBranch, " +
+                "${currentState.submodules.size} submodule(s)",
         )
         host.notifyStateChanged()
     }

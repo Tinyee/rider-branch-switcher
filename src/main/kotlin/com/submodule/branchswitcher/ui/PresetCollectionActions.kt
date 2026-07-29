@@ -70,7 +70,11 @@ internal class PresetCollectionActions(
             }
             .onFailure {
                 log.error("${it.message}")
-                Notifier.error(project, Bundle.msg("preset.load.failed"), it.message ?: "unknown error")
+                Notifier.error(
+                    project,
+                    Bundle.msg("preset.load.failed"),
+                    it.message ?: Bundle.msg("error.unknown"),
+                )
             }
     }
 
@@ -124,7 +128,7 @@ internal class PresetCollectionActions(
         if (!persistOrReport(host.editors.map { it.currentPreset() } + newPreset)) return
         host.addEditor(root, newPreset)
         host.refreshParent()
-        log.debug("[added] $name (展开后可编辑各子模块分支)")
+        log.debug("[added] $name (submodule branches can be edited after expanding)")
         host.notifyStateChanged()
     }
 

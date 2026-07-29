@@ -54,8 +54,10 @@ object PresetLoader {
         return target
     }
 
+    @Suppress("TooGenericExceptionCaught") // migration persistence is an injected adapter boundary
     fun load(
         ideBase: Path,
+        onMigrationFailure: (Path, Exception) -> Unit = { _, _ -> },
         migrationSaver: (Path, PresetFile) -> Unit = ::save,
     ): Result<Pair<Path, PresetFile>> {
         return runCatching {
@@ -66,7 +68,11 @@ object PresetLoader {
             // If any preset was auto-assigned an id (old JSON), write back immediately
             // so that history entries referencing the id survive IDE restarts.
             if (needsMigration) {
-                runCatching { migrationSaver(file, parsed) }
+                try {
+                    migrationSaver(file, parsed)
+                } catch (e: Exception) {
+                    onMigrationFailure(file, e)
+                }
             }
             file to parsed
         }.recoverCatching { e ->
@@ -118,7 +124,11 @@ object PresetLoader {
                 Files.move(tmp, file, java.nio.file.StandardCopyOption.REPLACE_EXISTING)
             }
         } finally {
-            try { Files.deleteIfExists(tmp) } catch (_: Throwable) {}
+            try {
+                Files.deleteIfExists(tmp)
+            } catch (_: Exception) {
+                // The replacement already completed; a leftover temp file is harmless.
+            }
         }
     }
 

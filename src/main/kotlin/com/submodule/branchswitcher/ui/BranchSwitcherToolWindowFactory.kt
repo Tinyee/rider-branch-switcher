@@ -33,11 +33,11 @@ class BranchSwitcherToolWindowFactory : ToolWindowFactory {
         service.scope.launch(kotlinx.coroutines.Dispatchers.IO) {
             val gitFound = GitOps.isGitOnPath()
             if (!gitFound) {
-                com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater {
+                project.invokeLaterIfAlive {
                     Notifier.warn(
                         project,
                         Bundle.msg("plugin.title"),
-                        "git not found in PATH. The plugin requires git to be installed and available on the system PATH.",
+                        Bundle.msg("git.not.on.path"),
                     )
                 }
             }

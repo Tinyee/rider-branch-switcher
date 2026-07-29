@@ -5,6 +5,7 @@ import com.intellij.openapi.application.ApplicationManager
 import com.intellij.ui.JBColor
 import com.intellij.ui.components.JBScrollPane
 import com.intellij.util.ui.JBUI
+import com.submodule.branchswitcher.Bundle
 import com.submodule.branchswitcher.log.LogEntry
 import java.awt.BorderLayout
 import java.awt.Cursor
@@ -37,7 +38,11 @@ internal class ToolWindowLogPanel : JPanel(BorderLayout()) {
         preferredSize = Dimension(0, JBUI.scale(80))
         isVisible = false
     }
-    private val toggleLabel = JLabel(" Log", AllIcons.General.ArrowRight, SwingConstants.LEFT).apply {
+    private val toggleLabel = JLabel(
+        " ${Bundle.msg("label.log")}",
+        AllIcons.General.ArrowRight,
+        SwingConstants.LEFT,
+    ).apply {
         font = font.deriveFont(Font.PLAIN, 11f)
         foreground = JBColor.GRAY
         cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)

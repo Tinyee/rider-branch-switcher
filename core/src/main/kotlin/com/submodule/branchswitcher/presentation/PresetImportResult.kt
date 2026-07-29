@@ -22,6 +22,7 @@ data class PresetImportResult(
 fun parsePresetImport(
     text: String,
     existingNames: Set<String>,
+    unnamedLabel: String = "(unnamed)",
     idGenerator: () -> String = { java.util.UUID.randomUUID().toString() },
 ): PresetImportResult {
     val trimmed = text.trim()
@@ -53,7 +54,7 @@ fun parsePresetImport(
         val name = presetDto.name?.trim()
         val main = presetDto.main?.trim()
         if (name.isNullOrEmpty() || main.isNullOrEmpty()) {
-            invalid += name ?: "(unnamed)"
+            invalid += name ?: unnamedLabel
             continue
         }
         if (!acceptedNames.add(name)) {

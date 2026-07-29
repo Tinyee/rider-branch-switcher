@@ -1,4 +1,4 @@
-﻿package com.submodule.branchswitcher
+package com.submodule.branchswitcher
 
 import org.junit.Assert.*
 import org.junit.Test
