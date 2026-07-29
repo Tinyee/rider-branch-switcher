@@ -53,7 +53,7 @@ private data class CancelledSwitchRecovery(
  */
 class SwitchRunner(
     private val project: Project,
-    private val root: Path,
+    private val projectRoot: Path,
     private val gitClient: GitOperationProvider,
     private val taskRunner: TaskBridge.TaskRunner = TaskBridge.TaskRunner.DEFAULT,
 ) {
@@ -78,15 +78,15 @@ class SwitchRunner(
                 if (!beforeExecute(indicator)) {
                     return@task null
                 }
-                val wrapped = progress(indicator)
-                val cancelHandle = ProgressCancellationHandle(wrapped)
-                val progHandle = ProgressIndicatorHandle(wrapped)
+                val effectiveIndicator = progress(indicator)
+                val cancellationHandle = ProgressCancellationHandle(effectiveIndicator)
+                val progressHandle = ProgressIndicatorHandle(effectiveIndicator)
                 SwitchExecutor(
-                    root,
+                    projectRoot,
                     log,
                     operation,
-                    cancelHandle,
-                    progHandle,
+                    cancellationHandle,
+                    progressHandle,
                     cancellationClassifier = platformCancellationClassifier,
                     onConfirmSubmoduleInit = ::confirmSubmoduleInitialization,
                 ).execute(request)
@@ -94,20 +94,24 @@ class SwitchRunner(
         )
 
         val backgroundOutcome = interpretBackgroundResult(backgroundResult, log)
-        var cancelled = backgroundOutcome.cancelled
-        var execution = backgroundOutcome.execution
-        var recovery: SwitchRecoveryResult? = null
+        var wasCancelled = backgroundOutcome.cancelled
+        var executionResult = backgroundOutcome.execution
+        var recoveryResult: SwitchRecoveryResult? = null
 
-        if (execution?.cancelled == true) {
-            cancelled = true
+        if (executionResult?.cancelled == true) {
+            wasCancelled = true
         }
-        if (cancelled && execution != null) {
-            val cancelledRecovery = recoverCancelledSwitch(execution, log)
-            execution = cancelledRecovery.execution
-            recovery = cancelledRecovery.recovery
+        if (wasCancelled && executionResult != null) {
+            val cancelledRecovery = recoverCancelledSwitch(executionResult, log)
+            executionResult = cancelledRecovery.execution
+            recoveryResult = cancelledRecovery.recovery
         }
 
-        return SwitchRunResult(cancelled = cancelled, execution = execution, recovery = recovery)
+        return SwitchRunResult(
+            cancelled = wasCancelled,
+            execution = executionResult,
+            recovery = recoveryResult,
+        )
     }
 
     private fun interpretBackgroundResult(
@@ -150,15 +154,18 @@ class SwitchRunner(
         execution: SwitchExecutionResult,
         log: AppLogger,
     ): CancelledSwitchRecovery {
-        val operation = gitClient.openOperation()
+        // GitOperationSession remains cancelled after cancel() and rejects every
+        // later command. Recovery therefore requires a new session after the
+        // background runner has closed the cancelled one.
+        val recoveryOperation = gitClient.openOperation()
         return try {
-            val recovery = SwitchRecoveryExecutor(root, log, operation)
-            val outcome = recovery.recover(execution)
+            val recoveryExecutor = SwitchRecoveryExecutor(projectRoot, log, recoveryOperation)
+            val recoveryOutcome = recoveryExecutor.recover(execution)
             CancelledSwitchRecovery(
-                execution = execution.copy(state = outcome.stashRestore.state),
+                execution = execution.copy(state = recoveryOutcome.stashRestore.state),
                 recovery = SwitchRecoveryResult(
-                    rollbackOk = outcome.rollbackOk,
-                    stashFailures = outcome.stashRestore.failures,
+                    rollbackOk = recoveryOutcome.rollbackOk,
+                    stashFailures = recoveryOutcome.stashRestore.failures,
                 ),
             )
         } catch (e: RuntimeException) {
@@ -171,7 +178,7 @@ class SwitchRunner(
                 ),
             )
         } finally {
-            operation.close()
+            recoveryOperation.close()
         }
     }
 }

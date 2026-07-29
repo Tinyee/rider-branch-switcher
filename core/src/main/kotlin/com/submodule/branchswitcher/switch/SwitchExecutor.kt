@@ -71,7 +71,7 @@ class SwitchExecutor @JvmOverloads constructor(
         val preset = request.preset
         val options = request.options
         log.activity("=== switching to preset: ${preset.name} ===")
-        var state = SwitchState()
+        var switchState = SwitchState()
         val context = SwitchContext(
             projectRoot = projectRoot,
             preset = preset,
@@ -85,22 +85,23 @@ class SwitchExecutor @JvmOverloads constructor(
             onConfirmSubmoduleInit = onConfirmSubmoduleInit,
         )
 
-        // Do not mutate any existing repository unless it has rollback coverage.
-        val checkpoint = checkpointRecorder.record(preset)
-        if (checkpoint == null) {
+        // Fail closed: every existing repository needs a known branch and SHA
+        // before the first mutation, otherwise rollback could only be partial.
+        val switchCheckpoint = checkpointRecorder.record(preset)
+        if (switchCheckpoint == null) {
             log.error("[checkpoint] switch aborted: unable to record every existing repository")
             log.activity("=== done with errors ===")
             return SwitchExecutionResult(
                 status = SwitchExecutionStatus.FAILED,
                 checkpoint = null,
-                state = state,
+                state = switchState,
                 failures = mapOf("." to "unable to record every existing repository"),
             )
         }
 
         context.progressHandle?.isIndeterminate = false
 
-        var status = SwitchExecutionStatus.SUCCESS
+        var executionStatus = SwitchExecutionStatus.SUCCESS
         val failures = linkedMapOf<String, String>()
         for (step in steps) {
             context.progressHandle?.text = step.name
@@ -110,57 +111,59 @@ class SwitchExecutor @JvmOverloads constructor(
                 if (!cancellationClassifier.isCancellation(e)) throw e
                 git.cancel()
                 log.info("[cancelled] before step: ${step.name}")
-                status = SwitchExecutionStatus.CANCELLED
+                executionStatus = SwitchExecutionStatus.CANCELLED
                 break
             }
             if (context.cancelled()) {
                 git.cancel() // terminate in-flight command if any
                 log.info("[cancelled] before step: ${step.name}")
-                status = SwitchExecutionStatus.CANCELLED
+                executionStatus = SwitchExecutionStatus.CANCELLED
                 break
             }
             log.info("--- ${step.name} ---")
-            val execution = try {
-                step.execute(context, state)
+            val stepExecution = try {
+                step.execute(context, switchState)
             } catch (e: RuntimeException) {
                 val stepFailure = e as? SwitchStepException
-                state = stepFailure?.latestState ?: state
+                switchState = stepFailure?.latestState ?: switchState
                 val error = stepFailure?.cause ?: e
                 if (cancellationClassifier.isCancellation(error)) {
                     git.cancel()
                     log.info("[cancelled] during step: ${step.name}")
-                    status = SwitchExecutionStatus.CANCELLED
+                    executionStatus = SwitchExecutionStatus.CANCELLED
                 } else {
                     val reason = "${error.javaClass.simpleName}: ${error.message}"
                     log.error("[failed] ${step.name}: $reason")
                     failures[step.name] = reason
-                    status = SwitchExecutionStatus.FAILED
+                    executionStatus = SwitchExecutionStatus.FAILED
                 }
                 break
             }
-            state = execution.state
-            when (val result = execution.result) {
+            switchState = stepExecution.state
+            when (val stepResult = stepExecution.result) {
                 is StepResult.Fatal -> {
-                    log.error(" ${result.reason}")
-                    failures[step.name] = result.reason
-                    status = SwitchExecutionStatus.FAILED
+                    log.error(" ${stepResult.reason}")
+                    failures[step.name] = stepResult.reason
+                    executionStatus = SwitchExecutionStatus.FAILED
                     break
                 }
                 is StepResult.Partial -> {
-                    result.failures.forEach { (path, msg) ->
-                        log.warn("$path: $msg")
+                    stepResult.failures.forEach { (path, message) ->
+                        log.warn("$path: $message")
                     }
-                    failures.putAll(result.failures)
-                    if (status == SwitchExecutionStatus.SUCCESS) {
-                        status = SwitchExecutionStatus.PARTIAL
+                    failures.putAll(stepResult.failures)
+                    if (executionStatus == SwitchExecutionStatus.SUCCESS) {
+                        executionStatus = SwitchExecutionStatus.PARTIAL
                     }
                 }
                 is StepResult.Success -> { /* continue */ }
             }
         }
         log.info("")
-        log.activity(if (status == SwitchExecutionStatus.SUCCESS) "=== done ===" else "=== done with errors ===")
-        return SwitchExecutionResult(status, checkpoint, state, failures)
+        log.activity(
+            if (executionStatus == SwitchExecutionStatus.SUCCESS) "=== done ===" else "=== done with errors ===",
+        )
+        return SwitchExecutionResult(executionStatus, switchCheckpoint, switchState, failures)
     }
 
 }

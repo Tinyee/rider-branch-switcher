@@ -1,6 +1,5 @@
 package com.submodule.branchswitcher.switch
 
-import com.submodule.branchswitcher.switch.CancellationClassifier
 import com.submodule.branchswitcher.git.DeriveGitClient
 import com.submodule.branchswitcher.log.AppLogger
 import com.submodule.branchswitcher.model.Preset
@@ -12,7 +11,7 @@ import java.nio.file.Path
  *
  * State machine:
  * 1. Preflight  - atomic gate: branch mismatch / exists / missing / dirty / probe-error -> blocked
- * 2. Checkpoint - atomic gate: every validTarget must have revParseHead
+ * 2. Checkpoint - atomic gate: every eligible target must have revParseHead
  * 3. Execute    - per-target try/catch so exceptions never lose rollback info
  *
  * [rollbackSucceeded] is a separate call so the caller decides the operation scope.
@@ -38,26 +37,28 @@ class DeriveBranchExecutor(
             return preflight.toDeriveResult()
         }
 
-        val checkpoint = captureCheckpoint(preflight.validTargets)
+        val checkpoint = captureCheckpoint(preflight.eligibleTargets)
         if (checkpoint.cancelled) {
             return checkpoint.toDeriveResult(cancelled = true)
         }
-        if (checkpoint.failedPaths.isNotEmpty()) {
-            log.warn("[derive] checkpoint incomplete for ${checkpoint.failedPaths.size} repo(s) - blocked")
+        if (checkpoint.checkpointFailures.isNotEmpty()) {
+            log.warn(
+                "[derive] checkpoint incomplete for ${checkpoint.checkpointFailures.size} repo(s) - blocked",
+            )
             return checkpoint.toDeriveResult(includeEntries = false)
         }
 
-        return createBranches(preflight.validTargets, branchName, checkpoint.entries)
+        return createBranches(preflight.eligibleTargets, branchName, checkpoint.entries)
     }
 
     @Suppress("TooGenericExceptionCaught") // Git query adapters vary; cancellation is rethrown
     private fun runPreflight(targets: List<RepoTarget>, branchName: String): DerivePreflightResult {
-        val validTargets = mutableListOf<RepoTarget>()
+        val eligibleTargets = mutableListOf<RepoTarget>()
         val branchExists = mutableListOf<String>()
         val skipped = mutableListOf<String>()
         val dirty = mutableListOf<String>()
         val branchMismatch = mutableListOf<String>()
-        val preflightError = mutableListOf<String>()
+        val probeFailures = mutableListOf<String>()
 
         for (target in targets) {
             if (isCancelled()) break
@@ -77,7 +78,7 @@ class DeriveBranchExecutor(
             } catch (e: Exception) {
                 rethrowIfCancellation(e)
                 log.warn("[derive] $repositoryLabel: cannot detect current branch - ${e.message}")
-                preflightError.add(target.path)
+                probeFailures.add(target.path)
                 continue
             }
             if (currentBranch == null) {
@@ -104,7 +105,7 @@ class DeriveBranchExecutor(
             }
             if (branchAlreadyExists == null) {
                 log.warn("[derive] $repositoryLabel: cannot check branch existence - blocked")
-                preflightError.add(target.path)
+                probeFailures.add(target.path)
                 continue
             }
             if (branchAlreadyExists) {
@@ -124,7 +125,7 @@ class DeriveBranchExecutor(
                 }
                 if (isDirty == null) {
                     log.warn("[derive] $repositoryLabel: cannot check dirty status - blocked")
-                    preflightError.add(target.path)
+                    probeFailures.add(target.path)
                     continue
                 }
                 if (isDirty) {
@@ -134,26 +135,26 @@ class DeriveBranchExecutor(
                 }
             }
 
-            validTargets.add(target)
+            eligibleTargets.add(target)
         }
 
         return DerivePreflightResult(
-            validTargets = validTargets,
+            eligibleTargets = eligibleTargets,
             branchExists = branchExists,
             skipped = skipped,
             dirty = dirty,
             branchMismatch = branchMismatch,
-            errors = preflightError,
+            probeFailures = probeFailures,
             cancelled = isCancelled(),
         )
     }
 
     @Suppress("TooGenericExceptionCaught") // Git query adapters vary; cancellation is rethrown
-    private fun captureCheckpoint(validTargets: List<RepoTarget>): DeriveCheckpointResult {
+    private fun captureCheckpoint(eligibleTargets: List<RepoTarget>): DeriveCheckpointResult {
         val entries = LinkedHashMap<String, DeriveCheckpointEntry>()
-        val failedPaths = mutableListOf<String>()
+        val checkpointFailures = mutableListOf<String>()
 
-        for (target in validTargets) {
+        for (target in eligibleTargets) {
             if (isCancelled()) break
             val repositoryDirectory = resolveGitDir(projectRoot, target.path)
             val repositoryLabel = labelFor(target.path)
@@ -164,25 +165,25 @@ class DeriveBranchExecutor(
                     entries[target.path] = DeriveCheckpointEntry(sha, branch)
                 } else {
                     log.warn("[derive] $repositoryLabel: no HEAD - cannot checkpoint")
-                    failedPaths.add(target.path)
+                    checkpointFailures.add(target.path)
                 }
             } catch (e: Exception) {
                 rethrowIfCancellation(e)
                 log.warn("[derive] $repositoryLabel: checkpoint failed - ${e.message}")
-                failedPaths.add(target.path)
+                checkpointFailures.add(target.path)
             }
         }
 
         return DeriveCheckpointResult(
             entries = entries,
-            failedPaths = failedPaths,
+            checkpointFailures = checkpointFailures,
             cancelled = isCancelled(),
         )
     }
 
     @Suppress("TooGenericExceptionCaught") // preserve per-repository failures while rethrowing cancellation
     private fun createBranches(
-        validTargets: List<RepoTarget>,
+        eligibleTargets: List<RepoTarget>,
         branchName: String,
         checkpoint: Map<String, DeriveCheckpointEntry>,
     ): DeriveResult {
@@ -190,7 +191,7 @@ class DeriveBranchExecutor(
         val failed = LinkedHashMap<String, String>()
         var executionCancelled = false
 
-        for (target in validTargets) {
+        for (target in eligibleTargets) {
             if (isCancelled()) {
                 executionCancelled = true
                 break
@@ -234,18 +235,18 @@ class DeriveBranchExecutor(
      * Must be called in a non-cancelled operation for Git commands to execute.
      */
     @Suppress("TooGenericExceptionCaught") // rollback must continue after one repository fails
-    fun rollbackSucceeded(result: DeriveResult, branchName: String): List<String> {
+    fun rollbackSucceeded(deriveResult: DeriveResult, branchName: String): List<String> {
         val rollbackFailures = mutableListOf<String>()
 
-        for (path in result.succeeded) {
+        for (path in deriveResult.succeeded) {
             try {
                 val repositoryDirectory = resolveGitDir(projectRoot, path)
                 val repositoryLabel = labelFor(path)
-                val entry = result.checkpoint[path]
+                val checkpointEntry = deriveResult.checkpoint[path]
 
-                if (entry != null) {
-                    val target = entry.branch ?: entry.sha
-                    val checkoutResult = git.checkoutExisting(repositoryDirectory, target)
+                if (checkpointEntry != null) {
+                    val restoreTarget = checkpointEntry.branch ?: checkpointEntry.sha
+                    val checkoutResult = git.checkoutExisting(repositoryDirectory, restoreTarget)
                     if (!checkoutResult.ok) {
                         log.warn(
                             "[derive] $repositoryLabel: checkout rollback FAILED - " +
@@ -254,7 +255,7 @@ class DeriveBranchExecutor(
                         rollbackFailures.add(path)
                         continue
                     }
-                    log.activity("[derive] $repositoryLabel: rolled back to $target")
+                    log.activity("[derive] $repositoryLabel: rolled back to $restoreTarget")
 
                     val deleteResult = git.deleteBranch(repositoryDirectory, branchName)
                     if (deleteResult.ok) {
@@ -291,12 +292,12 @@ class DeriveBranchExecutor(
 }
 
 private data class DerivePreflightResult(
-    val validTargets: List<RepoTarget>,
+    val eligibleTargets: List<RepoTarget>,
     val branchExists: List<String>,
     val skipped: List<String>,
     val dirty: List<String>,
     val branchMismatch: List<String>,
-    val errors: List<String>,
+    val probeFailures: List<String>,
     val cancelled: Boolean,
 ) {
     val hasIssues: Boolean
@@ -304,7 +305,7 @@ private data class DerivePreflightResult(
             skipped.isNotEmpty() ||
             dirty.isNotEmpty() ||
             branchMismatch.isNotEmpty() ||
-            errors.isNotEmpty()
+            probeFailures.isNotEmpty()
 
     fun toDeriveResult(cancelled: Boolean = false): DeriveResult = DeriveResult(
         succeeded = emptyList(),
@@ -312,7 +313,7 @@ private data class DerivePreflightResult(
         skipped = skipped,
         dirty = dirty,
         branchMismatch = branchMismatch,
-        preflightError = errors,
+        preflightError = probeFailures,
         checkpointFailed = emptyList(),
         failed = emptyMap(),
         checkpoint = emptyMap(),
@@ -322,7 +323,7 @@ private data class DerivePreflightResult(
 
 private data class DeriveCheckpointResult(
     val entries: Map<String, DeriveCheckpointEntry>,
-    val failedPaths: List<String>,
+    val checkpointFailures: List<String>,
     val cancelled: Boolean,
 ) {
     fun toDeriveResult(
@@ -335,7 +336,7 @@ private data class DeriveCheckpointResult(
         dirty = emptyList(),
         branchMismatch = emptyList(),
         preflightError = emptyList(),
-        checkpointFailed = failedPaths,
+        checkpointFailed = checkpointFailures,
         failed = emptyMap(),
         checkpoint = if (includeEntries) entries else emptyMap(),
         cancelled = cancelled,
