@@ -55,6 +55,22 @@ Kotlin 语法。
 
 先读 core，再读平台和 UI，会比从最大的 Swing 类开始容易很多。
 
+遇到具体任务时，可以直接按下面的路径追踪：
+
+```text
+Preset 切换：
+  SwitchController -> SwitchFlowCoordinator -> SwitchRunner -> SwitchExecutor
+
+派生分支：
+  SwitchController -> DeriveBranchRunner -> DeriveBranchExecutor
+
+Preset 编辑：
+  PresetListManager -> PresetEditor -> SubmoduleRowManager
+
+Git 命令：
+  GitOps -> GitCommandClient -> GitProcessRunner
+```
+
 ## 完整切换流程
 
 `SwitchExecutor` 按固定顺序执行：
@@ -95,6 +111,7 @@ SwitchController
 - `PresetTransferActions` 负责剪贴板导入导出。
 - `CurrentStatePresetCreator` 探测所有仓库当前分支，并从完整快照创建 preset。
 - `PresetEditor` 编辑单个 preset，`SubmoduleRowManager` 管理其中动态变化的子模块行。
+- `ToolWindowLogPanel` 管理日志折叠、颜色、文本裁剪和展示状态。
 
 这些 UI 协作者仍通过同一个 preset 持久化入口保存，因此拆分不会产生不同的错误处理或刷新
 顺序。导入校验规则仍是 `core/ui` 中不依赖 Swing 的纯逻辑。

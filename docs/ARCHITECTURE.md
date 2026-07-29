@@ -50,6 +50,35 @@ run broader checks.
 | `ui` | Tool Window, editors, dialogs, notifications, and screen commands | `BranchSwitcherPanel.kt`, `PresetEditor.kt`, `SwitchFlowCoordinator.kt` |
 | `action` | IDE actions such as `Ctrl+Alt+B` | `SwitchPresetAction.kt` |
 
+## Code Reading Guide
+
+Read from stable domain rules toward IntelliJ adapters rather than starting
+with the largest Swing class:
+
+1. `PresetConfig.kt` for presets, options, and resolved requests.
+2. `SwitchStep.kt` for step results, immutable state, and execution context.
+3. `SwitchExecutor.kt` for the ordered pipeline.
+4. `SwitchRecoveryExecutor.kt` for checkpoint and stash recovery.
+5. `SwitchRunner.kt` and `GitBackgroundRunner.kt` for task and cancellation
+   lifecycle.
+6. `SwitchFlowCoordinator.kt` and the UI entry point relevant to the change.
+
+Use these paths when tracing a specific task:
+
+```text
+Preset switch:
+  SwitchController -> SwitchFlowCoordinator -> SwitchRunner -> SwitchExecutor
+
+Derived branch:
+  SwitchController -> DeriveBranchRunner -> DeriveBranchExecutor
+
+Preset editing:
+  PresetListManager -> PresetEditor -> SubmoduleRowManager
+
+Git command:
+  GitOps -> GitCommandClient -> GitProcessRunner
+```
+
 ## Preset Persistence
 
 Preset lookup order is:
@@ -123,6 +152,8 @@ Tool Window. Its collaborators divide those commands by side effect:
   preset from that snapshot.
 - `PresetEditor` renders and edits one preset; `SubmoduleRowManager` owns its
   dynamic submodule rows.
+- `ToolWindowLogPanel` owns collapsible log rendering, document trimming, and
+  log presentation state.
 
 Import validation remains a pure rule in `core/ui`. UI collaborators delegate
 all writes through the collection persistence path, so save failures and screen
