@@ -7,8 +7,9 @@ import com.submodule.branchswitcher.log.AppLogger
 import com.submodule.branchswitcher.Notifier
 import com.submodule.branchswitcher.Bundle
 import com.submodule.branchswitcher.model.Preset
-import com.submodule.branchswitcher.service.BranchSwitcherService
+import com.submodule.branchswitcher.platform.logVcsRefresh
 import com.submodule.branchswitcher.platform.refreshVcsRepos
+import com.submodule.branchswitcher.service.BranchSwitcherService
 import com.submodule.branchswitcher.switch.DeriveNotification
 import com.submodule.branchswitcher.switch.deriveNotification
 import com.submodule.branchswitcher.workflow.DeriveBranchRunner
@@ -78,10 +79,11 @@ internal class SwitchController(
             } finally {
                 writeLease.close()
             }
+            val refreshResult = refreshVcsRepos(project, root, preset.submodules.keys)
 
             invokeLaterIfProjectAlive {
+                logVcsRefresh(log, refreshResult)
                 onStateChanged()
-                refreshVcs(root, preset)
                 showDeriveNotification(runResult, branchName)
             }
         }
@@ -177,24 +179,6 @@ internal class SwitchController(
             return
         }
         runSwitch(preset)
-    }
-
-    private fun refreshVcs(root: Path, preset: Preset) {
-        service.scope.launch(Dispatchers.IO) {
-            try {
-                refreshVcsRepos(project, root, preset.submodules.keys)
-                invokeLaterIfProjectAlive {
-                    log.debug("[vcs] refreshed ${preset.submodules.size + 1} repo(s)")
-                    onStateChanged()
-                }
-            } catch (t: Throwable) {
-                invokeLaterIfProjectAlive {
-                    log.error("refreshVcs failed: ${t.javaClass.simpleName}: ${t.message}")
-                    Notifier.warn(project, Bundle.msg("rollback.partial"), "${t.javaClass.simpleName}: ${t.message}")
-                    onStateChanged()
-                }
-            }
-        }
     }
 
     private fun invokeLaterIfProjectAlive(action: () -> Unit) = project.invokeLaterIfAlive(action)

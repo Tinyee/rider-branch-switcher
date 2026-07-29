@@ -8,6 +8,7 @@ import com.submodule.branchswitcher.Bundle
 import com.submodule.branchswitcher.Notifier
 import com.submodule.branchswitcher.log.AppLogger
 import com.submodule.branchswitcher.model.Preset
+import com.submodule.branchswitcher.platform.logVcsRefresh
 import com.submodule.branchswitcher.platform.refreshVcsRepos
 import com.submodule.branchswitcher.service.BranchSwitcherService
 import com.submodule.branchswitcher.workflow.SingleRepositorySkipReason
@@ -127,6 +128,7 @@ internal class PresetListManager(
 
     private fun switchSubmodule(root: Path, path: String, target: String) {
         val started = singleRepositorySwitcher.start(service.scope, root, path, target) { result ->
+            val refreshResult = refreshVcsRepos(project, root, setOf(path))
             project.invokeLaterIfAlive {
                 when (result) {
                     is SingleRepositorySwitchResult.Success -> {
@@ -164,7 +166,7 @@ internal class PresetListManager(
                         log.warn("[switch] $path skipped: $detail")
                     }
                 }
-                refreshVcsRepos(project, root, setOf(path))
+                logVcsRefresh(log, refreshResult)
                 notifyStateChanged()
             }
         }

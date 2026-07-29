@@ -1,6 +1,7 @@
 package com.submodule.branchswitcher.platform
 
 import com.intellij.openapi.progress.ProgressIndicator
+import com.submodule.branchswitcher.log.AppLogger
 import com.submodule.branchswitcher.switch.CancellationClassifier
 import com.submodule.branchswitcher.switch.CancellationHandle
 import com.submodule.branchswitcher.switch.ProgressHandle
@@ -35,16 +36,40 @@ class ProgressIndicatorHandle(
  * Refreshes VCS status for main repo + submodule paths.
  * Shared by both tool-window switch and shortcut action switch.
  */
-fun refreshVcsRepos(project: com.intellij.openapi.project.Project, root: java.nio.file.Path, submodulePaths: Set<String>) {
+data class VcsRefreshResult(
+    val refreshedRepositories: Int,
+    val failures: Map<String, String>,
+)
+
+@Suppress("TooGenericExceptionCaught") // VFS and repository adapters expose unrelated per-root failures
+fun refreshVcsRepos(
+    project: com.intellij.openapi.project.Project,
+    root: java.nio.file.Path,
+    submodulePaths: Set<String>,
+): VcsRefreshResult {
     val lfs = com.intellij.openapi.vfs.LocalFileSystem.getInstance()
     val mgr = git4idea.repo.GitRepositoryManager.getInstance(project)
+    var refreshedRepositories = 0
+    val failures = linkedMapOf<String, String>()
     for (path in listOf(".") + submodulePaths) {
         val dir = if (path == ".") root.toFile() else root.resolve(path).toFile()
         try {
             val vf = lfs.refreshAndFindFileByIoFile(dir) ?: continue
             vf.refresh(false, true)
             mgr.getRepositoryForRoot(vf)?.update()
-        } catch (_: Exception) { /* skip unreachable repos */ }
+            refreshedRepositories++
+        } catch (e: Exception) {
+            if (platformCancellationClassifier.isCancellation(e)) throw e
+            failures[path] = "${e.javaClass.simpleName}: ${e.message}"
+        }
+    }
+    return VcsRefreshResult(refreshedRepositories, failures)
+}
+
+fun logVcsRefresh(log: AppLogger, result: VcsRefreshResult) {
+    log.debug("[vcs] refreshed ${result.refreshedRepositories} repo(s)")
+    result.failures.forEach { (path, error) ->
+        log.warn("[vcs] $path refresh failed: $error")
     }
 }
 
