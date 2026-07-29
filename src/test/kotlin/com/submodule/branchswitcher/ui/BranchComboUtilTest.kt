@@ -75,8 +75,8 @@ class BranchComboUtilTest {
         var ends = 0
 
         loadComboBranches(
-            combo, File("."), "dev", branchGit { listOf("main", "dev") },
-            CoroutineScope(Dispatchers.Unconfined), createStringAppender {},
+            combo, File("."), "dev", { branchGit { listOf("main", "dev") } },
+            BranchLoadCoordinator(CoroutineScope(Dispatchers.Unconfined)), createStringAppender {},
             onLoadStart = { starts++ },
             onLoadEnd = { ends++ },
             scheduleUi = { it() },
@@ -95,8 +95,8 @@ class BranchComboUtilTest {
         var ends = 0
 
         loadComboBranches(
-            combo, File("."), "dev", branchGit { error("broken") },
-            CoroutineScope(Dispatchers.Unconfined), createStringAppender { logs += it },
+            combo, File("."), "dev", { branchGit { error("broken") } },
+            BranchLoadCoordinator(CoroutineScope(Dispatchers.Unconfined)), createStringAppender { logs += it },
             onLoadStart = {},
             onLoadEnd = { ends++ },
             scheduleUi = { it() },
@@ -114,8 +114,8 @@ class BranchComboUtilTest {
         var ends = 0
 
         loadComboBranches(
-            combo, File("."), "dev", branchGit { listOf("main") },
-            CoroutineScope(Dispatchers.Unconfined), createStringAppender {},
+            combo, File("."), "dev", { branchGit { listOf("main") } },
+            BranchLoadCoordinator(CoroutineScope(Dispatchers.Unconfined)), createStringAppender {},
             onLoadStart = {},
             onLoadEnd = { ends++ },
             scheduleUi = { it() },

@@ -79,7 +79,12 @@ class BranchSwitcherService(
     private var options = OptionsState()
 
     override fun getState(): OptionsState = options
-    override fun loadState(state: OptionsState) { options = state }
+    override fun loadState(state: OptionsState) {
+        synchronized(gitClientLock) {
+            options = state
+            _gitClient = null
+        }
+    }
 
     // ── Delegated sub-components ─────────────────────────────────────
 
@@ -102,24 +107,30 @@ class BranchSwitcherService(
         set(value) { options.pullAfterSwitch = value }
 
     var timeoutSeconds: Int
-        get() = options.timeoutSeconds
-        set(value) { options.timeoutSeconds = value }
+        get() = synchronized(gitClientLock) { options.timeoutSeconds }
+        set(value) {
+            synchronized(gitClientLock) {
+                if (options.timeoutSeconds != value) {
+                    options.timeoutSeconds = value
+                    _gitClient = null
+                }
+            }
+        }
 
     var confirmBeforeInit: Boolean
         get() = options.confirmBeforeInit
         set(value) { options.confirmBeforeInit = value }
 
     /** Cached [GitOps] instance, recreated only when timeout changes. */
+    private val gitClientLock = Any()
     private var _gitClient: GitClient? = null
-    private var _gitClientTimeout: Int = -1
 
-    val gitClient: GitClient get() {
-        if (_gitClient == null || _gitClientTimeout != options.timeoutSeconds) {
-            _gitClient = GitOps(options.timeoutSeconds)
-            _gitClientTimeout = options.timeoutSeconds
+    val gitClient: GitClient
+        get() = synchronized(gitClientLock) {
+            _gitClient ?: GitOps(options.timeoutSeconds).also {
+                _gitClient = it
+            }
         }
-        return _gitClient!!
-    }
 
     // ── Preset persistence (delegated) ───────────────────────────────
 
