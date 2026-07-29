@@ -97,7 +97,12 @@ class DeriveBranchRunner(
 
         // The cancelled background session cannot run rollback commands. Open a
         // fresh session after GitBackgroundRunner has closed the cancelled one.
-        val rollbackOperation = gitClient.openOperation()
+        val rollbackOperation = try {
+            gitClient.openOperation()
+        } catch (e: RuntimeException) {
+            log.error("derive rollback session: ${e.javaClass.simpleName}: ${e.message}")
+            return listOf("(session)")
+        }
         return try {
             log.activity(
                 "[derive] rolling back ${execution.succeeded.size} succeeded repo(s) after cancel...",

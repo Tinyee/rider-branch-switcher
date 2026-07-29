@@ -41,7 +41,15 @@ class GitBackgroundRunner(
         title: String,
         block: (ProgressIndicator, GitOperationSession) -> T,
     ): GitBackgroundResult<T> {
-        val operation = git.openOperation()
+        val operation = try {
+            git.openOperation()
+        } catch (_: CancellationException) {
+            return GitBackgroundResult.Cancelled()
+        } catch (_: com.intellij.openapi.progress.ProcessCanceledException) {
+            return GitBackgroundResult.Cancelled()
+        } catch (e: RuntimeException) {
+            return GitBackgroundResult.Failed(e)
+        }
         var completed: ValueBox<T>? = null
         var cancelled = false
         return try {

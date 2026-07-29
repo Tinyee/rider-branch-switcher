@@ -4,6 +4,7 @@ import com.intellij.openapi.progress.ProgressIndicator
 import com.intellij.openapi.project.Project
 import com.submodule.branchswitcher.TaskBridge
 import com.submodule.branchswitcher.git.GitClient
+import com.submodule.branchswitcher.git.GitOperationProvider
 import com.submodule.branchswitcher.git.GitOperationSession
 import com.submodule.branchswitcher.git.GitResult
 import com.submodule.branchswitcher.git.GitWorkflowClient
@@ -192,6 +193,63 @@ class SwitchRunnerTest {
         assertEquals(1, git.stashPopCount)
         assertEquals(2, git.openCount)
         assertEquals(2, git.closeCount)
+    }
+
+    @Test
+    fun `operation session creation failure becomes a structured switch failure`() = runBlocking {
+        val logs = mutableListOf<String>()
+        val unavailableGit = object : GitOperationProvider {
+            override fun openOperation(): GitOperationSession =
+                throw IllegalStateException("git unavailable")
+        }
+        val runner = SwitchRunner(
+            project,
+            Files.createTempDirectory("switch-runner-open-failure"),
+            unavailableGit,
+            immediateTaskRunner(),
+        )
+
+        val result = runner.execute(
+            title = "Switching",
+            request = request(),
+            log = createStringAppender(logs::add),
+        )
+
+        assertFalse(result.ok)
+        assertFalse(result.cancelled)
+        assertNull(result.execution)
+        assertTrue(logs.any { it.contains("git unavailable") })
+    }
+
+    @Test
+    fun `cancel recovery session failure is reported without escaping`() = runBlocking {
+        val root = Files.createTempDirectory("switch-runner-recovery-open-failure")
+        initGitRepo(root.toFile())
+        val git = object : RecordingGit() {
+            override fun isDirty(workDir: File): Boolean = true
+
+            override fun openOperation(): GitOperationSession {
+                if (openCount == 1) throw IllegalStateException("recovery unavailable")
+                return super.openOperation()
+            }
+        }
+        val runner = SwitchRunner(
+            project,
+            root,
+            git,
+            immediateTaskRunner(cancellingAfterCheckoutIndicator(git)),
+        )
+
+        val result = runner.execute(
+            title = "Switching",
+            request = request(target = "dev", fetchFirst = false, pull = false),
+            log = createStringAppender {},
+        )
+
+        assertTrue(result.cancelled)
+        assertFalse(result.recovery?.ok == true)
+        assertEquals(1, git.openCount)
+        assertEquals(1, git.closeCount)
     }
 
     private fun request(
