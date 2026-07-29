@@ -162,11 +162,19 @@ fun scanQuickChecks(
 
     // 3. Core must remain a pure JVM module.
     if (enforceCoreBoundary) {
-        val intellijImports = fileTree(srcRoot).filter { it.extension == "kt" }
+        val sourceLines = fileTree(srcRoot).filter { it.extension == "kt" }
             .flatMap { it.readLines() }
+        val intellijImports = sourceLines
             .filter { it.trimStart().startsWith("import com.intellij") }
         if (intellijImports.isNotEmpty()) {
             fail("Core imports IntelliJ API: ${intellijImports.take(3)}")
+        }
+        val desktopUiImports = sourceLines.filter {
+            val line = it.trimStart()
+            line.startsWith("import java.awt") || line.startsWith("import javax.swing")
+        }
+        if (desktopUiImports.isNotEmpty()) {
+            fail("Core imports desktop UI: ${desktopUiImports.take(3)}")
         }
     }
 
@@ -337,6 +345,7 @@ tasks {
                             name.contains("switch") -> "switch/ imports ui/"
                             name.contains("workflow") -> "workflow has forbidden layer imports"
                             name.contains("core-intellij") -> "Core imports IntelliJ API"
+                            name.contains("core-desktop-ui") -> "Core imports desktop UI"
                             name.contains("deprecated") -> "Deprecated API"
                             else -> name
                         }

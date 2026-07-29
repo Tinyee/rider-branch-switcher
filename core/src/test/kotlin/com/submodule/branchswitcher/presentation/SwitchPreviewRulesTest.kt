@@ -1,4 +1,4 @@
-package com.submodule.branchswitcher.ui
+package com.submodule.branchswitcher.presentation
 
 import com.submodule.branchswitcher.model.DirtyAction
 import com.submodule.branchswitcher.model.PreflightRow
@@ -9,7 +9,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-class SwitchPreviewDialogTest {
+class SwitchPreviewRulesTest {
 
     private fun makeRequest(
         dirty: DirtyAction = DirtyAction.Stash,

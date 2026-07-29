@@ -9,6 +9,7 @@ import com.intellij.util.ui.NamedColorUtil
 import com.submodule.branchswitcher.Bundle
 import com.submodule.branchswitcher.model.PreflightRow
 import com.submodule.branchswitcher.model.ResolvedSwitchRequest
+import com.submodule.branchswitcher.presentation.shouldShowForceWarning
 import java.awt.BorderLayout
 import javax.swing.BoxLayout
 import java.awt.Component

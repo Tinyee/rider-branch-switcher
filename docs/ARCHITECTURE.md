@@ -10,8 +10,9 @@ direction. Historical refactoring decisions remain in
 The project has two Gradle modules:
 
 - `core/` is pure Kotlin/JVM. It contains domain models, JSON persistence,
-  narrow Git interfaces, switch and recovery logic, validation, and pure UI
-  decisions. It must not import IntelliJ Platform APIs.
+  narrow Git interfaces, switch and recovery logic, validation, and pure
+  presentation decisions. It must not import IntelliJ Platform or desktop UI
+  APIs.
 - `src/` is the IntelliJ Platform plugin. It contains UI, project services,
   background-task adapters, CLI Git implementation, notifications, and IDE
   integration.
@@ -42,7 +43,7 @@ run broader checks.
 | `core/model` | Presets, resolved requests, switch options | `PresetConfig.kt` |
 | `core/switch` | Preflight, ordered switch steps, checkpoints, recovery, derive | `SwitchExecutor.kt`, `SwitchRecoveryExecutor.kt` |
 | `core/git` | Capability-oriented Git interfaces and results | `GitClient.kt` |
-| `core/ui` | Pure import, shortcut, preview, and layout decisions | `PresetImportResult.kt`, `SwitchPreviewRules.kt` |
+| `core/presentation` | Pure import, shortcut, preview, and responsive-layout decisions | `PresetImportResult.kt`, `SwitchPreviewRules.kt` |
 | `service` | Project-scoped state, preset repository, write lease | `BranchSwitcherService.kt`, `PresetRepository.kt` |
 | `workflow` | Reusable application use cases independent of a particular screen | `SwitchRunner.kt`, `DeriveBranchRunner.kt`, `SingleRepositorySwitcher.kt` |
 | `platform` | IntelliJ progress/cancellation/background adapters | `GitBackgroundRunner.kt`, `SwitchAdapters.kt` |
@@ -155,7 +156,13 @@ Tool Window. Its collaborators divide those commands by side effect:
 - `ToolWindowLogPanel` owns collapsible log rendering, document trimming, and
   log presentation state.
 
-Import validation remains a pure rule in `core/ui`. UI collaborators delegate
+`BranchSwitcherPanel` constructs `SwitchController` before `PresetListManager`
+and passes explicit command callbacks between them. Neither collaborator relies
+on lazy initialization or reaches back through the other to complete its
+construction.
+
+Import validation remains a pure rule in `core/presentation`. Swing layout
+helpers stay in the plugin `ui` package. UI collaborators delegate
 all writes through the collection persistence path, so save failures and screen
 refresh behavior remain consistent.
 

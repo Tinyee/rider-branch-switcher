@@ -43,9 +43,9 @@ pitest {
             "com.submodule.branchswitcher.settings.SettingsRulesKt",
             "com.submodule.branchswitcher.model.PresetValidationKt",
             "com.submodule.branchswitcher.switch.DeriveNotification*",
-            "com.submodule.branchswitcher.ui.PresetImportResultKt",
-            "com.submodule.branchswitcher.ui.UiLayoutRulesKt",
-            "com.submodule.branchswitcher.ui.SwitchPreviewRulesKt",
+            "com.submodule.branchswitcher.presentation.PresetImportResultKt",
+            "com.submodule.branchswitcher.presentation.UiLayoutRulesKt",
+            "com.submodule.branchswitcher.presentation.SwitchPreviewRulesKt",
             "com.submodule.branchswitcher.switch.SwitchPreflight",
         )
     )
@@ -55,9 +55,9 @@ pitest {
             "com.submodule.branchswitcher.switch.BranchNameRulesTest",
             "com.submodule.branchswitcher.switch.DeriveNotificationTest",
             "com.submodule.branchswitcher.switch.SwitchPreflightTest",
-            "com.submodule.branchswitcher.ui.PresetImportRulesTest",
-            "com.submodule.branchswitcher.ui.UiLayoutRulesTest",
-            "com.submodule.branchswitcher.ui.SwitchPreviewDialogTest",
+            "com.submodule.branchswitcher.presentation.PresetImportRulesTest",
+            "com.submodule.branchswitcher.presentation.UiLayoutRulesTest",
+            "com.submodule.branchswitcher.presentation.SwitchPreviewRulesTest",
         )
     )
     avoidCallsTo.set(setOf("kotlin.jvm.internal"))

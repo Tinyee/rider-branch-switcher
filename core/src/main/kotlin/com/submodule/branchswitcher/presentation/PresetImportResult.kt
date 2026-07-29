@@ -1,4 +1,4 @@
-package com.submodule.branchswitcher.ui
+package com.submodule.branchswitcher.presentation
 
 import com.google.gson.Gson
 import com.google.gson.JsonParseException

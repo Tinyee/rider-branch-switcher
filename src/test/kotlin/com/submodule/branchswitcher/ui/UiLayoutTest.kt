@@ -1,21 +1,12 @@
 package com.submodule.branchswitcher.ui
 
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
-import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.awt.Dimension
 import javax.swing.JComboBox
 import javax.swing.JLabel
 
-class UiLayoutRulesTest {
-    @Test
-    fun `secondary action is visible before layout and when enough width is available`() {
-        assertTrue(shouldShowSecondaryAction(0, 200))
-        assertFalse(shouldShowSecondaryAction(199, 200))
-        assertTrue(shouldShowSecondaryAction(200, 200))
-    }
-
+class UiLayoutTest {
     @Test
     fun `compact height panel never stretches vertically`() {
         val panel = CompactHeightPanel().apply {

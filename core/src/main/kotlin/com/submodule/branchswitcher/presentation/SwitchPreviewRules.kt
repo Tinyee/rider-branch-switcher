@@ -1,4 +1,4 @@
-package com.submodule.branchswitcher.ui
+package com.submodule.branchswitcher.presentation
 
 import com.submodule.branchswitcher.model.DirtyAction
 import com.submodule.branchswitcher.model.PreflightRow

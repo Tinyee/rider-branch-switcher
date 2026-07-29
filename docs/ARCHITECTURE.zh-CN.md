@@ -11,8 +11,8 @@ Kotlin 语法。
 
 项目分成两个 Gradle 模块：
 
-- `core/` 是纯 Kotlin/JVM 代码，不依赖 IntelliJ。分支切换规则、preset 模型、
-  checkpoint 和恢复逻辑主要在这里。
+- `core/` 是纯 Kotlin/JVM 代码，不依赖 IntelliJ 或桌面 UI。分支切换规则、
+  preset 模型、checkpoint、恢复逻辑和纯展示决策主要在这里。
 - `src/` 是 IntelliJ 插件层，负责 Swing UI、项目级服务、后台任务、Git 进程和通知。
 
 可以把一次完整 preset 切换理解成下面这条调用链：
@@ -113,8 +113,12 @@ SwitchController
 - `PresetEditor` 编辑单个 preset，`SubmoduleRowManager` 管理其中动态变化的子模块行。
 - `ToolWindowLogPanel` 管理日志折叠、颜色、文本裁剪和展示状态。
 
+`BranchSwitcherPanel` 会先构造 `SwitchController`，再把明确的命令回调传给
+`PresetListManager`。两者不再依赖延迟初始化来解决循环组装。
+
 这些 UI 协作者仍通过同一个 preset 持久化入口保存，因此拆分不会产生不同的错误处理或刷新
-顺序。导入校验规则仍是 `core/ui` 中不依赖 Swing 的纯逻辑。
+顺序。导入、快捷键、预览和响应式布局规则位于 `core/presentation`；Swing 布局组件只保留
+在插件层 `ui`。
 
 ## Kotlin 语法速查
 

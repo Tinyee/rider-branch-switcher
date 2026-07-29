@@ -28,7 +28,6 @@ internal class SwitchController(
     private val service: BranchSwitcherService,
     private val gitRoot: () -> Path?,
     private val log: AppLogger,
-    private val editors: () -> List<PresetEditor>,
     private val onStateChanged: () -> Unit,
 ) {
 
@@ -160,8 +159,7 @@ internal class SwitchController(
         }
     }
 
-    fun undoLastSwitch() {
-        val allPresets = editors().map { it.currentPreset() }
+    fun undoLastSwitch(allPresets: List<Preset>) {
         val history = service.getHistory()
         if (history.size < 2) {
             Messages.showInfoMessage(project, Bundle.msg("no.undo.history"), Bundle.msg("dialog.undo"))
