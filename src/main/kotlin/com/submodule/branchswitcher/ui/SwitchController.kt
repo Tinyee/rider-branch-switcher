@@ -22,7 +22,7 @@ import java.nio.file.Path
  * Handles all switch-related operations: preflight preview, execute, rollback,
  * derive branch, undo, and VCS refresh. All async via [service.scope].
  */
-class SwitchController(
+internal class SwitchController(
     private val project: Project,
     private val service: BranchSwitcherService,
     private val gitRoot: () -> Path?,

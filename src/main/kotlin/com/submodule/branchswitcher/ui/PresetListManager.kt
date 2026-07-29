@@ -41,6 +41,7 @@ internal class PresetListManager(
     private var emptyStatePanel: JPanel? = null
     var onStateChanged: (() -> Unit)? = null
 
+    private val branchLoads = BranchLoadCoordinator(service.scope)
     private val actions = PresetCollectionActions(project, service, gitRoot, log, this)
     private val singleRepositorySwitcher = SingleRepositorySwitcher(
         project = project,
@@ -78,8 +79,8 @@ internal class PresetListManager(
             nameValidator = { newName ->
                 mutableEditors.none { it !== editor && it.currentPreset().name == newName }
             },
-            gitClient = service.gitClient,
-            scope = service.scope,
+            gitClient = { service.gitClient },
+            branchLoads = branchLoads,
             onSwitchOnly = { path, target -> switchSubmodule(root, path, target) },
         )
         mutableEditors.add(editor)

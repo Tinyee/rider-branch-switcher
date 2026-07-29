@@ -7,8 +7,6 @@ import com.submodule.branchswitcher.log.AppLogger
 import com.submodule.branchswitcher.git.PresetDiscoveryGitClient
 import com.submodule.branchswitcher.model.Preset
 import com.submodule.branchswitcher.switch.shortLabel
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.launch
 import java.awt.BorderLayout
 import java.awt.Component
 import java.awt.Container
@@ -29,26 +27,26 @@ import javax.swing.SwingUtilities
  * Manages submodule rows within a [PresetEditor]: build, add, remove, and state sync.
  * Extracted from PresetEditor to keep it focused.
  */
-class SubmoduleRowManager(
+internal class SubmoduleRowManager(
     private val gitRoot: Path,
-    private val gitClient: PresetDiscoveryGitClient,
-    private val scope: CoroutineScope,
+    private val gitClient: () -> PresetDiscoveryGitClient,
+    private val branchLoads: BranchLoadCoordinator,
     private val body: JPanel,
     private val log: AppLogger,
     private val onDirty: () -> Unit,
     private val onSwitchOnly: (path: String, target: String) -> Unit = { _, _ -> },
+    private val scheduleUi: ((() -> Unit) -> Unit) = { action ->
+        com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater(action)
+    },
 ) {
     /** One submodule row: path, branch combo, panel, and tracking state. */
     class SubRow(
         val path: String,
         val combo: JComboBox<String>,
-        var panel: JPanel,
+        val panel: JPanel,
         var deleted: Boolean = false,
         var loaded: Boolean = false,
-        val statusDot: JLabel = JLabel("●").apply {
-            font = font.deriveFont(8f)
-            foreground = JBColor(0x9E9E9E, 0x757575)
-        },
+        val statusDot: JLabel,
     )
 
     val subRows = LinkedHashMap<String, SubRow>()
@@ -65,7 +63,6 @@ class SubmoduleRowManager(
             font = font.deriveFont(8f)
             foreground = JBColor(0x9E9E9E, 0x757575)
         }
-        val row = SubRow(path, combo, JPanel(), statusDot = dot)
         val rowPanel = object : JPanel(BorderLayout()) {
             override fun getMaximumSize(): Dimension =
                 Dimension(Short.MAX_VALUE.toInt(), preferredSize.height)
@@ -86,7 +83,7 @@ class SubmoduleRowManager(
 
         }
         installContextMenu(rowPanel, path)
-        row.panel = rowPanel
+        val row = SubRow(path, combo, rowPanel, statusDot = dot)
         subRows[path] = row
         return row
     }
@@ -122,7 +119,7 @@ class SubmoduleRowManager(
 
     /** Shows a popup to add a new submodule from .gitmodules paths not yet in the preset. */
     fun showAddSubmoduleMenu(anchor: JButton, currentPreset: Preset) {
-        val all = gitClient.listSubmodulePaths(gitRoot.toFile())
+        val all = gitClient().listSubmodulePaths(gitRoot.toFile())
         val current = subRows.values.filter { !it.deleted }.map { it.path }.toSet()
         val available = all.filter { it !in current }
         if (available.isEmpty()) {
@@ -159,31 +156,14 @@ class SubmoduleRowManager(
         val actionsIndex = body.componentCount - 1
         body.add(row.panel, actionsIndex)
         val dir = gitRoot.resolve(path).toFile()
-        if (!dir.exists()) {
-            row.combo.selectedItem = ""
-            if (loadedOnce) {
-                row.loaded = true
-                loadComboBranches(row.combo, dir, "")
-            }
-            onDirty()
-        } else {
-            row.combo.selectedItem = "loading..."
-            row.combo.isEnabled = false
-            loadingCount++
-            scope.launch {
-                val seedBranch = gitClient.currentBranch(dir) ?: ""
-                com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater {
-                    row.combo.selectedItem = seedBranch
-                    row.combo.isEnabled = true
-                    loadingCount--
-                    if (loadedOnce) {
-                        row.loaded = true
-                        loadComboBranches(row.combo, dir, seedBranch)
-                    }
-                    onDirty()
-                }
-            }
-        }
+        row.loaded = loadedOnce
+        loadComboBranches(
+            combo = row.combo,
+            dir = dir,
+            current = "",
+            discoverCurrent = dir.exists(),
+            loadChoices = loadedOnce,
+        )
         body.revalidate()
         body.repaint()
     }
@@ -235,13 +215,22 @@ class SubmoduleRowManager(
         internal set
 
     /** Asynchronously loads branch names into [combo]. */
-    private fun loadComboBranches(combo: JComboBox<String>, dir: File, current: String) {
-        loadComboBranches(combo, dir, current, gitClient, scope, log,
+    private fun loadComboBranches(
+        combo: JComboBox<String>,
+        dir: File,
+        current: String,
+        discoverCurrent: Boolean = false,
+        loadChoices: Boolean = true,
+    ) {
+        loadComboBranches(combo, dir, current, gitClient, branchLoads, log,
             onLoadStart = { loadingCount++ },
             onLoadEnd = {
                 loadingCount--
                 onDirty()
             },
+            discoverCurrent = discoverCurrent,
+            loadChoices = loadChoices,
+            scheduleUi = scheduleUi,
         )
     }
 

@@ -9,7 +9,6 @@ import com.submodule.branchswitcher.git.PresetDiscoveryGitClient
 import com.submodule.branchswitcher.log.AppLogger
 import com.submodule.branchswitcher.model.Preset
 import com.submodule.branchswitcher.model.isValidBranchName
-import kotlinx.coroutines.CoroutineScope
 import java.awt.BorderLayout
 import java.awt.Cursor
 import java.awt.Dimension
@@ -43,7 +42,7 @@ import javax.swing.border.Border
  *   the dirty check while any load is pending
  * - [isInitializing]: true during constructor; prevents false dirty flags during setup
  */
-class PresetEditor(
+internal class PresetEditor(
     private val gitRoot: Path,
     initialPreset: Preset,
     private val log: AppLogger,
@@ -52,8 +51,8 @@ class PresetEditor(
     private val onDelete: () -> Unit,
     private val onDerive: (preset: Preset, branchName: String) -> Unit = { _, _ -> },
     private val nameValidator: (String) -> Boolean = { true },
-    private val gitClient: PresetDiscoveryGitClient,
-    private val scope: CoroutineScope,
+    private val gitClient: () -> PresetDiscoveryGitClient,
+    private val branchLoads: BranchLoadCoordinator,
     private val onSwitchOnly: (path: String, target: String) -> Unit = { _, _ -> },
 ) : JPanel() {
 
@@ -102,7 +101,7 @@ class PresetEditor(
     private var isInitializing = true
 
     private val submoduleManager = SubmoduleRowManager(
-        gitRoot, gitClient, scope, body, log, ::updateUnsavedState, onSwitchOnly,
+        gitRoot, gitClient, branchLoads, body, log, ::updateUnsavedState, onSwitchOnly,
     )
     private val submoduleRows get() = submoduleManager.subRows
     val loadingCount get() = submoduleManager.loadingCount
@@ -319,7 +318,7 @@ class PresetEditor(
 
     /** Asynchronously loads branch names into [combo] via [scope], preserving [current] as selected item. */
     private fun loadComboBranches(combo: JComboBox<String>, dir: File, current: String) {
-        loadComboBranches(combo, dir, current, gitClient, scope, log,
+        loadComboBranches(combo, dir, current, gitClient, branchLoads, log,
             onLoadStart = { submoduleManager.loadingCount++ },
             onLoadEnd = {
                 submoduleManager.loadingCount--

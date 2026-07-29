@@ -11,6 +11,7 @@ import org.junit.Test
 import java.awt.Component
 import java.awt.Container
 import java.lang.reflect.Proxy
+import java.nio.file.Files
 import java.nio.file.Paths
 import javax.swing.JLabel
 import javax.swing.JPanel
@@ -21,8 +22,8 @@ class SubmoduleRowManagerTest {
     fun `submodule row context menu listener is installed on child label panel`() {
         val manager = SubmoduleRowManager(
             gitRoot = Paths.get("."),
-            gitClient = emptyGit(),
-            scope = CoroutineScope(Dispatchers.Unconfined),
+            gitClient = ::emptyGit,
+            branchLoads = BranchLoadCoordinator(CoroutineScope(Dispatchers.Unconfined)),
             body = JPanel(),
             log = createStringAppender {},
             onDirty = {},
@@ -43,8 +44,8 @@ class SubmoduleRowManagerTest {
         var requested: Pair<String, String>? = null
         val manager = SubmoduleRowManager(
             gitRoot = Paths.get("."),
-            gitClient = emptyGit(),
-            scope = CoroutineScope(Dispatchers.Unconfined),
+            gitClient = ::emptyGit,
+            branchLoads = BranchLoadCoordinator(CoroutineScope(Dispatchers.Unconfined)),
             body = JPanel(),
             log = createStringAppender {},
             onDirty = {},
@@ -56,6 +57,28 @@ class SubmoduleRowManagerTest {
         manager.requestSwitchOnly("SubA")
 
         assertEquals("SubA" to "release", requested)
+    }
+
+    @Test
+    fun `failed current branch discovery always finishes row loading`() {
+        val root = Files.createTempDirectory("submodule-row")
+        Files.createDirectories(root.resolve("SubA"))
+        val body = JPanel().apply { add(JPanel()) }
+        val manager = SubmoduleRowManager(
+            gitRoot = root,
+            gitClient = { failingCurrentBranchGit() },
+            branchLoads = BranchLoadCoordinator(CoroutineScope(Dispatchers.Unconfined)),
+            body = body,
+            log = createStringAppender {},
+            onDirty = {},
+            scheduleUi = { it() },
+        )
+        manager.onFirstExpand()
+
+        manager.addSubmoduleFromMenu("SubA")
+
+        requireNotNull(manager.subRows["SubA"])
+        assertEquals(0, manager.loadingCount)
     }
 
     private fun descendants(root: Component): List<Component> =
@@ -74,6 +97,18 @@ class SubmoduleRowManagerTest {
                 Boolean::class.javaPrimitiveType -> false
                 Int::class.javaPrimitiveType -> 0
                 List::class.java -> emptyList<String>()
+                else -> null
+            }
+        } as PresetDiscoveryGitClient
+
+    private fun failingCurrentBranchGit(): PresetDiscoveryGitClient =
+        Proxy.newProxyInstance(
+            PresetDiscoveryGitClient::class.java.classLoader,
+            arrayOf(PresetDiscoveryGitClient::class.java),
+        ) { _, method, _ ->
+            when (method.name) {
+                "currentBranch" -> error("cannot inspect branch")
+                "listAllBranches", "listSubmodulePaths" -> emptyList<String>()
                 else -> null
             }
         } as PresetDiscoveryGitClient

@@ -3,8 +3,7 @@ package com.submodule.branchswitcher.ui
 import com.intellij.openapi.application.ApplicationManager
 import com.submodule.branchswitcher.git.PresetDiscoveryGitClient
 import com.submodule.branchswitcher.log.AppLogger
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.CancellationException
 import java.awt.event.KeyAdapter
 import java.awt.event.KeyEvent
 import java.io.File
@@ -94,18 +93,20 @@ fun filterBranchPopup(combo: JComboBox<String>, editor: JTextField) {
 
 /**
  * Shared async branch loader used by both [PresetEditor] and [SubmoduleRowManager].
- * Sets combo to "loading..." state, launches a [scope] coroutine to fetch branches,
- * then restores the combo on EDT with the full list + current selection.
+ * Sets the combo to its loading state, runs discovery through [branchLoads], then
+ * restores the full list and current selection on the UI thread.
  */
-fun loadComboBranches(
+internal fun loadComboBranches(
     combo: JComboBox<String>,
     dir: File,
     current: String,
-    gitClient: PresetDiscoveryGitClient,
-    scope: CoroutineScope,
+    gitClient: () -> PresetDiscoveryGitClient,
+    branchLoads: BranchLoadCoordinator,
     log: AppLogger,
     onLoadStart: () -> Unit,
     onLoadEnd: () -> Unit,
+    discoverCurrent: Boolean = false,
+    loadChoices: Boolean = true,
     scheduleUi: ((() -> Unit) -> Unit) = { action ->
         ApplicationManager.getApplication().invokeLater(action)
     },
@@ -114,19 +115,32 @@ fun loadComboBranches(
     combo.model = DefaultComboBoxModel(arrayOf(LOADING_BRANCH))
     combo.selectedItem = LOADING_BRANCH
     combo.isEnabled = false
-    scope.launch {
-        val branches = try {
-            if (dir.exists()) gitClient.listAllBranches(dir) else emptyList()
+    branchLoads.launch {
+        val loadResult = try {
+            val client = gitClient()
+            val selectedBranch = if (discoverCurrent && dir.exists()) {
+                client.currentBranch(dir).orEmpty()
+            } else {
+                current
+            }
+            val branches = if (loadChoices && dir.exists()) {
+                client.listAllBranches(dir)
+            } else {
+                emptyList()
+            }
+            BranchComboLoadResult(selectedBranch, branches)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             log.warn("loadBranches failed for ${dir.name}: ${e.message}")
-            emptyList()
+            BranchComboLoadResult(current, emptyList())
         }
         scheduleUi {
             try {
                 if (!combo.isDisplayable) return@scheduleUi
-                val list = mergeBranchChoices(current, branches)
+                val list = mergeBranchChoices(loadResult.selectedBranch, loadResult.branches)
                 combo.model = DefaultComboBoxModel(list.toTypedArray())
-                combo.selectedItem = current
+                combo.selectedItem = loadResult.selectedBranch
                 combo.putClientProperty(KEY_ALL_BRANCHES, list)
                 combo.isEnabled = true
             } finally {
@@ -135,3 +149,8 @@ fun loadComboBranches(
         }
     }
 }
+
+private data class BranchComboLoadResult(
+    val selectedBranch: String,
+    val branches: List<String>,
+)
