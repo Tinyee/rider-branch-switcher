@@ -7,6 +7,7 @@ import com.submodule.branchswitcher.Notifier
 import com.submodule.branchswitcher.log.AppLogger
 import com.submodule.branchswitcher.model.Preset
 import com.submodule.branchswitcher.model.PresetFile
+import com.submodule.branchswitcher.presentation.parsePresetImport
 import java.awt.datatransfer.Clipboard
 import java.awt.datatransfer.DataFlavor
 import java.awt.datatransfer.StringSelection

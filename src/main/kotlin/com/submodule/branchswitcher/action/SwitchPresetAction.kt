@@ -13,11 +13,11 @@ import com.submodule.branchswitcher.log.AppLogger
 import com.submodule.branchswitcher.log.LogEntry
 import com.submodule.branchswitcher.model.Preset
 import com.submodule.branchswitcher.platform.gitRootPath
+import com.submodule.branchswitcher.presentation.ShortcutPresetLoadDecision
+import com.submodule.branchswitcher.presentation.shortcutPresetLoadDecision
 import com.submodule.branchswitcher.service.BranchSwitcherService
 import com.submodule.branchswitcher.ui.invokeLaterIfAlive
-import com.submodule.branchswitcher.ui.ShortcutPresetLoadDecision
 import com.submodule.branchswitcher.ui.SwitchFlowCoordinator
-import com.submodule.branchswitcher.ui.shortcutPresetLoadDecision
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 

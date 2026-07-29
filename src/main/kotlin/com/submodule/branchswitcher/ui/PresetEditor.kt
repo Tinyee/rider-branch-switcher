@@ -9,6 +9,7 @@ import com.submodule.branchswitcher.git.PresetDiscoveryGitClient
 import com.submodule.branchswitcher.log.AppLogger
 import com.submodule.branchswitcher.model.Preset
 import com.submodule.branchswitcher.model.isValidBranchName
+import com.submodule.branchswitcher.presentation.shouldShowSecondaryAction
 import java.awt.BorderLayout
 import java.awt.Cursor
 import java.awt.Dimension

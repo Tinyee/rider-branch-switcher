@@ -18,6 +18,7 @@ import com.submodule.branchswitcher.platform.GitBackgroundRunner
 import com.submodule.branchswitcher.platform.logVcsRefresh
 import com.submodule.branchswitcher.platform.platformCancellationClassifier
 import com.submodule.branchswitcher.platform.refreshVcsRepos
+import com.submodule.branchswitcher.presentation.shouldShowForceWarning
 import com.submodule.branchswitcher.switch.SwitchRecoveryExecutor
 import com.submodule.branchswitcher.switch.SwitchExecutionResult
 import com.submodule.branchswitcher.workflow.SwitchRunner

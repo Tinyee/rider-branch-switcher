@@ -1,0 +1,5 @@
+package com.submodule.branchswitcher.fixture
+
+import javax.swing.JPanel
+
+class LeakedPanel : JPanel()

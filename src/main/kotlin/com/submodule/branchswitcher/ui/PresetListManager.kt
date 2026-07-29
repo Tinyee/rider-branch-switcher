@@ -35,13 +35,12 @@ internal class PresetListManager(
     private val presetsInner: JPanel,
     private val onSwitch: (Preset) -> Unit,
     private val onDerive: (Path, Preset, String) -> Unit,
+    private val onStateChanged: () -> Unit,
 ) : PresetCollectionHost {
     private val mutableEditors = mutableListOf<PresetEditor>()
     override val editors: List<PresetEditor> get() = mutableEditors
 
     private var emptyStatePanel: JPanel? = null
-    var onStateChanged: (() -> Unit)? = null
-
     private val branchLoads = BranchLoadCoordinator(service.scope)
     private val actions = PresetCollectionActions(project, service, gitRoot, log, this)
     private val singleRepositorySwitcher = SingleRepositorySwitcher(
@@ -123,7 +122,7 @@ internal class PresetListManager(
     }
 
     override fun notifyStateChanged() {
-        onStateChanged?.invoke()
+        onStateChanged()
     }
 
     private fun switchSubmodule(root: Path, path: String, target: String) {

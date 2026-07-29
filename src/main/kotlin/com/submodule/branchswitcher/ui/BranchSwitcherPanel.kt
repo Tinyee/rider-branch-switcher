@@ -96,23 +96,20 @@ class BranchSwitcherPanel(
     private val logger: AppLogger = ToolWindowLogger(logPanel::append)
     private val stateDetector = RepositoryStateDetector({ service.gitClient }, logger)
 
-    // ── Delegates (after UI fields to resolve init order) ──────
+    // ── Explicit command wiring ─────────────────────────────────
+    private val switchController = SwitchController(
+        project, service, ::gitRoot, logger,
+        onStateChanged = ::detectCurrentState,
+    )
     private val presetManager = PresetListManager(
         project, service, ::gitRoot, logger, presetsInner,
-        onSwitch = { preset -> switchController.runSwitch(preset) },
-        onDerive = { root, preset, name -> switchController.derivePresetBranch(root, preset, name) },
+        onSwitch = switchController::runSwitch,
+        onDerive = switchController::derivePresetBranch,
+        onStateChanged = ::detectCurrentState,
     )
-    private val switchController: SwitchController by lazy {
-        SwitchController(
-            project, service, ::gitRoot, logger,
-            editors = { presetManager.editors },
-            onStateChanged = ::detectCurrentState,
-        )
-    }
     private var worktreeInfoLogged = false
 
     init {
-        presetManager.onStateChanged = ::detectCurrentState
         border = JBUI.Borders.empty(6, 8, 4, 8)
         minimumSize = Dimension(JBUI.scale(280), minimumSize.height)
 
@@ -189,7 +186,9 @@ class BranchSwitcherPanel(
             add(menuItem(Bundle.msg("action.import")) { presetManager.importPresets() })
             add(menuItem(Bundle.msg("action.export")) { presetManager.exportPresets() })
             addSeparator()
-            add(menuItem(Bundle.msg("action.undo")) { switchController.undoLastSwitch() })
+            add(menuItem(Bundle.msg("action.undo")) {
+                switchController.undoLastSwitch(presetManager.editors.map { it.currentPreset() })
+            })
             add(menuItem(Bundle.msg("action.settings")) { openSettings() })
         }
     }

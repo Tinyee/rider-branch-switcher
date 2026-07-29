@@ -1,4 +1,4 @@
-package com.submodule.branchswitcher.ui
+package com.submodule.branchswitcher.presentation
 
 /** Decides whether the shortcut may continue from preset loading to selection. */
 fun shortcutPresetLoadDecision(loadSucceeded: Boolean, presetCount: Int): ShortcutPresetLoadDecision =
