@@ -50,7 +50,6 @@ internal class PresetCollectionActions(
 
     /** Load presets from file and rebuild the editor list. */
     fun reload() {
-        host.clearEditors()
         service.loadPresets()
             .onSuccess { (file, parsed) ->
                 val root = gitRoot()
@@ -59,6 +58,7 @@ internal class PresetCollectionActions(
                     Notifier.error(project, Bundle.msg("plugin.title"), Bundle.msg("git.root.not.found"))
                     return@onSuccess
                 }
+                host.clearEditors()
                 if (parsed.presets.isEmpty()) {
                     host.showEmptyState()
                 } else {
@@ -114,10 +114,6 @@ internal class PresetCollectionActions(
             newNameValidator(),
         )?.trim()
         if (name.isNullOrEmpty()) return
-        if (service.presets.isEmpty() && service.loadPresets().isFailure) {
-            log.warn("cannot add preset — failed to load existing presets")
-            return
-        }
         val template = service.presets.firstOrNull()
         val newPreset = Preset(
             name = name,
