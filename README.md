@@ -33,8 +33,8 @@ configuration cleanup and be shared by the team.
 ## Supported IDEs
 
 The plugin uses IntelliJ Platform APIs and the bundled `Git4Idea` plugin.
-IntelliJ IDEA Community is the primary build target and Rider is the current
-compatibility target. See the
+The unified IntelliJ IDEA distribution is the primary build target and Rider
+is the current compatibility target. See the
 [support matrix](docs/SETUP.md#support-matrix-policy) for the evidence required
 before claiming support for another IDE family.
 

@@ -15,7 +15,7 @@ This project is a generic JetBrains IDE plugin. It is no longer built against Ri
 All platform and compatibility settings live in `gradle.properties`:
 
 ```properties
-platform.type=IC
+platform.type=IU
 platform.version=2026.1.3
 platform.localPath=
 
@@ -28,14 +28,15 @@ Product codes commonly used here:
 
 | Code | IDE |
 | --- | --- |
-| IC | IntelliJ IDEA Community |
-| IU | IntelliJ IDEA Ultimate |
+| IU | IntelliJ IDEA unified distribution (2025.3+) |
+| IC | Legacy IntelliJ IDEA Community releases |
 | RD | Rider |
 | PY | PyCharm Professional |
 | WS | WebStorm |
 | CL | CLion |
 
-Default local development uses `IC` because it is the lightest generic IntelliJ Platform SDK.
+Default local development uses `IU`, the unified IntelliJ IDEA distribution
+published for the configured 2026.1 platform.
 The build resolves the non-installer platform artifact by default, so it does not download a full IDE installer unless `platform.localPath` or a product-specific workflow requires it.
 
 ## Using A Local IDE
@@ -43,16 +44,16 @@ The build resolves the non-installer platform artifact by default, so it does no
 Set `platform.localPath` to avoid downloading an SDK:
 
 ```properties
-platform.localPath=C:/Program Files/JetBrains/IntelliJ IDEA Community Edition 2026.1
+platform.localPath=C:/Program Files/JetBrains/IntelliJ IDEA 2026.1
 ```
 
 Examples:
 
 | OS | Example |
 | --- | --- |
-| macOS | `/Applications/IntelliJ IDEA CE.app` |
-| Windows | `C:/Program Files/JetBrains/IntelliJ IDEA Community Edition 2026.1` |
-| Linux | `~/.local/share/JetBrains/Toolbox/apps/intellij-idea-community-edition/...` |
+| macOS | `/Applications/IntelliJ IDEA.app` |
+| Windows | `C:/Program Files/JetBrains/IntelliJ IDEA 2026.1` |
+| Linux | `~/.local/share/JetBrains/Toolbox/apps/intellij-idea/...` |
 
 For Rider-specific sandbox testing, point `platform.localPath` at Rider or set `platform.type=RD`.
 
@@ -64,6 +65,21 @@ For Rider-specific sandbox testing, point `platform.localPath` at Rider or set `
 
 This resolves the configured SDK and verifies that the plugin package can be
 built. Installation instructions remain in the project README.
+
+## Dependency Sources
+
+The Gradle wrapper and dependency repositories use official sources by
+default. If those repositories are slow or unavailable from mainland China,
+enable the optional dependency mirrors for a command:
+
+```bash
+./gradlew buildPlugin -PuseChinaMirrors=true
+```
+
+This property adds the Aliyun, Tencent, and Huawei mirrors after the official
+repositories. It does not change dependency coordinates or commit a
+machine-specific repository choice. Configure a Gradle proxy or pre-populate
+Gradle 8.13 if the wrapper distribution itself cannot be reached.
 
 ## Sandbox IDE
 
@@ -81,8 +97,9 @@ and compatibility configuration.
 
 `releaseCheck` runs Plugin Verifier for the product codes in
 `plugin.verifier.ideCodes`. Keep that list short during local development to
-avoid heavy downloads. CI runs tests, plugin build, Detekt, and structural
-checks on Ubuntu, Windows, and macOS; Plugin Verifier runs only on Linux.
+avoid heavy downloads. CI runs tests on Ubuntu, Windows, and macOS. A separate
+Linux job runs Detekt, structural checks, plugin packaging, and Plugin
+Verifier once.
 
 ## Compatibility Notes
 
@@ -98,9 +115,8 @@ Treat compatibility as evidence-based:
 
 | IDE family | Claim level | Required evidence before advertising support |
 | --- | --- | --- |
-| IntelliJ IDEA Community | Primary | `compileKotlin`, `compileTestKotlin`, `buildPlugin`, and normal CI pass with `platform.type=IC`. |
+| IntelliJ IDEA unified distribution | Primary | `compileKotlin`, `compileTestKotlin`, `buildPlugin`, and normal CI pass with `platform.type=IU`. |
 | Rider | Compatible | Default plugin verifier target plus manual smoke test in a Rider sandbox before release. |
-| IntelliJ IDEA Ultimate | Expected compatible | Add `IU` to verifier list if Marketplace copy explicitly names it. |
 | PyCharm / WebStorm / CLion | Not claimed | Add product code to `plugin.verifier.ideCodes`, confirm CI can resolve that IDE distribution, run `verifyPlugin`, and do a tool-window/settings/manual Git smoke test first. |
 
 Do not broaden Marketplace wording from "JetBrains IDEs that support Git projects" to a named IDE list until the corresponding row has evidence.
@@ -109,7 +125,7 @@ Do not broaden Marketplace wording from "JetBrains IDEs that support Git project
 
 | Error | Cause | Fix |
 | --- | --- | --- |
-| `Could not resolve ...` | Network or platform SDK download issue | Use `platform.localPath` or retry with proxy/mirror available |
+| `Could not resolve ...` | Network or platform SDK download issue | Use `platform.localPath`, configure a proxy, or retry with `-PuseChinaMirrors=true` |
 | `Plugin is incompatible with this installation` | Build range does not cover target IDE | Adjust `plugin.sinceBuild` / `plugin.untilBuild` |
 | `incompatible version of Kotlin` | Compiler output newer than target IDE Kotlin runtime | Lower Kotlin compiler or raise target IDE build |
 | Chinese Markdown looks garbled in terminal | Terminal encoding issue | See `docs/encoding-and-line-endings.md`; do not rewrite files just for terminal display |

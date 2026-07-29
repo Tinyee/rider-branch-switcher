@@ -22,17 +22,16 @@ in [`review-history.md`](review-history.md).
 
 ## P2: Expand Compatibility Evidence
 
-IntelliJ IDEA Community is the primary build target and Rider is the current
-compatibility target. Follow the evidence requirements in the
+The unified IntelliJ IDEA distribution is the primary build target and Rider
+is the current compatibility target. Follow the evidence requirements in the
 [support matrix](SETUP.md#support-matrix-policy) before advertising another IDE
 family.
 
 Candidate verification order:
 
-1. IntelliJ IDEA Ultimate
-2. PyCharm Professional
-3. WebStorm
-4. CLion
+1. PyCharm Professional
+2. WebStorm
+3. CLion
 
 ## P3: Targeted Maintainability
 
