@@ -6,7 +6,8 @@ import java.util.concurrent.CompletableFuture
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 
-fun safeTimeoutMillis(timeoutSeconds: Int): Int = timeoutSeconds.coerceIn(1, 3600) * 1000
+internal fun safeTimeoutSeconds(timeoutSeconds: Int): Int =
+    timeoutSeconds.coerceIn(1, 3600)
 
 /**
  * Runs one Git process with bounded execution and cooperative cancellation.
@@ -43,18 +44,15 @@ internal class GitProcessRunner(
             process.errorStream.bufferedReader(StandardCharsets.UTF_8).use { it.readText() }
         }
 
-        val deadline = System.currentTimeMillis() + safeTimeoutMillis(timeoutSeconds)
+        val effectiveTimeoutSeconds = safeTimeoutSeconds(timeoutSeconds)
+        val deadline = System.nanoTime() +
+            TimeUnit.SECONDS.toNanos(effectiveTimeoutSeconds.toLong())
         var exitCode: Int
         while (true) {
             val finished = try {
                 process.waitFor(100, TimeUnit.MILLISECONDS)
             } catch (_: InterruptedException) {
-                process.destroyForcibly()
-                try {
-                    process.waitFor(5, TimeUnit.SECONDS)
-                } catch (_: InterruptedException) {
-                    // The interrupt flag is restored below after cleanup.
-                }
+                terminateProcess(process)
                 Thread.currentThread().interrupt()
                 return GitResult(commandLabel, -1, "", "interrupted")
             }
@@ -63,19 +61,42 @@ internal class GitProcessRunner(
                 break
             }
             if (cancellation.get()) {
-                process.destroyForcibly()
-                process.waitFor(5, TimeUnit.SECONDS)
-                return GitResult(commandLabel, -1, "", "cancelled")
+                return terminateWithResult(process, commandLabel, "cancelled")
             }
-            if (System.currentTimeMillis() > deadline) {
-                process.destroyForcibly()
-                process.waitFor(5, TimeUnit.SECONDS)
-                return GitResult(commandLabel, -1, "", "timeout after ${timeoutSeconds}s")
+            if (System.nanoTime() - deadline >= 0) {
+                return terminateWithResult(
+                    process,
+                    commandLabel,
+                    "timeout after ${effectiveTimeoutSeconds}s",
+                )
             }
         }
 
         val stdout = runCatching { stdoutFuture.get(5, TimeUnit.SECONDS) }.getOrDefault("")
         val stderr = runCatching { stderrFuture.get(5, TimeUnit.SECONDS) }.getOrDefault("")
         return GitResult(commandLabel, exitCode, stdout.trim(), stderr.trim())
+    }
+
+    private fun terminateWithResult(
+        process: Process,
+        commandLabel: String,
+        reason: String,
+    ): GitResult {
+        val interrupted = terminateProcess(process)
+        if (interrupted) {
+            Thread.currentThread().interrupt()
+        }
+        return GitResult(commandLabel, -1, "", if (interrupted) "interrupted" else reason)
+    }
+
+    /** Returns true when cleanup itself was interrupted. */
+    private fun terminateProcess(process: Process): Boolean {
+        process.destroyForcibly()
+        return try {
+            process.waitFor(5, TimeUnit.SECONDS)
+            false
+        } catch (_: InterruptedException) {
+            true
+        }
     }
 }

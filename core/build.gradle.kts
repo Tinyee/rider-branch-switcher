@@ -4,11 +4,17 @@ plugins {
     id("info.solidsoft.pitest") version "1.19.0"
 }
 
+val useChinaMirrors = providers.gradleProperty("useChinaMirrors")
+    .getOrElse("false")
+    .toBoolean()
+
 repositories {
     mavenCentral()
-    maven("https://maven.aliyun.com/repository/public")
-    maven("https://mirrors.cloud.tencent.com/nexus/repository/maven-public/")
-    maven("https://repo.huaweicloud.com/repository/maven/")
+    if (useChinaMirrors) {
+        maven("https://maven.aliyun.com/repository/public")
+        maven("https://mirrors.cloud.tencent.com/nexus/repository/maven-public/")
+        maven("https://repo.huaweicloud.com/repository/maven/")
+    }
 }
 
 dependencies {

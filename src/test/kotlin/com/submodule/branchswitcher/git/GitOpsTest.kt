@@ -14,6 +14,7 @@ import java.nio.file.Path
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Unit tests for [GitOps].listSubmodulePaths — parses .gitmodules files.
@@ -345,10 +346,10 @@ class GitOpsTest {
     }
 
     @Test
-    fun `timeout milliseconds clamps unsafe values`() {
-        assertEquals(1_000, safeTimeoutMillis(Int.MIN_VALUE))
-        assertEquals(60_000, safeTimeoutMillis(60))
-        assertEquals(3_600_000, safeTimeoutMillis(Int.MAX_VALUE))
+    fun `timeout seconds clamps unsafe values`() {
+        assertEquals(1, safeTimeoutSeconds(Int.MIN_VALUE))
+        assertEquals(60, safeTimeoutSeconds(60))
+        assertEquals(3_600, safeTimeoutSeconds(Int.MAX_VALUE))
     }
 
     @Test
@@ -431,9 +432,32 @@ class GitOpsTest {
         }
     }
 
+    @Test
+    fun `interruption during cancellation cleanup remains visible to caller`() {
+        val cancellation = AtomicBoolean(false)
+        val runningProcess = ControllableProcess(
+            finished = false,
+            interruptAfterDestroy = true,
+            onWait = { cancellation.set(true) },
+        )
+        val runner = GitProcessRunner(timeoutSeconds = 10) { runningProcess }
+
+        try {
+            val result = runner.run(tmpDir.toFile(), cancellation, "fetch")
+
+            assertEquals(GitFailureKind.INTERRUPTED, result.failureKind)
+            assertTrue(runningProcess.destroyed)
+            assertTrue("cleanup must preserve the interruption signal", Thread.currentThread().isInterrupted)
+        } finally {
+            Thread.interrupted()
+        }
+    }
+
     private class ControllableProcess(
         private val finished: Boolean,
         private val interruptOnWait: Boolean = false,
+        private val interruptAfterDestroy: Boolean = false,
+        private val onWait: (() -> Unit)? = null,
     ) : Process() {
         val waitStarted = CountDownLatch(1)
         @Volatile var destroyed = false
@@ -445,6 +469,8 @@ class GitOpsTest {
         override fun waitFor(timeout: Long, unit: TimeUnit): Boolean {
             waitStarted.countDown()
             if (interruptOnWait) throw InterruptedException("test interrupt")
+            if (destroyed && interruptAfterDestroy) throw InterruptedException("cleanup interrupt")
+            onWait?.invoke()
             return finished || destroyed
         }
         override fun exitValue(): Int = 0

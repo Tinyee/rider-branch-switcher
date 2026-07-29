@@ -2,10 +2,14 @@ import java.time.Duration
 
 plugins {
     id("org.jetbrains.kotlin.jvm") version "2.3.0"
-    id("org.jetbrains.intellij.platform") version "2.2.1"
+    id("org.jetbrains.intellij.platform") version "2.11.0"
     id("io.gitlab.arturbosch.detekt") version "1.23.7"
     id("info.solidsoft.pitest") version "1.19.0"
 }
+
+val useChinaMirrors = providers.gradleProperty("useChinaMirrors")
+    .getOrElse("false")
+    .toBoolean()
 
 group = "com.submodule"
 version = "0.7.0"
@@ -15,10 +19,11 @@ repositories {
     intellijPlatform {
         defaultRepositories()
     }
-    // Chinese mirrors as fallback (local dev), after official sources for CI reliability
-    maven("https://maven.aliyun.com/repository/public")
-    maven("https://mirrors.cloud.tencent.com/nexus/repository/maven-public/")
-    maven("https://repo.huaweicloud.com/repository/maven/")
+    if (useChinaMirrors) {
+        maven("https://maven.aliyun.com/repository/public")
+        maven("https://mirrors.cloud.tencent.com/nexus/repository/maven-public/")
+        maven("https://repo.huaweicloud.com/repository/maven/")
+    }
 }
 
 val platformType = providers.gradleProperty("platform.type")
@@ -36,7 +41,9 @@ dependencies {
         if (!platformLocalPath.isNullOrBlank()) {
             local(platformLocalPath)
         } else {
-            create(platformType, platformVersion, useInstaller = false)
+            create(platformType, platformVersion) {
+                useInstaller.set(false)
+            }
         }
         bundledPlugin("Git4Idea")
     }
@@ -71,7 +78,9 @@ intellijPlatform {
     pluginVerification {
         ides {
             verifierIdeCodes.forEach { code ->
-                ide("$code-${platformVersion.get()}")
+                create(code, platformVersion.get()) {
+                    useInstaller.set(false)
+                }
             }
         }
     }
