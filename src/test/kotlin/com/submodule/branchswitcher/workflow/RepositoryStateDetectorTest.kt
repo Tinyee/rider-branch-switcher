@@ -85,6 +85,38 @@ class RepositoryStateDetectorTest {
         assertTrue(detector.isLatest(second))
     }
 
+    @Test
+    fun `superseded request stops before probing remaining repositories`() {
+        val root = temp.newFolder("root")
+        File(root, "module-a").mkdirs()
+        File(root, "module-b").mkdirs()
+        lateinit var detector: RepositoryStateDetector
+        var superseded = false
+        val git = object : RepositoryStateGitClient {
+            var currentBranchCalls = 0
+
+            override fun currentBranch(workDir: File): String {
+                currentBranchCalls++
+                if (!superseded) {
+                    superseded = true
+                    detector.begin(root.toPath(), listOf("."))
+                }
+                return "main"
+            }
+
+            override fun revParseHead(workDir: File): String = "sha"
+            override fun isDirty(workDir: File): Boolean = false
+        }
+        detector = detector(git)
+        val request = detector.begin(root.toPath(), listOf(".", "module-a", "module-b"))
+
+        val staleSnapshot = detector.detect(request)
+
+        assertEquals(1, git.currentBranchCalls)
+        assertEquals(setOf("."), staleSnapshot.branches.keys)
+        assertFalse(detector.isLatest(staleSnapshot))
+    }
+
     private fun detector(
         git: RepositoryStateGitClient,
         logs: MutableList<String> = mutableListOf(),

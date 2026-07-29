@@ -46,6 +46,7 @@ class RepositoryStateDetector(
         val branches = LinkedHashMap<String, String?>(request.paths.size)
         val dirty = LinkedHashMap<String, Boolean>(request.paths.size)
         for (path in request.paths) {
+            if (!isLatest(request)) break
             val dir = if (path == ".") request.root.toFile() else request.root.resolve(path).toFile()
             try {
                 branches[path] = if (dir.exists()) git.currentBranch(dir) else null
@@ -62,4 +63,7 @@ class RepositoryStateDetector(
 
     fun isLatest(snapshot: RepositoryStateSnapshot): Boolean =
         snapshot.requestId == latestRequestId.get()
+
+    private fun isLatest(request: RepositoryStateRequest): Boolean =
+        request.id == latestRequestId.get()
 }

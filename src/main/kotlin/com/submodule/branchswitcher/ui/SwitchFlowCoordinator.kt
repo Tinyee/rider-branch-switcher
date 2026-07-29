@@ -15,6 +15,7 @@ import com.submodule.branchswitcher.switch.SwitchPreflight
 import com.submodule.branchswitcher.platform.ProgressCancellationHandle
 import com.submodule.branchswitcher.platform.GitBackgroundResult
 import com.submodule.branchswitcher.platform.GitBackgroundRunner
+import com.submodule.branchswitcher.platform.logVcsRefresh
 import com.submodule.branchswitcher.platform.platformCancellationClassifier
 import com.submodule.branchswitcher.platform.refreshVcsRepos
 import com.submodule.branchswitcher.switch.SwitchRecoveryExecutor
@@ -117,23 +118,25 @@ class SwitchFlowCoordinator(
             return
         }
         service.scope.launch(Dispatchers.Default) {
-            try {
-                val runResult = SwitchRunner(project, root, service.gitClient).execute(
+            val runResult = try {
+                SwitchRunner(project, root, service.gitClient).execute(
                     title = Bundle.msg("progress.switching"), request = request, log = log,
                 )
-                uiLater {
-                    presentSwitchResult(
-                        root = root,
-                        preset = preset,
-                        runResult = runResult,
-                        log = log,
-                        onSuccess = onSuccess,
-                        onFailure = onFailure,
-                        onFinished = onFinished,
-                    )
-                }
             } finally {
                 writeLease.close()
+            }
+            val refreshResult = refreshVcsRepos(project, root, preset.submodules.keys)
+            uiLater {
+                logVcsRefresh(log, refreshResult)
+                presentSwitchResult(
+                    root = root,
+                    preset = preset,
+                    runResult = runResult,
+                    log = log,
+                    onSuccess = onSuccess,
+                    onFailure = onFailure,
+                    onFinished = onFinished,
+                )
             }
         }
     }
@@ -154,7 +157,6 @@ class SwitchFlowCoordinator(
         }
 
         onFinished?.invoke()
-        refreshVcsRepos(project, root, preset.submodules.keys)
     }
 
     private fun notifySuccessfulSwitch(preset: Preset, onSuccess: (() -> Unit)?) {
@@ -224,7 +226,7 @@ class SwitchFlowCoordinator(
             return
         }
         service.scope.launch(Dispatchers.Default) {
-            try {
+            val rollbackSucceeded = try {
                 val rollbackBackgroundResult = GitBackgroundRunner(project, service.gitClient).run(
                     Bundle.msg("progress.rollback"),
                 ) { indicator, operation ->
@@ -233,7 +235,7 @@ class SwitchFlowCoordinator(
                     val recovery = SwitchRecoveryExecutor(root, log, operation)
                     recovery.recover(execution).ok
                 }
-                val rollbackSucceeded = when (rollbackBackgroundResult) {
+                when (rollbackBackgroundResult) {
                     is GitBackgroundResult.Completed -> rollbackBackgroundResult.value
                     is GitBackgroundResult.Cancelled -> rollbackBackgroundResult.value ?: false
                     is GitBackgroundResult.Failed -> {
@@ -242,23 +244,26 @@ class SwitchFlowCoordinator(
                         false
                     }
                 }
-                uiLater {
-                    if (rollbackSucceeded) {
-                        Notifier.info(
-                            project,
-                            Bundle.msg("rollback.complete"),
-                            Bundle.msg("notify.rollback.complete.msg"),
-                        )
-                    } else {
-                        Notifier.error(
-                            project,
-                            Bundle.msg("rollback.failed"),
-                            Bundle.msg("notify.rollback.partial.msg"),
-                        )
-                    }
-                }
             } finally {
                 writeLease.close()
+            }
+            val checkpointPaths = execution.checkpoint.orEmpty().keys.filterTo(mutableSetOf()) { it != "." }
+            val refreshResult = refreshVcsRepos(project, root, checkpointPaths)
+            uiLater {
+                logVcsRefresh(log, refreshResult)
+                if (rollbackSucceeded) {
+                    Notifier.info(
+                        project,
+                        Bundle.msg("rollback.complete"),
+                        Bundle.msg("notify.rollback.complete.msg"),
+                    )
+                } else {
+                    Notifier.error(
+                        project,
+                        Bundle.msg("rollback.failed"),
+                        Bundle.msg("notify.rollback.partial.msg"),
+                    )
+                }
             }
         }
     }
