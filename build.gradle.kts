@@ -61,9 +61,14 @@ dependencies {
 
 kotlin {
     jvmToolchain(21)
+    compilerOptions {
+        jvmDefault.set(org.jetbrains.kotlin.gradle.dsl.JvmDefaultMode.NO_COMPATIBILITY)
+    }
 }
 
 intellijPlatform {
+    buildSearchableOptions.set(false)
+
     pluginConfiguration {
         ideaVersion {
             sinceBuild = providers.gradleProperty("plugin.sinceBuild").get()
@@ -262,9 +267,6 @@ fun scanQuickChecks(
 }
 
 tasks {
-    buildSearchableOptions {
-        enabled = false
-    }
     test {
         useJUnitPlatform()
         timeout.set(Duration.ofMinutes(15))
@@ -387,11 +389,11 @@ tasks {
         }
     }
 
-    register("releaseCheck") {
+    register("validateReleaseMetadata") {
         group = "verification"
-        description = "Run all automated release checks: quickCheck, core test/detekt, test, detekt, buildPlugin, verifyPlugin, and metadata validation."
+        description = "Validate release version metadata and required Marketplace artifacts."
 
-        dependsOn("quickCheck", "checkQuickCheck", ":core:test", "test", "detekt", ":core:detekt", "buildPlugin", "verifyPlugin")
+        dependsOn("buildPlugin")
 
         doLast {
             val projVersion = version.toString()
@@ -438,7 +440,27 @@ tasks {
                 logger.lifecycle("  pluginIcon.svg: present")
             }
 
-            logger.lifecycle("releaseCheck PASSED for version $projVersion")
+            logger.lifecycle("validateReleaseMetadata PASSED for version $projVersion")
+        }
+    }
+
+    register("releaseCheck") {
+        group = "verification"
+        description = "Run all automated release checks: tests, static analysis, plugin verification, and metadata validation."
+
+        dependsOn(
+            "quickCheck",
+            "checkQuickCheck",
+            ":core:test",
+            "test",
+            "detekt",
+            ":core:detekt",
+            "verifyPlugin",
+            "validateReleaseMetadata",
+        )
+
+        doLast {
+            logger.lifecycle("releaseCheck PASSED for version $version")
         }
     }
 

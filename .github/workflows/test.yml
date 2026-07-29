@@ -65,7 +65,7 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
 
       - name: Run quality checks and build plugin
-        run: ./gradlew :core:detekt :detekt :quickCheck :checkQuickCheck :buildPlugin :verifyPlugin --no-parallel --max-workers=2
+        run: ./gradlew :core:detekt :detekt :quickCheck :checkQuickCheck :verifyPlugin :validateReleaseMetadata --no-parallel --max-workers=2
 
       - name: Upload plugin artifact
         if: success()
