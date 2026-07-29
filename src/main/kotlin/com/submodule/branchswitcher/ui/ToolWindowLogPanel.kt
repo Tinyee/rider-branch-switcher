@@ -63,9 +63,11 @@ internal class ToolWindowLogPanel : JPanel(BorderLayout()) {
             trimDocument()
             val document = logTextPane.styledDocument
             val attributes = attributesFor(entry.level)
-            runCatching {
+            try {
                 document.insertString(document.length, entry.message + "\n", attributes)
                 logTextPane.caretPosition = document.length
+            } catch (_: Exception) {
+                // Logging must not break the Tool Window when its document is being disposed.
             }
         }
     }
@@ -87,10 +89,12 @@ internal class ToolWindowLogPanel : JPanel(BorderLayout()) {
         val rootElement = document.defaultRootElement
         if (rootElement.elementCount <= MAX_LOG_LINES) return
 
-        runCatching {
+        try {
             val linesToRemove = rootElement.elementCount - RETAINED_LOG_LINES
             val endOffset = rootElement.getElement(linesToRemove).endOffset
             document.remove(0, endOffset)
+        } catch (_: Exception) {
+            // Trimming is best-effort; the next log entry retries it.
         }
     }
 
