@@ -33,7 +33,6 @@ import javax.swing.JLabel
 import javax.swing.JMenuItem
 import javax.swing.JPanel
 import javax.swing.JPopupMenu
-import javax.swing.SwingConstants
 import javax.swing.SwingUtilities
 
 /**
@@ -90,18 +89,11 @@ class BranchSwitcherPanel(
         border = BorderFactory.createEmptyBorder()
     }
 
-    private val log = javax.swing.JTextPane().apply {
-        isEditable = false
-        font = Font(Font.MONOSPACED, Font.PLAIN, 12)
-        contentType = "text/plain"
-    }
-    private var logVisible = false
-    private lateinit var logToggle: JLabel
-    private lateinit var logScroll: JBScrollPane
+    private val logPanel = ToolWindowLogPanel()
     private val stateRefreshAlarm = Alarm(Alarm.ThreadToUse.SWING_THREAD, this)
 
     // ── Logger ──────────────────────────────────────────────────
-    private val logger: AppLogger = ToolWindowLogger(::appendStructured)
+    private val logger: AppLogger = ToolWindowLogger(logPanel::append)
     private val stateDetector = RepositoryStateDetector({ service.gitClient }, logger)
 
     // ── Delegates (after UI fields to resolve init order) ──────
@@ -126,7 +118,7 @@ class BranchSwitcherPanel(
 
         add(createTopBlock(), BorderLayout.NORTH)
         add(presetsScroll, BorderLayout.CENTER)
-        add(createLogPanel(), BorderLayout.SOUTH)
+        add(logPanel, BorderLayout.SOUTH)
 
         presetManager.reload()
         detectCurrentState()
@@ -222,39 +214,6 @@ class BranchSwitcherPanel(
         ShowSettingsUtil.getInstance().showSettingsDialog(project, BranchSwitcherConfigurable::class.java)
         refreshStrategySummary()
     }
-    // ── Log panel (collapsible) ─────────────────────────────────
-
-    private fun createLogPanel(): JPanel {
-        logScroll = JBScrollPane(log).apply {
-            preferredSize = Dimension(0, JBUI.scale(80))
-            isVisible = false
-        }
-        logToggle = JLabel(" Log", AllIcons.General.ArrowRight, SwingConstants.LEFT).apply {
-            font = font.deriveFont(Font.PLAIN, 11f)
-            foreground = JBColor.GRAY
-            cursor = java.awt.Cursor.getPredefinedCursor(java.awt.Cursor.HAND_CURSOR)
-            border = BorderFactory.createCompoundBorder(
-                BorderFactory.createMatteBorder(1, 0, 0, 0, JBColor.border()),
-                JBUI.Borders.empty(2, 4, 0, 0),
-            )
-            addMouseListener(object : java.awt.event.MouseAdapter() {
-                override fun mouseClicked(e: java.awt.event.MouseEvent) { toggleLog() }
-            })
-        }
-        return JPanel(BorderLayout()).apply {
-            add(logToggle, BorderLayout.NORTH)
-            add(logScroll, BorderLayout.CENTER)
-        }
-    }
-
-    private fun toggleLog() {
-        logVisible = !logVisible
-        logScroll.isVisible = logVisible
-        logToggle.icon = if (logVisible) AllIcons.General.ArrowDown else AllIcons.General.ArrowRight
-        revalidate()
-        repaint()
-    }
-
     // ── Event subscriptions ────────────────────────────────────
 
     private fun wireEventSubscriptions() {
@@ -265,7 +224,7 @@ class BranchSwitcherPanel(
             }
 
             override fun onLog(entry: LogEntry) {
-                appendStructured(entry)
+                logPanel.append(entry)
             }
         })
         FileStatusManager.getInstance(project).addFileStatusListener(object : FileStatusListener {
@@ -366,31 +325,5 @@ class BranchSwitcherPanel(
             currentBranchLabel.foreground = JBUI.CurrentTheme.Link.Foreground.ENABLED
         }
         logger.debug("[detect] main=$main${if (mainDirty) " (dirty)" else ""}, matched=${matched ?: "<none>"}")
-    }
-
-    /** Receives structured [LogEntry] from [ToolWindowLogger] and renders to the log pane. */
-    private fun appendStructured(entry: LogEntry) {
-        com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater {
-            val doc = log.styledDocument
-            val root = doc.defaultRootElement
-            if (root.elementCount > 5000) {
-                try {
-                    val removeCount = root.elementCount - 4000
-                    val endOffset = root.getElement(removeCount).endOffset
-                    doc.remove(0, endOffset)
-                } catch (_: Exception) {}
-            }
-            val color = when (entry.level) {
-                LogEntry.Level.ERROR    -> JBColor.RED
-                LogEntry.Level.WARN     -> JBColor(0xE07B00, 0xFFA726)
-                LogEntry.Level.DEBUG    -> JBColor.GRAY
-                LogEntry.Level.ACTIVITY -> JBColor(0x1565C0, 0x42A5F5)
-                LogEntry.Level.INFO     -> log.foreground
-            }
-            val attrs = javax.swing.text.SimpleAttributeSet()
-            javax.swing.text.StyleConstants.setForeground(attrs, color)
-            try { doc.insertString(doc.length, entry.message + "\n", attrs) } catch (_: Exception) {}
-            log.caretPosition = doc.length
-        }
     }
 }

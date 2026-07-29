@@ -59,14 +59,14 @@ class SwitchFlowCoordinator(
     fun showForceWarning(preset: Preset, probeResult: List<PreflightRow>): Boolean {
         val request = service.resolveSwitchRequest(preset)
         if (!shouldShowForceWarning(request, probeResult)) return true
-        val confirmed = booleanArrayOf(false)
+        var confirmed = false
         ApplicationManager.getApplication().invokeAndWait {
-            confirmed[0] = Messages.showYesNoDialog(
+            confirmed = Messages.showYesNoDialog(
                 project, Bundle.msg("dialog.force.confirm.msg", preset.name),
                 Bundle.msg("dialog.force.confirm.title"), Messages.getWarningIcon(),
             ) == Messages.YES
         }
-        return confirmed[0]
+        return confirmed
     }
 
     /** Show missing-dir / missing-branch warnings. Returns true if user proceeds. */
@@ -81,15 +81,15 @@ class SwitchFlowCoordinator(
         if (missingBranches.isNotEmpty()) {
             warnings += Bundle.msg("preflight.warn.branch.not.found", missingBranches.joinToString(", ") { it.label })
         }
-        val confirmed = booleanArrayOf(false)
+        var confirmed = false
         ApplicationManager.getApplication().invokeAndWait {
-            confirmed[0] = Messages.showYesNoDialog(
+            confirmed = Messages.showYesNoDialog(
                 project,
                 warnings.joinToString("\n\n") + "\n\n" + Bundle.msg("preflight.warn.continue"),
                 Bundle.msg("dialog.switch.title"), Messages.getWarningIcon(),
             ) == Messages.YES
         }
-        return confirmed[0]
+        return confirmed
     }
 
     /**
@@ -118,14 +118,14 @@ class SwitchFlowCoordinator(
         }
         service.scope.launch(Dispatchers.Default) {
             try {
-                val result = SwitchRunner(project, root, service.gitClient).execute(
+                val runResult = SwitchRunner(project, root, service.gitClient).execute(
                     title = Bundle.msg("progress.switching"), request = request, log = log,
                 )
                 uiLater {
-                    handleSwitchResult(
+                    presentSwitchResult(
                         root = root,
                         preset = preset,
-                        result = result,
+                        runResult = runResult,
                         log = log,
                         onSuccess = onSuccess,
                         onFailure = onFailure,
@@ -138,32 +138,44 @@ class SwitchFlowCoordinator(
         }
     }
 
-    private fun handleSwitchResult(
+    private fun presentSwitchResult(
         root: Path,
         preset: Preset,
-        result: SwitchRunResult,
+        runResult: SwitchRunResult,
         log: AppLogger,
         onSuccess: (() -> Unit)?,
         onFailure: ((SwitchRunResult) -> Unit)?,
         onFinished: (() -> Unit)?,
     ) {
-        if (result.cancelled) {
-            notifyCancellation(result.recovery)
-        } else if (result.ok) {
-            service.addHistory(preset.name, preset.id)
-            onSuccess?.invoke()
-            Notifier.info(
-                project,
-                Bundle.msg("switch.complete"),
-                Bundle.msg("notify.switch.complete.msg", preset.name),
-            )
-        } else {
-            onFailure?.invoke(result)
-            notifySwitchFailure(root, preset, result.execution, log)
+        when {
+            runResult.cancelled -> notifyCancellation(runResult.recovery)
+            runResult.ok -> notifySuccessfulSwitch(preset, onSuccess)
+            else -> notifyFailedSwitch(root, preset, runResult, log, onFailure)
         }
 
         onFinished?.invoke()
         refreshVcsRepos(project, root, preset.submodules.keys)
+    }
+
+    private fun notifySuccessfulSwitch(preset: Preset, onSuccess: (() -> Unit)?) {
+        service.addHistory(preset.name, preset.id)
+        onSuccess?.invoke()
+        Notifier.info(
+            project,
+            Bundle.msg("switch.complete"),
+            Bundle.msg("notify.switch.complete.msg", preset.name),
+        )
+    }
+
+    private fun notifyFailedSwitch(
+        root: Path,
+        preset: Preset,
+        runResult: SwitchRunResult,
+        log: AppLogger,
+        onFailure: ((SwitchRunResult) -> Unit)?,
+    ) {
+        onFailure?.invoke(runResult)
+        notifySwitchFailure(root, preset, runResult.execution, log)
     }
 
     private fun notifyCancellation(recovery: SwitchRecoveryResult?) {
@@ -213,7 +225,7 @@ class SwitchFlowCoordinator(
         }
         service.scope.launch(Dispatchers.Default) {
             try {
-                val background = GitBackgroundRunner(project, service.gitClient).run(
+                val rollbackBackgroundResult = GitBackgroundRunner(project, service.gitClient).run(
                     Bundle.msg("progress.rollback"),
                 ) { indicator, operation ->
                     indicator.isIndeterminate = true
@@ -221,17 +233,17 @@ class SwitchFlowCoordinator(
                     val recovery = SwitchRecoveryExecutor(root, log, operation)
                     recovery.recover(execution).ok
                 }
-                val rollbackOk = when (background) {
-                    is GitBackgroundResult.Completed -> background.value
-                    is GitBackgroundResult.Cancelled -> background.value ?: false
+                val rollbackSucceeded = when (rollbackBackgroundResult) {
+                    is GitBackgroundResult.Completed -> rollbackBackgroundResult.value
+                    is GitBackgroundResult.Cancelled -> rollbackBackgroundResult.value ?: false
                     is GitBackgroundResult.Failed -> {
-                        val error = background.error
+                        val error = rollbackBackgroundResult.error
                         log.error("notification rollback: ${error.javaClass.simpleName}: ${error.message}")
                         false
                     }
                 }
                 uiLater {
-                    if (rollbackOk) {
+                    if (rollbackSucceeded) {
                         Notifier.info(
                             project,
                             Bundle.msg("rollback.complete"),
