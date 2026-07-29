@@ -157,7 +157,18 @@ class SwitchRunner(
         // GitOperationSession remains cancelled after cancel() and rejects every
         // later command. Recovery therefore requires a new session after the
         // background runner has closed the cancelled one.
-        val recoveryOperation = gitClient.openOperation()
+        val recoveryOperation = try {
+            gitClient.openOperation()
+        } catch (e: RuntimeException) {
+            log.error("cancel recovery session: ${e.javaClass.simpleName}: ${e.message}")
+            return CancelledSwitchRecovery(
+                execution = execution,
+                recovery = SwitchRecoveryResult(
+                    rollbackOk = false,
+                    stashFailures = mapOf("." to "could not open recovery session"),
+                ),
+            )
+        }
         return try {
             val recoveryExecutor = SwitchRecoveryExecutor(projectRoot, log, recoveryOperation)
             val recoveryOutcome = recoveryExecutor.recover(execution)

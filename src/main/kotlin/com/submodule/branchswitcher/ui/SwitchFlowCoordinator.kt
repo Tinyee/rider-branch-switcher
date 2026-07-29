@@ -146,13 +146,15 @@ class SwitchFlowCoordinator(
         onSuccess: (() -> Unit)?,
         onFinished: (() -> Unit)?,
     ) {
-        when {
-            runResult.cancelled -> notifyCancellation(runResult.recovery)
-            runResult.ok -> notifySuccessfulSwitch(preset, onSuccess)
-            else -> notifySwitchFailure(root, preset, runResult.execution, log)
+        try {
+            when {
+                runResult.cancelled -> notifyCancellation(runResult.recovery)
+                runResult.ok -> notifySuccessfulSwitch(preset, onSuccess)
+                else -> notifySwitchFailure(root, preset, runResult.execution, log)
+            }
+        } finally {
+            onFinished?.invoke()
         }
-
-        onFinished?.invoke()
     }
 
     private fun notifySuccessfulSwitch(preset: Preset, onSuccess: (() -> Unit)?) {
