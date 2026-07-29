@@ -29,7 +29,7 @@ internal class PresetTransferActions(
             val json = gson.toJson(PresetFile(host.editors.map { it.currentPreset() }))
             val clipboard = java.awt.Toolkit.getDefaultToolkit().systemClipboard
             clipboard.setContents(StringSelection(json), null)
-            log.debug("[exported] ${host.editors.size} preset(s) 已复制到剪贴板")
+            log.debug("[exported] ${host.editors.size} preset(s) copied to clipboard")
             Notifier.info(
                 project,
                 Bundle.msg("notify.export.complete"),
@@ -54,7 +54,11 @@ internal class PresetTransferActions(
                 Messages.showInfoMessage(project, Bundle.msg("dialog.import.empty"), Bundle.msg("dialog.import"))
                 return
             }
-            val result = parsePresetImport(text, host.editors.map { it.currentPreset().name }.toSet())
+            val result = parsePresetImport(
+                text = text,
+                existingNames = host.editors.map { it.currentPreset().name }.toSet(),
+                unnamedLabel = Bundle.msg("status.unnamed"),
+            )
             if (result.presets.isEmpty()) {
                 val message = if (result.hasRecognizedEntries) {
                     Bundle.msg("dialog.import.none", result.conflictingNames.size, result.invalidNames.size)

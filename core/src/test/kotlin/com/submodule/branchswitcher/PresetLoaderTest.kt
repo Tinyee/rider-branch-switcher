@@ -162,19 +162,29 @@ class PresetLoaderTest {
     }
 
     @Test
-    fun `migration save failure does not prevent loading legacy JSON`() {
+    fun `migration save failure is reported without preventing legacy JSON load`() {
         val ideaDir = Files.createDirectories(tmpDir.resolve(".idea"))
+        val file = ideaDir.resolve("branch-presets.json")
         Files.writeString(
-            ideaDir.resolve("branch-presets.json"),
+            file,
             """{"presets":[{"name":"legacy","main":"main"}]}""",
         )
+        var reportedFailure: Exception? = null
+        var reportedFile: Path? = null
 
-        val result = PresetLoader.load(tmpDir) { _, _ ->
-            throw java.io.IOException("read only")
-        }
+        val result = PresetLoader.load(
+            ideBase = tmpDir,
+            onMigrationFailure = { path, error ->
+                reportedFile = path
+                reportedFailure = error
+            },
+            migrationSaver = { _, _ -> throw java.io.IOException("read only") },
+        )
 
         assertTrue(result.isSuccess)
         assertEquals("legacy", result.getOrThrow().second.presets.single().name)
+        assertEquals(file, reportedFile)
+        assertEquals("read only", reportedFailure?.message)
     }
 
     @Test

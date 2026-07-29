@@ -1,6 +1,7 @@
 package com.submodule.branchswitcher.ui
 
 import com.intellij.openapi.application.ApplicationManager
+import com.submodule.branchswitcher.Bundle
 import com.submodule.branchswitcher.git.PresetDiscoveryGitClient
 import com.submodule.branchswitcher.log.AppLogger
 import kotlinx.coroutines.CancellationException
@@ -15,7 +16,7 @@ import javax.swing.event.DocumentListener
 
 /** JComboBox client-property key storing the unfiltered branch list for popup filtering. */
 const val KEY_ALL_BRANCHES = "submodule.branchswitcher.allBranches"
-const val LOADING_BRANCH = "loading..."
+val LOADING_BRANCH: String = Bundle.msg("status.loading")
 
 /** Normalizes loaded branches and ensures the current branch remains selectable. */
 fun mergeBranchChoices(current: String, branches: List<String>): List<String> {

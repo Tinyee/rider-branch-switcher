@@ -1,4 +1,4 @@
-﻿package com.submodule.branchswitcher
+package com.submodule.branchswitcher
 
 import com.intellij.notification.NotificationGroupManager
 import com.intellij.notification.NotificationType

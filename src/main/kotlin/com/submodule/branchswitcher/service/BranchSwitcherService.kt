@@ -1,6 +1,5 @@
 package com.submodule.branchswitcher.service
 
-import com.intellij.openapi.Disposable
 import com.intellij.openapi.components.PersistentStateComponent
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.State
@@ -34,7 +33,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 class BranchSwitcherService(
     private val project: Project,
     cs: CoroutineScope,
-) : PersistentStateComponent<BranchSwitcherService.OptionsState>, Disposable {
+) : PersistentStateComponent<BranchSwitcherService.OptionsState> {
 
     /** Platform-injected [CoroutineScope] with [SupervisorJob] semantics. */
     val scope = cs
@@ -62,10 +61,6 @@ class BranchSwitcherService(
     /** Acquires the write gate, returning an idempotent scoped lease on success. */
     fun tryAcquireWrite(): WriteLease? =
         if (writeGate.compareAndSet(false, true)) WriteLease(writeGate) else null
-
-    override fun dispose() {
-        // Platform manages injected [cs] lifecycle; nothing else to clean up.
-    }
 
     data class OptionsState(
         var dirtyAction: String = "Stash",

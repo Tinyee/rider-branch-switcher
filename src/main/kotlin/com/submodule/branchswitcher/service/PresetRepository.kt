@@ -17,7 +17,14 @@ class PresetRepository internal constructor(
 
     constructor(project: Project) : this(
         basePath = { project.basePath?.let(java.nio.file.Paths::get) },
-        loader = { PresetLoader.load(it) },
+        loader = {
+            PresetLoader.load(it, onMigrationFailure = { file, error ->
+                com.intellij.openapi.diagnostic.Logger.getInstance(PresetRepository::class.java).warn(
+                    "Could not persist migrated preset IDs to $file",
+                    error,
+                )
+            })
+        },
         saver = PresetLoader::save,
     )
 

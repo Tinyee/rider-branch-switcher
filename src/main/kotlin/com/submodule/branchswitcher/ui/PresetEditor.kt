@@ -335,7 +335,7 @@ internal class PresetEditor(
      */
     fun applyCurrentState(currentBranches: Map<String, String?>, dirtyRepos: Map<String, Boolean> = emptyMap()) {
         setHighlighted(matchesState(currentBranches))
-        val currentMain = currentBranches["."] ?: "(detached)"
+        val currentMain = currentBranches["."] ?: Bundle.msg("status.detached")
         val mainDirty = dirtyRepos["."] == true
         val mainStatus = mainStatusText(currentMain, savedPreset.main, mainDirty)
         mainDiffLabel.text = mainStatus
@@ -412,7 +412,7 @@ internal class PresetEditor(
 
     fun currentPreset(): Preset = savedPreset
 
-    fun updatePresetName(newName: String) {
+    private fun updatePresetName(newName: String) {
         savedPreset = savedPreset.copy(name = newName)
         nameLabel.text = newName
     }

@@ -39,9 +39,7 @@ class SwitchFlowCoordinator(
     private val service: BranchSwitcherService,
 ) {
     private fun uiLater(block: () -> Unit) {
-        ApplicationManager.getApplication().invokeLater {
-            if (!project.isDisposed) block()
-        }
+        project.invokeLaterIfAlive(block)
     }
 
     /** Shared preflight: probes all repos in [preset]. */
@@ -106,7 +104,6 @@ class SwitchFlowCoordinator(
         request: ResolvedSwitchRequest,
         log: AppLogger,
         onSuccess: (() -> Unit)? = null,
-        onFailure: ((SwitchRunResult) -> Unit)? = null,
         onFinished: (() -> Unit)? = null,
     ) {
         val preset = request.preset
@@ -135,7 +132,6 @@ class SwitchFlowCoordinator(
                     runResult = runResult,
                     log = log,
                     onSuccess = onSuccess,
-                    onFailure = onFailure,
                     onFinished = onFinished,
                 )
             }
@@ -148,13 +144,12 @@ class SwitchFlowCoordinator(
         runResult: SwitchRunResult,
         log: AppLogger,
         onSuccess: (() -> Unit)?,
-        onFailure: ((SwitchRunResult) -> Unit)?,
         onFinished: (() -> Unit)?,
     ) {
         when {
             runResult.cancelled -> notifyCancellation(runResult.recovery)
             runResult.ok -> notifySuccessfulSwitch(preset, onSuccess)
-            else -> notifyFailedSwitch(root, preset, runResult, log, onFailure)
+            else -> notifySwitchFailure(root, preset, runResult.execution, log)
         }
 
         onFinished?.invoke()
@@ -168,17 +163,6 @@ class SwitchFlowCoordinator(
             Bundle.msg("switch.complete"),
             Bundle.msg("notify.switch.complete.msg", preset.name),
         )
-    }
-
-    private fun notifyFailedSwitch(
-        root: Path,
-        preset: Preset,
-        runResult: SwitchRunResult,
-        log: AppLogger,
-        onFailure: ((SwitchRunResult) -> Unit)?,
-    ) {
-        onFailure?.invoke(runResult)
-        notifySwitchFailure(root, preset, runResult.execution, log)
     }
 
     private fun notifyCancellation(recovery: SwitchRecoveryResult?) {

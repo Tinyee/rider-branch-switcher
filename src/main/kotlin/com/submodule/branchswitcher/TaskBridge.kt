@@ -1,4 +1,4 @@
-﻿package com.submodule.branchswitcher
+package com.submodule.branchswitcher
 
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.progress.ProgressIndicator

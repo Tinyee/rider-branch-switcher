@@ -1,4 +1,4 @@
-﻿package com.submodule.branchswitcher.ui
+package com.submodule.branchswitcher.ui
 
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.DialogWrapper
@@ -34,7 +34,7 @@ class SwitchPreviewDialog(
     private val accentColor get() = JBUI.CurrentTheme.Link.Foreground.ENABLED
 
     init {
-        title = "${Bundle.msg("dialog.switch.title")}「${request.preset.name}」"
+        title = Bundle.msg("dialog.switch.preset.title", request.preset.name)
         setOKButtonText(Bundle.msg("dialog.switch.title"))
         setCancelButtonText(Bundle.msg("dialog.cancel"))
         init()
