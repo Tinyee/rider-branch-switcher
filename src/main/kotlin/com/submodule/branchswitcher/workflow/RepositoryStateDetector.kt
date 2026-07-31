@@ -1,6 +1,7 @@
 package com.submodule.branchswitcher.workflow
 
 import com.submodule.branchswitcher.git.RepositoryStateGitClient
+import com.submodule.branchswitcher.git.RepositoryStateBatchGitClient
 import com.submodule.branchswitcher.log.AppLogger
 import com.submodule.branchswitcher.platform.platformCancellationClassifier
 import com.submodule.branchswitcher.switch.CancellationClassifier
@@ -49,8 +50,22 @@ class RepositoryStateDetector(
             if (!isLatest(request)) break
             val dir = if (path == ".") request.root.toFile() else request.root.resolve(path).toFile()
             try {
-                branches[path] = if (dir.exists()) git.currentBranch(dir) else null
-                dirty[path] = if (dir.exists()) git.isDirty(dir) else false
+                val inspection = when {
+                    !dir.exists() -> null
+                    git is RepositoryStateBatchGitClient -> git.inspectRepositoryState(dir)
+                    else -> null
+                }
+                branches[path] = when {
+                    inspection?.isGitRepository == true -> inspection.currentBranch
+                    inspection != null -> null
+                    dir.exists() -> git.currentBranch(dir)
+                    else -> null
+                }
+                dirty[path] = when {
+                    inspection != null -> inspection.isGitRepository && inspection.dirtyFileCount > 0
+                    dir.exists() -> git.isDirty(dir)
+                    else -> false
+                }
             } catch (e: Exception) {
                 cancellationClassifier.rethrowIfCancellation(e)
                 branches[path] = null

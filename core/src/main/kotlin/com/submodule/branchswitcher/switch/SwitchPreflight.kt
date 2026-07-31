@@ -1,6 +1,7 @@
 package com.submodule.branchswitcher.switch
 
 import com.submodule.branchswitcher.git.SwitchPreflightGitClient
+import com.submodule.branchswitcher.git.SwitchPreflightBatchGitClient
 import com.submodule.branchswitcher.model.PreflightRow
 import com.submodule.branchswitcher.model.Preset
 import com.submodule.branchswitcher.model.RepoTarget
@@ -52,7 +53,12 @@ class SwitchPreflight(
             )
         }
         return try {
-            if (!git.isGitRepo(dir)) {
+            val inspection = if (git is SwitchPreflightBatchGitClient) {
+                git.inspectPreflight(dir, setOf(target.branch))
+            } else {
+                null
+            }
+            if (inspection?.isGitRepository == false || (inspection == null && !git.isGitRepo(dir))) {
                 return PreflightRow(
                     label = label,
                     path = target.path,
@@ -69,10 +75,12 @@ class SwitchPreflight(
                 path = target.path,
                 target = target.branch,
                 exists = true,
-                current = git.currentBranch(dir),
-                dirtyCount = git.dirtyFileCount(dir),
-                hasLocal = git.localBranchExists(dir, target.branch),
-                hasRemote = git.remoteBranchExists(dir, target.branch),
+                current = if (inspection != null) inspection.currentBranch else git.currentBranch(dir),
+                dirtyCount = inspection?.dirtyFileCount ?: git.dirtyFileCount(dir),
+                hasLocal = inspection?.localBranches?.contains(target.branch)
+                    ?: git.localBranchExists(dir, target.branch),
+                hasRemote = inspection?.remoteBranches?.contains(target.branch)
+                    ?: git.remoteBranchExists(dir, target.branch),
             )
         } catch (e: Exception) {
             classifier.rethrowIfCancellation(e)

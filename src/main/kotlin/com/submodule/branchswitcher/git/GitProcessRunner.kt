@@ -24,6 +24,12 @@ internal class GitProcessRunner(
         workDir: File,
         cancellation: AtomicBoolean,
         vararg args: String,
+    ): GitResult = run(workDir, cancellation, args.asList())
+
+    fun run(
+        workDir: File,
+        cancellation: AtomicBoolean,
+        args: List<String>,
     ): GitResult {
         val commandLabel = "git ${args.joinToString(" ")}"
         if (cancellation.get()) {
@@ -45,7 +51,7 @@ internal class GitProcessRunner(
         workDir: File,
         cancellation: AtomicBoolean,
         commandLabel: String,
-        args: Array<out String>,
+        args: List<String>,
     ): GitResult {
         val builder = ProcessBuilder(listOf("git") + args)
             .directory(workDir)
