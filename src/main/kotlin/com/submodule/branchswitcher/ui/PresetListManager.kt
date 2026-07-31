@@ -41,7 +41,9 @@ internal class PresetListManager(
     override val editors: List<PresetEditor> get() = mutableEditors
 
     private var emptyStatePanel: JPanel? = null
-    private val branchLoads = BranchLoadCoordinator(service.scope)
+    private val branchLoads = BranchLoadCoordinator(service.scope) {
+        service.gitClient.openOperation()
+    }
     private val actions = PresetCollectionActions(project, service, gitRoot, log, this)
     private val singleRepositorySwitcher = SingleRepositorySwitcher(
         project = project,
@@ -57,6 +59,7 @@ internal class PresetListManager(
     fun importPresets() = actions.importPresets()
 
     override fun clearEditors() {
+        mutableEditors.forEach(PresetEditor::dispose)
         mutableEditors.clear()
         presetsInner.removeAll()
         emptyStatePanel = null
@@ -94,6 +97,7 @@ internal class PresetListManager(
     }
 
     override fun removeEditor(editor: PresetEditor) {
+        editor.dispose()
         mutableEditors.remove(editor)
         val wrapper = editor.parent
         if (wrapper != null && wrapper !== presetsInner) {
