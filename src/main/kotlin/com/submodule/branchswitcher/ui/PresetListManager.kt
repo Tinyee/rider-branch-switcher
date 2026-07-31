@@ -9,6 +9,8 @@ import com.submodule.branchswitcher.Notifier
 import com.submodule.branchswitcher.log.AppLogger
 import com.submodule.branchswitcher.model.Preset
 import com.submodule.branchswitcher.platform.logVcsRefresh
+import com.submodule.branchswitcher.platform.GitBackgroundRunner
+import com.submodule.branchswitcher.platform.platformCancellationClassifier
 import com.submodule.branchswitcher.platform.refreshVcsRepos
 import com.submodule.branchswitcher.service.BranchSwitcherService
 import com.submodule.branchswitcher.workflow.SingleRepositorySkipReason
@@ -46,9 +48,9 @@ internal class PresetListManager(
     }
     private val actions = PresetCollectionActions(project, service, gitRoot, log, this)
     private val singleRepositorySwitcher = SingleRepositorySwitcher(
-        project = project,
-        gitClient = { service.gitClient },
+        operations = GitBackgroundRunner(project, service.gitClient),
         tryAcquireWrite = service::tryAcquireWrite,
+        cancellationClassifier = platformCancellationClassifier,
     )
 
     fun reload() = actions.reload()
@@ -130,7 +132,13 @@ internal class PresetListManager(
     }
 
     private fun switchSubmodule(root: Path, path: String, target: String) {
-        val started = singleRepositorySwitcher.start(service.scope, root, path, target) { result ->
+        val started = singleRepositorySwitcher.start(
+            scope = service.scope,
+            root = root,
+            path = path,
+            target = target,
+            title = Bundle.msg("progress.switching.to", target),
+        ) { result ->
             val refreshResult = refreshVcsRepos(project, root, setOf(path))
             project.invokeLaterIfAlive {
                 when (result) {

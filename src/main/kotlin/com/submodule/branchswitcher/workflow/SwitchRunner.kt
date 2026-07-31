@@ -1,24 +1,14 @@
 package com.submodule.branchswitcher.workflow
 
-import com.intellij.openapi.application.ApplicationManager
-import com.intellij.openapi.progress.ProgressIndicator
-import com.intellij.openapi.project.Project
-import com.intellij.openapi.ui.Messages
-import com.submodule.branchswitcher.Bundle
-import com.submodule.branchswitcher.TaskBridge
-import com.submodule.branchswitcher.git.GitOperationProvider
 import com.submodule.branchswitcher.log.AppLogger
 import com.submodule.branchswitcher.model.ResolvedSwitchRequest
-import com.submodule.branchswitcher.platform.GitBackgroundResult
-import com.submodule.branchswitcher.platform.GitBackgroundRunner
-import com.submodule.branchswitcher.platform.ProgressCancellationHandle
-import com.submodule.branchswitcher.platform.ProgressIndicatorHandle
-import com.submodule.branchswitcher.platform.platformCancellationClassifier
+import com.submodule.branchswitcher.operation.GitOperationResult
+import com.submodule.branchswitcher.operation.GitOperationRunner
+import com.submodule.branchswitcher.switch.CancellationClassifier
 import com.submodule.branchswitcher.switch.SwitchExecutionResult
 import com.submodule.branchswitcher.switch.SwitchExecutor
 import com.submodule.branchswitcher.switch.SwitchRecoveryExecutor
 import java.nio.file.Path
-import java.util.concurrent.atomic.AtomicInteger
 
 data class SwitchRunResult(
     val cancelled: Boolean,
@@ -52,46 +42,29 @@ private data class CancelledSwitchRecovery(
  * cancellation and SwitchExecutor invocation must stay centralized here.
  */
 class SwitchRunner(
-    private val project: Project,
     private val projectRoot: Path,
-    private val gitClient: GitOperationProvider,
-    private val taskRunner: TaskBridge.TaskRunner = TaskBridge.TaskRunner.DEFAULT,
+    private val operations: GitOperationRunner,
+    private val cancellationClassifier: CancellationClassifier = CancellationClassifier.DEFAULT,
+    private val confirmSubmoduleInitialization: (String) -> Boolean,
 ) {
-    /**
-     * Runs one resolved switch request inside the shared background lifecycle.
-     *
-     * [beforeExecute] may stop before mutation, for example when a shortcut
-     * confirmation is declined. Cancellation after mutation triggers a fresh
-     * Git session for rollback and pending stash restoration.
-     */
+    /** Runs one request; cancellation after mutation uses a fresh session for recovery. */
     suspend fun execute(
         title: String,
         request: ResolvedSwitchRequest,
         log: AppLogger,
-        progress: (ProgressIndicator) -> ProgressIndicator = { it },
-        beforeExecute: (ProgressIndicator) -> Boolean = { true },
     ): SwitchRunResult {
-        val backgroundResult = GitBackgroundRunner(project, gitClient, taskRunner).run(
-            title,
-            task@{ indicator, operation ->
-                indicator.isIndeterminate = true
-                if (!beforeExecute(indicator)) {
-                    return@task null
-                }
-                val effectiveIndicator = progress(indicator)
-                val cancellationHandle = ProgressCancellationHandle(effectiveIndicator)
-                val progressHandle = ProgressIndicatorHandle(effectiveIndicator)
-                SwitchExecutor(
-                    projectRoot,
-                    log,
-                    operation,
-                    cancellationHandle,
-                    progressHandle,
-                    cancellationClassifier = platformCancellationClassifier,
-                    onConfirmSubmoduleInit = ::confirmSubmoduleInitialization,
-                ).execute(request)
-            },
-        )
+        val backgroundResult = operations.run(title) { indicator, operation ->
+            indicator.isIndeterminate = true
+            SwitchExecutor(
+                projectRoot,
+                log,
+                operation,
+                indicator,
+                indicator,
+                cancellationClassifier = cancellationClassifier,
+                onConfirmSubmoduleInit = confirmSubmoduleInitialization,
+            ).execute(request)
+        }
 
         val backgroundOutcome = interpretBackgroundResult(backgroundResult, log)
         var wasCancelled = backgroundOutcome.cancelled
@@ -115,38 +88,24 @@ class SwitchRunner(
     }
 
     private fun interpretBackgroundResult(
-        result: GitBackgroundResult<SwitchExecutionResult?>,
+        result: GitOperationResult<SwitchExecutionResult>,
         log: AppLogger,
     ): BackgroundSwitchOutcome {
         return when (result) {
-            is GitBackgroundResult.Completed -> BackgroundSwitchOutcome(
-                cancelled = result.value == null,
+            is GitOperationResult.Completed -> BackgroundSwitchOutcome(
+                cancelled = false,
                 execution = result.value,
             )
-            is GitBackgroundResult.Cancelled -> {
+            is GitOperationResult.Cancelled -> {
                 log.info("[cancelled] switch cancelled by user")
                 BackgroundSwitchOutcome(cancelled = true, execution = result.value)
             }
-            is GitBackgroundResult.Failed -> {
+            is GitOperationResult.Failed -> {
                 val error = result.error
                 log.error("switch: ${error.javaClass.simpleName}: ${error.message}")
                 BackgroundSwitchOutcome(cancelled = false, execution = null)
             }
         }
-    }
-
-    private fun confirmSubmoduleInitialization(path: String): Boolean {
-        val answer = AtomicInteger(Messages.NO)
-        ApplicationManager.getApplication().invokeAndWait {
-            answer.set(
-                Messages.showYesNoDialog(
-                    Bundle.msg("dialog.init.submodule", path),
-                    Bundle.msg("dialog.init.title"),
-                    Messages.getQuestionIcon(),
-                ),
-            )
-        }
-        return answer.get() == Messages.YES
     }
 
     @Suppress("TooGenericExceptionCaught") // cancellation recovery must return a report instead of escaping
@@ -158,7 +117,7 @@ class SwitchRunner(
         // later command. Recovery therefore requires a new session after the
         // background runner has closed the cancelled one.
         val recoveryOperation = try {
-            gitClient.openOperation()
+            operations.openOperation()
         } catch (e: RuntimeException) {
             log.error("cancel recovery session: ${e.javaClass.simpleName}: ${e.message}")
             return CancelledSwitchRecovery(

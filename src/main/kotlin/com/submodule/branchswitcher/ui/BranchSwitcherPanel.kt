@@ -19,6 +19,7 @@ import com.submodule.branchswitcher.log.ToolWindowLogger
 import com.submodule.branchswitcher.platform.gitRootPath
 import com.submodule.branchswitcher.service.BranchSwitcherService
 import com.submodule.branchswitcher.workflow.RepositoryStateDetector
+import com.submodule.branchswitcher.platform.platformCancellationClassifier
 import com.submodule.branchswitcher.settings.BranchSwitcherConfigurable
 import kotlinx.coroutines.launch
 import java.awt.BorderLayout
@@ -94,7 +95,11 @@ class BranchSwitcherPanel(
 
     // ── Logger ──────────────────────────────────────────────────
     private val logger: AppLogger = ToolWindowLogger(logPanel::append)
-    private val stateDetector = RepositoryStateDetector({ service.gitClient }, logger)
+    private val stateDetector = RepositoryStateDetector(
+        { service.gitClient },
+        logger,
+        platformCancellationClassifier,
+    )
 
     // ── Explicit command wiring ─────────────────────────────────
     private val switchController = SwitchController(

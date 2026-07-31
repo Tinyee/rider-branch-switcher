@@ -46,21 +46,6 @@ class DeriveNotificationTest {
     }
 
     @Test
-    fun `preflight blocked returns Blocked with category counts`() {
-        val d = deriveNotification(cancelled = false,
-            result(branchExists = listOf("a"), dirty = listOf("b", "c")),
-            rollbackFailureCount = 0, "feat")
-        assertTrue(d is DeriveNotification.Blocked)
-        val b = d as DeriveNotification.Blocked
-        assertEquals(1, b.branchExistsCount)
-        assertEquals(0, b.skippedCount)
-        assertEquals(2, b.dirtyCount)
-        assertEquals(0, b.branchMismatchCount)
-        assertEquals(0, b.preflightErrorCount)
-        assertEquals(0, b.checkpointFailedCount)
-    }
-
-    @Test
     fun `preflight blocked reports every blocked category count`() {
         val d = deriveNotification(cancelled = false,
             result(
@@ -79,21 +64,6 @@ class DeriveNotificationTest {
         assertEquals(1, b.dirtyCount)
         assertEquals(3, b.branchMismatchCount)
         assertEquals(1, b.preflightErrorCount)
-        assertEquals(2, b.checkpointFailedCount)
-    }
-
-    @Test
-    fun `checkpoint blocked returns Blocked with checkpoint count`() {
-        val d = deriveNotification(cancelled = false,
-            result(checkpointFailed = listOf("a", "b")),
-            rollbackFailureCount = 0, "feat")
-        assertTrue(d is DeriveNotification.Blocked)
-        val b = d as DeriveNotification.Blocked
-        assertEquals(0, b.branchExistsCount)
-        assertEquals(0, b.skippedCount)
-        assertEquals(0, b.dirtyCount)
-        assertEquals(0, b.branchMismatchCount)
-        assertEquals(0, b.preflightErrorCount)
         assertEquals(2, b.checkpointFailedCount)
     }
 

@@ -3,7 +3,6 @@ package com.submodule.branchswitcher.workflow
 import com.submodule.branchswitcher.git.RepositoryStateGitClient
 import com.submodule.branchswitcher.git.RepositoryStateBatchGitClient
 import com.submodule.branchswitcher.log.AppLogger
-import com.submodule.branchswitcher.platform.platformCancellationClassifier
 import com.submodule.branchswitcher.switch.CancellationClassifier
 import com.submodule.branchswitcher.switch.rethrowIfCancellation
 import java.nio.file.Path
@@ -30,7 +29,7 @@ class RepositoryStateRequest internal constructor(
 class RepositoryStateDetector(
     private val gitClient: () -> RepositoryStateGitClient,
     private val log: AppLogger,
-    private val cancellationClassifier: CancellationClassifier = platformCancellationClassifier,
+    private val cancellationClassifier: CancellationClassifier = CancellationClassifier.DEFAULT,
 ) {
     private val latestRequestId = AtomicLong(0)
 

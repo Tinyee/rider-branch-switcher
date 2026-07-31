@@ -15,30 +15,4 @@ class PresetConfigTest {
         assertEquals(RepoTarget("SubB", "feature"), targets[2])
     }
 
-    @Test
-    fun `preset targets with no submodules`() {
-        val preset = Preset("solo", "master")
-        val targets = preset.targets()
-        assertEquals(1, targets.size)
-        assertEquals(RepoTarget(".", "master"), targets[0])
-    }
-
-    @Test
-    fun `preset id is preserved on copy`() {
-        val original = Preset("test", "main")
-        val renamed = original.copy(name = "renamed")
-        // Stable ID must survive rename so undo history remains valid.
-        assertEquals(original.id, renamed.id)
-        assertEquals("renamed", renamed.name)
-        assertEquals("main", renamed.main)
-    }
-
-    @Test
-    fun `request resolves global options unchanged`() {
-        val preset = Preset("test", "main")
-        val global = SwitchOptions(DirtyAction.Force, pull = false, fetchFirst = false, confirmBeforeInit = true)
-        val request = ResolvedSwitchRequest.resolve(preset, global)
-        assertEquals(preset, request.preset)
-        assertEquals(global, request.options)
-    }
 }

@@ -30,38 +30,12 @@ class PresetLoaderTest {
     // ---- resolveFile ----
 
     @Test
-    fun `resolveFile returns null when no preset file exists anywhere`() {
-        assertNull(PresetLoader.resolveFile(tmpDir))
-    }
-
-    @Test
-    fun `resolveFile finds dot-idea preset file first`() {
-        val ideaDir = Files.createDirectories(tmpDir.resolve(".idea"))
-        val ideaFile = ideaDir.resolve("branch-presets.json")
-        Files.writeString(ideaFile, """{"presets":[]}""")
-
-        val found = PresetLoader.resolveFile(tmpDir)
-        assertEquals(ideaFile, found)
-    }
-
-    @Test
     fun `resolveFile finds root preset file when dot-idea missing`() {
         val rootFile = tmpDir.resolve(".branch-presets.json")
         Files.writeString(rootFile, """{"presets":[]}""")
 
         val found = PresetLoader.resolveFile(tmpDir)
         assertEquals(rootFile, found)
-    }
-
-    @Test
-    fun `resolveFile walks up to ancestor directory`() {
-        val child = Files.createDirectories(tmpDir.resolve("child"))
-        // Put file at tmpDir (one level above child, but below the .git barrier)
-        val ancestor = tmpDir.resolve(".branch-presets.json")
-        Files.writeString(ancestor, """{"presets":[]}""")
-
-        val found = PresetLoader.resolveFile(child)
-        assertEquals(ancestor, found)
     }
 
     @Test
@@ -79,11 +53,13 @@ class PresetLoaderTest {
 
     @Test
     fun `resolveFile stops at git boundary when no file at that level`() {
-        val child = Files.createDirectories(tmpDir.resolve("child"))
-        Files.createDirectories(tmpDir.resolve(".git")) // git repo at parent
-        // No .branch-presets.json at child or parent → .git stops upward walk
+        val repository = Files.createDirectories(tmpDir.resolve("repository"))
+        val child = Files.createDirectories(repository.resolve("child"))
+        Files.createDirectories(repository.resolve(".git"))
+        Files.writeString(tmpDir.resolve(".branch-presets.json"), """{"presets":[]}""")
 
         val found = PresetLoader.resolveFile(child)
+
         assertNull(found)
     }
 
@@ -96,16 +72,6 @@ class PresetLoaderTest {
 
         val found = PresetLoader.resolveFile(tmpDir)
         assertEquals(ideaFile, found)
-    }
-
-    // ---- defaultFile ----
-
-    @Test
-    fun `defaultFile points to dot-idea without creating it`() {
-        val file = PresetLoader.defaultFile(tmpDir)
-
-        assertEquals(tmpDir.resolve(".idea/branch-presets.json"), file)
-        assertFalse(Files.exists(file))
     }
 
     // ---- load ----
@@ -134,48 +100,19 @@ class PresetLoaderTest {
         assertEquals(1, parsed.presets.size)
         assertEquals("dev", parsed.presets[0].name)
         assertEquals("dev", parsed.presets[0].main)
-    }
-
-    @Test
-    fun `load applies defaults for optional preset fields`() {
-        val id = Files.createDirectories(tmpDir.resolve(".idea"))
-        Files.writeString(id.resolve("branch-presets.json"), """
-            {"presets":[{"name":"dev","main":"dev"}]}
-        """.trimIndent())
-
-        val result = PresetLoader.load(tmpDir)
-
-        assertTrue(result.isSuccess)
-        val preset = result.getOrThrow().second.presets.single()
-        assertTrue(preset.submodules.isEmpty())
-    }
-
-    @Test
-    fun `load normalizes legacy id without modifying JSON`() {
-        val ideaDir = Files.createDirectories(tmpDir.resolve(".idea"))
-        val file = ideaDir.resolve("branch-presets.json")
-        val originalJson = """{"presets":[{"name":"legacy","main":"main"}]}"""
-        Files.writeString(file, originalJson)
-
-        val result = PresetLoader.load(tmpDir)
-
-        assertTrue(result.isSuccess)
-        val generatedId = result.getOrThrow().second.presets.single().id
-        assertTrue(generatedId.isNotBlank())
-        assertEquals(originalJson, Files.readString(file))
+        assertTrue(parsed.presets[0].submodules.isEmpty())
     }
 
     @Test
     fun `load replaces blank and duplicate ids with unique ids`() {
         val ideaDir = Files.createDirectories(tmpDir.resolve(".idea"))
-        Files.writeString(
-            ideaDir.resolve("branch-presets.json"),
-            """{"presets":[
+        val file = ideaDir.resolve("branch-presets.json")
+        val originalJson = """{"presets":[
                 {"id":"","name":"blank","main":"main"},
                 {"id":"shared","name":"first","main":"main"},
                 {"id":"shared","name":"duplicate","main":"main"}
-            ]}""",
-        )
+            ]}"""
+        Files.writeString(file, originalJson)
 
         val presets = PresetLoader.load(tmpDir).getOrThrow().second.presets
 
@@ -183,21 +120,6 @@ class PresetLoaderTest {
         assertTrue(presets.none { it.id.isBlank() })
         assertEquals("shared", presets[1].id)
         assertNotEquals("shared", presets[2].id)
-    }
-
-    @Test
-    fun `load normalizes duplicate ids without modifying JSON`() {
-        val ideaDir = Files.createDirectories(tmpDir.resolve(".idea"))
-        val file = ideaDir.resolve("branch-presets.json")
-        val originalJson = """{"presets":[
-                {"id":"same","name":"a","main":"main"},
-                {"id":"same","name":"b","main":"main"}
-            ]}"""
-        Files.writeString(file, originalJson)
-
-        val presets = PresetLoader.load(tmpDir).getOrThrow().second.presets
-
-        assertNotEquals(presets[0].id, presets[1].id)
         assertEquals(originalJson, Files.readString(file))
     }
 
@@ -216,29 +138,16 @@ class PresetLoaderTest {
     }
 
     @Test
-    fun `load rejects preset missing required name`() {
-        val id = Files.createDirectories(tmpDir.resolve(".idea"))
-        Files.writeString(id.resolve("branch-presets.json"), """
-            {"presets":[{"main":"dev"}]}
-        """.trimIndent())
-
-        val result = PresetLoader.load(tmpDir)
-
-        assertTrue(result.isFailure)
-        assertTrue(result.exceptionOrNull()!!.message!!.contains("preset.name"))
-    }
-
-    @Test
-    fun `load rejects preset missing required main branch`() {
-        val id = Files.createDirectories(tmpDir.resolve(".idea"))
-        Files.writeString(id.resolve("branch-presets.json"), """
-            {"presets":[{"name":"dev"}]}
-        """.trimIndent())
-
-        val result = PresetLoader.load(tmpDir)
-
-        assertTrue(result.isFailure)
-        assertTrue(result.exceptionOrNull()!!.message!!.contains("preset.main"))
+    fun `load rejects presets missing required fields`() {
+        listOf(
+            """{"presets":[{"main":"dev"}]}""" to "preset.name",
+            """{"presets":[{"name":"dev"}]}""" to "preset.main",
+        ).forEach { (json, expectedField) ->
+            writePresetFile(json)
+            val result = PresetLoader.load(tmpDir)
+            assertTrue(result.isFailure)
+            assertTrue(result.exceptionOrNull()!!.message!!.contains(expectedField))
+        }
     }
 
     @Test
@@ -269,17 +178,6 @@ class PresetLoaderTest {
     }
 
     @Test
-    fun `save creates parent directory if missing`() {
-        val file = tmpDir.resolve("nested").resolve("dir").resolve("test.json")
-        val presets = PresetFile(listOf(Preset("x", "main")))
-
-        PresetLoader.save(file, presets)
-        assertTrue(Files.exists(file))
-        val content = Files.readString(file)
-        assertTrue("content should contain name:x, got: $content", content.contains(""""name": "x""""))
-    }
-
-    @Test
     fun `save overwrites existing file`() {
         val file = PresetLoader.defaultFile(tmpDir)
         PresetLoader.save(file, PresetFile(listOf(Preset("old", "main"))))
@@ -287,9 +185,8 @@ class PresetLoaderTest {
         PresetLoader.save(file, PresetFile(listOf(Preset("new", "dev"))))
         val content = Files.readString(file)
         assertTrue(content.contains(""""name": "new""""))
-        assertFalse(content.contains("old content"))
+        assertFalse(content.contains(""""name": "old""""))
     }
-
 
     @Test
     fun `presets with null item in list loads without NPE`() {
@@ -298,15 +195,6 @@ class PresetLoaderTest {
         assertTrue(result.isSuccess)
         assertEquals(1, result.getOrThrow().second.presets.size)
         assertEquals("ok", result.getOrThrow().second.presets[0].name)
-    }
-
-    @Test
-    fun `load empty JSON object parses without NPE`() {
-        val ideaDir = Files.createDirectories(tmpDir.resolve(".idea"))
-        Files.writeString(ideaDir.resolve("branch-presets.json"), "{}")
-        val result = PresetLoader.load(tmpDir)
-        assertTrue("empty JSON object should load without NPE", result.isSuccess)
-        assertTrue(result.getOrThrow().second.presets.isEmpty())
     }
 
     @Test

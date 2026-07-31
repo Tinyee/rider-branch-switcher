@@ -8,6 +8,8 @@ import com.submodule.branchswitcher.Notifier
 import com.submodule.branchswitcher.Bundle
 import com.submodule.branchswitcher.model.Preset
 import com.submodule.branchswitcher.platform.logVcsRefresh
+import com.submodule.branchswitcher.platform.GitBackgroundRunner
+import com.submodule.branchswitcher.platform.platformCancellationClassifier
 import com.submodule.branchswitcher.platform.refreshVcsRepos
 import com.submodule.branchswitcher.service.BranchSwitcherService
 import com.submodule.branchswitcher.switch.DeriveNotification
@@ -69,7 +71,11 @@ internal class SwitchController(
         }
         service.scope.launch(Dispatchers.Default) {
             val runResult = try {
-                DeriveBranchRunner(project, root, service.gitClient).execute(
+                DeriveBranchRunner(
+                    projectRoot = root,
+                    operations = GitBackgroundRunner(project, service.gitClient),
+                    cancellationClassifier = platformCancellationClassifier,
+                ).execute(
                     title = Bundle.msg("progress.derive", branchName),
                     preset = preset,
                     branchName = branchName,

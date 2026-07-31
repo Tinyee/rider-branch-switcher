@@ -2,9 +2,9 @@ package com.submodule.branchswitcher.platform
 
 import com.intellij.openapi.progress.ProgressIndicator
 import com.submodule.branchswitcher.log.AppLogger
+import com.submodule.branchswitcher.operation.OperationProgress
 import com.submodule.branchswitcher.switch.CancellationClassifier
 import com.submodule.branchswitcher.switch.CancellationHandle
-import com.submodule.branchswitcher.switch.ProgressHandle
 
 /** Adapts an IntelliJ [ProgressIndicator] to a pure [CancellationHandle]. */
 class ProgressCancellationHandle(
@@ -14,10 +14,12 @@ class ProgressCancellationHandle(
     override val isCanceled: Boolean get() = indicator?.isCanceled == true
 }
 
-/** Adapts an IntelliJ [ProgressIndicator] to a pure [ProgressHandle]. */
+/** Adapts an IntelliJ [ProgressIndicator] to pure progress and cancellation handles. */
 class ProgressIndicatorHandle(
     private val indicator: ProgressIndicator,
-) : ProgressHandle {
+) : OperationProgress {
+    override fun checkCanceled() = indicator.checkCanceled()
+    override val isCanceled: Boolean get() = indicator.isCanceled
     override var fraction: Double
         get() = indicator.fraction
         set(value) { indicator.fraction = value }

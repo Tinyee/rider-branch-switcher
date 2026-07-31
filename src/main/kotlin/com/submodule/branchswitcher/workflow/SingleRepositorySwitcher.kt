@@ -1,13 +1,9 @@
 package com.submodule.branchswitcher.workflow
 
-import com.intellij.openapi.project.Project
-import com.submodule.branchswitcher.Bundle
-import com.submodule.branchswitcher.TaskBridge
-import com.submodule.branchswitcher.git.GitOperationProvider
 import com.submodule.branchswitcher.git.GitResult
-import com.submodule.branchswitcher.platform.GitBackgroundResult
-import com.submodule.branchswitcher.platform.GitBackgroundRunner
-import com.submodule.branchswitcher.platform.platformCancellationClassifier
+import com.submodule.branchswitcher.operation.GitOperationResult
+import com.submodule.branchswitcher.operation.GitOperationRunner
+import com.submodule.branchswitcher.switch.CancellationClassifier
 import com.submodule.branchswitcher.switch.resolveGitDir
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -31,10 +27,9 @@ sealed class SingleRepositorySwitchResult {
 
 /** Executes one repository checkout with the shared write and Git task lifecycle. */
 class SingleRepositorySwitcher(
-    private val project: Project,
-    private val gitClient: () -> GitOperationProvider,
+    private val operations: GitOperationRunner,
     private val tryAcquireWrite: () -> AutoCloseable?,
-    private val taskRunner: TaskBridge.TaskRunner = TaskBridge.TaskRunner.DEFAULT,
+    private val cancellationClassifier: CancellationClassifier = CancellationClassifier.DEFAULT,
 ) {
     /**
      * Acquires the write gate synchronously, then runs Git on [scope].
@@ -45,12 +40,13 @@ class SingleRepositorySwitcher(
         root: Path,
         path: String,
         target: String,
+        title: String,
         onResult: (SingleRepositorySwitchResult) -> Unit,
     ): Boolean {
         val writeLease = tryAcquireWrite() ?: return false
         val guardedLease = CloseOnce(writeLease)
         val job = scope.launch(Dispatchers.Default) {
-            onResult(execute(root, path, target, guardedLease))
+            onResult(execute(root, path, target, title, guardedLease))
         }
         job.invokeOnCompletion { guardedLease.close() }
         return true
@@ -61,13 +57,12 @@ class SingleRepositorySwitcher(
         root: Path,
         path: String,
         target: String,
+        title: String,
         writeLease: AutoCloseable,
     ): SingleRepositorySwitchResult {
         return try {
             val dir = resolveGitDir(root, path)
-            when (val background = GitBackgroundRunner(project, gitClient(), taskRunner).run(
-                Bundle.msg("progress.switching.to", target),
-            ) { indicator, operation ->
+            when (val background = operations.run(title) { indicator, operation ->
                 indicator.isIndeterminate = true
                 when {
                     !dir.exists() || !operation.isGitRepo(dir) ->
@@ -85,12 +80,12 @@ class SingleRepositorySwitcher(
                     )
                 }
             }) {
-                is GitBackgroundResult.Completed -> background.value
-                is GitBackgroundResult.Cancelled -> SingleRepositorySwitchResult.Cancelled
-                is GitBackgroundResult.Failed -> SingleRepositorySwitchResult.Unexpected(background.error)
+                is GitOperationResult.Completed -> background.value
+                is GitOperationResult.Cancelled -> SingleRepositorySwitchResult.Cancelled
+                is GitOperationResult.Failed -> SingleRepositorySwitchResult.Unexpected(background.error)
             }
         } catch (e: Exception) {
-            if (platformCancellationClassifier.isCancellation(e)) {
+            if (cancellationClassifier.isCancellation(e)) {
                 SingleRepositorySwitchResult.Cancelled
             } else {
                 SingleRepositorySwitchResult.Unexpected(e)

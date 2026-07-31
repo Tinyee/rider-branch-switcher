@@ -195,6 +195,23 @@ Real CLI integration tests enforce linear process budgets across five
 repositories, and focused tests cover output bounds, stream ownership, direct
 Git cancellation, stale-result rejection, and fail-closed batch failures.
 
+## 2026-08-01 - Targeted Maintainability Boundaries
+
+Three deferred boundaries were completed without changing switch behavior:
+
+- Preset draft construction, dirty comparison, and rename classification are
+  pure core rules; `PresetEditor` retains Swing rendering and event binding.
+- `workflow/` depends on a pure `GitOperationRunner` contract and injected
+  cancellation and confirmation policies. IntelliJ task, progress, and dialog
+  APIs remain in `platform/` and `ui/`, enforced by `quickCheck`.
+- Switch preflight UI, write/VCS execution, and result presentation have
+  separate owners while both entry points retain one shared coordinator.
+
+Workflow tests now assert business outcomes through a deterministic operation
+boundary. Platform tests separately assert real background session open,
+cancel, close, preserved completion, and exception conversion contracts.
+The full `releaseCheck` passed after the boundary changes.
+
 ## Maintenance
 
 Record temporary findings in the relevant issue or pull request. Add to this

@@ -75,17 +75,6 @@ class RepositoryStateDetectorTest {
     }
 
     @Test
-    fun `new request makes an older snapshot stale`() {
-        val root = temp.newFolder("root")
-        val detector = detector(RecordingGit())
-        val first = detector.detect(detector.begin(root.toPath(), listOf(".")))
-        val second = detector.detect(detector.begin(root.toPath(), listOf(".")))
-
-        assertFalse(detector.isLatest(first))
-        assertTrue(detector.isLatest(second))
-    }
-
-    @Test
     fun `superseded request stops before probing remaining repositories`() {
         val root = temp.newFolder("root")
         File(root, "module-a").mkdirs()

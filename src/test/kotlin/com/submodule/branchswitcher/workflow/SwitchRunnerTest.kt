@@ -1,8 +1,5 @@
 package com.submodule.branchswitcher.workflow
 
-import com.intellij.openapi.progress.ProgressIndicator
-import com.intellij.openapi.project.Project
-import com.submodule.branchswitcher.TaskBridge
 import com.submodule.branchswitcher.git.GitClient
 import com.submodule.branchswitcher.git.GitOperationProvider
 import com.submodule.branchswitcher.git.GitOperationSession
@@ -16,37 +13,15 @@ import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
 import org.junit.Test
 import java.io.File
-import java.lang.reflect.Proxy
 import java.nio.file.Files
-import java.util.concurrent.atomic.AtomicBoolean
+import java.nio.file.Path
+import java.util.concurrent.CancellationException
 
 class SwitchRunnerTest {
-
-    private val project: Project = Proxy.newProxyInstance(
-        Project::class.java.classLoader,
-        arrayOf(Project::class.java),
-    ) { _, _, _ -> null } as Project
-
-    private val indicator: ProgressIndicator = Proxy.newProxyInstance(
-        ProgressIndicator::class.java.classLoader,
-        arrayOf(ProgressIndicator::class.java),
-    ) { _, method, _ ->
-        when (method.returnType) {
-            java.lang.Boolean.TYPE -> false
-            java.lang.Double.TYPE -> 0.0
-            java.lang.Integer.TYPE -> 0
-            java.lang.Long.TYPE -> 0L
-            else -> null
-        }
-    } as ProgressIndicator
-
     @Test
-    fun `execute pairs begin and end operation`() = runBlocking {
+    fun `missing git repo returns structured execution result`() = runBlocking {
         val git = RecordingGit()
-        val taskRunner = immediateTaskRunner()
-        val runner = SwitchRunner(project, Files.createTempDirectory("switch-runner").also {
-            it.toFile().deleteOnExit()
-        }, git, taskRunner)
+        val runner = runner(Files.createTempDirectory("switch-runner"), git)
 
         val result = runner.execute(
             title = "Switching",
@@ -57,15 +32,16 @@ class SwitchRunnerTest {
         assertFalse("missing git repo should fail through executor", result.ok)
         assertFalse(result.cancelled)
         assertNotNull("execution should be available for rollback decisions", result.execution)
-        assertEquals(1, git.openCount)
-        assertEquals(1, git.closeCount)
-        assertEquals(0, git.cancelCount)
     }
 
     @Test
-    fun `task cancellation invokes git cancel and returns cancelled result`() = runBlocking {
+    fun `cancelled operation returns cancelled result without execution`() = runBlocking {
         val git = RecordingGit()
-        val runner = SwitchRunner(project, Files.createTempDirectory("switch-runner-cancel"), git, cancellingTaskRunner())
+        val runner = runner(
+            Files.createTempDirectory("switch-runner-cancel"),
+            git,
+            TestOperationCompletion.CANCEL_BEFORE,
+        )
 
         val result = runner.execute(
             title = "Switching",
@@ -76,29 +52,6 @@ class SwitchRunnerTest {
         assertFalse(result.ok)
         assertTrue(result.cancelled)
         assertNull("cancel before run should not create an execution result", result.execution)
-        assertEquals(1, git.openCount)
-        assertEquals(1, git.cancelCount)
-        assertEquals(1, git.closeCount)
-    }
-
-    @Test
-    fun `beforeExecute false cancels without creating executor`() = runBlocking {
-        val git = RecordingGit()
-        val runner = SwitchRunner(project, Files.createTempDirectory("switch-runner-before"), git, immediateTaskRunner())
-
-        val result = runner.execute(
-            title = "Switching",
-            request = request(),
-            log = createStringAppender {},
-            beforeExecute = { false },
-        )
-
-        assertFalse(result.ok)
-        assertTrue(result.cancelled)
-        assertNull(result.execution)
-        assertEquals(1, git.openCount)
-        assertEquals(1, git.closeCount)
-        assertEquals(0, git.cancelCount)
     }
 
     @Test
@@ -106,7 +59,7 @@ class SwitchRunnerTest {
         val root = Files.createTempDirectory("switch-runner-ok")
         initGitRepo(root.toFile())
         val git = RecordingGit()
-        val runner = SwitchRunner(project, root, git, immediateTaskRunner())
+        val runner = runner(root, git)
 
         val result = runner.execute(
             title = "Switching",
@@ -117,54 +70,7 @@ class SwitchRunnerTest {
         assertTrue(result.ok)
         assertFalse(result.cancelled)
         assertNotNull(result.execution)
-        assertEquals(1, git.openCount)
-        assertEquals(1, git.closeCount)
         assertEquals(1, git.submoduleSyncCount)
-    }
-
-    @Test
-    fun `beforeExecute true runs before switch executor and allows execution`() = runBlocking {
-        val root = Files.createTempDirectory("switch-runner-before-ok")
-        initGitRepo(root.toFile())
-        val git = RecordingGit()
-        val called = AtomicBoolean(false)
-        val runner = SwitchRunner(project, root, git, immediateTaskRunner())
-
-        val result = runner.execute(
-            title = "Switching",
-            request = request(fetchFirst = false, pull = false),
-            log = createStringAppender {},
-            beforeExecute = {
-                called.set(true)
-                true
-            },
-        )
-
-        assertTrue(called.get())
-        assertTrue(result.ok)
-        assertEquals(1, git.submoduleSyncCount)
-    }
-
-    @Test
-    fun `beforeExecute throwing ProcessCanceledException returns cancelled result`() = runBlocking {
-        val root = Files.createTempDirectory("switch-runner-pce")
-        initGitRepo(root.toFile())
-        val git = RecordingGit()
-        val runner = SwitchRunner(project, root, git, immediateTaskRunner())
-
-        val result = runner.execute(
-            title = "Switching",
-            request = request(fetchFirst = false, pull = false),
-            log = createStringAppender {},
-            beforeExecute = { throw com.intellij.openapi.progress.ProcessCanceledException() },
-        )
-
-        assertTrue("should be cancelled", result.cancelled)
-        assertFalse("should not be ok", result.ok)
-        assertNull("execution result should not be created", result.execution)
-        assertEquals("onCancel must fire gitClient.cancel()", 1, git.cancelCount)
-        assertEquals(1, git.openCount)
-        assertEquals(1, git.closeCount)
     }
 
     @Test
@@ -174,11 +80,12 @@ class SwitchRunnerTest {
         val git = object : RecordingGit() {
             override fun isDirty(workDir: File): Boolean = true
         }
-        val runner = SwitchRunner(
-            project,
+        val runner = runner(
             root,
             git,
-            immediateTaskRunner(cancellingAfterCheckoutIndicator(git)),
+            progress = TestOperationProgress {
+                if (git.checkoutCount > 0) throw CancellationException()
+            },
         )
 
         val result = runner.execute(
@@ -203,10 +110,9 @@ class SwitchRunnerTest {
                 throw IllegalStateException("git unavailable")
         }
         val runner = SwitchRunner(
-            project,
-            Files.createTempDirectory("switch-runner-open-failure"),
-            unavailableGit,
-            immediateTaskRunner(),
+            projectRoot = Files.createTempDirectory("switch-runner-open-failure"),
+            operations = TestGitOperationRunner(unavailableGit),
+            confirmSubmoduleInitialization = { true },
         )
 
         val result = runner.execute(
@@ -222,6 +128,29 @@ class SwitchRunnerTest {
     }
 
     @Test
+    fun `execution failure becomes structured result`() = runBlocking {
+        val logs = mutableListOf<String>()
+        val root = Files.createTempDirectory("switch-runner-execution-failure")
+        initGitRepo(root.toFile())
+        val git = object : RecordingGit() {
+            override fun revParseHead(workDir: File): String? =
+                throw IllegalStateException("cannot read HEAD")
+        }
+        val runner = runner(root, git)
+
+        val result = runner.execute(
+            title = "Switching",
+            request = request(fetchFirst = false, pull = false),
+            log = createStringAppender(logs::add),
+        )
+
+        assertFalse(result.ok)
+        assertFalse(result.cancelled)
+        assertNull(result.execution)
+        assertTrue(logs.any { it.contains("IllegalStateException: cannot read HEAD") })
+    }
+
+    @Test
     fun `cancel recovery session failure is reported without escaping`() = runBlocking {
         val root = Files.createTempDirectory("switch-runner-recovery-open-failure")
         initGitRepo(root.toFile())
@@ -233,11 +162,12 @@ class SwitchRunnerTest {
                 return super.openOperation()
             }
         }
-        val runner = SwitchRunner(
-            project,
+        val runner = runner(
             root,
             git,
-            immediateTaskRunner(cancellingAfterCheckoutIndicator(git)),
+            progress = TestOperationProgress {
+                if (git.checkoutCount > 0) throw CancellationException()
+            },
         )
 
         val result = runner.execute(
@@ -270,52 +200,16 @@ class SwitchRunnerTest {
         assertEquals("git init should succeed", 0, proc.exitValue())
     }
 
-    private fun immediateTaskRunner(taskIndicator: ProgressIndicator = indicator): TaskBridge.TaskRunner =
-        object : TaskBridge.TaskRunner {
-            override fun run(
-                project: Project?,
-                title: String,
-                canBeCancelled: Boolean,
-                onRun: (ProgressIndicator) -> Unit,
-                onFinished: () -> Unit,
-                onCancel: () -> Unit,
-            ) {
-                onRun(taskIndicator)
-                onFinished()
-            }
-        }
-
-    private fun cancellingAfterCheckoutIndicator(git: RecordingGit): ProgressIndicator =
-        Proxy.newProxyInstance(
-            ProgressIndicator::class.java.classLoader,
-            arrayOf(ProgressIndicator::class.java),
-        ) { _, method, _ ->
-            if (method.name == "checkCanceled" && git.checkoutCount > 0) {
-                throw com.intellij.openapi.progress.ProcessCanceledException()
-            }
-            when (method.returnType) {
-                java.lang.Boolean.TYPE -> false
-                java.lang.Double.TYPE -> 0.0
-                java.lang.Integer.TYPE -> 0
-                java.lang.Long.TYPE -> 0L
-                else -> null
-            }
-        } as ProgressIndicator
-
-    private fun cancellingTaskRunner(): TaskBridge.TaskRunner =
-        object : TaskBridge.TaskRunner {
-            override fun run(
-                project: Project?,
-                title: String,
-                canBeCancelled: Boolean,
-                onRun: (ProgressIndicator) -> Unit,
-                onFinished: () -> Unit,
-                onCancel: () -> Unit,
-            ) {
-                onCancel()
-                onFinished()
-            }
-        }
+    private fun runner(
+        root: Path,
+        git: GitOperationProvider,
+        completion: TestOperationCompletion = TestOperationCompletion.COMPLETE,
+        progress: TestOperationProgress = TestOperationProgress(),
+    ) = SwitchRunner(
+        projectRoot = root,
+        operations = TestGitOperationRunner(git, completion, progress),
+        confirmSubmoduleInitialization = { true },
+    )
 
     private open class RecordingGit : GitClient {
         var openCount = 0

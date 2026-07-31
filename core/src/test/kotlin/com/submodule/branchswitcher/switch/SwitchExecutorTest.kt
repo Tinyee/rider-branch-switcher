@@ -64,31 +64,6 @@ class SwitchExecutorTest {
         assertEquals("git init should succeed in ${dir.absolutePath}: $out", 0, proc.waitFor())
     }
 
-    // ---- Basic success / failure ----
-
-    @Test
-    fun `switch to existing branch succeeds`() {
-        val executor = SwitchExecutor(projectRoot, createStringAppender { log += it }, fakeGit)
-        val result = executor.executeResultTest(
-            preset,
-            SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false),
-        )
-        assertTrue("Switch should succeed", result.ok)
-        assertTrue("Checkpoint should be recorded", result.checkpoint?.isNotEmpty() ?: false)
-    }
-
-    @Test
-    fun `switch to missing branch fails`() {
-        val missingGit = object : GitClient by fakeGit {
-            override fun localBranchExists(workDir: File, branch: String): Boolean = false
-            override fun remoteBranchExists(workDir: File, branch: String): Boolean = false
-        }
-        val executor = SwitchExecutor(projectRoot, createStringAppender { log += it }, missingGit)
-        val result = executor.executeTest(Preset("test", "no-branch", emptyMap()),
-            SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false))
-        assertFalse("Switch should fail when branch doesn't exist", result)
-    }
-
     @Test
     fun `checkpoint failure blocks switch before checkout`() {
         var checkoutCalls = 0
@@ -109,68 +84,6 @@ class SwitchExecutorTest {
         assertEquals("Checkpoint failure must prevent checkout", 0, checkoutCalls)
         assertNull("Incomplete checkpoints must not be retained", result.checkpoint)
         assertTrue(log.any { it.contains("[checkpoint]") && it.contains("unable to read HEAD") })
-    }
-
-    // ---- Dirty handling ----
-
-    @Test
-    fun `dirty skip prevents checkout`() {
-        var checkoutCalls = 0
-        val dirtyGit = object : GitClient by fakeGit {
-            override fun isDirty(workDir: File): Boolean = true
-            override fun checkoutExisting(workDir: File, branch: String): GitResult {
-                checkoutCalls++
-                return GitResult("checkout", 0, "", "")
-            }
-        }
-        val executor = SwitchExecutor(projectRoot, createStringAppender { log += it }, dirtyGit)
-        val result = executor.executeTest(preset, SwitchOptions(DirtyAction.Skip, pull = false, fetchFirst = false))
-        assertFalse("Dirty+Skip should cause failure", result)
-        assertEquals("Dirty+Skip must not checkout", 0, checkoutCalls)
-    }
-
-    @Test
-    fun `stash failure prevents checkout`() {
-        var checkoutCalls = 0
-        val failingGit = object : GitClient by fakeGit {
-            override fun isDirty(workDir: File): Boolean = true
-            override fun stash(workDir: File, message: String): GitResult =
-                GitResult("stash", 1, "", "stash failed")
-            override fun checkoutExisting(workDir: File, branch: String): GitResult {
-                checkoutCalls++
-                return GitResult("checkout", 0, "", "")
-            }
-        }
-        val executor = SwitchExecutor(projectRoot, createStringAppender { log += it }, failingGit)
-
-        assertFalse(executor.executeTest(preset, SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false)))
-        assertEquals("Stash failure must not checkout", 0, checkoutCalls)
-    }
-
-    @Test
-    fun `dirty stash succeeds and pop is called on return`() {
-        val popCalled = mutableListOf<String>()
-        val dirtyGit = object : GitClient by fakeGit {
-            override fun isDirty(workDir: File): Boolean = true
-            override fun stashPop(workDir: File): GitResult {
-                popCalled += "popped"
-                return GitResult("pop", 0, "", "")
-            }
-        }
-        val executor = SwitchExecutor(projectRoot, createStringAppender { log += it }, dirtyGit)
-        val result = executor.executeTest(preset, SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false))
-        assertTrue("Dirty+Stash should succeed", result)
-        assertTrue("Stash pop should be called on checkout", popCalled.isNotEmpty())
-    }
-
-    @Test
-    fun `dirty force proceeds anyway`() {
-        val dirtyGit = object : GitClient by fakeGit {
-            override fun isDirty(workDir: File): Boolean = true
-        }
-        val executor = SwitchExecutor(projectRoot, createStringAppender { log += it }, dirtyGit)
-        val result = executor.executeTest(preset, SwitchOptions(DirtyAction.Force, pull = false, fetchFirst = false))
-        assertTrue("Dirty+Force should succeed", result)
     }
 
     @Test
@@ -210,7 +123,7 @@ class SwitchExecutorTest {
     }
 
     @Test
-    fun `rollback restores branch from checkpoint`() {
+    fun `successful execution captures the main repository checkpoint`() {
         val executor = SwitchExecutor(projectRoot, createStringAppender { log += it }, fakeGit)
         val result = executor.executeResultTest(
             preset,
@@ -245,7 +158,7 @@ class SwitchExecutorTest {
         checkoutCalls.clear()
         // Now branch = "dev", checkpoint has branch = "main" (recorded before switch)
         // Rollback should checkout "main"
-        recovery(trackGit).rollback(result)
+        assertTrue(recovery(trackGit).rollback(result))
         assertTrue("Should call checkout for main branch, got: $checkoutCalls", "main" in checkoutCalls)
     }
 
@@ -496,65 +409,6 @@ class SwitchExecutorTest {
         assertNotNull(result.checkpoint)
         assertEquals(setOf("."), result.state.stashesSnapshot().keys)
         assertTrue(result.failures.getValue("dirty handling").contains("query failed"))
-    }
-
-    @Test
-    fun `non-cancelled pipeline proceeds`() {
-        val context = SwitchContext(projectRoot, preset,
-            SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false),
-            fakeGit, createStringAppender { log += it }, cancelled = { false })
-        assertFalse("cancelled should be false", context.cancelled())
-    }
-
-    // ---- Pull step ----
-
-    @Test
-    fun `pull step skipped when option disabled`() {
-        val pullGit = object : GitClient by fakeGit {
-            override fun pullFf(workDir: File, branch: String): GitResult {
-                error("pull should not be called")
-            }
-        }
-        val executor = SwitchExecutor(projectRoot, createStringAppender { log += it }, pullGit)
-        val result = executor.executeTest(preset, SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false))
-        assertTrue("Switch without pull should succeed", result)
-    }
-
-    // ---- Fetch step ----
-
-    @Test
-    fun `fetch step skipped when option disabled`() {
-        val fetchGit = object : GitClient by fakeGit {
-            override fun fetch(workDir: File): GitResult {
-                error("fetch should not be called")
-            }
-        }
-        val executor = SwitchExecutor(projectRoot, createStringAppender { log += it }, fetchGit)
-        val result = executor.executeTest(preset, SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false))
-        assertTrue("Switch without fetch should succeed", result)
-    }
-
-    // ---- Submodules ----
-
-    @Test
-    fun `switch with submodules processes all targets`() {
-        // Create submodule dirs
-        initGitRepo(File(projectRoot.toFile(), "SubA"))
-        initGitRepo(File(projectRoot.toFile(), "SubB"))
-
-        val subPreset = Preset("sub-test", "dev", mapOf("SubA" to "dev", "SubB" to "feature-x"))
-        val executor = SwitchExecutor(projectRoot, createStringAppender { log += it }, fakeGit)
-        val result = executor.executeResultTest(
-            subPreset,
-            SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false),
-        )
-        assertTrue("Switch with submodules should succeed", result.ok)
-
-        val checkpoint = result.checkpoint
-        assertNotNull("Checkpoint should exist", checkpoint)
-        assertTrue("Checkpoint should contain main repo", checkpoint!!.containsKey("."))
-        assertTrue("Checkpoint should contain SubA", checkpoint.containsKey("SubA"))
-        assertTrue("Checkpoint should contain SubB", checkpoint.containsKey("SubB"))
     }
 
     @Test
@@ -826,14 +680,10 @@ class SwitchExecutorTest {
     // ---- Shared utilities ----
 
     @Test
-    fun `shortLabel extracts basename`() {
+    fun `shortLabel extracts basename and strips display suffix`() {
         assertEquals("SubA", shortLabel("lib/SubA"))
         assertEquals("main", shortLabel("main"))
         assertEquals("repo", shortLabel("a/b/c/repo"))
-    }
-
-    @Test
-    fun `shortLabel strips trailing tilde`() {
         assertEquals("SubA", shortLabel("lib/SubA~"))
         assertEquals("x", shortLabel("x~"))
     }

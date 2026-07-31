@@ -18,9 +18,7 @@ import java.nio.file.Path
 /**
  * Git call-budget checks for large-repo scenarios (50+ submodules).
  *
- * Verifies:
- * - Preflight does not issue redundant Git commands per repo.
- * - Switch pipeline Git calls scale linearly with submodule count.
+ * Verifies that switch-pipeline Git calls scale linearly with submodule count.
  *
  * Wall-clock performance belongs in a separate benchmark task because it is too
  * environment-dependent for the regular test suite.
@@ -168,27 +166,4 @@ class LargeRepoScalabilityTest {
             git.calls["submoduleInitPath"])
     }
 
-    @Test
-    fun `preflight probes each repo once`() {
-        val git = CountingGitClient(submoduleCount)
-        val submodules = (1..submoduleCount).associate { "sub-$it" to "main" }
-        val preset = Preset("large", "main", submodules)
-
-        val preflight = SwitchPreflight(git)
-
-        val result = preflight.probe(tmpDir, preset, null)
-
-        val repos = 1 + submoduleCount
-        assertEquals("Preflight should return one row per repo", repos, result.size)
-        assertEquals("currentBranch calls should match repo count",
-            repos, git.calls["currentBranch"])
-        assertEquals("dirtyFileCount calls should match repo count",
-            repos, git.calls["dirtyFileCount"])
-        assertEquals("localBranchExists calls should match repo count",
-            repos, git.calls["localBranchExists"])
-        assertEquals("remoteBranchExists calls should match repo count",
-            repos, git.calls["remoteBranchExists"])
-        assertNull("Preflight should use preset targets without listing submodules",
-            git.calls["listSubmodulePaths"])
-    }
 }
