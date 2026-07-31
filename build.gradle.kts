@@ -54,8 +54,6 @@ dependencies {
     testImplementation("com.google.code.gson:gson:2.11.0")
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlin:kotlin-test")
-    testImplementation("io.kotest:kotest-runner-junit5:5.9.1")
-    testImplementation("io.kotest:kotest-property:5.9.1")
     testRuntimeOnly("org.junit.vintage:junit-vintage-engine:5.10.2")
 }
 
@@ -100,8 +98,8 @@ pitest {
     // Manual diagnostic only. Keep mutation testing out of test/releaseCheck:
     // it is CPU-heavy and should be run deliberately on scoped core logic.
     // The scoped target tests are JUnit 4 tests. Avoid the JUnit 5 PIT plugin
-    // here: with the IntelliJ Platform classpath it can drag in Vintage/Kotest
-    // discovery and make the mutation run much heavier than the target scope.
+    // here: with the IntelliJ Platform classpath it can make discovery much
+    // heavier than the target scope.
     targetClasses.set(
         setOf(
             "com.submodule.branchswitcher.ui.UiRulesKt",
@@ -203,7 +201,7 @@ fun scanQuickChecks(
 
     // 5. Platform and application layers must keep a one-way dependency direction.
     val forbiddenLayerImports = mapOf(
-        "workflow" to listOf(".ui.", ".service."),
+        "workflow" to listOf(".platform.", ".ui.", ".service."),
         "platform" to listOf(".workflow.", ".ui.", ".service."),
         "service" to listOf(".workflow.", ".platform.", ".ui."),
     )
@@ -220,6 +218,16 @@ fun scanQuickChecks(
                     .map { "${file.name}: $it" }
             }
         if (violations.isNotEmpty()) fail("$layer has forbidden layer imports: ${violations.take(3)}")
+    }
+
+    val workflowDir = file("$srcRoot/com/submodule/branchswitcher/workflow")
+    if (workflowDir.exists()) {
+        val intellijImports = fileTree(workflowDir).filter { it.extension == "kt" }
+            .flatMap { it.readLines() }
+            .filter { it.trimStart().startsWith("import com.intellij") }
+        if (intellijImports.isNotEmpty()) {
+            fail("workflow imports IntelliJ API: ${intellijImports.take(3)}")
+        }
     }
 
     // 6. Git process execution belongs to GitProcessRunner; GitOps may only probe --version.
@@ -326,6 +334,8 @@ tasks {
             val fixtureToDir = mapOf(
                 "violates-switch-imports-ui.kt" to "switch/_fixture_test_",
                 "violates-workflow-imports-ui.kt" to "workflow/_fixture_test_",
+                "violates-workflow-imports-platform.kt" to "workflow/_fixture_test_",
+                "violates-workflow-intellij.kt" to "workflow/_fixture_test_",
             )
             val defaultDir = "_fixture_test_"
 
@@ -354,6 +364,7 @@ tasks {
                             name.contains("cancel") -> "runBackground without"
                             name.contains("write") -> "tryAcquireWrite without writeLease.close"
                             name.contains("switch") -> "switch/ imports ui/"
+                            name.contains("workflow-intellij") -> "workflow imports IntelliJ API"
                             name.contains("workflow") -> "workflow has forbidden layer imports"
                             name.contains("core-intellij") -> "Core imports IntelliJ API"
                             name.contains("core-desktop-ui") -> "Core imports desktop UI"
@@ -467,9 +478,7 @@ tasks {
     register<Test>("benchmark") {
         group = "verification"
         description = "Large-repo wall-clock benchmark (51 preset target repos, real GitOps; no .gitmodules). Not part of normal test."
-        useJUnitPlatform {
-            excludeEngines("kotest") // kotest classpath scan OOMs with full IntelliJ classpath
-        }
+        useJUnitPlatform()
         timeout.set(Duration.ofMinutes(10))
         maxParallelForks = 1 // shared temp dir
         maxHeapSize = "1g" // 50+ real git repos need headroom

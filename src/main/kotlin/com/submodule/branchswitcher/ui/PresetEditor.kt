@@ -9,6 +9,12 @@ import com.submodule.branchswitcher.git.PresetDiscoveryGitClient
 import com.submodule.branchswitcher.log.AppLogger
 import com.submodule.branchswitcher.model.Preset
 import com.submodule.branchswitcher.model.isValidBranchName
+import com.submodule.branchswitcher.presentation.PresetDraftSelection
+import com.submodule.branchswitcher.presentation.PresetRenameDecision
+import com.submodule.branchswitcher.presentation.SubmoduleDraftSelection
+import com.submodule.branchswitcher.presentation.applyTo
+import com.submodule.branchswitcher.presentation.decidePresetRename
+import com.submodule.branchswitcher.presentation.hasUnsavedPresetChanges
 import com.submodule.branchswitcher.presentation.shouldShowSecondaryAction
 import java.awt.BorderLayout
 import java.awt.Cursor
@@ -401,31 +407,30 @@ internal class PresetEditor(
         }
     }
 
-    private fun buildEditedPreset(): Preset {
-        val selectedSubmoduleBranches = LinkedHashMap<String, String>()
-        submoduleRows.values.forEach { row ->
-            if (row.deleted) return@forEach
-            selectedSubmoduleBranches[row.path] =
-                (row.combo.selectedItem as? String)?.trim() ?: ""
-        }
-        return savedPreset.copy(
-            main = (mainCombo.selectedItem as? String)?.trim() ?: savedPreset.main,
-            submodules = selectedSubmoduleBranches,
+    private fun draftSelection(): PresetDraftSelection =
+        PresetDraftSelection(
+            mainBranch = mainCombo.selectedItem as? String,
+            submodules = submoduleRows.values.map { row ->
+                SubmoduleDraftSelection(
+                    path = row.path,
+                    branch = row.combo.selectedItem as? String,
+                    included = !row.deleted,
+                )
+            },
         )
-    }
+
+    private fun buildEditedPreset(): Preset = draftSelection().applyTo(savedPreset)
 
     private fun revert() {
         restoreSavedPresetToUi()
     }
 
     private fun updateUnsavedState() {
-        if (isInitializing || loadingCount > 0 || persistenceInProgress) {
-            saveBtn.isEnabled = false
-            revertBtn.isEnabled = false
-            return
-        }
-        val editedPreset = buildEditedPreset()
-        val hasUnsavedChanges = editedPreset != savedPreset
+        val hasUnsavedChanges = hasUnsavedPresetChanges(
+            savedPreset = savedPreset,
+            draftSelection = draftSelection(),
+            editingBlocked = isInitializing || loadingCount > 0 || persistenceInProgress,
+        )
         saveBtn.isEnabled = hasUnsavedChanges
         revertBtn.isEnabled = hasUnsavedChanges
     }
@@ -444,22 +449,22 @@ internal class PresetEditor(
             Bundle.msg("dialog.rename"),
             null, savedPreset.name, null,
         )
-        if (requestedName.isNullOrBlank()) return
-        val newName = requestedName.trim()
-        if (newName == savedPreset.name) return
-        if (!nameValidator(newName)) {
-            com.intellij.openapi.ui.Messages.showWarningDialog(
-                Bundle.msg("dialog.preset.name.rule"),
-                Bundle.msg("dialog.rename"),
-            )
-            return
+        val renamed = when (val decision = decidePresetRename(savedPreset, requestedName, nameValidator)) {
+            PresetRenameDecision.Ignore -> return
+            PresetRenameDecision.Invalid -> {
+                com.intellij.openapi.ui.Messages.showWarningDialog(
+                    Bundle.msg("dialog.preset.name.rule"),
+                    Bundle.msg("dialog.rename"),
+                )
+                return
+            }
+            is PresetRenameDecision.Rename -> decision.preset
         }
-        val renamed = savedPreset.copy(name = newName)
         persistenceInProgress = true
         updateUnsavedState()
         try {
             onSave(renamed) { saved ->
-                if (saved) updatePresetName(newName)
+                if (saved) updatePresetName(renamed.name)
                 persistenceInProgress = false
                 updateUnsavedState()
             }

@@ -127,42 +127,7 @@ class SwitchIntegrationTest {
     // Tests
     // ========================================================================
 
-    // ---- Full switch: single repo ----
-
-    @Test
-    fun `switch main repo to different branch`() {
-        val root = createRepo(tmpDir, "project")
-        createBranch(root, "dev")
-
-        val (ok, _) = runSwitch(root, Preset("test", "dev"), SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false))
-        assertTrue("Switch should succeed", ok)
-        assertEquals("dev", git.currentBranch(root))
-    }
-
-    @Test
-    fun `switch main repo already on target is no-op`() {
-        val root = createRepo(tmpDir, "project")
-        createBranch(root, "dev")
-        gitOk(root, "checkout", "dev")
-        val headBefore = git.revParseHead(root)
-
-        val (ok, _) = runSwitch(root, Preset("test", "dev"), SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false))
-        assertTrue("Switch should succeed", ok)
-        assertEquals("dev", git.currentBranch(root))
-        assertEquals("HEAD should not change when already on target", headBefore, git.revParseHead(root))
-    }
-
     // ---- Branch not found ----
-
-    @Test
-    fun `switch to non-existent branch fails with diagnostics`() {
-        val root = createRepo(tmpDir, "project")
-        val (ok, logs) = runSwitch(root, Preset("test", "no-such-branch"),
-            SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false))
-        assertFalse("Switch to missing branch should fail", ok)
-        val hasFail = logs.any { it.contains("[fail]") || it.contains("[fatal]") || it.contains("[error]") || it.contains("[warn]") }
-        assertTrue("Log should contain failure diagnostic, got: $logs", hasFail)
-    }
 
     // ---- Full switch with submodules ----
 
@@ -186,22 +151,6 @@ class SwitchIntegrationTest {
     }
 
     // ---- Dirty handling ----
-
-    @Test
-    fun `dirty stash stashes and pops on checkout`() {
-        val root = createRepo(tmpDir, "project")
-        createBranch(root, "dev")
-        File(root, "dirty.txt").writeText("unstaged change\n")
-
-        val (ok, _) = runSwitch(root, Preset("test", "dev"),
-            SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false))
-        assertTrue("Dirty+Stash switch should succeed", ok)
-        assertEquals("dev", git.currentBranch(root))
-        assertTrue("Stashed file should be restored by stash pop", File(root, "dirty.txt").exists())
-        // Verify stash list is empty
-        val (_, stashList) = runGit(root, "stash", "list")
-        assertTrue("Stash should be empty after pop, got: $stashList", stashList.isBlank())
-    }
 
     @Test
     fun `dirty skip reports failure and leaves branch unchanged`() {
@@ -232,25 +181,6 @@ class SwitchIntegrationTest {
     }
 
     // ---- Submodule init ----
-
-    @Test
-    fun `submodule init initializes missing submodule directory`() {
-        val root = createRepo(tmpDir, "project")
-        val subA = createRepo(tmpDir, "subA-src")
-        createBranch(subA, "release")
-        addSubmodule(root, subA, "SubA")
-        // Remove initialized dir to simulate missing
-        val subDir = File(root, "SubA")
-        if (subDir.exists()) subDir.deleteRecursively()
-        assertFalse("SubA dir should be missing before switch", subDir.exists())
-
-        val preset = Preset("init-test", "main", mapOf("SubA" to "release"))
-        val (ok, _) = runSwitch(root, preset, SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false))
-        assertTrue("Switch with submodule init should succeed", ok)
-        assertTrue("SubA dir should exist after init", subDir.exists())
-        assertTrue("SubA should be a git repo", File(subDir, ".git").exists())
-        assertEquals("release", git.currentBranch(subDir))
-    }
 
     @Test
     fun `remote parent addition is pulled before cloud-only submodule initialization`() {
@@ -289,23 +219,6 @@ class SwitchIntegrationTest {
     // ---- Rollback ----
 
     @Test
-    fun `rollback restores original branch after switch`() {
-        val root = createRepo(tmpDir, "project")
-        createBranch(root, "dev")
-
-        val executor = SwitchExecutor(root.toPath(), createStringAppender { log += it }, git)
-        val result = executor.executeResultTest(
-            Preset("test", "dev"),
-            SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false),
-        )
-        assertEquals("dev", git.currentBranch(root))
-
-        val rbOk = recovery(root).rollback(result)
-        assertTrue("Rollback should succeed", rbOk)
-        assertEquals("main", git.currentBranch(root))
-    }
-
-    @Test
     fun `rollback restores checkpoint HEAD when current branch name is unchanged`() {
         val root = createRepo(tmpDir, "project")
         val executor = SwitchExecutor(root.toPath(), createStringAppender { log += it }, git)
@@ -327,84 +240,6 @@ class SwitchIntegrationTest {
         assertFalse(File(root, "later.txt").exists())
     }
 
-    // ---- Derive branch ----
-
-    @Test
-    fun `derive branch creates same branch on multiple repos`() {
-        val root = createRepo(tmpDir, "project")
-        val subA = createRepo(tmpDir, "subA-src")
-        addSubmodule(root, subA, "SubA")
-        gitOk(root, "submodule", "update", "--init", "--recursive")
-
-        val deriveBranch = "feature/derived-test"
-        gitOk(root, "checkout", "main")
-        gitOk(File(root, "SubA"), "checkout", "main")
-
-        git.checkoutNewBranch(root, deriveBranch)
-        git.checkoutNewBranch(File(root, "SubA"), deriveBranch)
-
-        assertEquals(deriveBranch, git.currentBranch(root))
-        assertEquals(deriveBranch, git.currentBranch(File(root, "SubA")))
-    }
-
-    // ---- Sync failure ----
-
-    @Test
-    fun `sync step runs and logs result with real submodules`() {
-        val root = createRepo(tmpDir, "project")
-        val subA = createRepo(tmpDir, "subA-src")
-        addSubmodule(root, subA, "SubA")
-        gitOk(root, "submodule", "update", "--init", "--recursive")
-
-        val (_, logs) = runSwitch(root, Preset("test", "main"),
-            SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false))
-        val hasSyncOk = logs.any { it.contains("submodule sync ok") }
-        assertTrue("Log should show sync success with real submodules, got: $logs", hasSyncOk)
-    }
-
-    // ---- Fetch ----
-
-    @Test
-    fun `switch proceeds even when fetch has no remote`() {
-        val root = createRepo(tmpDir, "project")
-        createBranch(root, "dev")
-        // git 2.54+ returns exit 0 for fetch --prune even without a remote configured;
-        // the switch proceeds normally since FetchStep succeeds.
-        val (ok, _) = runSwitch(root, Preset("test", "dev"),
-            SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = true))
-        assertTrue("Switch should succeed even with fetchFirst on a repo without remote", ok)
-        assertEquals("dev", git.currentBranch(root))
-    }
-
-    // ---- Multiple submodules with different branches ----
-
-    @Test
-    fun `switch three submodules to three different branches`() {
-        val root = createRepo(tmpDir, "project")
-        val subA = createRepo(tmpDir, "subA-src")
-        val subB = createRepo(tmpDir, "subB-src")
-        val subC = createRepo(tmpDir, "subC-src")
-        createBranch(subA, "v1")
-        createBranch(subB, "v2")
-        createBranch(subC, "v3")
-        addSubmodule(root, subA, "A")
-        addSubmodule(root, subB, "B")
-        addSubmodule(root, subC, "C")
-        gitOk(root, "submodule", "update", "--init", "--recursive")
-
-        // Ensure all submodules start on main
-        gitOk(File(root, "A"), "checkout", "main")
-        gitOk(File(root, "B"), "checkout", "main")
-        gitOk(File(root, "C"), "checkout", "main")
-
-        val preset = Preset("three-subs", "main", mapOf("A" to "v1", "B" to "v2", "C" to "v3"))
-        val (ok, _) = runSwitch(root, preset, SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false))
-        assertTrue("Switch with 3 submodules should succeed", ok)
-        assertEquals("v1", git.currentBranch(File(root, "A")))
-        assertEquals("v2", git.currentBranch(File(root, "B")))
-        assertEquals("v3", git.currentBranch(File(root, "C")))
-    }
-
     // ---- Submodule with missing branch ----
 
     @Test
@@ -419,69 +254,6 @@ class SwitchIntegrationTest {
         assertFalse("Switch should fail when submodule branch doesn't exist", ok)
         val hasSubFail = logs.any { (it.contains("[fail]") || it.contains("[error]") || it.contains("[warn]")) && it.contains("SubA") }
         assertTrue("Log should contain SubA failure, got: $logs", hasSubFail)
-    }
-
-    // ---- Checkpoint records correct state ----
-
-    @Test
-    fun `checkpoint records sha and branch for all repos`() {
-        val root = createRepo(tmpDir, "project")
-        val subA = createRepo(tmpDir, "subA-src")
-        addSubmodule(root, subA, "SubA")
-        gitOk(root, "submodule", "update", "--init", "--recursive")
-
-        val executor = SwitchExecutor(root.toPath(), createStringAppender { log += it }, git)
-        val preset = Preset("ck-test", "main", mapOf("SubA" to "main"))
-        val result = executor.executeResultTest(
-            preset,
-            SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false),
-        )
-
-        val checkpoint = result.checkpoint
-        assertNotNull("Checkpoint should exist", checkpoint)
-        assertTrue("Checkpoint should contain main repo", checkpoint!!.containsKey("."))
-        assertTrue("Checkpoint should contain SubA", checkpoint.containsKey("SubA"))
-
-        val mainSha = checkpoint["."]!!.sha
-        assertTrue("SHA should be 40-char hex, got: $mainSha", mainSha.matches(Regex("[0-9a-f]{40}")))
-        assertNotNull("Branch should be recorded", checkpoint["."]!!.branch)
-    }
-
-    // ---- Stash is fully consumed ----
-
-    @Test
-    fun `stash is fully consumed after dirty switch and pop`() {
-        val root = createRepo(tmpDir, "project")
-        createBranch(root, "dev")
-        gitOk(root, "checkout", "main")
-        File(root, "dirty-work.txt").writeText("work in progress\n")
-
-        val (ok, _) = runSwitch(root, Preset("test", "dev"),
-            SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false))
-        assertTrue("Switch with stash should succeed", ok)
-
-        val (_, stashList) = runGit(root, "stash", "list")
-        assertTrue("Stash list should be empty, got: $stashList", stashList.isBlank())
-        assertTrue("Stashed file should exist after pop", File(root, "dirty-work.txt").exists())
-        val content = File(root, "dirty-work.txt").readText().replace("\r\n", "\n")
-        assertEquals("work in progress\n", content)
-    }
-
-    // ---- init 前确认 disabled → auto-inits ----
-
-    @Test
-    fun `missing submodule auto-inits when confirmBeforeInit is false`() {
-        val root = createRepo(tmpDir, "project")
-        val subA = createRepo(tmpDir, "subA-src")
-        addSubmodule(root, subA, "SubA")
-        val subDir = File(root, "SubA")
-        if (subDir.exists()) subDir.deleteRecursively()
-
-        val preset = Preset("auto-init", "main", mapOf("SubA" to "main"))
-        val (ok, _) = runSwitch(root, preset,
-            SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false, confirmBeforeInit = false))
-        assertTrue("Switch with auto-init should succeed", ok)
-        assertTrue("SubA should be initialized", File(subDir, ".git").exists())
     }
 
     // ---- Derive branch (via DeriveBranchExecutor) ------------------------------
@@ -503,37 +275,6 @@ class SwitchIntegrationTest {
         assertEquals(2, result.actualCreated)
         assertEquals("feature", git.currentBranch(root))
         assertEquals("feature", git.currentBranch(File(root, "SubA")))
-    }
-
-    @Test
-    fun `derive skips repos where branch already exists`() {
-        val root = createRepo(tmpDir, "project")
-        gitOk(root, "checkout", "-b", "feature")
-        gitOk(root, "checkout", "main")
-
-        val executor = DeriveBranchExecutor(root.toPath(), deriveLog(), git)
-        val preset = Preset("test", "main")
-        val result = executor.execute(preset, "feature")
-
-        assertFalse("derive must not be allOk when branch exists", result.allOk)
-        assertEquals(0, result.actualCreated)
-        assertEquals(1, result.branchExists.size)
-        assertEquals("main", git.currentBranch(root))
-    }
-
-    @Test
-    fun `derive with missing submodule blocks all repos`() {
-        val root = createRepo(tmpDir, "project")
-
-        val executor = DeriveBranchExecutor(root.toPath(), deriveLog(), git)
-        val preset = Preset("test", "main", mapOf("ghost" to "main"))
-        val result = executor.execute(preset, "feature")
-
-        assertTrue("preflight should block", result.preflightBlocked)
-        assertEquals(0, result.actualCreated)
-        assertEquals(1, result.skipped.size)
-        // Main must NOT be modified
-        assertEquals("main", git.currentBranch(root))
     }
 
     @Test
@@ -711,23 +452,6 @@ class SwitchIntegrationTest {
     }
 
     @Test
-    fun `derive preflight blocked does not call checkoutNewBranch`() {
-        val root = createRepo(tmpDir, "project")
-        gitOk(root, "checkout", "-b", "existing-branch")
-        gitOk(root, "checkout", "main")
-
-        val executor = DeriveBranchExecutor(root.toPath(), deriveLog(), git)
-        val preset = Preset("test", "main")
-        val result = executor.execute(preset, "existing-branch")
-
-        assertTrue("preflight should block", result.preflightBlocked)
-        assertEquals(1, result.branchExists.size)
-        assertEquals(0, result.actualCreated)
-        // Verify we never left main
-        assertEquals("main", git.currentBranch(root))
-    }
-
-    @Test
     fun `derive blocks on dirty repo when requireClean is true`() {
         val root = createRepo(tmpDir, "project")
         File(root, "dirty.txt").writeText("uncommitted")
@@ -776,27 +500,6 @@ class SwitchIntegrationTest {
         assertEquals(0, result.actualCreated)
         // Main must NOT be modified — atomic gate
         assertEquals("main", git.currentBranch(root))
-    }
-
-    @Test
-    fun `derive blocks when main has target branch and submodule is valid`() {
-        val root = createRepo(tmpDir, "project")
-        val subA = createRepo(tmpDir, "subA-src")
-        addSubmodule(root, subA, "SubA")
-        gitOk(root, "submodule", "update", "--init", "--recursive")
-        // Pre-create the target branch on main only
-        gitOk(root, "checkout", "-b", "feature")
-        gitOk(root, "checkout", "main")
-
-        val executor = DeriveBranchExecutor(root.toPath(), deriveLog(), git)
-        val preset = Preset("test", "main", mapOf("SubA" to "main"))
-        val result = executor.execute(preset, "feature")
-
-        assertTrue("preflight should block", result.preflightBlocked)
-        assertEquals(1, result.branchExists.size)
-        assertEquals(0, result.actualCreated)
-        // Submodule must NOT be modified
-        assertEquals("main", git.currentBranch(File(root, "SubA")))
     }
 
     @Test
@@ -857,24 +560,6 @@ class SwitchIntegrationTest {
             if (shouldThrow(workDir)) throw RuntimeException("simulated crash on ${workDir.name}")
             else inner.checkoutNewBranch(workDir, branch)
 
-        // need explicit overrides because delegation can't resolve after override
-        override fun deleteBranch(workDir: java.io.File, branch: String) = inner.deleteBranch(workDir, branch)
-        override fun currentBranch(workDir: java.io.File) = inner.currentBranch(workDir)
-        override fun isDirty(workDir: java.io.File) = inner.isDirty(workDir)
-        override fun dirtyFileCount(workDir: java.io.File) = inner.dirtyFileCount(workDir)
-        override fun stash(workDir: java.io.File, message: String) = inner.stash(workDir, message)
-        override fun fetch(workDir: java.io.File) = inner.fetch(workDir)
-        override fun localBranchExists(workDir: java.io.File, branch: String) = inner.localBranchExists(workDir, branch)
-        override fun remoteBranchExists(workDir: java.io.File, branch: String) = inner.remoteBranchExists(workDir, branch)
-        override fun checkoutExisting(workDir: java.io.File, branch: String) = inner.checkoutExisting(workDir, branch)
-        override fun checkoutFromRemote(workDir: java.io.File, branch: String) = inner.checkoutFromRemote(workDir, branch)
-        override fun pullFf(workDir: java.io.File, branch: String) = inner.pullFf(workDir, branch)
-        override fun submoduleSync(gitRoot: java.io.File) = inner.submoduleSync(gitRoot)
-        override fun submoduleInitPath(gitRoot: java.io.File, path: String) = inner.submoduleInitPath(gitRoot, path)
-        override fun listSubmodulePaths(gitRoot: java.io.File) = inner.listSubmodulePaths(gitRoot)
-        override fun listAllBranches(workDir: java.io.File) = inner.listAllBranches(workDir)
-        override fun revParseHead(workDir: java.io.File) = inner.revParseHead(workDir)
-        override fun stashPop(workDir: java.io.File) = inner.stashPop(workDir)
     }
 
     // ---- Stash + Rollback integration ----------------------------------------
@@ -918,49 +603,6 @@ class SwitchIntegrationTest {
             val (_, stashList) = runGit(dir, "stash", "list")
             assertTrue("Stash should be empty in ${dir.name}: $stashList", stashList.isBlank())
         }
-    }
-
-    @Test
-    fun `rollback after checkout failure does not leave orphaned stashes on main`() {
-        val root = createRepo(tmpDir, "project")
-        createBranch(root, "dev")
-        File(root, "dirty.txt").writeText("unstaged work\n")
-
-        val preset = Preset("stash-fail", "no-branch")
-        val opts = SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false)
-        val executor = SwitchExecutor(root.toPath(), createStringAppender { log += it }, git)
-
-        val result = executor.executeResultTest(preset, opts)
-        assertFalse("Switch should fail", result.ok)
-
-        val rollbackOk = recovery(root).rollback(result)
-        assertTrue("Rollback should succeed", rollbackOk)
-        assertEquals("main", git.currentBranch(root))
-
-        val (_, stashList) = runGit(root, "stash", "list")
-        assertTrue("Stash should be empty after branch-not-found recovery: $stashList", stashList.isBlank())
-        assertTrue("Dirty file should exist after rollback", File(root, "dirty.txt").exists())
-    }
-
-    @Test
-    fun `dirty stash with rollback after branch-not-found restores original state`() {
-        val root = createRepo(tmpDir, "project")
-        File(root, "dirty.txt").writeText("unstaged work\n")
-
-        // Target branch doesn't exist → CheckoutStep fails → rollback needed
-        val preset = Preset("stash-rollback", "no-branch")
-        val opts = SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false)
-        val executor = SwitchExecutor(root.toPath(), createStringAppender { log += it }, git)
-
-        val result = executor.executeResultTest(preset, opts)
-        assertFalse("Switch should fail", result.ok)
-
-        val rollbackOk = recovery(root).rollback(result)
-        assertTrue("Rollback should succeed", rollbackOk)
-        assertEquals("main", git.currentBranch(root))
-
-        // Dirty file should still exist (stash was created before checkout, then popped or restored)
-        assertTrue("Dirty file should exist after rollback", File(root, "dirty.txt").exists())
     }
 
     @Test

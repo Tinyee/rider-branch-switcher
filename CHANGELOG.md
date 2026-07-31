@@ -29,7 +29,14 @@
   open, cancel, close, and exception handling.
 - Split reusable workflows for full-preset switching, single-repository
   switching, and repository-state detection from screen-specific UI.
+- Isolate workflow orchestration from IntelliJ APIs behind an injected
+  `GitOperationRunner`, progress handles, cancellation policy, and confirmation
+  callbacks.
+- Separate switch preflight dialogs, write/VCS execution, and result
+  presentation while retaining one Tool Window and shortcut execution path.
 - Separate preset collection commands from preset list rendering.
+- Move preset draft construction, dirty comparison, and rename decisions into
+  pure core rules while keeping Swing rendering in `PresetEditor`.
 - Split checkout orchestration from missing-submodule initialization and branch
   selection, and make background result handling explicit.
 - Split derive into explicit preflight, checkpoint, and execution phases, with
@@ -46,6 +53,9 @@
 - Retain and report submodules initialized before a later switch failure or
   cancellation instead of deleting worktrees without a checkpoint.
 - Require JDK 21 for IntelliJ Platform 2026.1 builds and CI.
+- Remove duplicate and non-behavioral tests, strengthen previously vacuous
+  assertions, add focused failure-path coverage, and drop the single-use
+  Kotest dependency.
 
 ### Fixed
 
@@ -81,7 +91,7 @@
 
 ### Quality
 
-- 316 automated tests in 35 classes across core, platform, and real Git CLI
+- 224 automated tests in 37 classes across core, platform, and real Git CLI
   integration coverage.
 - CI runs tests, plugin build, Detekt, structural checks, and Plugin Verifier
   across the supported matrix.

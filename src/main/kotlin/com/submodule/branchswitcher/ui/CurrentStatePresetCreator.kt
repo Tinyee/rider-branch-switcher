@@ -14,6 +14,20 @@ import kotlinx.coroutines.launch
 import java.io.File
 import java.nio.file.Path
 
+internal enum class CurrentStatePresetBlockReason {
+    MAIN_BRANCH_UNAVAILABLE,
+    INCOMPLETE_REPOSITORIES,
+}
+
+internal fun currentStatePresetBlockReason(
+    mainBranch: String?,
+    skippedRepositories: List<String>,
+): CurrentStatePresetBlockReason? = when {
+    mainBranch.isNullOrEmpty() -> CurrentStatePresetBlockReason.MAIN_BRANCH_UNAVAILABLE
+    skippedRepositories.isNotEmpty() -> CurrentStatePresetBlockReason.INCOMPLETE_REPOSITORIES
+    else -> null
+}
+
 /** Creates a complete preset by probing the branches currently checked out in every repository. */
 internal class CurrentStatePresetCreator(
     private val project: Project,
@@ -35,25 +49,28 @@ internal class CurrentStatePresetCreator(
     }
 
     private fun createPresetFromProbe(root: Path, currentState: CurrentStateProbeResult) {
-        val mainBranch = currentState.mainBranch
-        if (mainBranch.isNullOrEmpty()) {
-            Messages.showWarningDialog(
-                project,
-                Bundle.msg("dialog.detached.head"),
-                Bundle.msg("plugin.title"),
-            )
-            return
+        when (currentStatePresetBlockReason(currentState.mainBranch, currentState.skipped)) {
+            CurrentStatePresetBlockReason.MAIN_BRANCH_UNAVAILABLE -> {
+                Messages.showWarningDialog(
+                    project,
+                    Bundle.msg("dialog.detached.head"),
+                    Bundle.msg("plugin.title"),
+                )
+                return
+            }
+            CurrentStatePresetBlockReason.INCOMPLETE_REPOSITORIES -> {
+                val details = currentState.skipped.joinToString("\n") { "- $it" }
+                log.warn("[from current] incomplete preset blocked: ${currentState.skipped.joinToString(", ")}")
+                Messages.showWarningDialog(
+                    project,
+                    Bundle.msg("dialog.from.current.incomplete", details),
+                    Bundle.msg("dialog.from.current"),
+                )
+                return
+            }
+            null -> Unit
         }
-        if (currentState.skipped.isNotEmpty()) {
-            val details = currentState.skipped.joinToString("\n") { "- $it" }
-            log.warn("[from current] incomplete preset blocked: ${currentState.skipped.joinToString(", ")}")
-            Messages.showWarningDialog(
-                project,
-                Bundle.msg("dialog.from.current.incomplete", details),
-                Bundle.msg("dialog.from.current"),
-            )
-            return
-        }
+        val mainBranch = currentState.mainBranch ?: return
 
         val name = Messages.showInputDialog(
             project,

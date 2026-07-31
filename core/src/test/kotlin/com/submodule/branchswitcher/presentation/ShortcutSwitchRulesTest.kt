@@ -6,17 +6,9 @@ import org.junit.Test
 class ShortcutSwitchRulesTest {
 
     @Test
-    fun `failed preset load blocks shortcut even with cached presets`() {
+    fun `shortcut decision distinguishes load failure empty and ready states`() {
         assertEquals(ShortcutPresetLoadDecision.LoadFailed, shortcutPresetLoadDecision(false, 2))
-    }
-
-    @Test
-    fun `successful empty preset load shows no-presets state`() {
         assertEquals(ShortcutPresetLoadDecision.NoPresets, shortcutPresetLoadDecision(true, 0))
-    }
-
-    @Test
-    fun `successful load with presets permits selection`() {
         assertEquals(ShortcutPresetLoadDecision.Ready, shortcutPresetLoadDecision(true, 1))
     }
 }

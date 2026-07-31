@@ -91,13 +91,19 @@ class SwitchStepTest {
 
     @Test
     fun `checkout step creates from remote when local missing`() {
+        var remoteCheckoutCalls = 0
         val remoteOnlyGit = object : GitClient by fakeGit {
             override fun localBranchExists(workDir: File, branch: String): Boolean = false
             override fun remoteBranchExists(workDir: File, branch: String): Boolean = true
+            override fun checkoutFromRemote(workDir: File, branch: String): GitResult {
+                remoteCheckoutCalls++
+                return GitResult("checkout", 0, "", "")
+            }
         }
         val c = context().copy(git = remoteOnlyGit)
         val step = CheckoutStep()
         assertTrue(step.run(c).result is StepResult.Success)
+        assertEquals(1, remoteCheckoutCalls)
         assertTrue(log.any { it.contains("local branch missing") })
     }
 
@@ -163,12 +169,20 @@ class SwitchStepTest {
 
     @Test
     fun `dirty step stash on dirty repo`() {
+        var stashCalls = 0
         val dirtyGit = object : GitClient by fakeGit {
             override fun isDirty(workDir: File): Boolean = true
+            override fun stash(workDir: File, message: String): GitResult {
+                stashCalls++
+                return GitResult("stash", 0, "", "")
+            }
         }
         val c = context(SwitchOptions(DirtyAction.Stash)).copy(git = dirtyGit)
         val step = DirtyHandlingStep()
-        assertTrue(step.run(c).result is StepResult.Success)
+        val execution = step.run(c)
+        assertTrue(execution.result is StepResult.Success)
+        assertEquals(1, stashCalls)
+        assertTrue(execution.state.hasStashes())
         assertTrue(log.any { it.contains("stash: ok") })
     }
 
@@ -205,7 +219,10 @@ class SwitchStepTest {
 
     @Test
     fun `fetch step skip when option disabled`() {
-        val c = context(SwitchOptions(DirtyAction.Stash, fetchFirst = false))
+        val noFetchGit = object : GitClient by fakeGit {
+            override fun fetch(workDir: File): GitResult = error("fetch should not be called")
+        }
+        val c = context(SwitchOptions(DirtyAction.Stash, fetchFirst = false)).copy(git = noFetchGit)
         val step = FetchStep()
         assertTrue(step.run(c).result is StepResult.Success)
     }
@@ -227,20 +244,19 @@ class SwitchStepTest {
     }
 
     @Test
-    fun `fetch step performs fetch when needed`() {
-        val c = context(SwitchOptions(DirtyAction.Stash, fetchFirst = true))
-        val step = FetchStep()
-        assertTrue(step.run(c).result is StepResult.Success)
+    fun `fetch failure is reported as partial`() {
+        val failingGit = object : GitClient by fakeGit {
+            override fun fetch(workDir: File): GitResult =
+                GitResult("fetch", 1, "", "network unavailable")
+        }
+        val c = context(SwitchOptions(DirtyAction.Stash, fetchFirst = true)).copy(git = failingGit)
+
+        val result = FetchStep().run(c).result
+
+        assertEquals(mapOf("." to "fetch had warnings"), (result as StepResult.Partial).failures)
     }
 
     // ---- PullStep ----
-
-    @Test
-    fun `pull step skip when option disabled`() {
-        val c = context(SwitchOptions(DirtyAction.Stash, pull = false))
-        val step = PullStep()
-        assertTrue(step.run(c).result is StepResult.Success)
-    }
 
     @Test
     fun `pull step skip when preset pull disabled`() {
@@ -269,6 +285,34 @@ class SwitchStepTest {
         val step = PullStep()
         assertTrue(step.run(c, state).result is StepResult.Success)
         assertEquals(listOf("dev"), calls)
+    }
+
+    @Test
+    fun `pull failure is partial and still restores tracked stash`() {
+        var popCalls = 0
+        val failingGit = object : GitClient by fakeGit {
+            override fun currentBranch(workDir: File): String? = "dev"
+            override fun pullFf(workDir: File, branch: String): GitResult =
+                GitResult("pull", 1, "", "not fast-forward")
+
+            override fun stashPop(workDir: File): GitResult {
+                popCalls++
+                return GitResult("pop", 0, "", "")
+            }
+        }
+        val c = context(SwitchOptions(DirtyAction.Stash, pull = true)).copy(git = failingGit)
+        val state = SwitchState()
+            .withSuccessfulCheckout(".")
+            .withTrackedStash(".", "main -> dev")
+
+        val execution = PullStep().run(c, state)
+
+        assertEquals(
+            mapOf("." to "pull had warnings"),
+            (execution.result as StepResult.Partial).failures,
+        )
+        assertEquals(1, popCalls)
+        assertFalse(execution.state.hasStashes())
     }
 
     @Test
@@ -369,15 +413,38 @@ class SwitchStepTest {
         )
     }
 
-    // ---- SubmoduleSyncStep ----
-
     @Test
-    fun `submodule sync step always runs`() {
-        val c = context()
+    fun `failed submodule initialization prevents checkout and is not tracked as initialized`() {
+        var checkoutCalls = 0
+        val failingGit = object : GitClient by fakeGit {
+            override fun isGitRepo(workDir: File): Boolean = workDir.name != "SubA"
+
+            override fun submoduleInitPath(gitRoot: File, path: String): GitResult =
+                GitResult("init", 1, "", "clone failed")
+
+            override fun checkoutExisting(workDir: File, branch: String): GitResult {
+                checkoutCalls++
+                return GitResult("checkout", 0, "", "")
+            }
+        }
+        val c = context().copy(
+            git = failingGit,
+            preset = Preset("test", "main", mapOf("SubA" to "dev")),
+        )
         val state = SwitchState().withSuccessfulCheckout(".")
-        val step = SubmoduleSyncStep()
-        assertTrue(step.run(c, state).result is StepResult.Success)
+
+        val execution = CheckoutStep(SwitchTargetScope.SUBMODULES).run(c, state)
+
+        assertEquals(
+            mapOf("SubA" to "submodule init failed"),
+            (execution.result as StepResult.Partial).failures,
+        )
+        assertEquals(0, checkoutCalls)
+        assertTrue(execution.state.initializedSubmodulesSnapshot().isEmpty())
+        assertFalse(execution.state.checkoutSucceeded("SubA"))
     }
+
+    // ---- SubmoduleSyncStep ----
 
     @Test
     fun `submodule sync step returns Partial on error`() {

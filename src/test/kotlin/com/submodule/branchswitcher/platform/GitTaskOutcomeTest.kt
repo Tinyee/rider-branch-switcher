@@ -1,5 +1,6 @@
 package com.submodule.branchswitcher.platform
 
+import com.submodule.branchswitcher.operation.GitOperationResult
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
@@ -14,7 +15,7 @@ class GitTaskOutcomeTest {
         cancellationFirst.recordCancellation()
         cancellationFirst.recordCompletion("switched")
 
-        val expected = GitBackgroundResult.Cancelled("switched")
+        val expected = GitOperationResult.Cancelled("switched")
         assertEquals(expected, completionFirst.result())
         assertEquals(expected, cancellationFirst.result())
     }
@@ -25,6 +26,6 @@ class GitTaskOutcomeTest {
 
         outcome.recordCompletion(null)
 
-        assertEquals(GitBackgroundResult.Completed(null), outcome.result())
+        assertEquals(GitOperationResult.Completed(null), outcome.result())
     }
 }

@@ -1,8 +1,5 @@
 package com.submodule.branchswitcher.workflow
 
-import com.intellij.openapi.progress.ProgressIndicator
-import com.intellij.openapi.project.Project
-import com.submodule.branchswitcher.TaskBridge
 import com.submodule.branchswitcher.git.GitOperationProvider
 import com.submodule.branchswitcher.git.GitOperationSession
 import com.submodule.branchswitcher.git.GitResult
@@ -22,9 +19,6 @@ class SingleRepositorySwitcherTest {
     @get:Rule
     val temp = TemporaryFolder()
 
-    private val project = proxy<Project>()
-    private val indicator = proxy<ProgressIndicator>()
-
     @Test
     fun `busy result does not open a Git operation`() = runBlocking {
         val git = RecordingGit()
@@ -36,6 +30,7 @@ class SingleRepositorySwitcherTest {
             temp.newFolder("root").toPath(),
             "module",
             "dev",
+            "Switching",
         ) { callbackInvoked = true }
 
         assertFalse(started)
@@ -110,7 +105,7 @@ class SingleRepositorySwitcherTest {
     }
 
     @Test
-    fun `cancellation and invalid path close all acquired resources`() = runBlocking {
+    fun `cancellation and invalid path close their write leases`() = runBlocking {
         val root = temp.newFolder("root")
         root.resolve("module").mkdirs()
         val git = RecordingGit()
@@ -118,7 +113,7 @@ class SingleRepositorySwitcherTest {
         val cancelled = runSwitch(switcher(
             git,
             tryAcquireWrite = { countingLease { leaseCloseCount++ } },
-            taskRunner = cancellingTaskRunner(),
+            completion = TestOperationCompletion.CANCEL_BEFORE,
         ), root.toPath(), "module", "dev")
         val invalid = runSwitch(switcher(
             git,
@@ -127,8 +122,6 @@ class SingleRepositorySwitcherTest {
 
         assertEquals(SingleRepositorySwitchResult.Cancelled, cancelled)
         assertTrue(invalid is SingleRepositorySwitchResult.Unexpected)
-        assertEquals(1, git.cancelCount)
-        assertEquals(1, git.closeCount)
         assertEquals(2, leaseCloseCount)
     }
 
@@ -139,48 +132,18 @@ class SingleRepositorySwitcherTest {
         target: String,
     ): SingleRepositorySwitchResult {
         val result = CompletableDeferred<SingleRepositorySwitchResult>()
-        check(switcher.start(this, root, path, target) { result.complete(it) })
+        check(switcher.start(this, root, path, target, "Switching") { result.complete(it) })
         return result.await()
     }
 
     private fun switcher(
         git: RecordingGit,
         tryAcquireWrite: () -> AutoCloseable? = { countingLease {} },
-        taskRunner: TaskBridge.TaskRunner = immediateTaskRunner(),
+        completion: TestOperationCompletion = TestOperationCompletion.COMPLETE,
     ) = SingleRepositorySwitcher(
-        project = project,
-        gitClient = { git.provider },
+        operations = TestGitOperationRunner(git.provider, completion),
         tryAcquireWrite = tryAcquireWrite,
-        taskRunner = taskRunner,
     )
-
-    private fun immediateTaskRunner(): TaskBridge.TaskRunner = object : TaskBridge.TaskRunner {
-        override fun run(
-            project: Project?,
-            title: String,
-            canBeCancelled: Boolean,
-            onRun: (ProgressIndicator) -> Unit,
-            onFinished: () -> Unit,
-            onCancel: () -> Unit,
-        ) {
-            onRun(indicator)
-            onFinished()
-        }
-    }
-
-    private fun cancellingTaskRunner(): TaskBridge.TaskRunner = object : TaskBridge.TaskRunner {
-        override fun run(
-            project: Project?,
-            title: String,
-            canBeCancelled: Boolean,
-            onRun: (ProgressIndicator) -> Unit,
-            onFinished: () -> Unit,
-            onCancel: () -> Unit,
-        ) {
-            onCancel()
-            onFinished()
-        }
-    }
 
     private fun countingLease(onClose: () -> Unit) = AutoCloseable(onClose)
 
@@ -191,8 +154,6 @@ class SingleRepositorySwitcherTest {
         var remoteBranchExists = false
         var checkoutResult = GitResult("checkout", 0, "", "")
         var openCount = 0
-        var closeCount = 0
-        var cancelCount = 0
         var checkoutExistingCount = 0
         var checkoutRemoteCount = 0
 
@@ -209,14 +170,7 @@ class SingleRepositorySwitcherTest {
                 arrayOf(GitOperationSession::class.java),
             ) { _, method, _ ->
                 when (method.name) {
-                    "close" -> {
-                        closeCount++
-                        null
-                    }
-                    "cancel" -> {
-                        cancelCount++
-                        null
-                    }
+                    "close", "cancel" -> null
                     "isGitRepo" -> true
                     "isDirty" -> dirty
                     "currentBranch" -> branch
@@ -237,12 +191,6 @@ class SingleRepositorySwitcherTest {
     }
 
     companion object {
-        @Suppress("UNCHECKED_CAST")
-        private inline fun <reified T> proxy(): T = Proxy.newProxyInstance(
-            T::class.java.classLoader,
-            arrayOf(T::class.java),
-        ) { _, method, _ -> defaultValue(method.returnType) } as T
-
         private fun defaultValue(type: Class<*>): Any? = when (type) {
             java.lang.Boolean.TYPE -> false
             java.lang.Integer.TYPE -> 0

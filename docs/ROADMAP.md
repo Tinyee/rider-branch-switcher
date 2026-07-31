@@ -37,31 +37,8 @@ Candidate verification order:
 
 This is the complete active P3 inventory. Apply an item only when a feature,
 bug, or measured limitation makes the change worthwhile. Historical P3
-observations that were resolved by the July architecture refactor remain in
+observations that were resolved by architecture work remain in
 [`review-history.md`](review-history.md).
-
-### P3-01: Complete Workflow Platform Isolation
-
-`SwitchRunner` and `DeriveBranchRunner` still directly use IntelliJ project,
-progress, and dialog APIs. When the operation boundary next changes, make
-workflow code depend on `GitOperationSession`, `CancellationHandle`,
-`ProgressHandle`, and injected confirmation callbacks instead. Keep the
-IntelliJ adapter in `platform`, and preserve fresh-session cancellation
-recovery with focused tests.
-
-### P3-02: Split Switch Flow Side Effects
-
-`SwitchFlowCoordinator` owns execution/write-lease/VCS refresh, result
-presentation and rollback notifications, and preflight UI. When the switch
-flow next changes, give those side effects separate owners while retaining one
-shared execution path for the Tool Window and shortcut.
-
-### P3-03: Extract Preset Draft Rules
-
-`PresetEditor` combines Swing rendering with draft construction, dirty-state
-comparison, revert behavior, and validation. Move those decisions into pure
-logic when preset editing grows again; leave the Swing class responsible for
-rendering and event binding, with focused JVM tests for the extracted rules.
 
 ### P3-04: Isolate Tool Window State Refresh
 

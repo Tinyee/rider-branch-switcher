@@ -22,32 +22,12 @@ class SwitchPreviewRulesTest {
         PreflightRow("test", ".", "main", exists, "main", dirtyCount, true, true)
 
     @Test
-    fun `Force with dirty repo shows warning`() {
+    fun `force warning follows strategy repository and dirty state`() {
         val request = makeRequest(DirtyAction.Force)
         assertTrue(shouldShowForceWarning(request, listOf(row(dirtyCount = 3))))
-    }
-
-    @Test
-    fun `Force with clean repos does not show warning`() {
-        val request = makeRequest(DirtyAction.Force)
         assertFalse(shouldShowForceWarning(request, listOf(row(dirtyCount = 0))))
-    }
-
-    @Test
-    fun `Force with existing repo dirtyCount unknown shows warning`() {
-        val request = makeRequest(DirtyAction.Force)
         assertTrue(shouldShowForceWarning(request, listOf(row(dirtyCount = -1))))
-    }
-
-    @Test
-    fun `Force with non-existing dir does not show warning`() {
-        val request = makeRequest(DirtyAction.Force)
         assertFalse(shouldShowForceWarning(request, listOf(row(exists = false, dirtyCount = -1))))
-    }
-
-    @Test
-    fun `non-Force with dirty repo does not show warning`() {
-        val request = makeRequest(DirtyAction.Stash)
-        assertFalse(shouldShowForceWarning(request, listOf(row(dirtyCount = 5))))
+        assertFalse(shouldShowForceWarning(makeRequest(DirtyAction.Stash), listOf(row(dirtyCount = 5))))
     }
 }

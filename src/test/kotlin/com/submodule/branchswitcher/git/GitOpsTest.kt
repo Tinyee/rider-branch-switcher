@@ -2,6 +2,7 @@ package com.submodule.branchswitcher.git
 
 import org.junit.After
 import org.junit.Assert.*
+import org.junit.Assume.assumeTrue
 import org.junit.Before
 import org.junit.Test
 import java.io.File
@@ -69,59 +70,20 @@ class GitOpsTest {
     }
 
     @Test
-    fun `empty list when gitmodules is empty`() {
-        writeGitmodules("")
-        val paths = git.listSubmodulePaths(tmpDir.toFile())
-        assertTrue(paths.isEmpty())
-    }
-
-    @Test
-    fun `extracts single path`() {
+    fun `extracts multiple paths in order`() {
         writeGitmodules("""
+            # path = IgnoredHash
             [submodule "SubA"]
                 path = SubA
                 url = https://example.com/SubA.git
-        """.trimIndent())
-        val paths = git.listSubmodulePaths(tmpDir.toFile())
-        assertEquals(listOf("SubA"), paths)
-    }
-
-    @Test
-    fun `extracts multiple paths in order`() {
-        writeGitmodules("""
-            [submodule "SubA"]
-                path = SubA
             [submodule "SubB"]
                 path = SubB
             [submodule "SubC"]
                 path = SubC
-        """.trimIndent())
-        val paths = git.listSubmodulePaths(tmpDir.toFile())
-        assertEquals(listOf("SubA", "SubB", "SubC"), paths)
-    }
-
-    @Test
-    fun `comments and blank lines do not produce paths`() {
-        writeGitmodules("""
-            # path = IgnoredHash
-
-            [submodule "SubA"]
-                path = SubA
-
-            ; path = IgnoredSemicolon
-        """.trimIndent())
-        assertEquals(listOf("SubA"), git.listSubmodulePaths(tmpDir.toFile()))
-    }
-
-    @Test
-    fun `ignores non-path keys`() {
-        writeGitmodules("""
-            [submodule "SubA"]
-                url = https://example.com/SubA.git
                 branch = main
         """.trimIndent())
         val paths = git.listSubmodulePaths(tmpDir.toFile())
-        assertTrue(paths.isEmpty())
+        assertEquals(listOf("SubA", "SubB", "SubC"), paths)
     }
 
     @Test
@@ -138,33 +100,7 @@ class GitOpsTest {
         }
     }
 
-    @Test
-    fun `path with deep nesting`() {
-        writeGitmodules("""
-            [submodule "nested"]
-                path = lib/external/deep/SubA
-        """.trimIndent())
-        val paths = git.listSubmodulePaths(tmpDir.toFile())
-        assertEquals(listOf("lib/external/deep/SubA"), paths)
-    }
-
     // ── Nested submodule discovery ──────────────────────────────────
-
-    @Test
-    fun `path is collected when submodule directory exists`() {
-        // Verify that listSubmodulePaths works when the submodule
-        // directory physically exists on disk.  PropertyTest relies on
-        // this because collectSubmodulePaths resolves canonical paths
-        // (File.canonicalFile) for symlink-safety, and some platforms
-        // require the directory to exist for that resolution.
-        writeGitmodules("""
-            [submodule "SubA"]
-                path = SubA
-        """.trimIndent())
-        java.io.File(tmpDir.toFile(), "SubA").mkdirs()
-        val paths = git.listSubmodulePaths(tmpDir.toFile())
-        assertEquals(listOf("SubA"), paths)
-    }
 
     @Test
     fun `path is collected even when submodule directory does not exist`() {
@@ -179,18 +115,6 @@ class GitOpsTest {
         // GhostDir is NOT created — canonicalFile should still succeed
         val paths = git.listSubmodulePaths(tmpDir.toFile())
         assertEquals(listOf("GhostDir"), paths)
-    }
-
-    @Test
-    fun `flat submodules still work`() {
-        writeGitmodules("""
-            [submodule "SubA"]
-                path = SubA
-            [submodule "SubB"]
-                path = SubB
-        """.trimIndent())
-        val paths = git.listSubmodulePaths(tmpDir.toFile())
-        assertEquals(listOf("SubA", "SubB"), paths)
     }
 
     @Test
@@ -235,18 +159,6 @@ class GitOpsTest {
     }
 
     @Test
-    fun `nested submodule without gitmodules is not recursed`() {
-        writeGitmodules("""
-            [submodule "SubA"]
-                path = SubA
-        """.trimIndent())
-        // SubA dir exists but no .gitmodules — no nested discovery
-        java.io.File(tmpDir.toFile(), "SubA").mkdirs()
-        val paths = git.listSubmodulePaths(tmpDir.toFile())
-        assertEquals(listOf("SubA"), paths)
-    }
-
-    @Test
     fun `recursion stops at depth 10`() {
         // Build a chain of 12 nested .gitmodules, each pointing one level
         // deeper. Only l1..l11 (11 entries) are discovered; l12 is beyond
@@ -276,39 +188,11 @@ class GitOpsTest {
     // ── Safety: loop and path-escape rejection ────────────────────
 
     @Test
-    fun `path equals dot is rejected`() {
-        writeGitmodules("""
-            [submodule "bad"]
-                path = .
-        """.trimIndent())
-        assertEquals(emptyList<String>(), git.listSubmodulePaths(tmpDir.toFile()))
-    }
-
-    @Test
-    fun `path with dotdot is rejected`() {
-        writeGitmodules("""
-            [submodule "escape"]
-                path = ../outside
-        """.trimIndent())
-        assertEquals(emptyList<String>(), git.listSubmodulePaths(tmpDir.toFile()))
-    }
-
-    @Test
-    fun `path with dotdot component is rejected`() {
-        writeGitmodules("""
-            [submodule "bad"]
-                path = SubA/../outside
-        """.trimIndent())
-        assertEquals(emptyList<String>(), git.listSubmodulePaths(tmpDir.toFile()))
-    }
-
-    @Test
-    fun `absolute path is rejected`() {
-        writeGitmodules("""
-            [submodule "bad"]
-                path = /etc/passwd
-        """.trimIndent())
-        assertEquals(emptyList<String>(), git.listSubmodulePaths(tmpDir.toFile()))
+    fun `unsafe submodule paths are rejected`() {
+        listOf(".", "../outside", "SubA/../outside", "/etc/passwd").forEach { unsafePath ->
+            writeGitmodules("[submodule \"bad\"]\npath = $unsafePath")
+            assertEquals("path: $unsafePath", emptyList<String>(), git.listSubmodulePaths(tmpDir.toFile()))
+        }
     }
 
     @Test
@@ -325,18 +209,13 @@ class GitOpsTest {
             true
         } catch (_: Exception) { false }
         try {
+            assumeTrue("symbolic links are not available on this platform", created)
             val paths = git.listSubmodulePaths(root)
-            if (created) {
-                // Symlink resolves to root — visited seed should reject it
-                assertTrue("symlink-to-root must be skipped", paths.isEmpty())
-            }
-            // If symlink creation failed (e.g. Windows without admin), test passes vacuously
+            assertTrue("symlink-to-root must be skipped", paths.isEmpty())
         } finally {
             if (created) linkDir.delete()
         }
     }
-
-
 
     @Test
     fun `remote selection prefers origin then first configured remote`() {

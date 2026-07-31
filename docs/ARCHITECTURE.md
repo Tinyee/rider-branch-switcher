@@ -10,9 +10,9 @@ direction. Historical refactoring decisions remain in
 The project has two Gradle modules:
 
 - `core/` is pure Kotlin/JVM. It contains domain models, JSON persistence,
-  narrow Git interfaces, switch and recovery logic, validation, and pure
-  presentation decisions. It must not import IntelliJ Platform or desktop UI
-  APIs.
+  narrow Git and operation interfaces, switch and recovery logic, validation,
+  and pure presentation decisions. It must not import IntelliJ Platform or
+  desktop UI APIs.
 - `src/` is the IntelliJ Platform plugin. It contains UI, project services,
   background-task adapters, CLI Git implementation, notifications, and IDE
   integration.
@@ -22,7 +22,6 @@ flowchart LR
     UI["ui / action"] --> Workflow["workflow"]
     UI --> Service["service"]
     UI --> Platform["platform / TaskBridge"]
-    Workflow --> Platform
     Workflow --> Core["core"]
     Platform --> Core
     Service --> Git["git"]
@@ -31,8 +30,10 @@ flowchart LR
 ```
 
 The enforced rule is one-way dependency flow. `core` knows nothing about the
-IDE. `workflow`, `platform`, and `service` do not depend back on UI.
-`quickCheck` verifies the important package boundaries; the
+IDE. `workflow` imports neither IntelliJ nor `platform`, `service`, or `ui`;
+the UI layer injects platform adapters through core contracts. `platform` and
+`service` do not depend back on workflow or UI. `quickCheck` verifies these
+package boundaries; the
 [contributor validation guide](../CONTRIBUTING.md#validation) defines when to
 run broader checks.
 
@@ -43,9 +44,10 @@ run broader checks.
 | `core/model` | Presets, resolved requests, switch options | `PresetConfig.kt` |
 | `core/switch` | Preflight, ordered switch steps, checkpoints, recovery, derive | `SwitchExecutor.kt`, `SwitchRecoveryExecutor.kt` |
 | `core/git` | Capability-oriented Git interfaces and results | `GitClient.kt` |
-| `core/presentation` | Pure import, shortcut, preview, and responsive-layout decisions | `PresetImportResult.kt`, `SwitchPreviewRules.kt` |
+| `core/operation` | Platform-independent background Git result and progress contracts | `GitOperationRunner.kt` |
+| `core/presentation` | Pure import, preset editing, shortcut, preview, and layout decisions | `PresetEditRules.kt`, `SwitchPreviewRules.kt` |
 | `service` | Project-scoped state, preset repository, write lease | `BranchSwitcherService.kt`, `PresetRepository.kt` |
-| `workflow` | Reusable application use cases independent of a particular screen | `SwitchRunner.kt`, `DeriveBranchRunner.kt`, `SingleRepositorySwitcher.kt` |
+| `workflow` | Reusable application use cases independent of screens and IntelliJ APIs | `SwitchRunner.kt`, `DeriveBranchRunner.kt`, `SingleRepositorySwitcher.kt` |
 | `platform` | IntelliJ progress/cancellation/background adapters | `GitBackgroundRunner.kt`, `SwitchAdapters.kt` |
 | `git` | CLI command construction, inspection, and process lifecycle | `GitOps.kt`, `GitCommandClient.kt`, `GitProcessRunner.kt`, `GitOutputDrainer.kt` |
 | `ui` | Tool Window, editors, dialogs, notifications, and screen commands | `BranchSwitcherPanel.kt`, `PresetEditor.kt`, `SwitchFlowCoordinator.kt` |
@@ -60,15 +62,16 @@ with the largest Swing class:
 2. `SwitchStep.kt` for step results, immutable state, and execution context.
 3. `SwitchExecutor.kt` for the ordered pipeline.
 4. `SwitchRecoveryExecutor.kt` for checkpoint and stash recovery.
-5. `SwitchRunner.kt` and `GitBackgroundRunner.kt` for task and cancellation
-   lifecycle.
-6. `SwitchFlowCoordinator.kt` and the UI entry point relevant to the change.
+5. `GitOperationRunner.kt`, `SwitchRunner.kt`, and `GitBackgroundRunner.kt` for
+   the pure operation contract, workflow, and IntelliJ adapter.
+6. `SwitchFlowCoordinator.kt`, `SwitchPreflightUi.kt`, and
+   `SwitchResultPresenter.kt` for UI-side orchestration.
 
 Use these paths when tracing a specific task:
 
 ```text
 Preset switch:
-  SwitchController -> SwitchFlowCoordinator -> SwitchRunner -> SwitchExecutor
+  SwitchController -> SwitchFlowCoordinator -> SwitchRunner -> GitOperationRunner -> SwitchExecutor
 
 Derived branch:
   SwitchController -> DeriveBranchRunner -> DeriveBranchExecutor
@@ -110,10 +113,13 @@ Both the Tool Window and keyboard action converge on the same execution path:
 flowchart TD
     Entry["Tool Window or Ctrl+Alt+B"] --> Preflight["Preflight and confirmation"]
     Preflight --> Lease["Acquire WriteLease"]
-    Lease --> Runner["SwitchRunner"]
-    Runner --> Background["GitBackgroundRunner"]
+    Lease --> Flow["SwitchFlowCoordinator"]
+    Flow --> Runner["SwitchRunner"]
+    Flow --> Background["GitBackgroundRunner"]
+    Runner --> Boundary["GitOperationRunner contract"]
+    Background -. implements .-> Boundary
     Background --> Session["Isolated GitOperationSession"]
-    Session --> Executor["SwitchExecutor"]
+    Runner --> Executor["SwitchExecutor"]
     Executor --> Steps["Dirty -> main fetch/checkout/pull -> sync -> submodule fetch/checkout/pull"]
     Steps --> Result["SwitchExecutionResult"]
     Result --> Notify["Refresh VCS and notify"]
@@ -133,9 +139,11 @@ retained: they had no pre-switch checkpoint, and deleting a newly populated
 worktree could discard useful data. Recovery logs and notifications list those
 retained paths.
 
-`SwitchFlowCoordinator` owns the post-execution VCS refresh and presentation.
-An idempotent UI completion guard resets Tool Window state after normal
-presentation and also when background refresh or presentation fails.
+`SwitchPreflightUi` owns modal probing and confirmation dialogs.
+`SwitchFlowCoordinator` owns write leases, switch and rollback execution, and
+post-execution VCS refresh. `SwitchResultPresenter` maps structured outcomes to
+history and notifications. An idempotent UI completion guard resets Tool Window
+state after normal presentation and also when refresh or presentation fails.
 
 ## Derive Flow
 
@@ -165,8 +173,8 @@ Tool Window. Its collaborators divide those commands by side effect:
 - `PresetTransferActions` owns clipboard import and export.
 - `CurrentStatePresetCreator` probes checked-out branches and creates a complete
   preset from that snapshot.
-- `PresetEditor` renders and edits one preset; `SubmoduleRowManager` owns its
-  dynamic submodule rows.
+- `PresetEditor` renders and edits one preset; pure `PresetEditRules` build and
+  compare drafts, while `SubmoduleRowManager` owns dynamic submodule rows.
 - `ToolWindowLogPanel` owns collapsible log rendering, document trimming, and
   log presentation state.
 
@@ -189,13 +197,14 @@ and stderr pipes to a dedicated eight-thread drain executor. Stdout is capped at
 8 MiB and fails explicitly when exceeded; stderr retains only its final 128 KiB
 for diagnostics.
 
-Each background write opens its own `GitOperationSession`. Cancellation affects
-that session, terminates its running process, and prevents later commands in the
-same operation from starting. `GitBackgroundRunner` owns session open, cancel,
-close, and exception conversion; callers must not duplicate that lifecycle. A
-single atomic outcome state combines completion and cancellation callbacks, so a
-completed execution result remains available for recovery when cancellation
-races with task completion.
+Each background write enters through the pure `GitOperationRunner` contract and
+opens its own `GitOperationSession`. `GitBackgroundRunner` is the IntelliJ
+adapter that owns session open, cancel, close, and exception conversion;
+workflow callers do not import it directly. Cancellation terminates the active
+process and prevents later commands in that operation. A single atomic outcome
+state combines completion and cancellation callbacks, so a completed execution
+result remains available for recovery when cancellation races with task
+completion.
 
 The service write lease prevents overlapping switch, derive, rollback, and
 single-repository writes. Each branch-combo discovery also opens an isolated
@@ -220,8 +229,9 @@ Use the narrowest owner for a change:
 - Add a Git command: extend the narrowest capability interface in
   `core/git`, implement it in `GitCommandClient`, and test command/process
   behavior.
-- Add a reusable use case: place orchestration in `workflow`; keep dialogs and
-  notifications in `ui`.
+- Add a reusable use case: place platform-independent orchestration in
+  `workflow`; inject operation adapters and keep dialogs and notifications in
+  `ui`.
 - Change preset JSON: update DTO/domain conversion and migration in `core`,
   then verify old and new files.
 - Change IntelliJ progress or cancellation: keep it in `platform` or

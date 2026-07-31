@@ -35,9 +35,7 @@ kotlin {
 }
 
 tasks.test {
-    useJUnitPlatform {
-        excludeEngines("kotest")
-    }
+    useJUnitPlatform()
     maxParallelForks = 1
 }
 

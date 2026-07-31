@@ -1,10 +1,12 @@
 package com.submodule.branchswitcher.platform
 
-import com.intellij.openapi.progress.ProgressIndicator
 import com.intellij.openapi.project.Project
 import com.submodule.branchswitcher.TaskBridge
 import com.submodule.branchswitcher.git.GitOperationProvider
 import com.submodule.branchswitcher.git.GitOperationSession
+import com.submodule.branchswitcher.operation.GitOperationResult
+import com.submodule.branchswitcher.operation.GitOperationRunner
+import com.submodule.branchswitcher.operation.OperationProgress
 import kotlinx.coroutines.CancellationException
 import java.util.concurrent.atomic.AtomicReference
 
@@ -12,12 +14,6 @@ import java.util.concurrent.atomic.AtomicReference
  * Platform task outcome that preserves a value completed just before
  * cancellation, when one exists.
  */
-sealed class GitBackgroundResult<out T> {
-    data class Completed<T>(val value: T) : GitBackgroundResult<T>()
-    data class Cancelled<T>(val value: T? = null) : GitBackgroundResult<T>()
-    data class Failed(val error: RuntimeException) : GitBackgroundResult<Nothing>()
-}
-
 private data class CompletedValue<T>(val value: T)
 
 private sealed interface GitTaskState<out T> {
@@ -51,10 +47,10 @@ internal class GitTaskOutcome<T> {
         }
     }
 
-    fun result(): GitBackgroundResult<T> = when (val current = state.get()) {
-        GitTaskState.Running -> GitBackgroundResult.Cancelled()
-        is GitTaskState.Completed -> GitBackgroundResult.Completed(current.result.value)
-        is GitTaskState.Cancelled -> GitBackgroundResult.Cancelled(current.result?.value)
+    fun result(): GitOperationResult<T> = when (val current = state.get()) {
+        GitTaskState.Running -> GitOperationResult.Cancelled()
+        is GitTaskState.Completed -> GitOperationResult.Completed(current.result.value)
+        is GitTaskState.Cancelled -> GitOperationResult.Cancelled(current.result?.value)
     }
 
     private inline fun update(transform: (GitTaskState<T>) -> GitTaskState<T>) {
@@ -76,23 +72,25 @@ class GitBackgroundRunner(
     private val project: Project,
     private val git: GitOperationProvider,
     private val taskRunner: TaskBridge.TaskRunner = TaskBridge.TaskRunner.DEFAULT,
-) {
+) : GitOperationRunner {
+    override fun openOperation(): GitOperationSession = git.openOperation()
+
     /**
      * Executes [block] once and closes its Git session on every outcome.
      */
     @Suppress("TooGenericExceptionCaught")
-    suspend fun <T> run(
+    override suspend fun <T> run(
         title: String,
-        block: (ProgressIndicator, GitOperationSession) -> T,
-    ): GitBackgroundResult<T> {
+        block: (OperationProgress, GitOperationSession) -> T,
+    ): GitOperationResult<T> {
         val operation = try {
-            git.openOperation()
+            openOperation()
         } catch (_: CancellationException) {
-            return GitBackgroundResult.Cancelled()
+            return GitOperationResult.Cancelled()
         } catch (_: com.intellij.openapi.progress.ProcessCanceledException) {
-            return GitBackgroundResult.Cancelled()
+            return GitOperationResult.Cancelled()
         } catch (e: RuntimeException) {
-            return GitBackgroundResult.Failed(e)
+            return GitOperationResult.Failed(e)
         }
         val outcome = GitTaskOutcome<T>()
         return try {
@@ -102,7 +100,7 @@ class GitBackgroundRunner(
                 title,
                 true,
                 block = { indicator ->
-                    outcome.recordCompletion(block(indicator, operation))
+                    outcome.recordCompletion(block(ProgressIndicatorHandle(indicator), operation))
                 },
                 onCancel = {
                     outcome.recordCancellation()
@@ -118,7 +116,7 @@ class GitBackgroundRunner(
             outcome.recordCancellation()
             outcome.result()
         } catch (e: RuntimeException) {
-            GitBackgroundResult.Failed(e)
+            GitOperationResult.Failed(e)
         } finally {
             // Cancellation stops the process; close releases ownership of the
             // whole session. Both actions remain idempotent and independently required.

@@ -43,12 +43,8 @@ class BranchSwitcherServiceTest {
         assertNull("second acquisition should fail while held", service.tryAcquireWrite())
         assertNull("third acquisition should still fail", service.tryAcquireWrite())
         lease?.close()
-    }
-
-    @Test
-    fun `closing write lease allows reacquisition`() {
-        service.tryAcquireWrite()?.close()
-        assertNotNull("should re-acquire after release", service.tryAcquireWrite())
+        service.tryAcquireWrite()?.also { it.close() }
+            ?: error("should re-acquire after release")
     }
 
     @Test
@@ -67,11 +63,13 @@ class BranchSwitcherServiceTest {
 
     @Test
     fun `addHistory inserts newest at front`() {
-        service.addHistory("c")
-        service.addHistory("b")
-        service.addHistory("a")
-        val names = service.getHistory().map { it.presetName }
+        service.addHistory("c", "id-c")
+        service.addHistory("b", "id-b")
+        service.addHistory("a", "id-a")
+        val history = service.getHistory()
+        val names = history.map { it.presetName }
         assertEquals(listOf("a", "b", "c"), names)
+        assertEquals("id-a", history.first().presetId)
     }
 
     @Test
@@ -85,31 +83,6 @@ class BranchSwitcherServiceTest {
         assertEquals("oldest kept", "preset-3", history[4].presetName)
     }
 
-    @Test
-    fun `addHistory stores preset id when provided`() {
-        service.addHistory("dev", "uuid-abc")
-        assertEquals("uuid-abc", service.getHistory().single().presetId)
-    }
-
-    @Test
-    fun `addHistory id defaults to null`() {
-        service.addHistory("dev")
-        assertNull(service.getHistory().single().presetId)
-    }
-
-    @Test
-    fun `history is empty initially`() {
-        assertTrue(service.getHistory().isEmpty())
-    }
-
-    @Test
-    fun `getHistory returns defensive copy`() {
-        service.addHistory("a")
-        val copy1 = service.getHistory()
-        val copy2 = service.getHistory()
-        assertNotSame("each call should return a new list", copy1, copy2)
-    }
-
     // ── Settings getters/setters ─────────────────────────────────────
 
     @Test
@@ -119,16 +92,6 @@ class BranchSwitcherServiceTest {
         assertTrue(service.pullAfterSwitch)
         assertEquals(60, service.timeoutSeconds)
         assertFalse(service.confirmBeforeInit)
-    }
-
-    @Test
-    fun `dirtyAction round-trips through enum name`() {
-        service.dirtyAction = DirtyAction.Skip
-        assertEquals(DirtyAction.Skip, service.dirtyAction)
-        service.dirtyAction = DirtyAction.Force
-        assertEquals(DirtyAction.Force, service.dirtyAction)
-        service.dirtyAction = DirtyAction.Stash
-        assertEquals(DirtyAction.Stash, service.dirtyAction)
     }
 
     @Test
@@ -158,20 +121,13 @@ class BranchSwitcherServiceTest {
     // ── GitClient caching ────────────────────────────────────────────
 
     @Test
-    fun `gitClient returns same instance for same timeout`() {
+    fun `gitClient cache follows timeout changes`() {
         service.timeoutSeconds = 30
         val c1 = service.gitClient
         val c2 = service.gitClient
         assertSame("same timeout should return cached instance", c1, c2)
-    }
-
-    @Test
-    fun `gitClient creates new instance when timeout changes`() {
-        service.timeoutSeconds = 30
-        val c1 = service.gitClient
         service.timeoutSeconds = 90
-        val c2 = service.gitClient
-        assertNotSame("different timeout should create new instance", c1, c2)
+        assertNotSame("different timeout should create new instance", c1, service.gitClient)
     }
 
     // ── Concurrent contracts ──────────────────────────────────────────

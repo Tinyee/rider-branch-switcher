@@ -12,22 +12,26 @@ Kotlin 语法。
 项目分成两个 Gradle 模块：
 
 - `core/` 是纯 Kotlin/JVM 代码，不依赖 IntelliJ 或桌面 UI。分支切换规则、
-  preset 模型、checkpoint、恢复逻辑和纯展示决策主要在这里。
+  preset 模型、checkpoint、恢复逻辑、后台操作契约和纯展示决策主要在这里。
 - `src/` 是 IntelliJ 插件层，负责 Swing UI、项目级服务、后台任务、Git 进程和通知。
 
 可以把一次完整 preset 切换理解成下面这条调用链：
 
 ```text
 按钮或快捷键
-  -> SwitchFlowCoordinator：确认、提示和 UI 编排
-  -> SwitchRunner：启动一次应用层切换
-  -> GitBackgroundRunner：管理后台任务和 Git 会话
+  -> SwitchPreflightUi：预检和确认
+  -> SwitchFlowCoordinator：写锁、执行和 VCS 刷新
+  -> SwitchRunner：平台无关的应用层切换
+  -> GitOperationRunner：后台操作契约
+     GitBackgroundRunner：该契约的 IntelliJ 实现，管理任务和 Git 会话
   -> SwitchExecutor：按顺序执行切换步骤
   -> SwitchRecoveryExecutor：失败或取消后的恢复
+  -> SwitchResultPresenter：历史记录和通知
 ```
 
-依赖只能朝底层流动：UI 可以调用 workflow 和 core，但 core 不能反过来引用 IntelliJ
-或 UI。`quickCheck` 会检查关键边界。
+依赖只能朝底层流动：UI 可以调用 workflow、platform 和 core；workflow 不能引用
+IntelliJ、platform、service 或 UI；core 不能引用 IntelliJ 或桌面 UI。UI 通过 core 中的
+操作契约注入平台实现，`quickCheck` 会检查这些关键边界。
 
 ## 推荐阅读顺序
 
@@ -45,13 +49,14 @@ Kotlin 语法。
    了解缺失子模块初始化和分支选择。
 5. [`SwitchRecoveryExecutor.kt`](../core/src/main/kotlin/com/submodule/branchswitcher/switch/SwitchRecoveryExecutor.kt)
    了解 checkpoint、回滚和 stash 恢复。
-6. [`SwitchRunner.kt`](../src/main/kotlin/com/submodule/branchswitcher/workflow/SwitchRunner.kt)
-   和
+6. [`GitOperationRunner.kt`](../core/src/main/kotlin/com/submodule/branchswitcher/operation/GitOperationRunner.kt)、
+   [`SwitchRunner.kt`](../src/main/kotlin/com/submodule/branchswitcher/workflow/SwitchRunner.kt) 和
    [`GitBackgroundRunner.kt`](../src/main/kotlin/com/submodule/branchswitcher/platform/GitBackgroundRunner.kt)
-   了解 IntelliJ 后台任务如何连接 core。
+   了解纯操作边界怎样由 IntelliJ 后台任务实现。
 7. 最后阅读
-   [`SwitchFlowCoordinator.kt`](../src/main/kotlin/com/submodule/branchswitcher/ui/SwitchFlowCoordinator.kt)
-   和 UI 类。
+   [`SwitchPreflightUi.kt`](../src/main/kotlin/com/submodule/branchswitcher/ui/SwitchPreflightUi.kt)、
+   [`SwitchFlowCoordinator.kt`](../src/main/kotlin/com/submodule/branchswitcher/ui/SwitchFlowCoordinator.kt) 和
+   [`SwitchResultPresenter.kt`](../src/main/kotlin/com/submodule/branchswitcher/ui/SwitchResultPresenter.kt)。
 
 先读 core，再读平台和 UI，会比从最大的 Swing 类开始容易很多。
 
@@ -59,7 +64,7 @@ Kotlin 语法。
 
 ```text
 Preset 切换：
-  SwitchController -> SwitchFlowCoordinator -> SwitchRunner -> SwitchExecutor
+  SwitchController -> SwitchFlowCoordinator -> SwitchRunner -> GitOperationRunner -> SwitchExecutor
 
 派生分支：
   SwitchController -> DeriveBranchRunner -> DeriveBranchExecutor
@@ -127,7 +132,8 @@ SwitchController
 - `PresetCollectionActions` 负责加载、保存、新建、删除和持久化错误提示。
 - `PresetTransferActions` 负责剪贴板导入导出。
 - `CurrentStatePresetCreator` 探测所有仓库当前分支，并从完整快照创建 preset。
-- `PresetEditor` 编辑单个 preset，`SubmoduleRowManager` 管理其中动态变化的子模块行。
+- `PresetEditor` 渲染和绑定单个 preset 的事件，`PresetEditRules` 负责纯草稿构造、
+  未保存状态和重命名判断，`SubmoduleRowManager` 管理动态变化的子模块行。
 - `ToolWindowLogPanel` 管理日志折叠、颜色、文本裁剪和展示状态。
 
 `BranchSwitcherPanel` 会先构造 `SwitchController`，再把明确的命令回调传给
@@ -207,10 +213,11 @@ result.toSwitchResult()
 ### 协程
 
 `suspend fun` 表示函数可以挂起，但不等同于自动创建线程。插件层通过
-`GitBackgroundRunner` 把 Git 操作放入 IntelliJ 后台任务，并将取消信号传到当前
-`GitOperationSession`。完成和取消通过同一个原子状态交接，因此两者同时发生时不会丢失恢复
-所需的执行结果。同步的 preset 文件访问、分支读取和仓库状态 Git 命令会显式调度到 I/O
-dispatcher；最终界面更新仍回到 UI 线程。core 本身不依赖协程或 IntelliJ。
+workflow 只依赖 `GitOperationRunner`，不认识 IntelliJ。`GitBackgroundRunner` 实现这个契约，
+把 Git 操作放入 IntelliJ 后台任务，并将取消信号传到当前 `GitOperationSession`。完成和取消
+通过同一个原子状态交接，因此两者同时发生时不会丢失恢复所需的执行结果。同步的 preset 文件
+访问、分支读取和仓库状态 Git 命令会显式调度到 I/O dispatcher；最终界面更新仍回到 UI
+线程。core 本身不依赖协程或 IntelliJ。
 
 `GitProcessRunner` 全局最多允许四个 Git 进程，并用八个专用线程读取 stdout/stderr。
 stdout 超过 8 MiB 会明确失败，stderr 只保留最后 128 KiB 诊断内容，不会无限占用内存。
@@ -221,9 +228,10 @@ stdout 超过 8 MiB 会明确失败，stderr 只保留最后 128 KiB 诊断内�
 ## 修改代码时先找职责
 
 - 修改切换规则：`core/switch`
+- 修改后台操作契约：`core/operation`
 - 修改 Git 命令：`core/git` 接口和插件层 `git`
 - 修改 preset JSON：core 的 model、validation 和 `PresetLoader`
-- 修改可复用业务流程：`workflow`
+- 修改可复用业务流程：`workflow`，不得直接引用 IntelliJ 或 `platform`
 - 修改后台任务或取消：`platform`
 - 修改对话框、通知和组件：`ui`
 

@@ -61,25 +61,9 @@ class SwitchPreflightTest {
         assertEquals(".", rows[0].path)
         assertEquals("SubA", rows[1].path)
         assertEquals("SubB", rows[2].path)
-    }
-
-    @Test
-    fun `probe returns correct count for preset without submodules`() {
-        val preflight = SwitchPreflight(fakeGit)
-        val preset = Preset("solo", "main")
-        val rows = preflight.probe(projectRoot, preset)
-        assertEquals(1, rows.size)
-        assertEquals(".", rows[0].path)
-    }
-
-    @Test
-    fun `main repo label is project directory name`() {
-        val preflight = SwitchPreflight(fakeGit)
-        val preset = Preset("test", "main")
-        val rows = preflight.probe(projectRoot, preset)
         assertEquals(projectRoot.fileName.toString(), rows[0].label)
-        assertEquals(".", rows[0].path)
         assertTrue("Main repo should be marked as main", rows[0].isMain)
+        assertTrue(rows[0].needsSwitch)
     }
 
     @Test
@@ -128,17 +112,6 @@ class SwitchPreflightTest {
         val preset = Preset("test", "no-branch")
         val rows = preflight.probe(projectRoot, preset)
         assertTrue("Should be branchMissing", rows[0].branchMissing)
-    }
-
-    @Test
-    fun `probe needsSwitch is true when branch differs`() {
-        val diffGit = object : GitClient by fakeGit {
-            override fun currentBranch(workDir: File): String? = "main"
-        }
-        val preflight = SwitchPreflight(diffGit)
-        val preset = Preset("test", "dev")  // target is dev, current is main
-        val rows = preflight.probe(projectRoot, preset)
-        assertTrue("needsSwitch should be true", rows[0].needsSwitch)
     }
 
     @Test

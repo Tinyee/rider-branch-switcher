@@ -50,15 +50,6 @@ class PresetImportRulesTest {
     }
 
     @Test
-    fun `blank input produces no import candidates`() {
-        val result = parsePresetImport("   ", emptySet())
-
-        assertTrue(result.presets.isEmpty())
-        assertTrue(result.invalidNames.isEmpty())
-        assertTrue(result.conflictingNames.isEmpty())
-    }
-
-    @Test
     fun `import with null presets entry is skipped`() {
         val result = parsePresetImport(
             """{"presets":[null,{"name":"ok","main":"main"}]}""",
@@ -70,22 +61,14 @@ class PresetImportRulesTest {
     }
 
     @Test
-    fun `plain clipboard text produces no import candidates`() {
-        val result = parsePresetImport("not preset json", emptySet())
-
-        assertTrue(result.presets.isEmpty())
-        assertTrue(result.invalidNames.isEmpty())
-        assertTrue(result.conflictingNames.isEmpty())
-    }
-
-    @Test
-    fun `json string clipboard text produces no import candidates`() {
-        val result = parsePresetImport("\"not preset json\"", emptySet())
-
-        assertTrue(result.presets.isEmpty())
-        assertTrue(result.invalidNames.isEmpty())
-        assertTrue(result.conflictingNames.isEmpty())
-        assertFalse(result.hasRecognizedEntries)
+    fun `non-import clipboard content produces no candidates`() {
+        listOf("   ", "not preset json", "\"not preset json\"", "{not json}").forEach { text ->
+            val result = parsePresetImport(text, emptySet())
+            assertTrue("input: $text", result.presets.isEmpty())
+            assertTrue("input: $text", result.invalidNames.isEmpty())
+            assertTrue("input: $text", result.conflictingNames.isEmpty())
+            assertFalse("input: $text", result.hasRecognizedEntries)
+        }
     }
 
     @Test
@@ -98,15 +81,6 @@ class PresetImportRulesTest {
         assertTrue(result.presets.isEmpty())
         assertEquals(listOf("dev"), result.conflictingNames)
         assertTrue(result.hasRecognizedEntries)
-    }
-
-    @Test
-    fun `malformed json produces no import candidates`() {
-        val result = parsePresetImport("{not json}", emptySet())
-
-        assertTrue(result.presets.isEmpty())
-        assertTrue(result.invalidNames.isEmpty())
-        assertTrue(result.conflictingNames.isEmpty())
     }
 
     @Test
