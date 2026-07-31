@@ -188,7 +188,7 @@ class SwitchFlowCoordinator(
         onSuccess: (() -> Unit)?,
     ) {
         when {
-            runResult.cancelled -> notifyCancellation(runResult.recovery)
+            runResult.cancelled -> notifyCancellation(runResult)
             runResult.ok -> notifySuccessfulSwitch(preset, onSuccess)
             else -> notifySwitchFailure(root, preset, runResult.execution, log)
         }
@@ -204,21 +204,23 @@ class SwitchFlowCoordinator(
         )
     }
 
-    private fun notifyCancellation(recovery: SwitchRecoveryResult?) {
+    private fun notifyCancellation(runResult: SwitchRunResult) {
+        val recovery = runResult.recovery
         if (recovery == null) {
             return
         }
+        val retainedNotice = retainedInitializationNotice(runResult.execution)
         if (recovery.ok) {
             Notifier.info(
                 project,
                 Bundle.msg("switch.cancelled"),
-                Bundle.msg("notify.switch.cancelled.recovered"),
+                Bundle.msg("notify.switch.cancelled.recovered") + retainedNotice,
             )
         } else {
             Notifier.error(
                 project,
                 Bundle.msg("switch.cancelled"),
-                Bundle.msg("notify.switch.cancelled.partial"),
+                Bundle.msg("notify.switch.cancelled.partial") + retainedNotice,
             )
         }
     }
@@ -229,7 +231,7 @@ class SwitchFlowCoordinator(
         execution: SwitchExecutionResult?,
         log: AppLogger,
     ) {
-        val message = Bundle.msg("notify.switch.partial.msg", preset.name)
+        val message = Bundle.msg("notify.switch.partial.msg", preset.name) + retainedInitializationNotice(execution)
         if (execution?.checkpoint == null) {
             Notifier.error(project, Bundle.msg("switch.failed"), message)
             return
@@ -273,22 +275,29 @@ class SwitchFlowCoordinator(
             }
             val checkpointPaths = execution.checkpoint.orEmpty().keys.filterTo(mutableSetOf()) { it != "." }
             val refreshResult = refreshVcsRepos(project, root, checkpointPaths)
+            val retainedNotice = retainedInitializationNotice(execution)
             uiLater {
                 logVcsRefresh(log, refreshResult)
                 if (rollbackSucceeded) {
                     Notifier.info(
                         project,
                         Bundle.msg("rollback.complete"),
-                        Bundle.msg("notify.rollback.complete.msg"),
+                        Bundle.msg("notify.rollback.complete.msg") + retainedNotice,
                     )
                 } else {
                     Notifier.error(
                         project,
                         Bundle.msg("rollback.failed"),
-                        Bundle.msg("notify.rollback.partial.msg"),
+                        Bundle.msg("notify.rollback.partial.msg") + retainedNotice,
                     )
                 }
             }
         }
+    }
+
+    private fun retainedInitializationNotice(execution: SwitchExecutionResult?): String {
+        val paths = execution?.state?.initializedSubmodulesSnapshot().orEmpty()
+        if (paths.isEmpty()) return ""
+        return " " + Bundle.msg("notify.switch.init.retained", paths.sorted().joinToString(", "))
     }
 }

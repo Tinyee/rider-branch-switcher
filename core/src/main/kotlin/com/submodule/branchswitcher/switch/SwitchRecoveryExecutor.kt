@@ -49,6 +49,9 @@ class SwitchRecoveryExecutor(
     }
 
     fun rollback(result: SwitchExecutionResult): Boolean {
+        result.state.initializedSubmodulesSnapshot().forEach { path ->
+            log.info("[rollback] retained submodule initialized by this switch: $path")
+        }
         val checkpoint = result.checkpoint
         if (checkpoint == null || checkpoint.isEmpty()) {
             log.debug("[rollback] no checkpoint available")
