@@ -17,7 +17,7 @@ fun selectRemoteName(remotes: List<String>): String = when {
 internal class GitCommandClient(
     private val processRunner: GitProcessRunner,
     private val remoteCache: ConcurrentHashMap<String, String>,
-) : GitOperationSession {
+) : GitOperationSession, RepositoryStateBatchGitClient, SwitchPreflightBatchGitClient {
     private val cancellation = AtomicBoolean(false)
 
     override fun cancel() {
@@ -29,7 +29,10 @@ internal class GitCommandClient(
     }
 
     private fun run(workDir: File, vararg args: String): GitResult =
-        processRunner.run(workDir, cancellation, *args)
+        processRunner.run(workDir, cancellation, args.asList())
+
+    private fun run(workDir: File, args: List<String>): GitResult =
+        processRunner.run(workDir, cancellation, args)
 
     override fun currentBranch(workDir: File): String? {
         val result = run(workDir, "symbolic-ref", "--short", "-q", "HEAD")
@@ -66,6 +69,51 @@ internal class GitCommandClient(
         if (!result.ok) throw GitQueryException(result)
         return result.stdout.lines().count { it.isNotBlank() }
     }
+
+    override fun inspectRepositoryState(workDir: File): GitRepositoryInspection {
+        if (!hasRepositoryMarker(workDir)) return missingRepositoryInspection()
+        return inspectStatus(workDir)
+    }
+
+    override fun inspectPreflight(
+        workDir: File,
+        targetBranches: Set<String>,
+    ): GitRepositoryInspection {
+        if (!hasRepositoryMarker(workDir)) return missingRepositoryInspection()
+        val status = inspectStatus(workDir)
+        if (targetBranches.isEmpty()) return status
+
+        val remote = remoteName(workDir)
+        val result = run(
+            workDir,
+            listOf("for-each-ref", "--format=%(refname)") + targetBranches.flatMap { branch ->
+                listOf("refs/heads/$branch", "refs/remotes/$remote/$branch")
+            },
+        )
+        if (!result.ok) throw GitQueryException(result)
+        val refs = result.stdout.lineSequence().map(String::trim).filter(String::isNotEmpty).toSet()
+        return status.copy(
+            localBranches = targetBranches.filterTo(linkedSetOf()) { "refs/heads/$it" in refs },
+            remoteBranches = targetBranches.filterTo(linkedSetOf()) { "refs/remotes/$remote/$it" in refs },
+        )
+    }
+
+    private fun inspectStatus(workDir: File): GitRepositoryInspection {
+        val result = run(workDir, "status", "--porcelain=v2", "--branch", "--untracked-files=normal")
+        if (!result.ok) throw GitQueryException(result)
+        return parsePorcelainV2Status(result.stdout)
+    }
+
+    private fun hasRepositoryMarker(workDir: File): Boolean =
+        workDir.isDirectory && File(workDir, ".git").exists()
+
+    private fun missingRepositoryInspection(): GitRepositoryInspection =
+        GitRepositoryInspection(
+            isGitRepository = false,
+            currentBranch = null,
+            head = null,
+            dirtyFileCount = -1,
+        )
 
     override fun stash(workDir: File, message: String): GitResult =
         run(workDir, "stash", "push", "-u", "-m", message)

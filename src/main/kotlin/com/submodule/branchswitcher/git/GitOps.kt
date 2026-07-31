@@ -1,5 +1,6 @@
 package com.submodule.branchswitcher.git
 
+import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 
 private class GitOpsComponents(
@@ -19,7 +20,10 @@ private class GitOpsComponents(
  */
 class GitOps private constructor(
     private val components: GitOpsComponents,
-) : GitClient, GitWorkflowClient by components.directClient {
+) : GitClient,
+    GitWorkflowClient by components.directClient,
+    RepositoryStateBatchGitClient,
+    SwitchPreflightBatchGitClient {
 
     constructor(
         timeoutSeconds: Int = 60,
@@ -27,6 +31,14 @@ class GitOps private constructor(
     ) : this(GitOpsComponents(timeoutSeconds, processStarter))
 
     override fun cancel() = components.directClient.cancel()
+
+    override fun inspectRepositoryState(workDir: File): GitRepositoryInspection =
+        components.directClient.inspectRepositoryState(workDir)
+
+    override fun inspectPreflight(
+        workDir: File,
+        targetBranches: Set<String>,
+    ): GitRepositoryInspection = components.directClient.inspectPreflight(workDir, targetBranches)
 
     override fun openOperation(): GitOperationSession =
         GitCommandClient(components.processRunner, components.remoteCache)

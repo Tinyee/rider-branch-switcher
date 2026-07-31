@@ -109,6 +109,26 @@ interface SwitchPreflightGitClient : GitRepositoryQuery {
     fun remoteBranchExists(workDir: File, branch: String): Boolean
 }
 
+/** One bounded read of repository metadata used by status and preflight screens. */
+data class GitRepositoryInspection(
+    val isGitRepository: Boolean,
+    val currentBranch: String?,
+    val head: String?,
+    val dirtyFileCount: Int,
+    val localBranches: Set<String> = emptySet(),
+    val remoteBranches: Set<String> = emptySet(),
+)
+
+/** Optional optimized capability; callers retain a compatible per-query fallback. */
+interface RepositoryStateBatchGitClient {
+    fun inspectRepositoryState(workDir: File): GitRepositoryInspection
+}
+
+/** Optional optimized capability for fail-closed switch preview inspection. */
+interface SwitchPreflightBatchGitClient {
+    fun inspectPreflight(workDir: File, targetBranches: Set<String>): GitRepositoryInspection
+}
+
 interface GitCancellation {
     /**
      * Cancels the active operation and its currently running git command (if any).
