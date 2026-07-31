@@ -6,7 +6,7 @@ private class GitOpsComponents(
     timeoutSeconds: Int,
     processStarter: (ProcessBuilder) -> Process,
 ) {
-    val processRunner = GitProcessRunner(timeoutSeconds, processStarter)
+    val processRunner = GitProcessRunner(timeoutSeconds, processStarter = processStarter)
     val remoteCache = ConcurrentHashMap<String, String>()
     val directClient = GitCommandClient(processRunner, remoteCache)
 }

@@ -453,19 +453,60 @@ class GitOpsTest {
         }
     }
 
+    @Test
+    fun `stdout above the capture limit fails instead of returning partial data`() {
+        val oversized = ByteArray(GIT_STDOUT_LIMIT_BYTES + 1) { 'x'.code.toByte() }
+        val process = ControllableProcess(finished = true, stdout = oversized)
+        val runner = GitProcessRunner(timeoutSeconds = 10) { process }
+
+        val result = runner.run(tmpDir.toFile(), AtomicBoolean(false), "status")
+
+        assertEquals(GitFailureKind.OUTPUT_LIMIT, result.failureKind)
+        assertTrue(result.stdout.isEmpty())
+        assertTrue(result.stderr.contains("stdout exceeded"))
+    }
+
+    @Test
+    fun `stderr retains a bounded tail on dedicated drain threads`() {
+        val suffix = "diagnostic-tail"
+        val oversized = ("x".repeat(GIT_STDERR_TAIL_BYTES) + suffix).toByteArray()
+        val stdoutThread = java.util.concurrent.atomic.AtomicReference<String>()
+        val stderrThread = java.util.concurrent.atomic.AtomicReference<String>()
+        val process = ControllableProcess(
+            finished = true,
+            exitCode = 1,
+            stdoutStream = RecordingInputStream("ok".byteInputStream(), stdoutThread),
+            stderrStream = RecordingInputStream(oversized.inputStream(), stderrThread),
+        )
+        val runner = GitProcessRunner(timeoutSeconds = 10) { process }
+
+        val result = runner.run(tmpDir.toFile(), AtomicBoolean(false), "fetch")
+
+        assertEquals(GitFailureKind.GIT_FAILED, result.failureKind)
+        assertTrue(result.stderr.startsWith("[stderr truncated"))
+        assertTrue(result.stderr.endsWith(suffix))
+        assertTrue(stdoutThread.get().startsWith(GIT_DRAIN_THREAD_PREFIX))
+        assertTrue(stderrThread.get().startsWith(GIT_DRAIN_THREAD_PREFIX))
+    }
+
     private class ControllableProcess(
         private val finished: Boolean,
         private val interruptOnWait: Boolean = false,
         private val interruptAfterDestroy: Boolean = false,
         private val onWait: (() -> Unit)? = null,
+        private val exitCode: Int = 0,
+        stdout: ByteArray = ByteArray(0),
+        stderr: ByteArray = ByteArray(0),
+        private val stdoutStream: InputStream = ByteArrayInputStream(stdout),
+        private val stderrStream: InputStream = ByteArrayInputStream(stderr),
     ) : Process() {
         val waitStarted = CountDownLatch(1)
         @Volatile var destroyed = false
 
         override fun getOutputStream(): OutputStream = ByteArrayOutputStream()
-        override fun getInputStream(): InputStream = ByteArrayInputStream(ByteArray(0))
-        override fun getErrorStream(): InputStream = ByteArrayInputStream(ByteArray(0))
-        override fun waitFor(): Int = 0
+        override fun getInputStream(): InputStream = stdoutStream
+        override fun getErrorStream(): InputStream = stderrStream
+        override fun waitFor(): Int = exitCode
         override fun waitFor(timeout: Long, unit: TimeUnit): Boolean {
             waitStarted.countDown()
             if (interruptOnWait) throw InterruptedException("test interrupt")
@@ -473,7 +514,7 @@ class GitOpsTest {
             onWait?.invoke()
             return finished || destroyed
         }
-        override fun exitValue(): Int = 0
+        override fun exitValue(): Int = exitCode
         override fun destroy() {
             destroyed = true
         }
@@ -481,5 +522,22 @@ class GitOpsTest {
             destroyed = true
             return this
         }
+    }
+
+    private class RecordingInputStream(
+        private val delegate: InputStream,
+        private val threadName: java.util.concurrent.atomic.AtomicReference<String>,
+    ) : InputStream() {
+        override fun read(): Int {
+            threadName.compareAndSet(null, Thread.currentThread().name)
+            return delegate.read()
+        }
+
+        override fun read(bytes: ByteArray, offset: Int, length: Int): Int {
+            threadName.compareAndSet(null, Thread.currentThread().name)
+            return delegate.read(bytes, offset, length)
+        }
+
+        override fun close() = delegate.close()
     }
 }
