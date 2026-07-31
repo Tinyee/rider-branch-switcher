@@ -316,6 +316,10 @@ internal class PresetEditor(
             branchesLoaded = true
             submoduleManager.onFirstExpand()
             loadBranches()
+        } else if (!body.isVisible) {
+            val cancelledMain = cancelComboBranchLoad(mainCombo)
+            val cancelledSubmodules = submoduleManager.cancelBranchLoads()
+            if (cancelledMain || cancelledSubmodules) branchesLoaded = false
         }
         revalidate()
         repaint()
@@ -329,13 +333,19 @@ internal class PresetEditor(
 
     /** Asynchronously loads branch names into [combo] via [scope], preserving [current] as selected item. */
     private fun loadComboBranches(combo: JComboBox<String>, dir: File, current: String) {
-        loadComboBranches(combo, dir, current, gitClient, branchLoads, log,
+        loadComboBranches(combo, dir, current, branchLoads, log,
             onLoadStart = { submoduleManager.loadingCount++ },
             onLoadEnd = {
                 submoduleManager.loadingCount--
                 updateUnsavedState()
             },
         )
+    }
+
+    /** Stops background work before this editor is removed from the Tool Window. */
+    fun dispose() {
+        cancelComboBranchLoad(mainCombo)
+        submoduleManager.cancelBranchLoads()
     }
 
     /**

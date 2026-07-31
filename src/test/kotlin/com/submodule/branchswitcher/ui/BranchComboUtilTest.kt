@@ -1,7 +1,8 @@
 package com.submodule.branchswitcher.ui
 
-import com.submodule.branchswitcher.git.PresetDiscoveryGitClient
+import com.submodule.branchswitcher.git.GitOperationSession
 import com.submodule.branchswitcher.log.createStringAppender
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import org.junit.Assert.assertEquals
@@ -12,6 +13,8 @@ import java.io.File
 import java.lang.reflect.Proxy
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 import javax.swing.JComboBox
 import javax.swing.JTextField
 
@@ -78,8 +81,8 @@ class BranchComboUtilTest {
         val finished = CountDownLatch(1)
 
         loadComboBranches(
-            combo, File("."), "dev", { branchGit { listOf("main", "dev") } },
-            BranchLoadCoordinator(CoroutineScope(Dispatchers.Unconfined)), createStringAppender {},
+            combo, File("."), "dev",
+            branchLoads { listOf("main", "dev") }, createStringAppender {},
             onLoadStart = { starts++ },
             onLoadEnd = {
                 ends++
@@ -103,8 +106,8 @@ class BranchComboUtilTest {
         val finished = CountDownLatch(1)
 
         loadComboBranches(
-            combo, File("."), "dev", { branchGit { error("broken") } },
-            BranchLoadCoordinator(CoroutineScope(Dispatchers.Unconfined)), createStringAppender { logs += it },
+            combo, File("."), "dev",
+            branchLoads { error("broken") }, createStringAppender { logs += it },
             onLoadStart = {},
             onLoadEnd = {
                 ends++
@@ -127,8 +130,8 @@ class BranchComboUtilTest {
         val finished = CountDownLatch(1)
 
         loadComboBranches(
-            combo, File("."), "dev", { branchGit { listOf("main") } },
-            BranchLoadCoordinator(CoroutineScope(Dispatchers.Unconfined)), createStringAppender {},
+            combo, File("."), "dev",
+            branchLoads { listOf("main") }, createStringAppender {},
             onLoadStart = {},
             onLoadEnd = {
                 ends++
@@ -143,16 +146,77 @@ class BranchComboUtilTest {
         assertEquals(listOf(LOADING_BRANCH), (0 until combo.itemCount).map(combo::getItemAt))
     }
 
+    @Test
+    fun `superseded branch load cancels git and cannot overwrite latest result`() {
+        val combo = displayableCombo()
+        val firstStarted = CountDownLatch(1)
+        val firstCancelled = AtomicBoolean(false)
+        val openCount = AtomicInteger(0)
+        val finished = CountDownLatch(2)
+        val coordinator = BranchLoadCoordinator(CoroutineScope(Dispatchers.Unconfined)) {
+            if (openCount.getAndIncrement() == 0) {
+                branchOperation(
+                    load = {
+                        firstStarted.countDown()
+                        while (!firstCancelled.get()) Thread.sleep(10)
+                        throw CancellationException("superseded")
+                    },
+                    onCancel = { firstCancelled.set(true) },
+                )
+            } else {
+                branchOperation { listOf("main", "latest") }
+            }
+        }
+
+        loadComboBranches(
+            combo, File("."), "old", coordinator, createStringAppender {},
+            onLoadStart = {},
+            onLoadEnd = { finished.countDown() },
+            scheduleUi = { it() },
+        )
+        assertTrue("first discovery should start", firstStarted.await(5, TimeUnit.SECONDS))
+
+        loadComboBranches(
+            combo, File("."), "latest", coordinator, createStringAppender {},
+            onLoadStart = {},
+            onLoadEnd = { finished.countDown() },
+            scheduleUi = { it() },
+        )
+
+        assertTrue("both branch loads should finish", finished.await(5, TimeUnit.SECONDS))
+        assertTrue("superseded Git session should be cancelled", firstCancelled.get())
+        assertEquals(listOf("main", "latest"), (0 until combo.itemCount).map(combo::getItemAt))
+        assertEquals("latest", combo.selectedItem)
+    }
+
     private fun displayableCombo(displayable: Boolean = true): JComboBox<String> =
         object : JComboBox<String>() {
             override fun isDisplayable(): Boolean = displayable
         }
 
-    private fun branchGit(load: () -> List<String>): PresetDiscoveryGitClient =
+    private fun branchLoads(load: () -> List<String>): BranchLoadCoordinator =
+        BranchLoadCoordinator(CoroutineScope(Dispatchers.Unconfined)) {
+            branchOperation(load = load)
+        }
+
+    private fun branchOperation(
+        onCancel: () -> Unit = {},
+        load: () -> List<String>,
+    ): GitOperationSession =
         Proxy.newProxyInstance(
-            PresetDiscoveryGitClient::class.java.classLoader,
-            arrayOf(PresetDiscoveryGitClient::class.java),
+            GitOperationSession::class.java.classLoader,
+            arrayOf(GitOperationSession::class.java),
         ) { _, method, _ ->
-            if (method.name == "listAllBranches") load() else null
-        } as PresetDiscoveryGitClient
+            when (method.name) {
+                "listAllBranches" -> load()
+                "cancel" -> onCancel()
+                "close" -> Unit
+                else -> when (method.returnType) {
+                    Boolean::class.javaPrimitiveType -> false
+                    Int::class.javaPrimitiveType -> 0
+                    List::class.java -> emptyList<String>()
+                    else -> null
+                }
+            }
+        } as GitOperationSession
 }

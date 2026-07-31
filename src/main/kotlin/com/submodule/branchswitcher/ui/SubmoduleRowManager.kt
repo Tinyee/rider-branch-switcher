@@ -110,6 +110,7 @@ internal class SubmoduleRowManager(
 
     private fun removeRow(path: String) {
         val row = subRows[path] ?: return
+        if (cancelComboBranchLoad(row.combo)) row.loaded = false
         row.deleted = true
         row.panel.isVisible = false
         onDirty()
@@ -182,6 +183,7 @@ internal class SubmoduleRowManager(
         }
         removedPaths.forEach { path ->
             val row = subRows.remove(path) ?: return@forEach
+            cancelComboBranchLoad(row.combo)
             body.remove(row.panel)
         }
         body.revalidate()
@@ -192,6 +194,7 @@ internal class SubmoduleRowManager(
     fun removeDeletedRows() {
         subRows.entries.removeAll { (_, row) ->
             if (row.deleted) {
+                cancelComboBranchLoad(row.combo)
                 body.remove(row.panel)
                 true
             } else {
@@ -222,7 +225,7 @@ internal class SubmoduleRowManager(
         discoverCurrent: Boolean = false,
         loadChoices: Boolean = true,
     ) {
-        loadComboBranches(combo, dir, current, gitClient, branchLoads, log,
+        loadComboBranches(combo, dir, current, branchLoads, log,
             onLoadStart = { loadingCount++ },
             onLoadEnd = {
                 loadingCount--
@@ -232,6 +235,18 @@ internal class SubmoduleRowManager(
             loadChoices = loadChoices,
             scheduleUi = scheduleUi,
         )
+    }
+
+    /** Cancels branch discovery for rows that are no longer visible. */
+    fun cancelBranchLoads(): Boolean {
+        var cancelledAny = false
+        subRows.values.forEach { row ->
+            if (cancelComboBranchLoad(row.combo)) {
+                row.loaded = false
+                cancelledAny = true
+            }
+        }
+        return cancelledAny
     }
 
     private fun showContextMenu(rowPanel: JPanel, e: MouseEvent, path: String) {

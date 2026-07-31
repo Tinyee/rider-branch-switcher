@@ -2,9 +2,13 @@ package com.submodule.branchswitcher.ui
 
 import com.intellij.openapi.application.ApplicationManager
 import com.submodule.branchswitcher.Bundle
-import com.submodule.branchswitcher.git.PresetDiscoveryGitClient
+import com.submodule.branchswitcher.git.GitFailureKind
+import com.submodule.branchswitcher.git.GitQueryException
 import com.submodule.branchswitcher.log.AppLogger
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import java.util.concurrent.atomic.AtomicBoolean
 import java.awt.event.KeyAdapter
 import java.awt.event.KeyEvent
 import java.io.File
@@ -16,6 +20,8 @@ import javax.swing.event.DocumentListener
 
 /** JComboBox client-property key storing the unfiltered branch list for popup filtering. */
 const val KEY_ALL_BRANCHES = "submodule.branchswitcher.allBranches"
+private const val KEY_BRANCH_LOAD = "submodule.branchswitcher.branchLoad"
+private const val KEY_BRANCH_LOAD_TOKEN = "submodule.branchswitcher.branchLoadToken"
 val LOADING_BRANCH: String = Bundle.msg("status.loading")
 
 /** Normalizes loaded branches and ensures the current branch remains selectable. */
@@ -101,7 +107,6 @@ internal fun loadComboBranches(
     combo: JComboBox<String>,
     dir: File,
     current: String,
-    gitClient: () -> PresetDiscoveryGitClient,
     branchLoads: BranchLoadCoordinator,
     log: AppLogger,
     onLoadStart: () -> Unit,
@@ -111,44 +116,93 @@ internal fun loadComboBranches(
     scheduleUi: ((() -> Unit) -> Unit) = { action ->
         ApplicationManager.getApplication().invokeLater(action)
     },
-) {
+): BranchLoadHandle {
+    val previousLoad = combo.getClientProperty(KEY_BRANCH_LOAD) as? BranchLoadHandle
+    val loadToken = Any()
+    combo.putClientProperty(KEY_BRANCH_LOAD_TOKEN, loadToken)
+    previousLoad?.cancel()
     onLoadStart()
     combo.model = DefaultComboBoxModel(arrayOf(LOADING_BRANCH))
     combo.selectedItem = LOADING_BRANCH
     combo.isEnabled = false
-    branchLoads.launch {
+    val completionScheduled = AtomicBoolean(false)
+    val loadEnded = AtomicBoolean(false)
+
+    fun endLoad() {
+        if (loadEnded.compareAndSet(false, true)) onLoadEnd()
+    }
+
+    fun finish(loadResult: BranchComboLoadResult?) {
+        if (!completionScheduled.compareAndSet(false, true)) return
+        val updateUi: () -> Unit = updateUi@{
+            try {
+                if (combo.getClientProperty(KEY_BRANCH_LOAD_TOKEN) !== loadToken) return@updateUi
+                if (!combo.isDisplayable) return@updateUi
+                val result = loadResult ?: BranchComboLoadResult(current, emptyList())
+                val list = mergeBranchChoices(result.selectedBranch, result.branches)
+                combo.model = DefaultComboBoxModel(list.toTypedArray())
+                combo.selectedItem = result.selectedBranch
+                combo.putClientProperty(KEY_ALL_BRANCHES, list)
+                combo.isEnabled = true
+            } finally {
+                endLoad()
+            }
+        }
+        try {
+            scheduleUi(updateUi)
+        } catch (e: Exception) {
+            endLoad()
+            log.warn("loadBranches UI update failed for ${dir.name}: ${e.message}")
+        }
+    }
+
+    val handle = branchLoads.launch { client ->
         val loadResult = try {
-            val client = gitClient()
             val selectedBranch = if (discoverCurrent && dir.exists()) {
                 client.currentBranch(dir).orEmpty()
             } else {
                 current
             }
+            currentCoroutineContext().ensureActive()
             val branches = if (loadChoices && dir.exists()) {
                 client.listAllBranches(dir)
             } else {
                 emptyList()
             }
+            currentCoroutineContext().ensureActive()
             BranchComboLoadResult(selectedBranch, branches)
         } catch (e: CancellationException) {
+            finish(null)
             throw e
+        } catch (e: GitQueryException) {
+            if (e.result.failureKind == GitFailureKind.CANCELLED) {
+                finish(null)
+                throw CancellationException("branch discovery cancelled").apply { initCause(e) }
+            }
+            log.warn("loadBranches failed for ${dir.name}: ${e.message}")
+            BranchComboLoadResult(current, emptyList())
         } catch (e: Exception) {
             log.warn("loadBranches failed for ${dir.name}: ${e.message}")
             BranchComboLoadResult(current, emptyList())
         }
-        scheduleUi {
-            try {
-                if (!combo.isDisplayable) return@scheduleUi
-                val list = mergeBranchChoices(loadResult.selectedBranch, loadResult.branches)
-                combo.model = DefaultComboBoxModel(list.toTypedArray())
-                combo.selectedItem = loadResult.selectedBranch
-                combo.putClientProperty(KEY_ALL_BRANCHES, list)
-                combo.isEnabled = true
-            } finally {
-                onLoadEnd()
-            }
-        }
+        finish(loadResult)
     }
+    handle.invokeOnCompletion { failure ->
+        if (failure != null && failure !is CancellationException) {
+            log.warn("loadBranches failed for ${dir.name}: ${failure.message}")
+        }
+        finish(null)
+    }
+    combo.putClientProperty(KEY_BRANCH_LOAD, handle)
+    return handle
+}
+
+/** Cancels the active branch discovery associated with [combo], if any. */
+internal fun cancelComboBranchLoad(combo: JComboBox<String>): Boolean {
+    val handle = combo.getClientProperty(KEY_BRANCH_LOAD) as? BranchLoadHandle ?: return false
+    if (!handle.isActive) return false
+    handle.cancel()
+    return true
 }
 
 private data class BranchComboLoadResult(
