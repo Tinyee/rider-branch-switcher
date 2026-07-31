@@ -25,8 +25,42 @@ import com.submodule.branchswitcher.workflow.SwitchRunner
 import com.submodule.branchswitcher.workflow.SwitchRunResult
 import com.submodule.branchswitcher.workflow.SwitchRecoveryResult
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import java.nio.file.Path
+import java.util.concurrent.atomic.AtomicBoolean
+
+/** Delivers Tool Window cleanup exactly once across background and UI failure paths. */
+internal class SwitchUiCompletion(
+    private val uiLater: (() -> Unit) -> Unit,
+    private val onFinished: (() -> Unit)?,
+) {
+    private val completed = AtomicBoolean(false)
+
+    fun completeAfter(block: () -> Unit) {
+        try {
+            block()
+        } finally {
+            complete()
+        }
+    }
+
+    fun completeWhenFailed(job: Job, onFailure: (Throwable) -> Unit) {
+        job.invokeOnCompletion { failure ->
+            if (failure != null) {
+                try {
+                    onFailure(failure)
+                } finally {
+                    uiLater(::complete)
+                }
+            }
+        }
+    }
+
+    private fun complete() {
+        if (completed.compareAndSet(false, true)) onFinished?.invoke()
+    }
+}
 
 /**
  * Shared switch orchestration for ToolWindow and keyboard shortcut entries.
@@ -107,15 +141,17 @@ class SwitchFlowCoordinator(
         onFinished: (() -> Unit)? = null,
     ) {
         val preset = request.preset
+        val completion = SwitchUiCompletion(::uiLater, onFinished)
         val writeLease = service.tryAcquireWrite()
         if (writeLease == null) {
             uiLater {
-                Notifier.warn(project, Bundle.msg("notify.write.busy"), Bundle.msg("notify.write.busy.msg"))
-                onFinished?.invoke()
+                completion.completeAfter {
+                    Notifier.warn(project, Bundle.msg("notify.write.busy"), Bundle.msg("notify.write.busy.msg"))
+                }
             }
             return
         }
-        service.scope.launch(Dispatchers.Default) {
+        val job = service.scope.launch(Dispatchers.Default) {
             val runResult = try {
                 SwitchRunner(project, root, service.gitClient).execute(
                     title = Bundle.msg("progress.switching"), request = request, log = log,
@@ -125,15 +161,21 @@ class SwitchFlowCoordinator(
             }
             val refreshResult = refreshVcsRepos(project, root, preset.submodules.keys)
             uiLater {
-                logVcsRefresh(log, refreshResult)
-                presentSwitchResult(
-                    root = root,
-                    preset = preset,
-                    runResult = runResult,
-                    log = log,
-                    onSuccess = onSuccess,
-                    onFinished = onFinished,
-                )
+                completion.completeAfter {
+                    logVcsRefresh(log, refreshResult)
+                    presentSwitchResult(
+                        root = root,
+                        preset = preset,
+                        runResult = runResult,
+                        log = log,
+                        onSuccess = onSuccess,
+                    )
+                }
+            }
+        }
+        completion.completeWhenFailed(job) { failure ->
+            if (!platformCancellationClassifier.isCancellation(failure)) {
+                log.error("switch completion failed: ${failure.javaClass.simpleName}: ${failure.message}")
             }
         }
     }
@@ -144,16 +186,11 @@ class SwitchFlowCoordinator(
         runResult: SwitchRunResult,
         log: AppLogger,
         onSuccess: (() -> Unit)?,
-        onFinished: (() -> Unit)?,
     ) {
-        try {
-            when {
-                runResult.cancelled -> notifyCancellation(runResult.recovery)
-                runResult.ok -> notifySuccessfulSwitch(preset, onSuccess)
-                else -> notifySwitchFailure(root, preset, runResult.execution, log)
-            }
-        } finally {
-            onFinished?.invoke()
+        when {
+            runResult.cancelled -> notifyCancellation(runResult.recovery)
+            runResult.ok -> notifySuccessfulSwitch(preset, onSuccess)
+            else -> notifySwitchFailure(root, preset, runResult.execution, log)
         }
     }
 
