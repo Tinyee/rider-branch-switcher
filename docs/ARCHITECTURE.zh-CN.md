@@ -68,7 +68,7 @@ Preset 编辑：
   PresetListManager -> PresetEditor -> SubmoduleRowManager
 
 Git 命令：
-  GitOps -> GitCommandClient -> GitProcessRunner
+  GitOps -> GitCommandClient -> GitProcessRunner -> GitOutputDrainer
 ```
 
 ## 完整切换流程
@@ -100,6 +100,10 @@ preset 会按 `.idea/branch-presets.json`、项目根目录 `.branch-presets.jso
 
 `PresetRepository` 使用同一把互斥锁串行化 load/save，并在 I/O dispatcher 上访问磁盘。
 编辑器和列表只在保存成功后更新内存与界面状态，因此旧的异步结果不会覆盖较新的操作。
+
+分支下拉框的每次异步加载都会打开独立 `GitOperationSession`。preset 被折叠、编辑器或
+子模块行被移除、同一个下拉框启动更新的加载时，旧协程和旧 Git 进程会一起取消；组合框上的
+代次标记会阻止旧结果回写新界面。
 
 ## 派生分支流程
 
@@ -207,6 +211,12 @@ result.toSwitchResult()
 `GitOperationSession`。完成和取消通过同一个原子状态交接，因此两者同时发生时不会丢失恢复
 所需的执行结果。同步的 preset 文件访问、分支读取和仓库状态 Git 命令会显式调度到 I/O
 dispatcher；最终界面更新仍回到 UI 线程。core 本身不依赖协程或 IntelliJ。
+
+`GitProcessRunner` 全局最多允许四个 Git 进程，并用八个专用线程读取 stdout/stderr。
+stdout 超过 8 MiB 会明确失败，stderr 只保留最后 128 KiB 诊断内容，不会无限占用内存。
+仓库状态刷新把分支、HEAD 和 dirty 状态合并为每仓库一个进程；预检再读取目标 refs，首次还会
+查询 remote 名称，最多三个进程。真正的切换、checkpoint 和恢复仍在写操作附近重新读取状态，
+不会使用可能过期的界面快照。
 
 ## 修改代码时先找职责
 

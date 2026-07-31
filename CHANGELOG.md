@@ -40,6 +40,9 @@
   dispatcher; files are created only by an explicit save.
 - Dispatch blocking branch discovery and repository-state Git reads to the I/O
   dispatcher while retaining bounded concurrency.
+- Batch repository-state and preflight metadata reads, reducing real Git CLI
+  process use to one process per repository for state refresh and at most three
+  for first-time preflight without reusing snapshots in write or recovery steps.
 - Retain and report submodules initialized before a later switch failure or
   cancellation instead of deleting worktrees without a checkpoint.
 - Require JDK 21 for IntelliJ Platform 2026.1 builds and CI.
@@ -55,6 +58,10 @@
 - Close background Git operations exactly once.
 - Terminate interrupted Git processes promptly and preserve the thread
   interruption signal.
+- Bound Git stdout capture, retain only a bounded stderr diagnostic tail, and
+  drain process streams through dedicated capacity instead of the common pool.
+- Cancel branch discovery and its Git operation when an editor is hidden,
+  removed, or superseded, and reject stale results at UI delivery.
 - Correct submodule-row context-menu hit handling.
 - Treat non-text clipboard content as an empty preset import with a clear
   message instead of logging `Unicode String`.
@@ -74,7 +81,8 @@
 
 ### Quality
 
-- 306 automated tests in 33 classes: 153 core and 153 platform/integration.
+- 316 automated tests in 35 classes across core, platform, and real Git CLI
+  integration coverage.
 - CI runs tests, plugin build, Detekt, structural checks, and Plugin Verifier
   across the supported matrix.
 - `quickCheck` enforces module direction, background Git lifecycle, write-lease

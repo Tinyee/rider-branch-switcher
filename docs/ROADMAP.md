@@ -33,16 +33,6 @@ Candidate verification order:
 2. WebStorm
 3. CLion
 
-## P2: Correctness And Scale
-
-### P2-04: Reduce Per-repository Git Process Fan-out
-
-Repository-state refresh and preflight each spawn several Git commands per
-repository. Add a narrow batch inspection capability that returns branch,
-dirty, HEAD, and branch-ref state together where practical; preserve
-fail-closed preflight behavior and verify real CLI process budgets for large
-projects.
-
 ## P3: Targeted Maintainability
 
 This is the complete active P3 inventory. Apply an item only when a feature,
@@ -97,19 +87,5 @@ localized presentation need structured data.
 The plugin uses the Git CLI. Consider a Git4Idea migration only after measured
 evidence identifies a compatibility, performance, or credential-handling
 limitation that the CLI implementation cannot reasonably address.
-
-### P3-11: Bound Git Process Output And Isolate Stream Draining
-
-`GitProcessRunner` currently reads complete stdout and stderr through the
-common future pool. Retain a bounded diagnostic tail instead, and use a
-dedicated bounded executor for stream draining so verbose Git failures cannot
-consume unbounded memory or shared worker capacity.
-
-### P3-12: Cancel Obsolete Branch Discovery
-
-Branch-combo loads continue after their editor row is removed, hidden, or
-superseded; their result is merely ignored at UI delivery. Track and cancel
-the per-row load job when it becomes obsolete so visible rows do not wait
-behind stale discovery work.
 
 These items do not currently block feature work or the first release.

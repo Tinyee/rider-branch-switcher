@@ -47,7 +47,7 @@ run broader checks.
 | `service` | Project-scoped state, preset repository, write lease | `BranchSwitcherService.kt`, `PresetRepository.kt` |
 | `workflow` | Reusable application use cases independent of a particular screen | `SwitchRunner.kt`, `DeriveBranchRunner.kt`, `SingleRepositorySwitcher.kt` |
 | `platform` | IntelliJ progress/cancellation/background adapters | `GitBackgroundRunner.kt`, `SwitchAdapters.kt` |
-| `git` | CLI command construction and process lifecycle | `GitOps.kt`, `GitCommandClient.kt`, `GitProcessRunner.kt` |
+| `git` | CLI command construction, inspection, and process lifecycle | `GitOps.kt`, `GitCommandClient.kt`, `GitProcessRunner.kt`, `GitOutputDrainer.kt` |
 | `ui` | Tool Window, editors, dialogs, notifications, and screen commands | `BranchSwitcherPanel.kt`, `PresetEditor.kt`, `SwitchFlowCoordinator.kt` |
 | `action` | IDE actions such as `Ctrl+Alt+B` | `SwitchPresetAction.kt` |
 
@@ -77,7 +77,7 @@ Preset editing:
   PresetListManager -> PresetEditor -> SubmoduleRowManager
 
 Git command:
-  GitOps -> GitCommandClient -> GitProcessRunner
+  GitOps -> GitCommandClient -> GitProcessRunner -> GitOutputDrainer
 ```
 
 ## Preset Persistence
@@ -184,7 +184,10 @@ refresh behavior remain consistent.
 
 `GitOps` implements the aggregate Git interface but delegates commands to
 `GitCommandClient`. Only `GitProcessRunner` starts and waits for operating-system
-processes.
+processes. It admits at most four active Git processes and assigns their stdout
+and stderr pipes to a dedicated eight-thread drain executor. Stdout is capped at
+8 MiB and fails explicitly when exceeded; stderr retains only its final 128 KiB
+for diagnostics.
 
 Each background write opens its own `GitOperationSession`. Cancellation affects
 that session, terminates its running process, and prevents later commands in the
@@ -195,9 +198,18 @@ completed execution result remains available for recovery when cancellation
 races with task completion.
 
 The service write lease prevents overlapping switch, derive, rollback, and
-single-repository writes. Read-only branch discovery and repository-state Git
-commands run on the I/O dispatcher, retain their concurrency limit, and deliver
-only final snapshots to the UI thread.
+single-repository writes. Each branch-combo discovery also opens an isolated
+operation session. Hiding or removing an editor, or starting a newer load for
+the same combo, cancels both its coroutine and active Git process. A per-combo
+generation token prevents an older result from updating newer UI state.
+
+Read-only branch discovery and repository-state Git commands run on the I/O
+dispatcher and deliver only final snapshots to the UI thread. Repository-state
+refresh batches branch, HEAD, and dirty status into one CLI process per
+repository. Preflight adds one refs query and, on the first query for a
+repository, one remote-name query. Its failures remain fail-closed. Switch
+steps, checkpoints, and recovery deliberately keep fresh reads adjacent to
+mutation rather than consuming these display-oriented snapshots.
 
 ## Change Guide
 

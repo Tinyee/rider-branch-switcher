@@ -175,6 +175,26 @@ Focused regression tests cover deep preset lookup, non-mutating persistence,
 serialized repository access, task race ordering, UI cleanup, and cancellation
 immediately after submodule initialization.
 
+## 2026-08-01 - Git Resource And Read-path Hardening
+
+Three remaining Git read-path risks were resolved while preserving fresh safety
+checks around mutations:
+
+- Git processes share bounded admission and dedicated stream-drain capacity.
+  Stdout overflow is a structured failure, while stderr retains a bounded tail.
+- Branch discovery owns an isolated cancellable Git session. Hidden, removed,
+  and superseded editors stop obsolete work, and generation tokens reject stale
+  UI delivery.
+- Repository-state refresh uses one porcelain-v2 status process per repository.
+  Preflight batches status, HEAD, dirty count, and exact target refs in at most
+  three first-time processes per repository and remains fail-closed.
+- Switch execution, checkpoint capture, and recovery continue to perform fresh
+  reads next to mutation and do not consume display-oriented snapshots.
+
+Real CLI integration tests enforce linear process budgets across five
+repositories, and focused tests cover output bounds, stream ownership, direct
+Git cancellation, stale-result rejection, and fail-closed batch failures.
+
 ## Maintenance
 
 Record temporary findings in the relevant issue or pull request. Add to this
