@@ -33,6 +33,38 @@ Candidate verification order:
 2. WebStorm
 3. CLion
 
+## P2: Correctness And Scale
+
+### P2-01: Remove The Preset Lookup Depth Limit
+
+`PresetLoader.resolveFile()` documents an upward search to the Git boundary but
+currently stops after six parent directories. Remove that arbitrary limit so
+deeply nested projects consistently find a shared parent preset file, and add a
+regression test beyond six levels.
+
+### P2-02: Make Preset Loading Non-mutating And Off The EDT
+
+Opening the Tool Window or shortcut currently performs synchronous preset file
+I/O and may create or migrate `.idea/branch-presets.json`. Separate
+non-mutating loading from explicit first-write initialization, perform disk
+access on an I/O dispatcher, and serialize load/save updates so UI state only
+changes after the latest successful load.
+
+### P2-03: Make Git Task Outcome Handoff Atomic
+
+`GitBackgroundRunner` shares completion and cancellation state between the
+background task, cancellation callback, and awaiting coroutine. Make that
+handoff atomic so a cancellation racing with a completed switch cannot discard
+the execution result needed for recovery. Add a deterministic race test.
+
+### P2-04: Reduce Per-repository Git Process Fan-out
+
+Repository-state refresh and preflight each spawn several Git commands per
+repository. Add a narrow batch inspection capability that returns branch,
+dirty, HEAD, and branch-ref state together where practical; preserve
+fail-closed preflight behavior and verify real CLI process budgets for large
+projects.
+
 ## P3: Targeted Maintainability
 
 This is the complete active P3 inventory. Apply an item only when a feature,
@@ -94,5 +126,33 @@ localized presentation need structured data.
 The plugin uses the Git CLI. Consider a Git4Idea migration only after measured
 evidence identifies a compatibility, performance, or credential-handling
 limitation that the CLI implementation cannot reasonably address.
+
+### P3-09: Dispatch Blocking Git Reads As I/O
+
+Branch discovery and repository-state refresh run synchronous CLI Git commands
+through the project coroutine scope. Move the blocking work to an I/O
+dispatcher at the call boundary while retaining the existing concurrency limit
+and UI-thread-only rendering.
+
+### P3-10: Guarantee Switch UI Cleanup Around Refresh
+
+The Tool Window's switching indicator is reset through the completion callback
+after VCS refresh and result presentation. Make cleanup unconditional so VCS
+refresh or presentation failures cannot leave the window displaying an active
+switch, and add a focused lifecycle test.
+
+### P3-11: Bound Git Process Output And Isolate Stream Draining
+
+`GitProcessRunner` currently reads complete stdout and stderr through the
+common future pool. Retain a bounded diagnostic tail instead, and use a
+dedicated bounded executor for stream draining so verbose Git failures cannot
+consume unbounded memory or shared worker capacity.
+
+### P3-12: Cancel Obsolete Branch Discovery
+
+Branch-combo loads continue after their editor row is removed, hidden, or
+superseded; their result is merely ignored at UI delivery. Track and cancel
+the per-row load job when it becomes obsolete so visible rows do not wait
+behind stale discovery work.
 
 These items do not currently block feature work or the first release.
