@@ -88,10 +88,16 @@ Preset lookup order is:
 2. `<project>/.branch-presets.json`
 3. A parent `.branch-presets.json`, stopping at a Git repository boundary
 
-`PresetLoader` owns JSON parsing, validation, ID migration, and atomic writes.
-`PresetRepository` caches the loaded file for the project service. Presets are
-project files, not global plugin state. Deleting an untracked `.idea` directory
-also deletes presets stored there.
+The upward lookup has no arbitrary depth limit; the repository boundary is the
+limit. `PresetLoader` owns JSON parsing, validation, in-memory ID normalization,
+and atomic writes. Loading never creates or rewrites a file. The first explicit
+save creates the preferred file and persists any normalized IDs.
+
+`PresetRepository` caches the selected file for the project service, serializes
+load and save operations with one mutex, and dispatches filesystem access to the
+I/O dispatcher. UI state changes only after a successful repository operation.
+Presets are project files, not global plugin state. Deleting an untracked
+`.idea` directory also deletes presets stored there.
 
 Global switch settings and recent history are stored through
 `PersistentStateComponent` in `branch-switcher.xml`.
@@ -117,11 +123,19 @@ flowchart TD
 `SwitchExecutor` records a checkpoint before mutation and passes an immutable
 `SwitchState` between steps. Stateful steps preserve the latest state even when
 an exception or cancellation occurs, so recovery still knows which stashes and
-checkouts completed.
+checkouts completed and which missing submodules were initialized by the switch.
 
 `SwitchRecoveryExecutor` independently attempts repository rollback and stash
 restoration. It compares both branch and commit SHA, restores detached HEAD
 state, and refuses a destructive hard reset when the working tree is dirty.
+Submodules initialized by the failed or cancelled switch are deliberately
+retained: they had no pre-switch checkpoint, and deleting a newly populated
+worktree could discard useful data. Recovery logs and notifications list those
+retained paths.
+
+`SwitchFlowCoordinator` owns the post-execution VCS refresh and presentation.
+An idempotent UI completion guard resets Tool Window state after normal
+presentation and also when background refresh or presentation fails.
 
 ## Derive Flow
 
@@ -175,10 +189,15 @@ processes.
 Each background write opens its own `GitOperationSession`. Cancellation affects
 that session, terminates its running process, and prevents later commands in the
 same operation from starting. `GitBackgroundRunner` owns session open, cancel,
-close, and exception conversion; callers must not duplicate that lifecycle.
+close, and exception conversion; callers must not duplicate that lifecycle. A
+single atomic outcome state combines completion and cancellation callbacks, so a
+completed execution result remains available for recovery when cancellation
+races with task completion.
 
 The service write lease prevents overlapping switch, derive, rollback, and
-single-repository writes. Read-only detection may continue independently.
+single-repository writes. Read-only branch discovery and repository-state Git
+commands run on the I/O dispatcher, retain their concurrency limit, and deliver
+only final snapshots to the UI thread.
 
 ## Change Guide
 

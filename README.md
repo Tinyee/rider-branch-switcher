@@ -19,7 +19,7 @@ configuration cleanup and be shared by the team.
 - **Dry-run preview**: see current branch, target branch, dirty file count, and branch source before checkout.
 - **Dirty working tree strategies**: stash, skip, or force when a repo has uncommitted changes.
 - **Rollback support**: failed switches keep a checkpoint for one-click rollback.
-- **Submodule handling**: sync submodules after main repo checkout and initialize missing submodule directories.
+- **Submodule handling**: sync after main checkout and initialize missing submodules; newly initialized worktrees are retained and reported if a later step fails.
 - **Feature branch derivation**: create the same new branch across the main repo and all submodules from a preset baseline.
 - **Preset tools**: create from current state, rename, reorder, import/export via clipboard, and undo recent switches.
 - **IDE integration**: Tool Window, `Ctrl+Alt+B` quick switch action, notifications, Settings page, and English/Chinese i18n.
@@ -88,8 +88,10 @@ Example preset file:
 
 Preset lookup checks `.idea/branch-presets.json` first, then
 `.branch-presets.json`, and finally parent directories up to a Git repository
-boundary. Presets are not stored globally by the plugin. Removing an untracked
-`.idea` directory removes presets kept there.
+boundary. Opening the Tool Window does not create or rewrite a preset file; the
+preferred file is created on the first successful save. Presets are not stored
+globally by the plugin. Removing an untracked `.idea` directory removes presets
+kept there.
 
 ## Options
 

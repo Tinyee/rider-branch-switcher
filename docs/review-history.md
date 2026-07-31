@@ -151,6 +151,30 @@ Focused follow-up reviews confirmed four recovery invariants:
 The follow-up suite and structural checks passed. User-facing clipboard and
 context-menu regressions received focused coverage.
 
+## 2026-07-31 - Persistence And Lifecycle Hardening
+
+A focused reliability pass completed six previously deferred items:
+
+- Preset lookup now walks to the Git repository boundary without a fixed depth
+  limit.
+- Preset loading is non-mutating; explicit saves create files and persist
+  in-memory ID normalization. Repository load/save operations are serialized and
+  filesystem access runs off the UI thread.
+- Blocking branch and repository-state Git reads run on the I/O dispatcher while
+  preserving bounded concurrency and UI-thread-only rendering.
+- Git task completion and cancellation use one atomic outcome state, preserving
+  completed execution data required by recovery in either race ordering.
+- Switch UI cleanup is idempotent and runs after presentation errors or
+  background refresh failures.
+- A submodule initialized during a later failed or cancelled switch is retained,
+  recorded in execution state, and reported in recovery logs and localized
+  notifications. Automatic deletion was rejected because no pre-switch
+  checkpoint exists and the new worktree may contain valuable data.
+
+Focused regression tests cover deep preset lookup, non-mutating persistence,
+serialized repository access, task race ordering, UI cleanup, and cancellation
+immediately after submodule initialization.
+
 ## Maintenance
 
 Record temporary findings in the relevant issue or pull request. Add to this

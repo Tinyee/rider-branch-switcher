@@ -16,7 +16,7 @@ preset 文件提交到 Git。
 - **切换前预览**：显示当前分支、目标分支、dirty 文件数量和分支来源。
 - **脏工作区策略**：支持 stash、跳过、强制切换。
 - **失败回滚**：切换失败时保留 checkpoint，可从通知或历史里回滚。
-- **子模块处理**：主仓库切换后自动 sync，缺失子模块可自动 init。
+- **子模块处理**：主仓库切换后自动 sync，缺失子模块可自动 init；如果后续步骤失败，本次新初始化的目录会保留并明确提示。
 - **派生功能分支**：基于 preset，在主仓库和所有子模块同时创建新分支。
 - **preset 管理**：从当前状态创建、重命名、排序、导入/导出、撤销最近切换。
 - **IDE 集成**：Tool Window、`Ctrl+Alt+B` 快速切换、通知、Settings 页面、中英文 i18n。
@@ -31,8 +31,8 @@ preset 文件提交到 Git。
 
 ## 支持的 IDE
 
-插件使用 IntelliJ Platform API 和内置 `Git4Idea` 插件。IntelliJ IDEA
-Community 是主要构建目标，Rider 是当前兼容验证目标。其他 IDE 系列的支持声明及所需证据见
+插件使用 IntelliJ Platform API 和内置 `Git4Idea` 插件。统一版 IntelliJ IDEA
+是主要构建目标，Rider 是当前兼容验证目标。其他 IDE 系列的支持声明及所需证据见
 [兼容性矩阵](docs/SETUP.md#support-matrix-policy)。
 
 ## 安装
@@ -82,7 +82,8 @@ build/distributions/submodule-branch-switcher-*.zip
 ```
 
 preset 加载时会先检查 `.idea/branch-presets.json`，再检查
-`.branch-presets.json`，最后向父目录查找，直到 Git 仓库边界。插件不会把 preset
+`.branch-presets.json`，最后向父目录查找，直到 Git 仓库边界。打开 Tool Window
+不会创建或改写 preset 文件；第一次成功保存时才会创建首选文件。插件不会把 preset
 额外保存到全局配置；如果 `.idea` 没有被 Git 跟踪，删除该目录也会删除其中的 preset。
 
 ## 配置项

@@ -88,6 +88,19 @@ Git 命令：
 切换前会记录 checkpoint。每个步骤返回新的 `SwitchState`，而不是直接修改共享状态。
 这样即使中途抛异常或取消，恢复流程仍然知道哪些仓库已切换、哪些 stash 尚未恢复。
 
+缺失子模块 init 成功后，路径会立刻写入 `SwitchState`。如果后面的 fetch、checkout
+或 pull 失败，恢复流程不会删除这个新工作区，因为它在切换前没有 checkpoint，自动删除还可能
+丢失已经下载或随后产生的内容。日志和通知会列出被保留的路径。
+
+## Preset 持久化
+
+preset 会按 `.idea/branch-presets.json`、项目根目录 `.branch-presets.json`、父目录
+`.branch-presets.json` 的顺序查找，直到 Git 仓库边界，没有固定层数限制。加载只读取和校验，
+不会创建文件，也不会因为旧 ID 迁移而改写文件；第一次显式保存才创建首选文件并写入规范化结果。
+
+`PresetRepository` 使用同一把互斥锁串行化 load/save，并在 I/O dispatcher 上访问磁盘。
+编辑器和列表只在保存成功后更新内存与界面状态，因此旧的异步结果不会覆盖较新的操作。
+
 ## 派生分支流程
 
 派生分支和完整切换使用同一种后台任务边界：
@@ -191,7 +204,9 @@ result.toSwitchResult()
 
 `suspend fun` 表示函数可以挂起，但不等同于自动创建线程。插件层通过
 `GitBackgroundRunner` 把 Git 操作放入 IntelliJ 后台任务，并将取消信号传到当前
-`GitOperationSession`。core 本身不依赖协程或 IntelliJ。
+`GitOperationSession`。完成和取消通过同一个原子状态交接，因此两者同时发生时不会丢失恢复
+所需的执行结果。同步的 preset 文件访问、分支读取和仓库状态 Git 命令会显式调度到 I/O
+dispatcher；最终界面更新仍回到 UI 线程。core 本身不依赖协程或 IntelliJ。
 
 ## 修改代码时先找职责
 

@@ -36,6 +36,12 @@
   platform cancellation and rollback owned by `DeriveBranchRunner`.
 - Separate preset clipboard transfer and current-state creation from collection
   persistence, and clarify the preset editor construction flow.
+- Make preset loading non-mutating and serialize preset file access on the I/O
+  dispatcher; files are created only by an explicit save.
+- Dispatch blocking branch discovery and repository-state Git reads to the I/O
+  dispatcher while retaining bounded concurrency.
+- Retain and report submodules initialized before a later switch failure or
+  cancellation instead of deleting worktrees without a checkpoint.
 - Require JDK 21 for IntelliJ Platform 2026.1 builds and CI.
 
 ### Fixed
@@ -52,6 +58,12 @@
 - Correct submodule-row context-menu hit handling.
 - Treat non-text clipboard content as an empty preset import with a clear
   message instead of logging `Unicode String`.
+- Find shared preset files at any nesting depth up to the Git repository
+  boundary.
+- Preserve completed switch results when task completion races with
+  cancellation, so recovery receives the latest execution state.
+- Reset the Tool Window switching indicator even when VCS refresh or result
+  presentation fails.
 
 ### Removed
 
@@ -62,7 +74,7 @@
 
 ### Quality
 
-- 310 automated tests in 30 classes: 159 core and 151 platform/integration.
+- 306 automated tests in 33 classes: 153 core and 153 platform/integration.
 - CI runs tests, plugin build, Detekt, structural checks, and Plugin Verifier
   across the supported matrix.
 - `quickCheck` enforces module direction, background Git lifecycle, write-lease
