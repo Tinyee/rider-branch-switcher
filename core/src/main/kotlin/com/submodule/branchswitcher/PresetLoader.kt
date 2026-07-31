@@ -35,13 +35,11 @@ object PresetLoader {
         for (c in direct) if (Files.exists(c)) return c
 
         var currentDirectory: Path? = ideBase.parent
-        var depth = 0
-        while (currentDirectory != null && depth < 6) {
+        while (currentDirectory != null) {
             val candidate = currentDirectory.resolve(FILE_NAME)
             if (Files.exists(candidate)) return candidate
             if (Files.exists(currentDirectory.resolve(".git"))) return null
             currentDirectory = currentDirectory.parent
-            depth++
         }
         return null
     }

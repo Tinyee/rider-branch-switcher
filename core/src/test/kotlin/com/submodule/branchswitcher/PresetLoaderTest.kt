@@ -65,6 +65,19 @@ class PresetLoaderTest {
     }
 
     @Test
+    fun `resolveFile finds ancestor preset beyond six parent directories`() {
+        val ancestor = tmpDir.resolve(".branch-presets.json")
+        Files.writeString(ancestor, """{"presets":[]}""")
+        val deeplyNestedProject = (1..8).fold(tmpDir) { parent, index ->
+            Files.createDirectories(parent.resolve("level-$index"))
+        }
+
+        val found = PresetLoader.resolveFile(deeplyNestedProject)
+
+        assertEquals(ancestor, found)
+    }
+
+    @Test
     fun `resolveFile stops at git boundary when no file at that level`() {
         val child = Files.createDirectories(tmpDir.resolve("child"))
         Files.createDirectories(tmpDir.resolve(".git")) // git repo at parent
