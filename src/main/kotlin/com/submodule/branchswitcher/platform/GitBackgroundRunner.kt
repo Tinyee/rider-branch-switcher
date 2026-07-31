@@ -6,6 +6,7 @@ import com.submodule.branchswitcher.TaskBridge
 import com.submodule.branchswitcher.git.GitOperationProvider
 import com.submodule.branchswitcher.git.GitOperationSession
 import kotlinx.coroutines.CancellationException
+import java.util.concurrent.atomic.AtomicReference
 
 /**
  * Platform task outcome that preserves a value completed just before
@@ -15,6 +16,54 @@ sealed class GitBackgroundResult<out T> {
     data class Completed<T>(val value: T) : GitBackgroundResult<T>()
     data class Cancelled<T>(val value: T? = null) : GitBackgroundResult<T>()
     data class Failed(val error: RuntimeException) : GitBackgroundResult<Nothing>()
+}
+
+private data class CompletedValue<T>(val value: T)
+
+private sealed interface GitTaskState<out T> {
+    data object Running : GitTaskState<Nothing>
+    data class Completed<T>(val result: CompletedValue<T>) : GitTaskState<T>
+    data class Cancelled<T>(val result: CompletedValue<T>?) : GitTaskState<T>
+}
+
+/** Atomically combines task completion and cancellation callbacks into one outcome. */
+internal class GitTaskOutcome<T> {
+    private val state = AtomicReference<GitTaskState<T>>(GitTaskState.Running)
+
+    fun recordCompletion(value: T) {
+        val completed = CompletedValue(value)
+        update { current ->
+            when (current) {
+                GitTaskState.Running -> GitTaskState.Completed(completed)
+                is GitTaskState.Completed -> current
+                is GitTaskState.Cancelled -> GitTaskState.Cancelled(completed)
+            }
+        }
+    }
+
+    fun recordCancellation() {
+        update { current ->
+            when (current) {
+                GitTaskState.Running -> GitTaskState.Cancelled(null)
+                is GitTaskState.Completed -> GitTaskState.Cancelled(current.result)
+                is GitTaskState.Cancelled -> current
+            }
+        }
+    }
+
+    fun result(): GitBackgroundResult<T> = when (val current = state.get()) {
+        GitTaskState.Running -> GitBackgroundResult.Cancelled()
+        is GitTaskState.Completed -> GitBackgroundResult.Completed(current.result.value)
+        is GitTaskState.Cancelled -> GitBackgroundResult.Cancelled(current.result?.value)
+    }
+
+    private inline fun update(transform: (GitTaskState<T>) -> GitTaskState<T>) {
+        while (true) {
+            val current = state.get()
+            val updated = transform(current)
+            if (current === updated || state.compareAndSet(current, updated)) return
+        }
+    }
 }
 
 /**
@@ -28,13 +77,8 @@ class GitBackgroundRunner(
     private val git: GitOperationProvider,
     private val taskRunner: TaskBridge.TaskRunner = TaskBridge.TaskRunner.DEFAULT,
 ) {
-    private data class ValueBox<T>(val value: T)
-
     /**
      * Executes [block] once and closes its Git session on every outcome.
-     *
-     * [ValueBox] distinguishes a successfully completed `null` value from a
-     * block that never completed.
      */
     @Suppress("TooGenericExceptionCaught")
     suspend fun <T> run(
@@ -50,8 +94,7 @@ class GitBackgroundRunner(
         } catch (e: RuntimeException) {
             return GitBackgroundResult.Failed(e)
         }
-        var completed: ValueBox<T>? = null
-        var cancelled = false
+        val outcome = GitTaskOutcome<T>()
         return try {
             TaskBridge.runBackground(
                 taskRunner,
@@ -59,22 +102,21 @@ class GitBackgroundRunner(
                 title,
                 true,
                 block = { indicator ->
-                    completed = ValueBox(block(indicator, operation))
+                    outcome.recordCompletion(block(indicator, operation))
                 },
                 onCancel = {
-                    cancelled = true
+                    outcome.recordCancellation()
                     operation.cancel()
                 },
                 onFinished = null,
             )
-            when {
-                cancelled || completed == null -> GitBackgroundResult.Cancelled(completed?.value)
-                else -> GitBackgroundResult.Completed(requireNotNull(completed).value)
-            }
+            outcome.result()
         } catch (_: CancellationException) {
-            GitBackgroundResult.Cancelled(completed?.value)
+            outcome.recordCancellation()
+            outcome.result()
         } catch (_: com.intellij.openapi.progress.ProcessCanceledException) {
-            GitBackgroundResult.Cancelled(completed?.value)
+            outcome.recordCancellation()
+            outcome.result()
         } catch (e: RuntimeException) {
             GitBackgroundResult.Failed(e)
         } finally {
