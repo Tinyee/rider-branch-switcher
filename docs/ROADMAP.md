@@ -37,6 +37,22 @@ Candidate verification order:
 
 Defer these changes until a concrete feature or failure needs them:
 
+- Narrow the background-task boundary so workflow code depends on
+  `GitOperationSession`, `CancellationHandle`, `ProgressHandle`, and injected
+  confirmation callbacks instead of direct IntelliJ `Project`, progress, or
+  dialog APIs. Keep the IntelliJ adapter in `platform`, and preserve the
+  fresh-session cancellation recovery behavior with focused tests.
+- Split `SwitchFlowCoordinator` by side effect when the switch flow next
+  changes: execution/write lease/VCS refresh, result presentation/rollback
+  notification, and preflight UI should have separate owners while the Tool
+  Window and shortcut retain one shared execution path.
+- Extract `PresetEditor` draft construction, dirty-state comparison, revert,
+  and validation decisions from Swing components into pure logic. Keep Swing
+  responsible for rendering and event binding; cover the extracted behavior
+  with focused JVM tests.
+- Extract Tool Window repository-state subscription, debouncing, stale-result
+  filtering, and snapshot delivery into a coordinator only when that lifecycle
+  grows further. Do not split visual panels merely to reduce line counts.
 - Represent recovery as an inspectable rollback plan before execution.
 - Define whether a submodule initialized during a failed switch should remain
   initialized or support an explicit cleanup policy.
@@ -46,10 +62,3 @@ Defer these changes until a concrete feature or failure needs them:
   performance, or credential handling justifies the migration cost.
 
 These items do not currently block feature work or the first release.
-
-## Not Planned
-
-- Per-preset dirty/fetch/pull controls in the main Tool Window
-- Local telemetry or usage statistics
-- Broad architectural refactoring without a concrete product need
-- Advertising unverified IDE families

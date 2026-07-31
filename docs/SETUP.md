@@ -19,8 +19,7 @@ platform.type=IU
 platform.version=2026.1.3
 platform.localPath=
 
-plugin.sinceBuild=261
-plugin.untilBuild=261.*
+plugin.sinceBuild=251
 plugin.verifier.ideCodes=RD
 ```
 
@@ -103,7 +102,7 @@ Verifier once.
 
 ## Compatibility Notes
 
-- Keep `plugin.sinceBuild` and `plugin.untilBuild` aligned with the IntelliJ Platform major build you support.
+- Set `plugin.sinceBuild` to the oldest verified IDE build. Leave `plugin.untilBuild` unset unless a known incompatibility requires an explicit upper bound.
 - If lowering `plugin.sinceBuild`, also check Kotlin runtime compatibility for the oldest target IDE.
 - Prefer IntelliJ Platform common APIs in production code.
 - Avoid Rider-only APIs unless they are isolated behind a product-specific adapter.
@@ -126,6 +125,6 @@ Do not broaden Marketplace wording from "JetBrains IDEs that support Git project
 | Error | Cause | Fix |
 | --- | --- | --- |
 | `Could not resolve ...` | Network or platform SDK download issue | Use `platform.localPath`, configure a proxy, or retry with `-PuseChinaMirrors=true` |
-| `Plugin is incompatible with this installation` | Build range does not cover target IDE | Adjust `plugin.sinceBuild` / `plugin.untilBuild` |
+| `Plugin is incompatible with this installation` | The IDE is older than `plugin.sinceBuild`, or an explicit upper bound excludes it | Adjust `plugin.sinceBuild` or remove/update `plugin.untilBuild` |
 | `incompatible version of Kotlin` | Compiler output newer than target IDE Kotlin runtime | Lower Kotlin compiler or raise target IDE build |
 | Chinese Markdown looks garbled in terminal | Terminal encoding issue | See `docs/encoding-and-line-endings.md`; do not rewrite files just for terminal display |
