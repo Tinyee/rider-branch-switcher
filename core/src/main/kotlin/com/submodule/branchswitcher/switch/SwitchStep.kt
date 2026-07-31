@@ -32,28 +32,34 @@ class SwitchState private constructor(
     private val stashedPaths: Map<String, String>,
     private val skippedPaths: Set<String>,
     private val successfulCheckouts: Set<String>,
+    private val initializedSubmodules: Set<String>,
 ) {
-    constructor() : this(emptyMap(), emptySet(), emptySet())
+    constructor() : this(emptyMap(), emptySet(), emptySet(), emptySet())
 
     fun withSkipped(path: String): SwitchState =
-        SwitchState(stashedPaths, skippedPaths + path, successfulCheckouts)
+        SwitchState(stashedPaths, skippedPaths + path, successfulCheckouts, initializedSubmodules)
 
     fun isSkipped(path: String): Boolean = path in skippedPaths
 
     fun withTrackedStash(path: String, message: String): SwitchState =
-        SwitchState(stashedPaths + (path to message), skippedPaths, successfulCheckouts)
+        SwitchState(stashedPaths + (path to message), skippedPaths, successfulCheckouts, initializedSubmodules)
 
     fun withoutStash(path: String): SwitchState =
-        SwitchState(stashedPaths - path, skippedPaths, successfulCheckouts)
+        SwitchState(stashedPaths - path, skippedPaths, successfulCheckouts, initializedSubmodules)
 
     fun trackedStash(path: String): String? = stashedPaths[path]
 
     fun stashesSnapshot(): Map<String, String> = stashedPaths.toMap()
 
     fun withSuccessfulCheckout(path: String): SwitchState =
-        SwitchState(stashedPaths, skippedPaths, successfulCheckouts + path)
+        SwitchState(stashedPaths, skippedPaths, successfulCheckouts + path, initializedSubmodules)
 
     fun checkoutSucceeded(path: String): Boolean = path in successfulCheckouts
+
+    fun withInitializedSubmodule(path: String): SwitchState =
+        SwitchState(stashedPaths, skippedPaths, successfulCheckouts, initializedSubmodules + path)
+
+    fun initializedSubmodulesSnapshot(): Set<String> = initializedSubmodules.toSet()
 
     fun hasStashes(): Boolean = stashedPaths.isNotEmpty()
 }

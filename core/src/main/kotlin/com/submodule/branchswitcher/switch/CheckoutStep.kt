@@ -39,12 +39,39 @@ class CheckoutStep(
                     directory = directory,
                     mainCheckoutSucceeded = mainCheckoutSucceeded,
                 )
+                if (preparation.initializedBySwitch) {
+                    nextState = nextState.withInitializedSubmodule(target.path)
+                }
                 val preparationFailure = preparation.failure
                 if (preparationFailure != null) {
                     failures[target.path] = preparationFailure
                 }
                 if (!preparation.ready) {
                     continue
+                }
+
+                if (preparation.initializedBySwitch && !directory.exists()) {
+                    context.log.info("[skip] dir not found after init: ${directory.absolutePath}")
+                    failures[target.path] = "dir not found after init"
+                    continue
+                }
+                if (preparation.initializedBySwitch && !context.git.isGitRepo(directory)) {
+                    context.log.info("[skip] not a git repo after init")
+                    failures[target.path] = "not a git repo after init"
+                    continue
+                }
+
+                // The earlier fetch step skipped a repository that did not yet
+                // exist. Record initialization first so fetch cancellation cannot
+                // hide the retained worktree from recovery and notifications.
+                if (preparation.initializedBySwitch && context.options.fetchFirst) {
+                    val fetchResult = context.git.fetch(directory)
+                    if (!fetchResult.ok) {
+                        context.log.warn(
+                            "fetch after init warn: ${fetchResult.diagnostic()} (${target.path})",
+                        )
+                        failures[target.path] = "fetch after init had warnings"
+                    }
                 }
 
                 val checkout = BranchCheckout.execute(context, target, directory, nextState)

@@ -628,6 +628,47 @@ class SwitchExecutorTest {
         )
     }
 
+    @Test
+    fun `initialized submodule is retained and reported when its fetch is cancelled`() {
+        var submoduleReady = false
+        val retainedGit = object : GitClient by fakeGit {
+            override fun isGitRepo(workDir: File): Boolean =
+                if (workDir.name == "SubA") submoduleReady else true
+
+            override fun submoduleInitPath(gitRoot: File, path: String): GitResult {
+                gitRoot.resolve(path).mkdirs()
+                submoduleReady = true
+                return GitResult("init", 0, "", "")
+            }
+
+            override fun fetch(workDir: File): GitResult {
+                if (workDir.name == "SubA") throw CancellationException("cancel after init")
+                return GitResult("fetch", 0, "", "")
+            }
+
+            override fun cancel() = Unit
+        }
+        val executor = SwitchExecutor(
+            projectRoot,
+            createStringAppender { log += it },
+            retainedGit,
+            cancellationClassifier = CancellationClassifier.DEFAULT,
+        )
+
+        val result = executor.executeResultTest(
+            Preset("retained-init", "main", mapOf("SubA" to "main")),
+            SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = true),
+        )
+
+        assertTrue(result.cancelled)
+        assertEquals(setOf("SubA"), result.state.initializedSubmodulesSnapshot())
+        assertTrue(File(projectRoot.toFile(), "SubA").exists())
+
+        assertTrue(recovery(retainedGit).rollback(result))
+        assertTrue(File(projectRoot.toFile(), "SubA").exists())
+        assertTrue(log.any { it.contains("[rollback] retained submodule initialized by this switch: SubA") })
+    }
+
     // ---- Rollback edge cases ----
 
     @Test

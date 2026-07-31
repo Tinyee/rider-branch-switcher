@@ -13,6 +13,7 @@ internal object SubmoduleInitializer {
     data class Result(
         val ready: Boolean,
         val failure: String? = null,
+        val initializedBySwitch: Boolean = false,
     )
 
     fun prepare(
@@ -22,7 +23,6 @@ internal object SubmoduleInitializer {
         mainCheckoutSucceeded: Boolean,
     ): Result {
         val isMain = target.path == "."
-        var warning: String? = null
 
         if (!isMain && !context.git.isGitRepo(directory) && mainCheckoutSucceeded) {
             if (context.confirmBeforeInit && context.cancellationHandle?.isCanceled != true) {
@@ -41,19 +41,8 @@ internal object SubmoduleInitializer {
                 context.log.warn("[skip] submodule init failed: ${initResult.diagnostic()}")
                 return Result(ready = false, failure = "submodule init failed")
             }
-            context.log.info("submodule init ok")
-
-            // The earlier submodule FetchStep skipped this missing repository,
-            // so a new worktree needs its own fetch before branch discovery.
-            if (context.options.fetchFirst) {
-                val fetchResult = context.git.fetch(directory)
-                if (!fetchResult.ok) {
-                    context.log.warn(
-                        "fetch after init warn: ${fetchResult.diagnostic()} (${target.path})",
-                    )
-                    warning = "fetch after init had warnings"
-                }
-            }
+            context.log.info("submodule init ok; the new worktree will be retained if a later step fails")
+            return Result(ready = true, initializedBySwitch = true)
         }
 
         if (!directory.exists()) {
@@ -64,6 +53,6 @@ internal object SubmoduleInitializer {
             context.log.info("[skip] not a git repo")
             return Result(ready = false, failure = "not a git repo")
         }
-        return Result(ready = true, failure = warning)
+        return Result(ready = true)
     }
 }
