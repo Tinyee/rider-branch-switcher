@@ -4,6 +4,10 @@ import com.intellij.openapi.project.Project
 import com.submodule.branchswitcher.PresetLoader
 import com.submodule.branchswitcher.model.Preset
 import com.submodule.branchswitcher.model.PresetFile
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import java.nio.file.Path
 
 /**
@@ -17,35 +21,31 @@ class PresetRepository internal constructor(
 
     constructor(project: Project) : this(
         basePath = { project.basePath?.let(java.nio.file.Paths::get) },
-        loader = {
-            PresetLoader.load(it, onMigrationFailure = { file, error ->
-                com.intellij.openapi.diagnostic.Logger.getInstance(PresetRepository::class.java).warn(
-                    "Could not persist migrated preset IDs to $file",
-                    error,
-                )
-            })
-        },
+        loader = PresetLoader::load,
         saver = PresetLoader::save,
     )
 
+    private val access = Mutex()
+
+    @Volatile
     private var presetFile: PresetFile = PresetFile()
     private var savedFilePath: Path? = null
     private var synchronizedWithDisk = false
 
     val presets: List<Preset> get() = presetFile.presets
 
-    fun load(): Result<Pair<Path, PresetFile>> {
+    suspend fun load(): Result<Pair<Path, PresetFile>> = access.withLock {
         synchronizedWithDisk = false
         val base = basePath()
-            ?: return Result.failure(IllegalStateException("project base path is null"))
-        return loader(base).onSuccess { (file, parsed) ->
+            ?: return@withLock Result.failure(IllegalStateException("project base path is null"))
+        withContext(Dispatchers.IO) { loader(base) }.onSuccess { (file, parsed) ->
             savedFilePath = file
             presetFile = parsed
             synchronizedWithDisk = true
         }
     }
 
-    fun save(newPresets: List<Preset>) {
+    suspend fun save(newPresets: List<Preset>) = access.withLock {
         check(synchronizedWithDisk) {
             "preset collection has not been loaded successfully; reload before saving"
         }
@@ -53,7 +53,7 @@ class PresetRepository internal constructor(
             "preset file path is unavailable after a successful load"
         }
         val updated = presetFile.copy(presets = newPresets)
-        saver(file, updated)
+        withContext(Dispatchers.IO) { saver(file, updated) }
         savedFilePath = file
         presetFile = updated
     }

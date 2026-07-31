@@ -1,10 +1,12 @@
 package com.submodule.branchswitcher.ui
 
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
+import kotlinx.coroutines.withContext
 
 /**
  * Limits concurrent branch discovery across every preset editor in one Tool Window.
@@ -21,7 +23,7 @@ internal class BranchLoadCoordinator(
     fun launch(block: suspend () -> Unit): Job =
         scope.launch {
             permits.withPermit {
-                block()
+                withContext(Dispatchers.IO) { block() }
             }
         }
 

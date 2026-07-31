@@ -31,8 +31,21 @@ class SwitchPresetAction : AnAction() {
     override fun actionPerformed(e: AnActionEvent) {
         val project = e.project ?: return
         val service = project.service<BranchSwitcherService>()
-        val loadResult = service.loadPresets()
-        val presets = service.presets
+        service.scope.launch {
+            val loadResult = service.loadPresets()
+            val presets = service.presets.toList()
+            project.invokeLaterIfAlive {
+                choosePreset(project, service, loadResult, presets)
+            }
+        }
+    }
+
+    private fun choosePreset(
+        project: Project,
+        service: BranchSwitcherService,
+        loadResult: Result<*>,
+        presets: List<Preset>,
+    ) {
         when (shortcutPresetLoadDecision(loadResult.isSuccess, presets.size)) {
             ShortcutPresetLoadDecision.LoadFailed -> {
                 Notifier.error(project, Bundle.msg("preset.load.failed"),

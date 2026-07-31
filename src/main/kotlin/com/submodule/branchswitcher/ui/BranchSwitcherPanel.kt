@@ -292,7 +292,7 @@ class BranchSwitcherPanel(
         }
         val request = stateDetector.begin(root, repositoryPaths)
         val pinnedEditors = currentEditors.toList()
-        service.scope.launch {
+        service.scope.launch(kotlinx.coroutines.Dispatchers.IO) {
             val snapshot = stateDetector.detect(request)
             project.invokeLaterIfAlive {
                 if (!stateDetector.isLatest(snapshot)) return@invokeLaterIfAlive

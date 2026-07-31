@@ -62,7 +62,7 @@ object TaskBridge {
         title: String,
         canBeCancelled: Boolean,
         block: (ProgressIndicator) -> T,
-    ): T = withContext(Dispatchers.Default) {
+    ): T = withContext(Dispatchers.IO) {
         ProgressManager.getInstance().runProcessWithProgressSynchronously(
             object : ThrowableComputable<T, Exception> {
                 override fun compute(): T = block(ProgressManager.getInstance().progressIndicator)

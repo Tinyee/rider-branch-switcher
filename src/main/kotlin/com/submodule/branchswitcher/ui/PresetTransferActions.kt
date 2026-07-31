@@ -20,7 +20,7 @@ internal class PresetTransferActions(
     private val gitRoot: () -> Path?,
     private val log: AppLogger,
     private val host: PresetCollectionHost,
-    private val persist: (List<Preset>) -> Boolean,
+    private val persist: (List<Preset>, (Boolean) -> Unit) -> Unit,
 ) {
     @Suppress("TooGenericExceptionCaught") // Gson and the system clipboard expose unrelated failure types
     fun exportPresets() {
@@ -82,16 +82,18 @@ internal class PresetTransferActions(
             }
             val root = gitRoot() ?: return
             val combined = host.editors.map { it.currentPreset() } + result.presets
-            if (!persist(combined)) return
-            result.presets.forEach { host.addEditor(root, it) }
-            host.refreshParent()
-            log.debug("[imported] ${result.presets.size} preset(s) from clipboard")
-            host.notifyStateChanged()
-            Notifier.info(
-                project,
-                Bundle.msg("notify.import.complete"),
-                Bundle.msg("notify.imported", result.presets.size),
-            )
+            persist(combined) persisted@{ saved ->
+                if (!saved) return@persisted
+                result.presets.forEach { host.addEditor(root, it) }
+                host.refreshParent()
+                log.debug("[imported] ${result.presets.size} preset(s) from clipboard")
+                host.notifyStateChanged()
+                Notifier.info(
+                    project,
+                    Bundle.msg("notify.import.complete"),
+                    Bundle.msg("notify.imported", result.presets.size),
+                )
+            }
         } catch (e: Exception) {
             log.error("[import] error: ${e.message}")
             Messages.showWarningDialog(

@@ -131,9 +131,9 @@ class BranchSwitcherService(
 
     val presets: List<Preset> get() = presetRepo.presets
 
-    fun loadPresets(): Result<Pair<Path, PresetFile>> = presetRepo.load()
+    suspend fun loadPresets(): Result<Pair<Path, PresetFile>> = presetRepo.load()
 
-    fun savePresets(presets: List<Preset>) = presetRepo.save(presets)
+    suspend fun savePresets(presets: List<Preset>) = presetRepo.save(presets)
 
     // -- Switch history for undo support (max 5 entries, persisted across restarts) --
 
