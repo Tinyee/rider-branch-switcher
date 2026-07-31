@@ -10,6 +10,8 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
 import java.lang.reflect.Proxy
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import javax.swing.JComboBox
 import javax.swing.JTextField
 
@@ -73,15 +75,20 @@ class BranchComboUtilTest {
         val combo = displayableCombo()
         var starts = 0
         var ends = 0
+        val finished = CountDownLatch(1)
 
         loadComboBranches(
             combo, File("."), "dev", { branchGit { listOf("main", "dev") } },
             BranchLoadCoordinator(CoroutineScope(Dispatchers.Unconfined)), createStringAppender {},
             onLoadStart = { starts++ },
-            onLoadEnd = { ends++ },
+            onLoadEnd = {
+                ends++
+                finished.countDown()
+            },
             scheduleUi = { it() },
         )
 
+        assertTrue("branch load should finish", finished.await(5, TimeUnit.SECONDS))
         assertEquals(1, starts)
         assertEquals(1, ends)
         assertTrue(combo.isEnabled)
@@ -93,15 +100,20 @@ class BranchComboUtilTest {
         val combo = displayableCombo()
         val logs = mutableListOf<String>()
         var ends = 0
+        val finished = CountDownLatch(1)
 
         loadComboBranches(
             combo, File("."), "dev", { branchGit { error("broken") } },
             BranchLoadCoordinator(CoroutineScope(Dispatchers.Unconfined)), createStringAppender { logs += it },
             onLoadStart = {},
-            onLoadEnd = { ends++ },
+            onLoadEnd = {
+                ends++
+                finished.countDown()
+            },
             scheduleUi = { it() },
         )
 
+        assertTrue("failed branch load should finish", finished.await(5, TimeUnit.SECONDS))
         assertEquals(1, ends)
         assertTrue(combo.isEnabled)
         assertEquals(listOf("dev"), (0 until combo.itemCount).map(combo::getItemAt))
@@ -112,15 +124,20 @@ class BranchComboUtilTest {
     fun `disposed combo is not modified but completes loading`() {
         val combo = displayableCombo(displayable = false)
         var ends = 0
+        val finished = CountDownLatch(1)
 
         loadComboBranches(
             combo, File("."), "dev", { branchGit { listOf("main") } },
             BranchLoadCoordinator(CoroutineScope(Dispatchers.Unconfined)), createStringAppender {},
             onLoadStart = {},
-            onLoadEnd = { ends++ },
+            onLoadEnd = {
+                ends++
+                finished.countDown()
+            },
             scheduleUi = { it() },
         )
 
+        assertTrue("disposed combo load should finish", finished.await(5, TimeUnit.SECONDS))
         assertEquals(1, ends)
         assertFalse(combo.isEnabled)
         assertEquals(listOf(LOADING_BRANCH), (0 until combo.itemCount).map(combo::getItemAt))

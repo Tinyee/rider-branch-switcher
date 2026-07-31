@@ -13,6 +13,8 @@ import java.awt.Container
 import java.lang.reflect.Proxy
 import java.nio.file.Files
 import java.nio.file.Paths
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import javax.swing.JLabel
 import javax.swing.JPanel
 
@@ -64,6 +66,7 @@ class SubmoduleRowManagerTest {
         val root = Files.createTempDirectory("submodule-row")
         Files.createDirectories(root.resolve("SubA"))
         val body = JPanel().apply { add(JPanel()) }
+        val finished = CountDownLatch(1)
         val manager = SubmoduleRowManager(
             gitRoot = root,
             gitClient = { failingCurrentBranchGit() },
@@ -71,12 +74,16 @@ class SubmoduleRowManagerTest {
             body = body,
             log = createStringAppender {},
             onDirty = {},
-            scheduleUi = { it() },
+            scheduleUi = {
+                it()
+                finished.countDown()
+            },
         )
         manager.onFirstExpand()
 
         manager.addSubmoduleFromMenu("SubA")
 
+        assertTrue("row branch load should finish", finished.await(5, TimeUnit.SECONDS))
         requireNotNull(manager.subRows["SubA"])
         assertEquals(0, manager.loadingCount)
     }
