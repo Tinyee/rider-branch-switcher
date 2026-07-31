@@ -48,7 +48,7 @@ internal class PresetEditor(
     initialPreset: Preset,
     private val log: AppLogger,
     private val onSwitch: (Preset) -> Unit,
-    private val onSave: (Preset) -> Unit,
+    private val onSave: (Preset, (Boolean) -> Unit) -> Unit,
     private val onDelete: () -> Unit,
     private val onDerive: (preset: Preset, branchName: String) -> Unit = { _, _ -> },
     private val nameValidator: (String) -> Boolean = { true },
@@ -100,6 +100,7 @@ internal class PresetEditor(
     }
     private var branchesLoaded = false
     private var isInitializing = true
+    private var persistenceInProgress = false
 
     private val submoduleManager = SubmoduleRowManager(
         gitRoot, gitClient, branchLoads, body, log, ::updateUnsavedState, onSwitchOnly,
@@ -236,17 +237,26 @@ internal class PresetEditor(
     }
 
     private fun saveChanges() {
+        if (persistenceInProgress) return
         val editedPreset = buildEditedPreset()
-        try {
-            onSave(editedPreset)
-            savedPreset = editedPreset
-            submoduleManager.removeDeletedRows()
-            body.revalidate()
-            body.repaint()
-        } catch (e: Exception) {
-            log.error("save failed: ${e.message}")
-        }
+        persistenceInProgress = true
         updateUnsavedState()
+        try {
+            onSave(editedPreset) { saved ->
+                if (saved) {
+                    savedPreset = editedPreset
+                    submoduleManager.removeDeletedRows()
+                    body.revalidate()
+                    body.repaint()
+                }
+                persistenceInProgress = false
+                updateUnsavedState()
+            }
+        } catch (e: Exception) {
+            persistenceInProgress = false
+            log.error("save failed: ${e.message}")
+            updateUnsavedState()
+        }
     }
 
     private fun createMainRepositoryRow(): JPanel {
@@ -399,7 +409,7 @@ internal class PresetEditor(
     }
 
     private fun updateUnsavedState() {
-        if (isInitializing || loadingCount > 0) {
+        if (isInitializing || loadingCount > 0 || persistenceInProgress) {
             saveBtn.isEnabled = false
             revertBtn.isEnabled = false
             return
@@ -418,6 +428,7 @@ internal class PresetEditor(
     }
 
     private fun rename() {
+        if (persistenceInProgress) return
         val requestedName = com.intellij.openapi.ui.Messages.showInputDialog(
             Bundle.msg("dialog.rename") + ":",
             Bundle.msg("dialog.rename"),
@@ -434,11 +445,18 @@ internal class PresetEditor(
             return
         }
         val renamed = savedPreset.copy(name = newName)
+        persistenceInProgress = true
+        updateUnsavedState()
         try {
-            onSave(renamed)
-            updatePresetName(newName)
+            onSave(renamed) { saved ->
+                if (saved) updatePresetName(newName)
+                persistenceInProgress = false
+                updateUnsavedState()
+            }
         } catch (e: Exception) {
+            persistenceInProgress = false
             log.error("rename failed: ${e.message}")
+            updateUnsavedState()
         }
     }
 

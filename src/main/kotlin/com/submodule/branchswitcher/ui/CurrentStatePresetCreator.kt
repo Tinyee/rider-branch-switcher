@@ -21,7 +21,7 @@ internal class CurrentStatePresetCreator(
     private val gitRoot: () -> Path?,
     private val log: AppLogger,
     private val host: PresetCollectionHost,
-    private val persist: (List<Preset>) -> Boolean,
+    private val persist: (List<Preset>, (Boolean) -> Unit) -> Unit,
     private val nameValidator: () -> InputValidator,
 ) {
     fun create() {
@@ -70,15 +70,16 @@ internal class CurrentStatePresetCreator(
             main = mainBranch,
             submodules = currentState.submodules,
         )
-        if (!persist(host.editors.map { it.currentPreset() } + newPreset)) return
-
-        host.addEditor(root, newPreset)
-        host.refreshParent()
-        log.debug(
-            "[added from current] $name -> main=$mainBranch, " +
-                "${currentState.submodules.size} submodule(s)",
-        )
-        host.notifyStateChanged()
+        persist(host.editors.map { it.currentPreset() } + newPreset) persisted@{ saved ->
+            if (!saved) return@persisted
+            host.addEditor(root, newPreset)
+            host.refreshParent()
+            log.debug(
+                "[added from current] $name -> main=$mainBranch, " +
+                    "${currentState.submodules.size} submodule(s)",
+            )
+            host.notifyStateChanged()
+        }
     }
 
     @Suppress("TooGenericExceptionCaught") // modal and Git adapters report non-cancellation failures uniformly

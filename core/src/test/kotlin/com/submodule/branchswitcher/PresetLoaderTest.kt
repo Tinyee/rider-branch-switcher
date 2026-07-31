@@ -98,37 +98,26 @@ class PresetLoaderTest {
         assertEquals(ideaFile, found)
     }
 
-    // ---- ensureFile ----
+    // ---- defaultFile ----
 
     @Test
-    fun `ensureFile creates new file when none exists`() {
-        val file = PresetLoader.ensureFile(tmpDir)
-        assertTrue(Files.exists(file))
-        // ensureFile uses IDEA_FILE_NAME = "branch-presets.json"
-        assertEquals("branch-presets.json", file.fileName.toString())
-        val content = Files.readString(file).trim()
-        assertTrue(content.contains(""""presets": []"""))
-    }
+    fun `defaultFile points to dot-idea without creating it`() {
+        val file = PresetLoader.defaultFile(tmpDir)
 
-    @Test
-    fun `ensureFile returns existing file`() {
-        val ideaDir = Files.createDirectories(tmpDir.resolve(".idea"))
-        val existing = ideaDir.resolve("branch-presets.json")
-        Files.writeString(existing, """{"presets":[{"name":"test","main":"dev"}]}""")
-
-        val file = PresetLoader.ensureFile(tmpDir)
-        assertEquals(existing, file)
+        assertEquals(tmpDir.resolve(".idea/branch-presets.json"), file)
+        assertFalse(Files.exists(file))
     }
 
     // ---- load ----
 
     @Test
-    fun `load creates and reads empty presets`() {
+    fun `load returns empty presets without creating a file`() {
         val result = PresetLoader.load(tmpDir)
         assertTrue(result.isSuccess)
         val (file, parsed) = result.getOrThrow()
-        assertNotNull(file)
+        assertEquals(PresetLoader.defaultFile(tmpDir), file)
         assertTrue(parsed.presets.isEmpty())
+        assertFalse(Files.exists(file))
     }
 
     @Test
@@ -162,42 +151,18 @@ class PresetLoaderTest {
     }
 
     @Test
-    fun `load writes generated id back to legacy JSON`() {
+    fun `load normalizes legacy id without modifying JSON`() {
         val ideaDir = Files.createDirectories(tmpDir.resolve(".idea"))
         val file = ideaDir.resolve("branch-presets.json")
-        Files.writeString(file, """{"presets":[{"name":"legacy","main":"main"}]}""")
+        val originalJson = """{"presets":[{"name":"legacy","main":"main"}]}"""
+        Files.writeString(file, originalJson)
 
         val result = PresetLoader.load(tmpDir)
 
         assertTrue(result.isSuccess)
         val generatedId = result.getOrThrow().second.presets.single().id
-        assertTrue(Files.readString(file).contains(generatedId))
-    }
-
-    @Test
-    fun `migration save failure is reported without preventing legacy JSON load`() {
-        val ideaDir = Files.createDirectories(tmpDir.resolve(".idea"))
-        val file = ideaDir.resolve("branch-presets.json")
-        Files.writeString(
-            file,
-            """{"presets":[{"name":"legacy","main":"main"}]}""",
-        )
-        var reportedFailure: Exception? = null
-        var reportedFile: Path? = null
-
-        val result = PresetLoader.load(
-            ideBase = tmpDir,
-            onMigrationFailure = { path, error ->
-                reportedFile = path
-                reportedFailure = error
-            },
-            migrationSaver = { _, _ -> throw java.io.IOException("read only") },
-        )
-
-        assertTrue(result.isSuccess)
-        assertEquals("legacy", result.getOrThrow().second.presets.single().name)
-        assertEquals(file, reportedFile)
-        assertEquals("read only", reportedFailure?.message)
+        assertTrue(generatedId.isNotBlank())
+        assertEquals(originalJson, Files.readString(file))
     }
 
     @Test
@@ -221,39 +186,33 @@ class PresetLoaderTest {
     }
 
     @Test
-    fun `load writes normalized ids back to JSON`() {
+    fun `load normalizes duplicate ids without modifying JSON`() {
         val ideaDir = Files.createDirectories(tmpDir.resolve(".idea"))
         val file = ideaDir.resolve("branch-presets.json")
-        Files.writeString(
-            file,
-            """{"presets":[
+        val originalJson = """{"presets":[
                 {"id":"same","name":"a","main":"main"},
                 {"id":"same","name":"b","main":"main"}
-            ]}""",
-        )
+            ]}"""
+        Files.writeString(file, originalJson)
 
         val presets = PresetLoader.load(tmpDir).getOrThrow().second.presets
-        val persisted = Files.readString(file)
 
-        assertTrue(persisted.contains(presets[0].id))
-        assertTrue(persisted.contains(presets[1].id))
         assertNotEquals(presets[0].id, presets[1].id)
+        assertEquals(originalJson, Files.readString(file))
     }
 
     @Test
-    fun `load does not save when all ids are already valid and unique`() {
+    fun `load preserves valid unique ids without modifying JSON`() {
         val ideaDir = Files.createDirectories(tmpDir.resolve(".idea"))
-        Files.writeString(
-            ideaDir.resolve("branch-presets.json"),
-            """{"presets":[{"id":"stable","name":"dev","main":"main"}]}""",
-        )
-        var saveCalls = 0
+        val file = ideaDir.resolve("branch-presets.json")
+        val originalJson = """{"presets":[{"id":"stable","name":"dev","main":"main"}]}"""
+        Files.writeString(file, originalJson)
 
-        val result = PresetLoader.load(tmpDir) { _, _ -> saveCalls++ }
+        val result = PresetLoader.load(tmpDir)
 
         assertTrue(result.isSuccess)
-        assertEquals(0, saveCalls)
         assertEquals("stable", result.getOrThrow().second.presets.single().id)
+        assertEquals(originalJson, Files.readString(file))
     }
 
     @Test
@@ -300,7 +259,7 @@ class PresetLoaderTest {
             Preset("a", "main", mapOf("SubA" to "dev")),
             Preset("b", "dev", mapOf("SubA" to "main", "SubB" to "feature")),
         ))
-        val file = PresetLoader.ensureFile(tmpDir)
+        val file = PresetLoader.defaultFile(tmpDir)
         PresetLoader.save(file, original)
 
         val result = PresetLoader.load(tmpDir)
@@ -322,8 +281,8 @@ class PresetLoaderTest {
 
     @Test
     fun `save overwrites existing file`() {
-        val file = PresetLoader.ensureFile(tmpDir)
-        Files.writeString(file, "old content")
+        val file = PresetLoader.defaultFile(tmpDir)
+        PresetLoader.save(file, PresetFile(listOf(Preset("old", "main"))))
 
         PresetLoader.save(file, PresetFile(listOf(Preset("new", "dev"))))
         val content = Files.readString(file)

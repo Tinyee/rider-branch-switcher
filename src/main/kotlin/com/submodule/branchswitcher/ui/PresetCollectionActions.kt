@@ -9,7 +9,11 @@ import com.submodule.branchswitcher.PresetLoader
 import com.submodule.branchswitcher.model.Preset
 import com.submodule.branchswitcher.log.AppLogger
 import com.submodule.branchswitcher.service.BranchSwitcherService
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.nio.file.Path
+import java.util.concurrent.atomic.AtomicBoolean
 
 internal interface PresetCollectionHost {
     val editors: List<PresetEditor>
@@ -31,6 +35,8 @@ internal class PresetCollectionActions(
     private val log: AppLogger,
     private val host: PresetCollectionHost,
 ) {
+    private val collectionOperationInProgress = AtomicBoolean(false)
+
     private val transferActions = PresetTransferActions(
         project = project,
         gitRoot = gitRoot,
@@ -50,45 +56,45 @@ internal class PresetCollectionActions(
 
     /** Load presets from file and rebuild the editor list. */
     fun reload() {
-        service.loadPresets()
-            .onSuccess { (file, parsed) ->
-                val root = gitRoot()
-                if (root == null) {
-                    log.error("git root not found")
-                    Notifier.error(project, Bundle.msg("plugin.title"), Bundle.msg("git.root.not.found"))
-                    return@onSuccess
+        if (!beginCollectionOperation()) return
+        service.scope.launch {
+            val result = service.loadPresets()
+            project.invokeLaterIfAlive {
+                collectionOperationInProgress.set(false)
+                result.onSuccess { (file, parsed) ->
+                    val root = gitRoot()
+                    if (root == null) {
+                        log.error("git root not found")
+                        Notifier.error(project, Bundle.msg("plugin.title"), Bundle.msg("git.root.not.found"))
+                        return@onSuccess
+                    }
+                    host.clearEditors()
+                    if (parsed.presets.isEmpty()) {
+                        host.showEmptyState()
+                    } else {
+                        parsed.presets.forEach { host.addEditor(root, it) }
+                    }
+                    log.debug("loaded ${parsed.presets.size} preset(s) from $file")
+                    host.refreshList()
+                    host.notifyStateChanged()
+                }.onFailure {
+                    log.error("${it.message}")
+                    Notifier.error(
+                        project,
+                        Bundle.msg("preset.load.failed"),
+                        it.message ?: Bundle.msg("error.unknown"),
+                    )
                 }
-                host.clearEditors()
-                if (parsed.presets.isEmpty()) {
-                    host.showEmptyState()
-                } else {
-                    parsed.presets.forEach { host.addEditor(root, it) }
-                }
-                log.debug("loaded ${parsed.presets.size} preset(s) from $file")
-                host.refreshList()
-                host.notifyStateChanged()
             }
-            .onFailure {
-                log.error("${it.message}")
-                Notifier.error(
-                    project,
-                    Bundle.msg("preset.load.failed"),
-                    it.message ?: Bundle.msg("error.unknown"),
-                )
-            }
+        }
     }
 
-    @Suppress("TooGenericExceptionCaught") // persistence adapters may surface IO or serialization failures
-    fun saveEditor(editor: PresetEditor, pendingPreset: Preset) {
-        try {
-            service.savePresets(host.editors.map {
-                if (it === editor) pendingPreset else it.currentPreset()
-            })
-            log.debug("[saved]")
-            host.notifyStateChanged()
-        } catch (e: Exception) {
-            reportSaveFailure(e)
-            throw e
+    fun saveEditor(editor: PresetEditor, pendingPreset: Preset, onComplete: (Boolean) -> Unit) {
+        persistOrReport(
+            host.editors.map { if (it === editor) pendingPreset else it.currentPreset() },
+        ) { saved ->
+            if (saved) host.notifyStateChanged()
+            onComplete(saved)
         }
     }
 
@@ -102,10 +108,12 @@ internal class PresetCollectionActions(
         )
         if (confirm != Messages.YES) return
         val remaining = host.editors.filter { it !== editor }.map { it.currentPreset() }
-        if (!persistOrReport(remaining)) return
-        host.removeEditor(editor)
-        log.debug("[deleted] $name")
-        host.notifyStateChanged()
+        persistOrReport(remaining) { saved ->
+            if (!saved) return@persistOrReport
+            host.removeEditor(editor)
+            log.debug("[deleted] $name")
+            host.notifyStateChanged()
+        }
     }
 
     fun addPreset() {
@@ -125,11 +133,13 @@ internal class PresetCollectionActions(
             submodules = template?.submodules ?: emptyMap(),
         )
         val root = gitRoot() ?: return
-        if (!persistOrReport(host.editors.map { it.currentPreset() } + newPreset)) return
-        host.addEditor(root, newPreset)
-        host.refreshParent()
-        log.debug("[added] $name (submodule branches can be edited after expanding)")
-        host.notifyStateChanged()
+        persistOrReport(host.editors.map { it.currentPreset() } + newPreset) { saved ->
+            if (!saved) return@persistOrReport
+            host.addEditor(root, newPreset)
+            host.refreshParent()
+            log.debug("[added] $name (submodule branches can be edited after expanding)")
+            host.notifyStateChanged()
+        }
     }
 
     fun addPresetFromCurrent() {
@@ -138,19 +148,23 @@ internal class PresetCollectionActions(
 
     fun openConfig() {
         val base = project.basePath?.let { java.nio.file.Paths.get(it) } ?: return
-        val file = PresetLoader.resolveFile(base)
-        if (file == null) {
-            Messages.showWarningDialog(
-                project,
-                "${Bundle.msg("preset.file.not.found")}\n$base/.idea/${PresetLoader.IDEA_FILE_NAME}",
-                Bundle.msg("plugin.title"),
-            )
-            return
-        }
-        val virtualFile = com.intellij.openapi.vfs.LocalFileSystem.getInstance()
-            .refreshAndFindFileByPath(file.toString())
-        if (virtualFile != null) {
-            com.intellij.openapi.fileEditor.FileEditorManager.getInstance(project).openFile(virtualFile, true)
+        service.scope.launch {
+            val file = withContext(Dispatchers.IO) { PresetLoader.resolveFile(base) }
+            project.invokeLaterIfAlive {
+                if (file == null) {
+                    Messages.showWarningDialog(
+                        project,
+                        "${Bundle.msg("preset.file.not.found")}\n$base/.idea/${PresetLoader.IDEA_FILE_NAME}",
+                        Bundle.msg("plugin.title"),
+                    )
+                    return@invokeLaterIfAlive
+                }
+                val virtualFile = com.intellij.openapi.vfs.LocalFileSystem.getInstance()
+                    .refreshAndFindFileByPath(file.toString())
+                if (virtualFile != null) {
+                    com.intellij.openapi.fileEditor.FileEditorManager.getInstance(project).openFile(virtualFile, true)
+                }
+            }
         }
     }
 
@@ -172,13 +186,41 @@ internal class PresetCollectionActions(
     }
 
     @Suppress("TooGenericExceptionCaught") // repository save may fail through IO or serialization adapters
-    private fun persistOrReport(presets: List<Preset>): Boolean = try {
-        service.savePresets(presets)
-        log.debug("[saved]")
-        true
-    } catch (e: Exception) {
-        reportSaveFailure(e)
-        false
+    private fun persistOrReport(presets: List<Preset>, onComplete: (Boolean) -> Unit) {
+        if (!beginCollectionOperation()) {
+            onComplete(false)
+            return
+        }
+        val snapshot = presets.toList()
+        service.scope.launch {
+            val failure = try {
+                service.savePresets(snapshot)
+                null
+            } catch (e: Exception) {
+                e
+            }
+            project.invokeLaterIfAlive {
+                collectionOperationInProgress.set(false)
+                if (failure == null) {
+                    log.debug("[saved]")
+                    onComplete(true)
+                } else {
+                    reportSaveFailure(failure)
+                    onComplete(false)
+                }
+            }
+        }
+    }
+
+    private fun beginCollectionOperation(): Boolean {
+        if (collectionOperationInProgress.compareAndSet(false, true)) return true
+        log.warn("preset collection operation ignored while another operation is running")
+        Notifier.warn(
+            project,
+            Bundle.msg("notify.write.busy"),
+            Bundle.msg("notify.write.busy.msg"),
+        )
+        return false
     }
 
     private fun reportSaveFailure(error: Exception) {

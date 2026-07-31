@@ -73,7 +73,7 @@ internal class PresetListManager(
             initialPreset = preset,
             log = log,
             onSwitch = onSwitch,
-            onSave = { updated -> actions.saveEditor(editor, updated) },
+            onSave = { updated, onComplete -> actions.saveEditor(editor, updated, onComplete) },
             onDelete = { actions.deleteEditor(editor) },
             onDerive = { draft, branchName -> onDerive(root, draft, branchName) },
             nameValidator = { newName ->

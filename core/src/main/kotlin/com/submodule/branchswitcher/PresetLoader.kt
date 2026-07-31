@@ -44,34 +44,26 @@ object PresetLoader {
         return null
     }
 
-    fun ensureFile(ideBase: Path): Path {
-        resolveFile(ideBase)?.let { return it }
-        val target = ideBase.resolve(".idea").resolve(IDEA_FILE_NAME)
-        Files.createDirectories(target.parent)
-        Files.writeString(target, DEFAULT_JSON)
-        return target
-    }
+    /** Default location used by the first explicit save when no preset file exists. */
+    fun defaultFile(ideBase: Path): Path =
+        ideBase.resolve(".idea").resolve(IDEA_FILE_NAME)
 
-    @Suppress("TooGenericExceptionCaught") // migration persistence is an injected adapter boundary
+    /**
+     * Loads presets without modifying the filesystem.
+     *
+     * Missing files produce an empty in-memory collection whose path points at
+     * [defaultFile]. Legacy IDs are normalized in memory and persist on the
+     * next explicit save.
+     */
     fun load(
         ideBase: Path,
-        onMigrationFailure: (Path, Exception) -> Unit = { _, _ -> },
-        migrationSaver: (Path, PresetFile) -> Unit = ::save,
     ): Result<Pair<Path, PresetFile>> {
         return runCatching {
-            val file = ensureFile(ideBase)
+            val file = resolveFile(ideBase) ?: defaultFile(ideBase)
+            if (!Files.exists(file)) return@runCatching file to PresetFile()
             val text = Files.readString(file)
             val dto = Gson().fromJson(text, PresetFileDto::class.java) ?: PresetFileDto()
-            val (parsed, needsMigration) = normalizePresetIds(dto)
-            // If any preset was auto-assigned an id (old JSON), write back immediately
-            // so that history entries referencing the id survive IDE restarts.
-            if (needsMigration) {
-                try {
-                    migrationSaver(file, parsed)
-                } catch (e: Exception) {
-                    onMigrationFailure(file, e)
-                }
-            }
+            val (parsed, _) = normalizePresetIds(dto)
             file to parsed
         }.recoverCatching { e ->
             when (e) {
@@ -129,7 +121,4 @@ object PresetLoader {
             }
         }
     }
-
-    private val DEFAULT_JSON = com.google.gson.GsonBuilder().setPrettyPrinting().create()
-        .toJson(com.submodule.branchswitcher.model.PresetFile()) + "\n"
 }
