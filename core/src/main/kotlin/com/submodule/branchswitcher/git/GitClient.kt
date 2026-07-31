@@ -17,6 +17,7 @@ data class GitResult(
             stderr == "interrupted" -> GitFailureKind.INTERRUPTED
             stderr.startsWith("timeout after ") -> GitFailureKind.TIMEOUT
             stderr.startsWith("failed to start: ") -> GitFailureKind.START_FAILED
+            stderr.startsWith("output limit exceeded: ") -> GitFailureKind.OUTPUT_LIMIT
             else -> GitFailureKind.GIT_FAILED
         }
 
@@ -27,7 +28,7 @@ data class GitResult(
     }
 }
 
-enum class GitFailureKind { NONE, CANCELLED, INTERRUPTED, TIMEOUT, START_FAILED, GIT_FAILED }
+enum class GitFailureKind { NONE, CANCELLED, INTERRUPTED, TIMEOUT, START_FAILED, OUTPUT_LIMIT, GIT_FAILED }
 
 /** A Git read/query failed and cannot be safely interpreted as a normal negative result. */
 class GitQueryException(val result: GitResult) : RuntimeException(result.diagnostic())

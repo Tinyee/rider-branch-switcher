@@ -37,6 +37,13 @@ class GitResultTest {
     }
 
     @Test
+    fun `stdout limit has a distinct failure kind`() {
+        val result = GitResult("git status", -1, "", "output limit exceeded: stdout exceeded 10 bytes")
+
+        assertEquals(GitFailureKind.OUTPUT_LIMIT, result.failureKind)
+    }
+
+    @Test
     fun `diagnostic bounds multi-line stderr`() {
         val result = GitResult("git checkout dev", 1, "", "first\nsecond\nthird")
 
