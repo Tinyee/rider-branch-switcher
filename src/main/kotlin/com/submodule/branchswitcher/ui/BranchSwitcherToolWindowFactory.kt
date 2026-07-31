@@ -18,6 +18,7 @@ class BranchSwitcherToolWindowFactory : ToolWindowFactory {
 
     override fun createToolWindowContent(project: Project, toolWindow: ToolWindow) {
         val service = project.service<BranchSwitcherService>()
+        toolWindow.title = Bundle.msg("toolwindow.stripe.SubmoduleBranches")
         val panel = BranchSwitcherPanel(project, service)
         val content = ContentFactory.getInstance().createContent(panel, "", false)
         content.setDisposer(panel)

@@ -72,7 +72,7 @@ intellijPlatform {
     pluginConfiguration {
         ideaVersion {
             sinceBuild = providers.gradleProperty("plugin.sinceBuild").get()
-            untilBuild = providers.gradleProperty("plugin.untilBuild").get()
+            providers.gradleProperty("plugin.untilBuild").orNull?.let { untilBuild.set(it) }
         }
     }
     publishing {
