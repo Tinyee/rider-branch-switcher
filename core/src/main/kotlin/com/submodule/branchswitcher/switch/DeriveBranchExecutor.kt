@@ -59,7 +59,12 @@ class DeriveBranchExecutor(
         val dirty = mutableListOf<String>()
         val branchMismatch = mutableListOf<String>()
         val probeFailures = mutableListOf<String>()
-        val registeredPaths = git.registeredSubmodulePaths(projectRoot.toFile())
+        val root = projectRoot.toFile()
+        val registrations = git.registeredSubmodules(root)
+        val registeredPaths = registrations
+            ?.mapTo(linkedSetOf()) { registration -> registration.path }
+            ?: git.registeredSubmodulePaths(root)
+        val registrationsByPath = registrations?.associateBy { registration -> registration.path }.orEmpty()
 
         for (target in targets) {
             if (isCancelled()) break
@@ -84,6 +89,7 @@ class DeriveBranchExecutor(
                     target.path,
                     repositoryDirectory,
                     git.repositoryIdentity(repositoryDirectory),
+                    expectedSubmoduleGitDirectory(root, registrationsByPath[target.path], git),
                 ) == SubmoduleWorktreeStatus.NOT_ASSOCIATED
             ) {
                 log.warn("[derive] $repositoryLabel: repository is not associated with its superproject - blocked")

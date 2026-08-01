@@ -102,6 +102,8 @@ data class SwitchContext(
     /** Callback for submodule init confirmation. The main module provides an IntelliJ dialog;
      *  core tests use a simple lambda. Returns false if init was declined. */
     val onConfirmSubmoduleInit: ((path: String) -> Boolean)? = null,
+    /** Pre-switch repository identities used by later topology safety gates. */
+    val checkpoint: Map<String, CheckpointEntry> = emptyMap(),
 )
 
 /**

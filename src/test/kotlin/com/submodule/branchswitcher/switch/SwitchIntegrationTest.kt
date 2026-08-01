@@ -297,6 +297,86 @@ class SwitchIntegrationTest {
     }
 
     @Test
+    fun `swapped submodule paths never operate on the worktree from the old path`() {
+        val submoduleA = createRepo(tmpDir, "submodule-a")
+        val submoduleB = createRepo(tmpDir, "submodule-b")
+        createBranch(submoduleA, "release-a")
+        createBranch(submoduleB, "release-b")
+
+        val mainAuthor = createRepo(tmpDir, "main-author")
+        addSubmodule(mainAuthor, submoduleA, "SubA")
+        addSubmodule(mainAuthor, submoduleB, "SubB")
+        gitOk(mainAuthor, "checkout", "-b", "swapped")
+        gitOk(mainAuthor, "mv", "SubA", "SwapTemp")
+        gitOk(mainAuthor, "mv", "SubB", "SubA")
+        gitOk(mainAuthor, "mv", "SwapTemp", "SubB")
+        gitOk(mainAuthor, "commit", "-m", "swap submodule paths")
+        gitOk(mainAuthor, "checkout", "main")
+
+        val mainRemote = createBareClone(mainAuthor, "main-remote.git")
+        val local = cloneRepo(mainRemote, "project")
+        gitOk(local, "-c", "protocol.file.allow=always", "submodule", "update", "--init", "--recursive")
+        val oldAWorktree = File(local, "SubA")
+        val oldBWorktree = File(local, "SubB")
+
+        val (ok, logs) = runSwitch(
+            local,
+            Preset(
+                "swapped",
+                "swapped",
+                linkedMapOf("SubA" to "release-b", "SubB" to "release-a"),
+            ),
+            SwitchOptions(DirtyAction.Force, pull = false, fetchFirst = false),
+        )
+
+        assertFalse("Old worktrees must be rejected after their registered paths are swapped", ok)
+        assertNotEquals("release-b", git.currentBranch(oldAWorktree))
+        assertNotEquals("release-a", git.currentBranch(oldBWorktree))
+        assertTrue(logs.any { it.contains("not associated with its superproject") })
+    }
+
+    @Test
+    fun `repository replacement at the same submodule path never reuses the old worktree`() {
+        val originalSubmodule = createRepo(tmpDir, "original-submodule")
+        val replacementSubmodule = createRepo(tmpDir, "replacement-submodule")
+        createBranch(replacementSubmodule, "replacement-release")
+
+        val mainAuthor = createRepo(tmpDir, "main-author")
+        addSubmodule(mainAuthor, originalSubmodule, "SubA")
+        gitOk(mainAuthor, "checkout", "-b", "replacement")
+        val replacementUrl = mainAuthor.toPath()
+            .relativize(replacementSubmodule.toPath())
+            .toString()
+            .replace('\\', '/')
+        gitOk(
+            mainAuthor,
+            "config",
+            "-f",
+            ".gitmodules",
+            "submodule.SubA.url",
+            replacementUrl,
+        )
+        gitOk(mainAuthor, "add", ".gitmodules")
+        gitOk(mainAuthor, "commit", "-m", "replace submodule repository")
+        gitOk(mainAuthor, "checkout", "main")
+
+        val mainRemote = createBareClone(mainAuthor, "main-remote.git")
+        val local = cloneRepo(mainRemote, "project")
+        gitOk(local, "-c", "protocol.file.allow=always", "submodule", "update", "--init", "--recursive")
+        val oldWorktree = File(local, "SubA")
+
+        val (ok, logs) = runSwitch(
+            local,
+            Preset("replacement", "replacement", mapOf("SubA" to "replacement-release")),
+            SwitchOptions(DirtyAction.Force, pull = false, fetchFirst = false),
+        )
+
+        assertFalse("Changing the registered repository must not reuse its old worktree", ok)
+        assertNotEquals("replacement-release", git.currentBranch(oldWorktree))
+        assertTrue(logs.any { it.contains("registered repository remote changed") })
+    }
+
+    @Test
     fun `registered path occupied by a standalone repository is never modified`() {
         val root = createRepo(tmpDir, "project")
         val expectedSubmodule = createRepo(tmpDir, "expected-submodule")

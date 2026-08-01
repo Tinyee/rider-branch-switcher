@@ -103,6 +103,12 @@ Recovery 不使用当前注册状态，因为主仓回滚后某个 checkpoint �
 checkpoint 还会记录规范化后的 Git 目录身份；如果同一路径后来被另一个仓库占用，
 Recovery 和 Derive rollback 会拒绝修改它。普通写入前也会确认已初始化子模块属于项目内的
 superproject，并使用父仓吸收后的外部 Git 元数据，而不是 worktree 内独立的 `.git` 目录。
+结构化注册信息还保留 `.gitmodules` section 名和直接父路径，worktree 必须匹配对应的
+`.git/modules/<section>`；因此两个子模块交换路径时不会操作旧 worktree。`submodule sync`
+之后的 remote URL 也必须与 checkpoint 一致，同一路径换成另一个仓库会被阻止。
+
+`.gitmodules` 通过 `git config --null --file` 读取，不再手工按行匹配。引号、注释、转义和
+损坏配置均使用 Git 自身的解析与错误语义。
 
 缺失子模块 init 成功后，路径会立刻写入 `SwitchState`。如果后面的 fetch、checkout
 或 pull 失败，恢复流程不会删除这个新工作区，因为它在切换前没有 checkpoint，自动删除还可能

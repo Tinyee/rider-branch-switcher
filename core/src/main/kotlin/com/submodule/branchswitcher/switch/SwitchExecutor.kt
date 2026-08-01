@@ -9,6 +9,7 @@ data class CheckpointEntry(
     val sha: String,
     val branch: String?,
     val repositoryId: String? = null,
+    val remoteUrl: String? = null,
 )
 
 enum class SwitchExecutionStatus {
@@ -71,19 +72,6 @@ class SwitchExecutor @JvmOverloads constructor(
         val options = request.options
         log.activity("=== switching to preset: ${preset.name} ===")
         var switchState = SwitchState()
-        val context = SwitchContext(
-            projectRoot = projectRoot,
-            preset = preset,
-            options = options,
-            git = git,
-            log = log,
-            cancellationHandle = cancellationHandle,
-            progressHandle = progressHandle,
-            cancelled = { cancelled?.invoke() == true || cancellationHandle?.isCanceled == true },
-            confirmBeforeInit = options.confirmBeforeInit,
-            onConfirmSubmoduleInit = onConfirmSubmoduleInit,
-        )
-
         // Fail closed: every existing repository needs a known branch and SHA
         // before the first mutation, otherwise rollback could only be partial.
         val switchCheckpoint = checkpointRecorder.record(preset)
@@ -97,6 +85,20 @@ class SwitchExecutor @JvmOverloads constructor(
                 failures = mapOf("." to "unable to record every existing repository"),
             )
         }
+
+        val context = SwitchContext(
+            projectRoot = projectRoot,
+            preset = preset,
+            options = options,
+            git = git,
+            log = log,
+            cancellationHandle = cancellationHandle,
+            progressHandle = progressHandle,
+            cancelled = { cancelled?.invoke() == true || cancellationHandle?.isCanceled == true },
+            confirmBeforeInit = options.confirmBeforeInit,
+            onConfirmSubmoduleInit = onConfirmSubmoduleInit,
+            checkpoint = switchCheckpoint,
+        )
 
         context.progressHandle?.isIndeterminate = false
 
