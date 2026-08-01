@@ -52,11 +52,9 @@ formal release metadata for each local build.
 
 ## Optional Diagnostics
 
-- `./gradlew benchmark` measures the real-Git 51-repository scenario without a
-  wall-clock assertion.
 - `./gradlew pitestCore` runs scoped mutation testing for pure decision logic.
 
-Both tasks are intentionally outside normal tests and `releaseCheck`.
+This task is intentionally outside normal tests and `releaseCheck`.
 
 ## Implementation And Review
 

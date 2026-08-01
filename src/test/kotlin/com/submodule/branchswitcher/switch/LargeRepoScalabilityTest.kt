@@ -20,8 +20,8 @@ import java.nio.file.Path
  *
  * Verifies that switch-pipeline Git calls scale linearly with submodule count.
  *
- * Wall-clock performance belongs in a separate benchmark task because it is too
- * environment-dependent for the regular test suite.
+ * Wall-clock thresholds are intentionally omitted because they are too
+ * environment-dependent for a reliable automated test.
  */
 class LargeRepoScalabilityTest {
 

@@ -78,11 +78,13 @@ Completed work included:
   rollback coverage.
 - Removal of low-value data-class, `copy()`, and duplicate structure tests.
 - A deterministic large-repository call-budget test.
-- A manual benchmark task for real timing measurements.
+- A manual benchmark task for real timing measurements, later removed when its
+  unregistered-repository scenario no longer matched switch semantics.
 - A narrowly scoped, manual PITest task for pure decision logic.
 
-Wall-clock performance remains a manual benchmark concern and is intentionally
-not enforced by ordinary tests.
+Large-repository performance is now protected by deterministic Git call-budget
+and real process-budget tests. Environment-dependent wall-clock thresholds are
+intentionally not enforced.
 
 ## 2026-06-19 - Remove Per-preset Switch Options
 
