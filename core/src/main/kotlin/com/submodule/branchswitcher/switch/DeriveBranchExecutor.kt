@@ -79,6 +79,17 @@ class DeriveBranchExecutor(
                 skipped.add(target.path)
                 continue
             }
+            if (submoduleWorktreeStatus(
+                    projectRoot.toFile(),
+                    target.path,
+                    repositoryDirectory,
+                    git.repositoryIdentity(repositoryDirectory),
+                ) == SubmoduleWorktreeStatus.NOT_ASSOCIATED
+            ) {
+                log.warn("[derive] $repositoryLabel: repository is not associated with its superproject - blocked")
+                skipped.add(target.path)
+                continue
+            }
 
             // Base branch gate: repo must be on the preset's named target branch.
             val expectedBranch = target.branch
@@ -171,7 +182,11 @@ class DeriveBranchExecutor(
                 val sha = git.revParseHead(repositoryDirectory)
                 if (sha != null) {
                     val branch = git.currentBranch(repositoryDirectory)
-                    entries[target.path] = DeriveCheckpointEntry(sha, branch)
+                    entries[target.path] = DeriveCheckpointEntry(
+                        sha,
+                        branch,
+                        git.repositoryIdentity(repositoryDirectory)?.gitDirectory,
+                    )
                 } else {
                     log.warn("[derive] $repositoryLabel: no HEAD - cannot checkpoint")
                     checkpointFailures.add(target.path)
@@ -254,6 +269,12 @@ class DeriveBranchExecutor(
                 val checkpointEntry = deriveResult.checkpoint[path]
 
                 if (checkpointEntry != null) {
+                    val currentRepositoryId = git.repositoryIdentity(repositoryDirectory)?.gitDirectory
+                    if (checkpointEntry.repositoryId != null && currentRepositoryId != checkpointEntry.repositoryId) {
+                        log.warn("[derive rollback] $repositoryLabel: repository identity changed - skipped")
+                        rollbackFailures.add(path)
+                        continue
+                    }
                     val restoreTarget = checkpointEntry.branch ?: checkpointEntry.sha
                     val checkoutResult = git.checkoutExisting(repositoryDirectory, restoreTarget)
                     if (!checkoutResult.ok) {

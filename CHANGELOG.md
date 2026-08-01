@@ -45,6 +45,9 @@
 - Share current `.gitmodules` registration checks across full-preset,
   single-repository, and derive writes so retained obsolete worktrees cannot be
   modified accidentally.
+- Verify initialized submodule worktree ownership before writes and persist the
+  canonical Git-directory identity in switch and derive checkpoints, preventing
+  recovery from modifying a replacement repository at the same path.
 - Split derive into explicit preflight, checkpoint, and execution phases, with
   platform cancellation and rollback owned by `DeriveBranchRunner`.
 - Separate preset clipboard transfer and current-state creation from collection

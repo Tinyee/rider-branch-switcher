@@ -5,6 +5,7 @@ import com.submodule.branchswitcher.executeResultTest
 
 import com.submodule.branchswitcher.git.GitClient
 import com.submodule.branchswitcher.git.GitResult
+import com.submodule.branchswitcher.git.RepositoryIdentity
 import com.submodule.branchswitcher.log.createStringAppender
 import com.submodule.branchswitcher.model.DirtyAction
 import com.submodule.branchswitcher.model.Preset
@@ -614,6 +615,37 @@ class SwitchExecutorTest {
         File(projectRoot.toFile(), ".git").deleteRecursively()
         val result = recovery(skipGit).rollback(execution)
         assertFalse("Rollback cannot report success when a repo was not restored", result)
+    }
+
+    @Test
+    fun `rollback refuses a repository that replaced the checkpointed worktree`() {
+        val submodule = projectRoot.resolve("SubA").toFile()
+        initGitRepo(submodule)
+        var checkoutCalls = 0
+        var resetCalls = 0
+        val replacedGit = object : GitClient by fakeGit {
+            override fun repositoryIdentity(workDir: File): RepositoryIdentity =
+                RepositoryIdentity("replacement-repository", projectRoot.toString())
+
+            override fun checkoutExisting(workDir: File, branch: String): GitResult {
+                checkoutCalls++
+                return GitResult("checkout", 0, "", "")
+            }
+
+            override fun resetHard(workDir: File, revision: String): GitResult {
+                resetCalls++
+                return GitResult("reset", 0, "", "")
+            }
+        }
+        val result = SwitchExecutionResult(
+            status = SwitchExecutionStatus.PARTIAL,
+            checkpoint = mapOf("SubA" to CheckpointEntry("before", "main", "original-repository")),
+            state = SwitchState(),
+        )
+
+        assertFalse(recovery(replacedGit).rollback(result))
+        assertEquals(0, checkoutCalls)
+        assertEquals(0, resetCalls)
     }
 
     @Test

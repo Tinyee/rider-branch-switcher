@@ -67,6 +67,12 @@ class SwitchRecoveryExecutor(
                 allOk = false
                 continue
             }
+            val currentRepositoryId = git.repositoryIdentity(dir)?.gitDirectory
+            if (entry.repositoryId != null && currentRepositoryId != entry.repositoryId) {
+                log.warn("[rollback] $label skipped: repository identity changed")
+                allOk = false
+                continue
+            }
             val currentBranch = git.currentBranch(dir)
             val currentSha = git.revParseHead(dir)
             if (entry.branch != null && entry.branch == currentBranch) {

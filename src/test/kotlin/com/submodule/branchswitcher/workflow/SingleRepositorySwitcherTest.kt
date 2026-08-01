@@ -3,6 +3,7 @@ package com.submodule.branchswitcher.workflow
 import com.submodule.branchswitcher.git.GitOperationProvider
 import com.submodule.branchswitcher.git.GitOperationSession
 import com.submodule.branchswitcher.git.GitResult
+import com.submodule.branchswitcher.git.RepositoryIdentity
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.runBlocking
@@ -87,7 +88,7 @@ class SingleRepositorySwitcherTest {
     }
 
     @Test
-    fun `unregistered retained worktree is never switched`() = runBlocking {
+    fun `obsolete or unassociated retained worktree is never switched`() = runBlocking {
         val root = temp.newFolder("root")
         root.resolve("module").mkdirs()
         val git = RecordingGit().apply {
@@ -95,11 +96,18 @@ class SingleRepositorySwitcherTest {
             localBranchExists = true
         }
 
-        val result = runSwitch(switcher(git), root.toPath(), "module", "dev")
+        val unregistered = runSwitch(switcher(git), root.toPath(), "module", "dev")
+        git.registeredPaths = setOf("module")
+        git.identity = RepositoryIdentity("standalone", null)
+        val unassociated = runSwitch(switcher(git), root.toPath(), "module", "dev")
 
         assertEquals(
             SingleRepositorySwitchResult.Skipped(SingleRepositorySkipReason.NOT_REGISTERED),
-            result,
+            unregistered,
+        )
+        assertEquals(
+            SingleRepositorySwitchResult.Skipped(SingleRepositorySkipReason.NOT_REGISTERED),
+            unassociated,
         )
         assertEquals(0, git.checkoutExistingCount)
         assertEquals(0, git.checkoutRemoteCount)
@@ -173,6 +181,7 @@ class SingleRepositorySwitcherTest {
         var remoteBranchExists = false
         var checkoutResult = GitResult("checkout", 0, "", "")
         var registeredPaths: Set<String>? = null
+        var identity: RepositoryIdentity? = null
         var openCount = 0
         var checkoutExistingCount = 0
         var checkoutRemoteCount = 0
@@ -192,6 +201,7 @@ class SingleRepositorySwitcherTest {
                 when (method.name) {
                     "close", "cancel" -> null
                     "registeredSubmodulePaths" -> registeredPaths
+                    "repositoryIdentity" -> identity
                     "isGitRepo" -> true
                     "isDirty" -> dirty
                     "currentBranch" -> branch

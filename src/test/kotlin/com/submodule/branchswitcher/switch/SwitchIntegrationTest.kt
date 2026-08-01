@@ -296,6 +296,33 @@ class SwitchIntegrationTest {
         )
     }
 
+    @Test
+    fun `registered path occupied by a standalone repository is never modified`() {
+        val root = createRepo(tmpDir, "project")
+        val expectedSubmodule = createRepo(tmpDir, "expected-submodule")
+        createBranch(expectedSubmodule, "release")
+        addSubmodule(root, expectedSubmodule, "SubA")
+        gitOk(root, "submodule", "deinit", "-f", "--", "SubA")
+        File(root, "SubA").deleteRecursively()
+
+        val standalone = createRepo(root.toPath(), "SubA")
+        createBranch(standalone, "release")
+        assertTrue(
+            "Standalone repository metadata should remain inside its worktree",
+            git.repositoryIdentity(standalone)?.gitDirectory?.startsWith(standalone.canonicalPath) == true,
+        )
+
+        val (ok, logs) = runSwitch(
+            root,
+            Preset("wrong-worktree", "main", mapOf("SubA" to "release")),
+            SwitchOptions(DirtyAction.Force, pull = false, fetchFirst = false),
+        )
+
+        assertFalse("Switch must reject a standalone repository at a registered path", ok)
+        assertEquals("main", git.currentBranch(standalone))
+        assertTrue(logs.any { it.contains("not associated with its superproject") })
+    }
+
     // ---- Rollback ----
 
     @Test

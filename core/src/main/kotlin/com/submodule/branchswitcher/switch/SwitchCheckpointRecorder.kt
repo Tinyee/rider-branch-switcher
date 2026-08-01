@@ -25,12 +25,19 @@ internal class SwitchCheckpointRecorder(
             val dir = resolveGitDir(projectRoot, target.path)
             if (!dir.exists() || !git.isGitRepo(dir)) continue
             val label = if (target.path == ".") projectRoot.fileName.toString() else target.path
+            val identity = git.repositoryIdentity(dir)
+            if (submoduleWorktreeStatus(projectRoot.toFile(), target.path, dir, identity) ==
+                SubmoduleWorktreeStatus.NOT_ASSOCIATED
+            ) {
+                log.error("[checkpoint] $label: repository is not associated with its superproject")
+                return null
+            }
             val sha = git.revParseHead(dir)
             if (sha == null) {
                 log.error("[checkpoint] $label: unable to read HEAD")
                 return null
             }
-            checkpoint[target.path] = CheckpointEntry(sha, git.currentBranch(dir))
+            checkpoint[target.path] = CheckpointEntry(sha, git.currentBranch(dir), identity?.gitDirectory)
         }
         return checkpoint
     }
