@@ -12,6 +12,10 @@ class FetchStep(
         val failures = LinkedHashMap<String, String>()
         for (target in context.preset.targetsFor(scope)) {
             context.cancellationHandle?.checkCanceled()
+            if (state.isSkipped(target.path)) {
+                context.log.info("[skip] fetch - target disabled for ${target.path}")
+                continue
+            }
             val dir = resolveGitDir(context.projectRoot, target.path)
             if (!dir.exists() || !context.git.isGitRepo(dir)) continue
 
