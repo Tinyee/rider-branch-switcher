@@ -2,6 +2,7 @@ package com.submodule.branchswitcher.switch
 
 import com.submodule.branchswitcher.git.GitClient
 import com.submodule.branchswitcher.git.GitResult
+import com.submodule.branchswitcher.git.SubmoduleRegistration
 import com.submodule.branchswitcher.log.createStringAppender
 import com.submodule.branchswitcher.model.DirtyAction
 import com.submodule.branchswitcher.model.Preset
@@ -544,6 +545,33 @@ class SwitchStepTest {
             execution.result is StepResult.Success,
         )
         assertEquals(listOf("Parent", "Parent/Nested"), checkedOut)
+    }
+
+    @Test
+    fun `nested target initializes from its registered parent when parent is not in preset`() {
+        val parent = projectRoot.resolve("Parent").toFile().also(File::mkdirs)
+        var initRoot: File? = null
+        var initPath: String? = null
+        val validatingGit = object : GitClient by fakeGit {
+            override fun registeredSubmodules(gitRoot: File): List<SubmoduleRegistration> =
+                listOf(SubmoduleRegistration("Parent/Nested", "Nested", "Parent"))
+
+            override fun submoduleInitPath(gitRoot: File, path: String): GitResult {
+                initRoot = gitRoot
+                initPath = path
+                return GitResult("init", 0, "", "")
+            }
+        }
+        val c = context().copy(
+            git = validatingGit,
+            preset = Preset("nested", "main", mapOf("Parent/Nested" to "dev")),
+        )
+
+        val execution = SubmoduleTreeStep().run(c, SwitchState().withSuccessfulCheckout("."))
+
+        assertTrue(execution.result is StepResult.Success)
+        assertEquals(parent.canonicalFile, initRoot?.canonicalFile)
+        assertEquals("Nested", initPath)
     }
 
     // ---- SubmoduleSyncStep ----
