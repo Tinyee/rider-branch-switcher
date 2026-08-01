@@ -190,6 +190,9 @@ internal class GitCommandClient(
     override fun submoduleInitPath(gitRoot: File, path: String): GitResult =
         run(gitRoot, "submodule", "update", "--init", "--recursive", "--", path)
 
+    override fun registeredSubmodulePaths(gitRoot: File): Set<String> =
+        listSubmodulePaths(gitRoot).toSet()
+
     override fun listSubmodulePaths(gitRoot: File): List<String> {
         val result = mutableListOf<String>()
         val visited = HashSet<String>()

@@ -444,6 +444,79 @@ class SwitchStepTest {
         assertFalse(execution.state.checkoutSucceeded("SubA"))
     }
 
+    @Test
+    fun `obsolete preset path is skipped after main checkout`() {
+        var checkoutCalls = 0
+        val validatingGit = object : GitClient by fakeGit {
+            override fun registeredSubmodulePaths(gitRoot: File): Set<String> = setOf("NewSub")
+
+            override fun checkoutExisting(workDir: File, branch: String): GitResult {
+                checkoutCalls++
+                return GitResult("checkout", 0, "", "")
+            }
+        }
+        val c = context().copy(
+            git = validatingGit,
+            preset = Preset("moved", "main", mapOf("OldSub" to "dev")),
+        )
+
+        val execution = CheckoutStep(SwitchTargetScope.SUBMODULES).run(
+            c,
+            SwitchState().withSuccessfulCheckout("."),
+        )
+
+        assertEquals(
+            mapOf("OldSub" to "not registered in target .gitmodules"),
+            (execution.result as StepResult.Partial).failures,
+        )
+        assertEquals(0, checkoutCalls)
+        assertTrue(execution.state.isSkipped("OldSub"))
+        assertTrue(log.any { it.contains("obsolete worktree retained") })
+    }
+
+    @Test
+    fun `nested registration refreshes after parent checkout`() {
+        projectRoot.resolve("Parent/Nested").toFile().mkdirs()
+        val checkedOut = mutableListOf<String>()
+        var registrationReads = 0
+        val validatingGit = object : GitClient by fakeGit {
+            override fun isGitRepo(workDir: File): Boolean = true
+
+            override fun registeredSubmodulePaths(gitRoot: File): Set<String> {
+                registrationReads++
+                return if (registrationReads == 1) {
+                    setOf("Parent")
+                } else {
+                    setOf("Parent", "Parent/Nested")
+                }
+            }
+
+            override fun checkoutExisting(workDir: File, branch: String): GitResult {
+                checkedOut += workDir.relativeTo(projectRoot.toFile()).invariantSeparatorsPath
+                return GitResult("checkout", 0, "", "")
+            }
+        }
+        val c = context().copy(
+            git = validatingGit,
+            preset = Preset(
+                "nested",
+                "main",
+                linkedMapOf("Parent/Nested" to "dev", "Parent" to "dev"),
+            ),
+        )
+
+        val execution = CheckoutStep(SwitchTargetScope.SUBMODULES).run(
+            c,
+            SwitchState().withSuccessfulCheckout("."),
+        )
+
+        assertTrue(
+            "Expected nested checkout success, got ${execution.result}",
+            execution.result is StepResult.Success,
+        )
+        assertEquals(listOf("Parent", "Parent/Nested"), checkedOut)
+    }
+
     // ---- SubmoduleSyncStep ----
 
     @Test

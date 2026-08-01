@@ -74,6 +74,11 @@ interface SwitchGitClient : RepositoryStateGitClient, GitCancellation {
     fun submoduleSync(gitRoot: File): GitResult
     /** Runs `git submodule update --init --recursive -- <path>`. */
     fun submoduleInitPath(gitRoot: File, path: String): GitResult
+    /**
+     * Returns paths registered by the checked-out `.gitmodules` graph.
+     * Null means the implementation cannot validate registration reliably.
+     */
+    fun registeredSubmodulePaths(gitRoot: File): Set<String>? = null
 }
 
 /** Git operations required by derive-branch preflight, execution, and rollback. */

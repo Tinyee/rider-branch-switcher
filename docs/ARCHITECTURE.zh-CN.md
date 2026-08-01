@@ -46,7 +46,8 @@ IntelliJ、platform、service 或 UI；core 不能引用 IntelliJ 或桌面 UI�
    [`SubmoduleInitializer.kt`](../core/src/main/kotlin/com/submodule/branchswitcher/switch/SubmoduleInitializer.kt)
    和
    [`BranchCheckout.kt`](../core/src/main/kotlin/com/submodule/branchswitcher/switch/BranchCheckout.kt)
-   了解缺失子模块初始化和分支选择。
+   了解缺失子模块初始化、目标 `.gitmodules` 路径校验和分支选择。路径迁移后，
+   新路径可以正常初始化，preset 中已废弃的旧路径会被跳过，但本地旧工作树不会自动删除。
 5. [`SwitchRecoveryExecutor.kt`](../core/src/main/kotlin/com/submodule/branchswitcher/switch/SwitchRecoveryExecutor.kt)
    了解 checkpoint、回滚和 stash 恢复。
 6. [`GitOperationRunner.kt`](../core/src/main/kotlin/com/submodule/branchswitcher/operation/GitOperationRunner.kt)、

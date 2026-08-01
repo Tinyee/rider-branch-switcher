@@ -19,7 +19,7 @@ configuration cleanup and be shared by the team.
 - **Dry-run preview**: see current branch, target branch, dirty file count, and branch source before checkout.
 - **Dirty working tree strategies**: stash, skip, or force when a repo has uncommitted changes.
 - **Rollback support**: failed switches keep a checkpoint for one-click rollback.
-- **Submodule handling**: sync after main checkout and initialize missing submodules; newly initialized worktrees are retained and reported if a later step fails.
+- **Submodule handling**: sync after main checkout, initialize missing or moved paths, and skip obsolete preset paths without deleting their local worktrees.
 - **Feature branch derivation**: create the same new branch across the main repo and all submodules from a preset baseline.
 - **Preset tools**: create from current state, rename, reorder, import/export via clipboard, and undo recent switches.
 - **IDE integration**: Tool Window, `Ctrl+Alt+B` quick switch action, notifications, Settings page, and English/Chinese i18n.
