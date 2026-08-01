@@ -4,7 +4,7 @@
 
 **JetBrains IDE plugin for switching a main repository and all submodules to a saved branch preset in one click.**
 
-![version](https://img.shields.io/badge/version-0.7.0-blue)
+![version](https://img.shields.io/badge/version-0.8.0-blue)
 
 Submodule Branch Switcher is built for teams that keep several related repositories in one Git project and need to move them between known branch combinations, such as `main`, `develop`, release branches, or feature branches.
 

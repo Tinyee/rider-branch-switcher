@@ -12,7 +12,7 @@ val useChinaMirrors = providers.gradleProperty("useChinaMirrors")
     .toBoolean()
 
 group = "com.submodule"
-version = providers.gradleProperty("localPluginVersion").getOrElse("0.7.0")
+version = providers.gradleProperty("localPluginVersion").getOrElse("0.8.0")
 
 repositories {
     mavenCentral()
