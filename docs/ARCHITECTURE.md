@@ -120,7 +120,7 @@ flowchart TD
     Background -. implements .-> Boundary
     Background --> Session["Isolated GitOperationSession"]
     Runner --> Executor["SwitchExecutor"]
-    Executor --> Steps["Dirty -> main fetch/checkout/pull -> sync -> submodule fetch/checkout/pull"]
+    Executor --> Steps["Dirty -> main fetch/checkout/pull -> sync -> parent-first submodule tree"]
     Steps --> Result["SwitchExecutionResult"]
     Result --> Notify["Refresh VCS and notify"]
     Result -->|failure or cancellation| Recovery["SwitchRecoveryExecutor"]
@@ -130,9 +130,13 @@ flowchart TD
 `SwitchState` between steps. Stateful steps preserve the latest state even when
 an exception or cancellation occurs, so recovery still knows which stashes and
 checkouts completed and which missing submodules were initialized by the switch.
-After the main checkout, `CheckoutStep` validates submodule targets against the
-new `.gitmodules` graph. A moved path can be initialized normally, while a stale
-preset path is skipped and its obsolete local worktree is retained.
+After the main repository is current, `SubmoduleTreeStep` processes submodules
+in parent-first order. Each parent is prepared, fetched, checked out, pulled,
+and synchronized before descendants are inspected, so nested `.gitmodules`
+changes are visible in the same operation. A moved path can be initialized
+normally, while a stale preset path is skipped and its obsolete local worktree
+is retained. Nested initialization runs from the immediate parent repository,
+not from the project root.
 
 `SwitchRecoveryExecutor` independently attempts repository rollback and stash
 restoration. It compares both branch and commit SHA, restores detached HEAD

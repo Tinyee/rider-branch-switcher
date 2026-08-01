@@ -56,12 +56,10 @@ class SwitchExecutor @JvmOverloads constructor(
     private val steps: List<SwitchStep> = listOf(
         DirtyHandlingStep(),
         FetchStep(SwitchTargetScope.MAIN),
-        CheckoutStep(SwitchTargetScope.MAIN),
+        CheckoutStep(),
         PullStep(SwitchTargetScope.MAIN),
         SubmoduleSyncStep(),
-        FetchStep(SwitchTargetScope.SUBMODULES),
-        CheckoutStep(SwitchTargetScope.SUBMODULES),
-        PullStep(SwitchTargetScope.SUBMODULES),
+        SubmoduleTreeStep(),
     ),
 ) {
     private val checkpointRecorder = SwitchCheckpointRecorder(projectRoot, log, git)

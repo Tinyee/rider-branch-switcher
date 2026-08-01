@@ -20,11 +20,10 @@ internal object SubmoduleInitializer {
         context: SwitchContext,
         target: RepoTarget,
         directory: File,
-        mainCheckoutSucceeded: Boolean,
+        registrationRoot: File,
+        registrationPath: String,
     ): Result {
-        val isMain = target.path == "."
-
-        if (!isMain && !context.git.isGitRepo(directory) && mainCheckoutSucceeded) {
+        if (!context.git.isGitRepo(directory)) {
             if (context.confirmBeforeInit && context.cancellationHandle?.isCanceled != true) {
                 val confirmed = context.onConfirmSubmoduleInit?.invoke(target.path) ?: false
                 if (!confirmed) {
@@ -34,9 +33,10 @@ internal object SubmoduleInitializer {
             }
 
             context.log.info(
-                "dir missing, trying: git submodule update --init --recursive -- ${target.path}",
+                "dir missing, trying: git submodule update --init --recursive -- $registrationPath " +
+                    "(${target.path})",
             )
-            val initResult = context.git.submoduleInitPath(context.projectRoot.toFile(), target.path)
+            val initResult = context.git.submoduleInitPath(registrationRoot, registrationPath)
             if (!initResult.ok) {
                 context.log.warn("[skip] submodule init failed: ${initResult.diagnostic()}")
                 return Result(ready = false, failure = "submodule init failed")
