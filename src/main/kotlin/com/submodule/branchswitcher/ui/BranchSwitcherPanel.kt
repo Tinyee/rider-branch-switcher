@@ -31,9 +31,8 @@ import javax.swing.Box
 import javax.swing.BoxLayout
 import javax.swing.JButton
 import javax.swing.JLabel
-import javax.swing.JMenuItem
 import javax.swing.JPanel
-import javax.swing.JPopupMenu
+import javax.swing.ScrollPaneConstants
 import javax.swing.SwingUtilities
 
 /**
@@ -53,17 +52,15 @@ class BranchSwitcherPanel(
 ) : JPanel(BorderLayout()), Disposable {
 
     // ── UI state ───────────────────────────────────────────────
-    private val currentBranchLabel = JLabel(" ").apply {
+    private val currentBranchLabel = ShrinkableLabel(" ").apply {
         font = font.deriveFont(Font.BOLD, 12f)
         foreground = JBUI.CurrentTheme.Link.Foreground.ENABLED
     }
-    private val strategyLabel = JLabel().apply {
+    private val strategyLabel = ShrinkableLabel().apply {
         font = font.deriveFont(Font.PLAIN, 11f)
         foreground = JBColor.GRAY
         cursor = java.awt.Cursor.getPredefinedCursor(java.awt.Cursor.HAND_CURSOR)
         toolTipText = Bundle.msg("label.strategy.tip")
-        // Allow BoxLayout to shrink this label in narrow windows
-        minimumSize = Dimension(0, preferredSize.height)
         addMouseListener(object : java.awt.event.MouseAdapter() {
             override fun mouseClicked(e: java.awt.event.MouseEvent) { openSettings() }
         })
@@ -72,22 +69,14 @@ class BranchSwitcherPanel(
         layout = BoxLayout(this, BoxLayout.Y_AXIS)
         alignmentX = LEFT_ALIGNMENT
     }
-    private val presetsContainer = object : JPanel() {
-        init { layout = BoxLayout(this, BoxLayout.Y_AXIS) }
-        override fun getPreferredSize(): Dimension {
-            val pref = super.getPreferredSize()
-            val viewport = parent
-            if (viewport is javax.swing.JViewport) {
-                pref.height = maxOf(pref.height, viewport.height)
-            }
-            return pref
-        }
-    }.apply {
+    private val presetsContainer = ViewportWidthPanel(fillViewportHeight = true).apply {
+        layout = BoxLayout(this, BoxLayout.Y_AXIS)
         add(presetsInner)
         add(Box.createVerticalGlue())
     }
     private val presetsScroll = JBScrollPane(presetsContainer).apply {
         border = BorderFactory.createEmptyBorder()
+        horizontalScrollBarPolicy = ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER
     }
 
     private val logPanel = ToolWindowLogPanel()
@@ -141,66 +130,69 @@ class BranchSwitcherPanel(
     }
 
     private fun createHeaderRow(): JPanel {
-        return CompactHeightPanel(BorderLayout()).apply {
-            isOpaque = false
-            add(currentBranchLabel, BorderLayout.WEST)
-            add(createMoreActionsButton(), BorderLayout.EAST)
-        }
+        return TrailingControlRowPanel(currentBranchLabel, createMoreActionsButton())
     }
 
     private fun createActionRow(): JPanel {
-        return CompactHeightPanel().apply {
-            layout = BoxLayout(this, BoxLayout.X_AXIS)
+        val fromCurrentButton = jButton(Bundle.msg("action.from.current"), AllIcons.Vcs.Branch) {
+            toolTipText = Bundle.msg("action.from.current.tip")
+            addActionListener { presetManager.addPresetFromCurrent() }
+        }
+        val addPresetButton = jButton(Bundle.msg("action.add.preset"), AllIcons.General.Add) {
+            addActionListener { presetManager.addPreset() }
+        }
+        val primaryActions = GlobalActionBar(fromCurrentButton, addPresetButton)
+        return CompactHeightPanel(BorderLayout(0, JBUI.scale(2))).apply {
             isOpaque = false
-            add(jButton(Bundle.msg("action.from.current"), AllIcons.Vcs.Branch) {
-                toolTipText = Bundle.msg("action.from.current.tip")
-                addActionListener { presetManager.addPresetFromCurrent() }
-            })
-            add(Box.createHorizontalStrut(4))
-            add(jButton(Bundle.msg("action.add.preset"), AllIcons.General.Add) {
-                addActionListener { presetManager.addPreset() }
-            })
-
-            add(Box.createHorizontalGlue())
-            add(strategyLabel)
+            add(primaryActions, BorderLayout.CENTER)
+            add(strategyLabel, BorderLayout.SOUTH)
         }
     }
 
     private fun createMoreActionsButton(): JButton {
         return jButton(icon = AllIcons.Actions.MoreHorizontal) {
             margin = JBUI.insets(0, 4, 0, 4)
-            preferredSize = Dimension(JBUI.scale(32), JBUI.scale(24))
+            preferredSize = Dimension(JBUI.scale(32), preferredSize.height)
             maximumSize = preferredSize
             minimumSize = preferredSize
             toolTipText = Bundle.msg("action.more.tip")
-            addActionListener {
-                createMoreMenu().show(this, 0, height)
-            }
+            addActionListener { showMoreActions(this) }
         }
     }
 
-    private fun createMoreMenu(): JPopupMenu {
-        return JPopupMenu().apply {
-            border = JBUI.Borders.empty(4, 0)
-            add(menuItem(Bundle.msg("action.reload")) {
-                presetManager.reload()
-                detectCurrentState()
-            })
-            add(menuItem(Bundle.msg("action.open.config")) { presetManager.openConfig() })
-            addSeparator()
-            add(menuItem(Bundle.msg("action.import")) { presetManager.importPresets() })
-            add(menuItem(Bundle.msg("action.export")) { presetManager.exportPresets() })
-            addSeparator()
-            add(menuItem(Bundle.msg("action.undo")) {
-                switchController.undoLastSwitch(presetManager.editors.map { it.currentPreset() })
-            })
-            add(menuItem(Bundle.msg("action.settings")) { openSettings() })
-        }
-    }
-
-    private fun menuItem(text: String, action: () -> Unit): JMenuItem = JMenuItem(text).apply {
-        border = JBUI.Borders.empty(4, 14)
-        addActionListener { action() }
+    private fun showMoreActions(anchor: JButton) {
+        showActionPopup(
+            anchor,
+            listOf(
+                listOf(
+                    PopupAction(Bundle.msg("action.reload"), AllIcons.Actions.Refresh) {
+                        presetManager.reload()
+                        detectCurrentState()
+                    },
+                    PopupAction(Bundle.msg("action.open.config"), AllIcons.FileTypes.Config) {
+                        presetManager.openConfig()
+                    },
+                ),
+                listOf(
+                    PopupAction(Bundle.msg("action.import"), AllIcons.Actions.MenuPaste) {
+                        presetManager.importPresets()
+                    },
+                    PopupAction(Bundle.msg("action.export"), AllIcons.Actions.Download) {
+                        presetManager.exportPresets()
+                    },
+                ),
+                listOf(
+                    PopupAction(Bundle.msg("action.undo"), AllIcons.Actions.Undo) {
+                        switchController.undoLastSwitch(presetManager.editors.map { it.currentPreset() })
+                    },
+                    PopupAction(
+                        Bundle.msg("action.settings"),
+                        AllIcons.General.Settings,
+                        perform = ::openSettings,
+                    ),
+                ),
+            ),
+        )
     }
 
     // ── Strategy summary ───────────────────────────────────────
@@ -212,6 +204,7 @@ class BranchSwitcherPanel(
             service.pullAfterSwitch,
             service.timeoutSeconds,
         )
+        strategyLabel.toolTipText = "${strategyLabel.text}. ${Bundle.msg("label.strategy.tip")}"
     }
 
     private fun openSettings() {
@@ -328,6 +321,7 @@ class BranchSwitcherPanel(
         } else {
             currentBranchLabel.foreground = JBUI.CurrentTheme.Link.Foreground.ENABLED
         }
+        currentBranchLabel.toolTipText = currentBranchLabel.text
         logger.debug("[detect] main=$main${if (mainDirty) " (dirty)" else ""}, matched=${matched ?: "<none>"}")
     }
 }

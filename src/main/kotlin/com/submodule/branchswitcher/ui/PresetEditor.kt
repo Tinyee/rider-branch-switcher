@@ -3,7 +3,6 @@ package com.submodule.branchswitcher.ui
 import com.intellij.icons.AllIcons
 import com.intellij.ui.JBColor
 import com.intellij.util.ui.JBUI
-import com.intellij.util.ui.NamedColorUtil
 import com.submodule.branchswitcher.Bundle
 import com.submodule.branchswitcher.git.PresetDiscoveryGitClient
 import com.submodule.branchswitcher.log.AppLogger
@@ -15,27 +14,19 @@ import com.submodule.branchswitcher.presentation.SubmoduleDraftSelection
 import com.submodule.branchswitcher.presentation.applyTo
 import com.submodule.branchswitcher.presentation.decidePresetRename
 import com.submodule.branchswitcher.presentation.hasUnsavedPresetChanges
-import com.submodule.branchswitcher.presentation.shouldShowSecondaryAction
-import java.awt.BorderLayout
 import java.awt.Cursor
 import java.awt.Dimension
-import java.awt.FlowLayout
 import java.awt.Font
-import java.awt.event.ComponentAdapter
-import java.awt.event.ComponentEvent
 import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
 import java.io.File
 import java.nio.file.Path
 import javax.swing.BorderFactory
-import javax.swing.Box
 import javax.swing.BoxLayout
 import javax.swing.JButton
 import javax.swing.JComboBox
 import javax.swing.JLabel
-import javax.swing.JMenuItem
 import javax.swing.JPanel
-import javax.swing.JPopupMenu
 import javax.swing.border.Border
 
 /**
@@ -71,8 +62,8 @@ internal class PresetEditor(
     private val addSubBtn = jButton(Bundle.msg("action.add.submodule"), AllIcons.General.Add)
     private val arrow = JLabel(AllIcons.General.ArrowRight)
 
-    private val nameLabel = JLabel(initialPreset.name).apply {
-        toolTipText = Bundle.msg("label.rename.tip")
+    private val nameLabel = ShrinkableLabel(initialPreset.name).apply {
+        toolTipText = presetNameTooltip(initialPreset.name)
         cursor = Cursor.getPredefinedCursor(Cursor.TEXT_CURSOR)
         addMouseListener(object : MouseAdapter() {
             override fun mouseClicked(e: MouseEvent) {
@@ -86,7 +77,7 @@ internal class PresetEditor(
         foreground = JBUI.CurrentTheme.Link.Foreground.ENABLED
         isVisible = false
     }
-    private val mainDiffLabel = JLabel().apply {
+    private val mainDiffLabel = ShrinkableLabel().apply {
         font = font.deriveFont(Font.PLAIN, 11f)
         isVisible = false
         border = JBUI.Borders.empty(1, 0, 0, 0)
@@ -97,6 +88,7 @@ internal class PresetEditor(
         addActionListener { deriveBranch() }
     }
     private val moreButton = createPresetMoreButton()
+    private val headerActions = createHeaderActions()
     private var isCurrentPreset = false
 
     private val body = CompactHeightPanel().apply {
@@ -133,113 +125,83 @@ internal class PresetEditor(
     }
 
     private fun createHeader(): JPanel {
-        val header = createHeaderContainer()
-        val nameRow = createPresetNameRow()
-        val headerActions = createHeaderActions()
-
-        nameRow.add(Box.createHorizontalStrut(4))
-        nameRow.add(mainDiffLabel)
-        header.add(nameRow)
-        header.add(headerActions)
-        installResponsiveHeaderActions(header, headerActions)
-        return header
-    }
-
-    private fun createHeaderContainer(): JPanel =
-        CompactHeightPanel().apply {
-            layout = BoxLayout(this, BoxLayout.Y_AXIS)
-            alignmentX = LEFT_ALIGNMENT
+        return ResponsiveRowPanel(
+            leading = createPresetIdentity(),
+            trailing = headerActions,
+            horizontalGap = JBUI.scale(8),
+            verticalGap = JBUI.scale(8),
+            // Keep wrapped actions on the same content line as the editor controls.
+            stackedTrailingIndent = JBUI.scale(12),
+            arrangement = ResponsiveRowArrangement.SPACE_BETWEEN,
+        ).apply {
             cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
             addMouseListener(object : MouseAdapter() {
-                override fun mouseClicked(e: MouseEvent) {
-                    if (e.source !is JButton) toggle()
-                }
+                override fun mouseClicked(e: MouseEvent) { toggle() }
             })
         }
+    }
 
-    private fun createPresetNameRow(): JPanel =
-        JPanel(FlowLayout(FlowLayout.LEFT, 4, 0)).apply {
+    private fun createPresetIdentity(): JPanel {
+        val coreIdentity = JPanel().apply {
+            layout = BoxLayout(this, BoxLayout.X_AXIS)
             isOpaque = false
             add(arrow.apply {
                 addMouseListener(object : MouseAdapter() {
                     override fun mouseClicked(e: MouseEvent) { toggle() }
                 })
             })
+            add(javax.swing.Box.createHorizontalStrut(JBUI.scale(4)))
             add(nameLabel.apply { font = font.deriveFont(Font.BOLD) })
+            add(javax.swing.Box.createHorizontalStrut(JBUI.scale(4)))
             add(currentBadge)
             addMouseListener(object : MouseAdapter() {
                 override fun mouseClicked(e: MouseEvent) { toggle() }
             })
         }
+        return ResponsiveRowPanel(
+            leading = coreIdentity,
+            trailing = mainDiffLabel,
+            horizontalGap = JBUI.scale(4),
+            verticalGap = JBUI.scale(2),
+            // The subtitle starts below the name, after the arrow and its gap.
+            stackedTrailingIndent = JBUI.scale(20),
+            arrangement = ResponsiveRowArrangement.PACKED,
+        )
+    }
 
-    private fun createHeaderActions(): JPanel =
-        CompactHeightPanel(FlowLayout(FlowLayout.RIGHT, 4, 0)).apply {
-            isOpaque = false
+    private fun createHeaderActions(): CollapsibleActionBar =
+        CollapsibleActionBar(
+            primary = switchBtn,
+            secondary = deriveBtn,
+            overflow = moreButton,
+            responsiveContext = this,
+        ).apply {
             switchBtn.addActionListener { onSwitch(buildEditedPreset()) }
-            add(switchBtn)
-            add(deriveBtn)
-            add(moreButton)
         }
-
-    private fun installResponsiveHeaderActions(header: JPanel, headerActions: JPanel) {
-        header.addComponentListener(object : ComponentAdapter() {
-            override fun componentResized(e: ComponentEvent) {
-                refreshResponsiveHeaderActions(header, headerActions)
-            }
-        })
-        val buttonMetricsChanged = java.beans.PropertyChangeListener {
-            refreshResponsiveHeaderActions(header, headerActions)
-        }
-        listOf(switchBtn, deriveBtn, moreButton).forEach { button ->
-            button.addPropertyChangeListener("text", buttonMetricsChanged)
-            button.addPropertyChangeListener("font", buttonMetricsChanged)
-            button.addPropertyChangeListener("icon", buttonMetricsChanged)
-        }
-    }
-
-    private fun refreshResponsiveHeaderActions(header: JPanel, headerActions: JPanel) {
-        val requiredWidth = requiredHeaderActionsWidth(headerActions)
-        val showDerive = shouldShowSecondaryAction(header.width, requiredWidth)
-        if (deriveBtn.isVisible != showDerive) {
-            deriveBtn.isVisible = showDerive
-            headerActions.revalidate()
-            headerActions.repaint()
-        }
-    }
-
-    private fun requiredHeaderActionsWidth(headerActions: JPanel): Int {
-        val flowLayout = headerActions.layout as FlowLayout
-        val buttonsWidth = switchBtn.preferredSize.width +
-            deriveBtn.preferredSize.width +
-            moreButton.preferredSize.width
-        return buttonsWidth +
-            flowLayout.hgap * 4 +
-            headerActions.insets.left +
-            headerActions.insets.right +
-            JBUI.scale(16)
-    }
 
     private fun createEditorActions(): JPanel {
-        val editorActions = object : JPanel(BorderLayout()) {
-            override fun getMaximumSize(): Dimension =
-                Dimension(Short.MAX_VALUE.toInt(), preferredSize.height)
-        }.apply {
-            alignmentX = LEFT_ALIGNMENT
-            border = JBUI.Borders.empty(8, 8, 4, 4)
-        }
         addSubBtn.addActionListener {
             submoduleManager.showAddSubmoduleMenu(addSubBtn, savedPreset)
         }
         revertBtn.addActionListener { revert() }
         saveBtn.addActionListener { saveChanges() }
-        val leftActions = JPanel(FlowLayout(FlowLayout.LEFT, 4, 0)).apply { isOpaque = false }
-        leftActions.add(addSubBtn)
-        val rightActions = JPanel(FlowLayout(FlowLayout.RIGHT, 4, 0)).apply { isOpaque = false }
-        rightActions.add(revertBtn)
-        rightActions.add(saveBtn)
-        editorActions.add(leftActions, BorderLayout.WEST)
-        editorActions.add(rightActions, BorderLayout.EAST)
-        return editorActions
+        val rightActions = ResponsiveRowPanel(
+            leading = revertBtn,
+            trailing = saveBtn,
+            horizontalGap = JBUI.scale(4),
+            verticalGap = JBUI.scale(4),
+            // The outer row moves this group to the right on wide layouts.
+            arrangement = ResponsiveRowArrangement.PACKED,
+        )
+        return ResponsiveRowPanel(
+            leading = addSubBtn,
+            trailing = rightActions,
+            horizontalGap = JBUI.scale(8),
+            verticalGap = JBUI.scale(4),
+            arrangement = ResponsiveRowArrangement.SPACE_BETWEEN,
+        ).apply {
+            border = JBUI.Borders.empty(8, 8, 4, 4)
+        }
     }
 
     private fun saveChanges() {
@@ -266,25 +228,15 @@ internal class PresetEditor(
     }
 
     private fun createMainRepositoryRow(): JPanel {
-        return object : JPanel(BorderLayout()) {
-            override fun getMaximumSize(): Dimension =
-                Dimension(Short.MAX_VALUE.toInt(), preferredSize.height)
-        }.apply {
-            border = JBUI.Borders.empty(2, 12, 2, 4)
-            alignmentX = LEFT_ALIGNMENT
-            val mainRepositoryLabel = JLabel(Bundle.msg("label.main.repo")).apply {
-                preferredSize = Dimension(JBUI.scale(140), preferredSize.height)
-            }
-            add(mainRepositoryLabel, BorderLayout.WEST)
-            add(mainCombo, BorderLayout.CENTER)
-        }
+        val mainRepositoryLabel = JLabel(Bundle.msg("label.main.repo"))
+        return responsiveFormRow(mainRepositoryLabel, mainCombo)
     }
 
     /** Creates the "..." more-actions button for this preset card. */
     private fun createPresetMoreButton(): JButton {
         return jButton(icon = AllIcons.Actions.MoreHorizontal) {
             margin = JBUI.insets(0, 4, 0, 4)
-            preferredSize = Dimension(JBUI.scale(32), JBUI.scale(24))
+            preferredSize = Dimension(JBUI.scale(32), preferredSize.height)
             maximumSize = preferredSize
             minimumSize = preferredSize
             toolTipText = Bundle.msg("action.more.tip")
@@ -293,19 +245,31 @@ internal class PresetEditor(
     }
 
     private fun showPresetMoreMenu(anchor: JButton) {
-        val menu = JPopupMenu()
-        if (!deriveBtn.isVisible) {
-            val deriveItem = JMenuItem(Bundle.msg("action.derive"), AllIcons.Vcs.Branch)
-            deriveItem.addActionListener { deriveBranch() }
-            menu.add(deriveItem)
-            menu.addSeparator()
+        val overflowActions = if (deriveBtn.isVisible) {
+            emptyList()
+        } else {
+            listOf(
+                PopupAction(
+                    Bundle.msg("action.derive.branch"),
+                    AllIcons.Vcs.Branch,
+                    perform = ::deriveBranch,
+                ),
+            )
         }
-
-        val deleteItem = JMenuItem(Bundle.msg("action.delete"), AllIcons.Actions.Cancel)
-        deleteItem.foreground = NamedColorUtil.getErrorForeground()
-        deleteItem.addActionListener { onDelete() }
-        menu.add(deleteItem)
-        menu.show(anchor, 0, anchor.height)
+        showActionPopup(
+            anchor,
+            listOf(
+                overflowActions,
+                listOf(
+                    PopupAction(
+                        Bundle.msg("action.delete.preset"),
+                        AllIcons.General.Delete,
+                        danger = true,
+                        perform = onDelete,
+                    ),
+                ),
+            ),
+        )
     }
 
     private fun restoreSavedPresetToUi() {
@@ -327,6 +291,7 @@ internal class PresetEditor(
             val cancelledSubmodules = submoduleManager.cancelBranchLoads()
             if (cancelledMain || cancelledSubmodules) branchesLoaded = false
         }
+        body.revalidate()
         revalidate()
         repaint()
     }
@@ -365,6 +330,7 @@ internal class PresetEditor(
         val mainDirty = dirtyRepos["."] == true
         val mainStatus = mainStatusText(currentMain, savedPreset.main, mainDirty)
         mainDiffLabel.text = mainStatus
+        mainDiffLabel.toolTipText = mainStatus
         mainDiffLabel.isVisible = mainStatus != null
         mainDiffLabel.foreground = JBColor(0xE07B00, 0xFFA726)
         // Update submodule status dots
@@ -398,11 +364,11 @@ internal class PresetEditor(
         if (highlighted && switchBtn.isFocusOwner) {
             java.awt.KeyboardFocusManager.getCurrentKeyboardFocusManager().clearGlobalFocusOwner()
         }
-        switchBtn.isEnabled = !highlighted
-        switchBtn.text = if (highlighted) Bundle.msg("action.already.on") else Bundle.msg("action.switch")
-        switchBtn.toolTipText = if (highlighted) Bundle.msg("action.already.on.tip") else null
+        switchBtn.isVisible = !highlighted
+        headerActions.refreshLayoutState()
         border = makeBorder(highlighted)
         if (changed) {
+            revalidate()
             repaint()
         }
     }
@@ -440,7 +406,11 @@ internal class PresetEditor(
     private fun updatePresetName(newName: String) {
         savedPreset = savedPreset.copy(name = newName)
         nameLabel.text = newName
+        nameLabel.toolTipText = presetNameTooltip(newName)
     }
+
+    private fun presetNameTooltip(name: String): String =
+        "$name (${Bundle.msg("label.rename.tip")})"
 
     private fun rename() {
         if (persistenceInProgress) return

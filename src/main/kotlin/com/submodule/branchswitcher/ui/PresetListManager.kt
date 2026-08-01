@@ -17,7 +17,6 @@ import com.submodule.branchswitcher.workflow.SingleRepositorySkipReason
 import com.submodule.branchswitcher.workflow.SingleRepositorySwitchResult
 import com.submodule.branchswitcher.workflow.SingleRepositorySwitcher
 import java.awt.BorderLayout
-import java.awt.FlowLayout
 import java.awt.Font
 import java.nio.file.Path
 import javax.swing.Box
@@ -199,26 +198,32 @@ internal class PresetListManager(
                 alignmentX = JPanel.CENTER_ALIGNMENT
             })
             add(Box.createVerticalStrut(16))
-            add(JLabel(Bundle.msg("empty.no.presets")).apply {
+            add(emptyStateLabel(Bundle.msg("empty.no.presets")).apply {
                 font = font.deriveFont(Font.BOLD, 15f)
                 foreground = JBColor.GRAY
                 alignmentX = JPanel.CENTER_ALIGNMENT
             })
             add(Box.createVerticalStrut(8))
-            add(JLabel(Bundle.msg("empty.hint")).apply {
+            add(emptyStateLabel(Bundle.msg("empty.hint")).apply {
                 font = font.deriveFont(Font.PLAIN, 12f)
                 foreground = JBColor.GRAY
                 alignmentX = JPanel.CENTER_ALIGNMENT
             })
             add(Box.createVerticalStrut(20))
-            add(JPanel(FlowLayout(FlowLayout.CENTER, 8, 0)).apply {
+            val fromCurrentButton = jButton(Bundle.msg("empty.from.current"), AllIcons.Vcs.Branch) {
+                addActionListener { actions.addPresetFromCurrent() }
+            }
+            val manualButton = jButton(Bundle.msg("empty.manual"), AllIcons.General.Add) {
+                addActionListener { actions.addPreset() }
+            }
+            add(ResponsiveRowPanel(
+                leading = fromCurrentButton,
+                trailing = manualButton,
+                horizontalGap = JBUI.scale(8),
+                verticalGap = JBUI.scale(4),
+                arrangement = ResponsiveRowArrangement.PACKED_CENTER,
+            ).apply {
                 alignmentX = JPanel.CENTER_ALIGNMENT
-                add(jButton(Bundle.msg("empty.from.current"), AllIcons.Vcs.Branch) {
-                    addActionListener { actions.addPresetFromCurrent() }
-                })
-                add(jButton(Bundle.msg("empty.manual"), AllIcons.General.Add) {
-                    addActionListener { actions.addPreset() }
-                })
             })
             add(Box.createVerticalStrut(24))
             add(createQuickGuide())
@@ -233,7 +238,7 @@ internal class PresetListManager(
                 javax.swing.BorderFactory.createLineBorder(JBColor.border()),
                 JBUI.Borders.empty(12, 16, 12, 16),
             )
-            add(JLabel(Bundle.msg("empty.guide.title")).apply {
+            add(emptyStateLabel(Bundle.msg("empty.guide.title")).apply {
                 font = font.deriveFont(Font.BOLD, 12f)
                 foreground = JBColor.GRAY
                 alignmentX = JPanel.CENTER_ALIGNMENT
@@ -244,7 +249,7 @@ internal class PresetListManager(
                 "2" to Bundle.msg("empty.guide.step2"),
                 "3" to Bundle.msg("empty.guide.step3"),
             ).forEach { (number, text) ->
-                add(JLabel("$number. $text").apply {
+                add(emptyStateLabel("$number. $text").apply {
                     font = font.deriveFont(Font.PLAIN, 11f)
                     foreground = JBColor.GRAY
                     alignmentX = JPanel.CENTER_ALIGNMENT
@@ -252,11 +257,15 @@ internal class PresetListManager(
                 add(Box.createVerticalStrut(2))
             }
             add(Box.createVerticalStrut(4))
-            add(JLabel(Bundle.msg("empty.guide.tip")).apply {
+            add(emptyStateLabel(Bundle.msg("empty.guide.tip")).apply {
                 font = font.deriveFont(Font.ITALIC, 11f)
                 foreground = JBColor.GRAY
                 alignmentX = JPanel.CENTER_ALIGNMENT
             })
         }
+    }
+
+    private fun emptyStateLabel(text: String): JLabel = ShrinkableLabel(text).apply {
+        toolTipText = text
     }
 }

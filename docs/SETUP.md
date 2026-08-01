@@ -1,12 +1,14 @@
 # Environment Setup
 
-This project is a generic JetBrains IDE plugin. It is no longer built against Rider by default.
+This project compiles against the oldest supported common IntelliJ Platform
+API and verifies the packaged plugin against each supported Rider platform
+branch.
 
 ## Requirements
 
 | Requirement | Notes |
 | --- | --- |
-| JDK 21 | The Kotlin/JVM toolchain and CI both use Java 21 for IntelliJ Platform 2026.1. |
+| JDK 21 | The Kotlin/JVM toolchain and CI use the Java baseline required by IntelliJ Platform 2025.1. The resulting bytecode also runs on newer IDE runtimes. |
 | Git CLI | Required by the plugin runtime and integration tests. |
 | JetBrains IDE | Optional for local sandbox testing. Gradle can download the configured platform SDK automatically. |
 
@@ -15,12 +17,12 @@ This project is a generic JetBrains IDE plugin. It is no longer built against Ri
 All platform and compatibility settings live in `gradle.properties`:
 
 ```properties
-platform.type=IU
-platform.version=2026.1.3
+platform.type=IC
+platform.version=2025.1
 platform.localPath=
 
 plugin.sinceBuild=251
-plugin.verifier.ideCodes=RD
+plugin.verifier.ideTargets=RD:2025.1.9,RD:2026.2.0.1
 ```
 
 Product codes commonly used here:
@@ -28,15 +30,16 @@ Product codes commonly used here:
 | Code | IDE |
 | --- | --- |
 | IU | IntelliJ IDEA unified distribution (2025.3+) |
-| IC | Legacy IntelliJ IDEA Community releases |
+| IC | IntelliJ IDEA Community |
 | RD | Rider |
 | PY | PyCharm Professional |
 | WS | WebStorm |
 | CL | CLion |
 
-Default local development uses `IU`, the unified IntelliJ IDEA distribution
-published for the configured 2026.1 platform.
-The build resolves the non-installer platform artifact by default, so it does not download a full IDE installer unless `platform.localPath` or a product-specific workflow requires it.
+Default compilation uses IntelliJ IDEA Community 2025.1. Building against the
+oldest supported platform makes accidental use of newer IntelliJ APIs a compile
+error. Product-specific behavior is checked separately rather than moving the
+compile baseline to the newest IDE.
 
 ## Using A Local IDE
 
@@ -64,6 +67,25 @@ For Rider-specific sandbox testing, point `platform.localPath` at Rider or set `
 
 This resolves the configured SDK and verifies that the plugin package can be
 built. Installation instructions remain in the project README.
+
+## Plugin Versions During Development
+
+Do not change the source version for every commit. The version declared in
+`build.gradle.kts`, the README badge, and the latest CHANGELOG heading move
+together only when preparing a formal release.
+
+When repeatedly installing local ZIPs, give each package a unique temporary
+version so the IDE cannot keep an older installation with the same plugin
+version:
+
+```bash
+./gradlew buildPlugin -PlocalPluginVersion=0.7.0.20260801.1
+```
+
+Increment the final segment for each package installed into the same IDE. This
+property changes only the generated ZIP and `plugin.xml`; it does not modify
+tracked release metadata. Do not pass it to `releaseCheck`, which intentionally
+requires the source version, README badge, and CHANGELOG to match.
 
 ## Dependency Sources
 
@@ -94,19 +116,28 @@ Contributor validation commands and the change-to-test matrix live in
 [`../CONTRIBUTING.md`](../CONTRIBUTING.md). This document only owns environment
 and compatibility configuration.
 
-`releaseCheck` runs Plugin Verifier for the product codes in
-`plugin.verifier.ideCodes`. Keep that list short during local development to
-avoid heavy downloads. CI runs tests on Ubuntu, Windows, and macOS. A separate
-Linux job runs Detekt, structural checks, plugin packaging, and Plugin
-Verifier once.
+`releaseCheck` runs Plugin Verifier for the explicit `PRODUCT:VERSION` endpoints
+in `plugin.verifier.ideTargets`. The defaults cover the oldest supported Rider
+branch and the current Rider branch without downloading every intermediate IDE
+for each local release check. CI runs tests on Ubuntu, Windows, and macOS, then
+verifies the plugin against the latest patch of every supported Rider platform
+branch in parallel.
+
+Rider installer verification is not supported by IntelliJ Platform Gradle
+Plugin 2.11, so Rider targets use the larger non-installer SDK artifacts. Expect
+a multi-gigabyte download on the first run. Refresh the exact patch versions in
+`gradle.properties` and the CI matrix when adding a new supported platform
+branch or preparing a release.
 
 ## Compatibility Notes
 
 - Set `plugin.sinceBuild` to the oldest verified IDE build. Leave `plugin.untilBuild` unset unless a known incompatibility requires an explicit upper bound.
-- If lowering `plugin.sinceBuild`, also check Kotlin runtime compatibility for the oldest target IDE.
+- Compile against the oldest supported platform, not merely the newest SDK with an older `sinceBuild` value.
+- Kotlin is compiled with language and API level 2.1, matching the 2025.1 baseline, and the plugin does not package its compiler's newer standard library.
+- Keep JVM bytecode at Java 21. Newer IDE runtimes can execute Java 21 bytecode; raising the target would break older supported branches.
 - Prefer IntelliJ Platform common APIs in production code.
 - Avoid Rider-only APIs unless they are isolated behind a product-specific adapter.
-- Add extra verifier IDE codes only when you intentionally claim support for those IDEs.
+- Add explicit verifier targets and a manual smoke test before claiming another IDE family.
 
 ## Support Matrix Policy
 
@@ -114,9 +145,10 @@ Treat compatibility as evidence-based:
 
 | IDE family | Claim level | Required evidence before advertising support |
 | --- | --- | --- |
-| IntelliJ IDEA unified distribution | Primary | `compileKotlin`, `compileTestKotlin`, `buildPlugin`, and normal CI pass with `platform.type=IU`. |
-| Rider | Compatible | Default plugin verifier target plus manual smoke test in a Rider sandbox before release. |
-| PyCharm / WebStorm / CLion | Not claimed | Add product code to `plugin.verifier.ideCodes`, confirm CI can resolve that IDE distribution, run `verifyPlugin`, and do a tool-window/settings/manual Git smoke test first. |
+| Common IntelliJ Platform API | Build baseline | `compileKotlin`, `compileTestKotlin`, tests, and packaging pass against `IC:2025.1`. |
+| Rider 2025.1 and newer | Supported | CI runs Plugin Verifier on each platform branch; perform a Rider sandbox smoke test before release. |
+| IntelliJ IDEA | Expected compatible, not product-certified | The common API build provides source compatibility evidence; add IDEA Plugin Verifier and a manual Git-project smoke test before advertising it separately. |
+| PyCharm / WebStorm / CLion | Not claimed | Add explicit `PRODUCT:VERSION` verifier targets, confirm CI can resolve them, and do a tool-window/settings/manual Git smoke test first. |
 
 Do not broaden Marketplace wording from "JetBrains IDEs that support Git projects" to a named IDE list until the corresponding row has evidence.
 
@@ -126,5 +158,5 @@ Do not broaden Marketplace wording from "JetBrains IDEs that support Git project
 | --- | --- | --- |
 | `Could not resolve ...` | Network or platform SDK download issue | Use `platform.localPath`, configure a proxy, or retry with `-PuseChinaMirrors=true` |
 | `Plugin is incompatible with this installation` | The IDE is older than `plugin.sinceBuild`, or an explicit upper bound excludes it | Adjust `plugin.sinceBuild` or remove/update `plugin.untilBuild` |
-| `incompatible version of Kotlin` | Compiler output newer than target IDE Kotlin runtime | Lower Kotlin compiler or raise target IDE build |
+| `incompatible version of Kotlin` | Language/API level or packaged stdlib is newer than the target IDE runtime | Keep Kotlin API at 2.1 and do not package a newer stdlib |
 | Chinese Markdown looks garbled in terminal | Terminal encoding issue | See `docs/encoding-and-line-endings.md`; do not rewrite files just for terminal display |

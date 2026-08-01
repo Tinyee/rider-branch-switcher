@@ -43,7 +43,7 @@ class SwitchPreviewDialog(
     override fun createCenterPanel(): JComponent {
         val table = JBTable(PreviewTableModel(rows)).apply {
             rowHeight = (rowHeight + 6).coerceAtLeast(24)
-            autoResizeMode = JTable.AUTO_RESIZE_LAST_COLUMN
+            autoResizeMode = JTable.AUTO_RESIZE_OFF
             setShowGrid(false)
             tableHeader.reorderingAllowed = false
         }
@@ -86,8 +86,10 @@ class SwitchPreviewDialog(
         if (missingBranch > 0) parts += Bundle.msg("summary.missing.branch", missingBranch)
         if (missingDir > 0) parts += Bundle.msg("summary.missing.dir", missingDir)
 
-        val summaryLabel = JLabel(parts.joinToString("  ·  ")).apply {
+        val summaryText = parts.joinToString("  ·  ")
+        val summaryLabel = ShrinkableLabel(summaryText).apply {
             alignmentX = Component.LEFT_ALIGNMENT
+            toolTipText = summaryText
             border = JBUI.Borders.empty(2, 4, 6, 4)
             if (missingBranch > 0 || missingDir > 0) foreground = warnColor
         }
@@ -96,8 +98,10 @@ class SwitchPreviewDialog(
             layout = BoxLayout(this, BoxLayout.Y_AXIS)
             add(summaryLabel)
             if (shouldShowForceWarning(request, rows)) {
-                add(JLabel(Bundle.msg("dialog.force.warn")).apply {
+                val warning = Bundle.msg("dialog.force.warn")
+                add(ShrinkableLabel(warning).apply {
                     alignmentX = Component.LEFT_ALIGNMENT
+                    toolTipText = warning
                     foreground = warnColor
                     font = font.deriveFont(Font.BOLD)
                     border = JBUI.Borders.empty(0, 4, 6, 4)
@@ -140,7 +144,7 @@ class SwitchPreviewDialog(
             toolTipText = when {
                 column == 1 && preflightRow.probeError != null -> preflightRow.probeError
                 column == 0 && !preflightRow.isMain -> preflightRow.path
-                else -> null
+                else -> text
             }
             font = if (preflightRow.isMain && column == 0) {
                 font.deriveFont(Font.BOLD)
@@ -172,6 +176,7 @@ class SwitchPreviewDialog(
                 row,
                 column,
             )
+            toolTipText = preflightRow.target
             if (!isSelected) {
                 foreground = when {
                     preflightRow.branchMissing -> warnColor

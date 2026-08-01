@@ -45,13 +45,23 @@ fun makeBranchCombo(onDirty: () -> Unit): JComboBox<String> {
     val combo = JComboBox<String>()
     combo.isEditable = true
     combo.prototypeDisplayValue = "x".repeat(28)
-    combo.addItemListener { onDirty() }
+    combo.addItemListener {
+        val branch = combo.selectedItem?.toString()
+        combo.toolTipText = branch
+        onDirty()
+    }
     val editor = combo.editor.editorComponent as? JTextField
     editor?.document?.addDocumentListener(
         object : DocumentListener {
-            override fun insertUpdate(e: DocumentEvent) = onDirty()
-            override fun removeUpdate(e: DocumentEvent) = onDirty()
-            override fun changedUpdate(e: DocumentEvent) = onDirty()
+            override fun insertUpdate(e: DocumentEvent) = editorChanged()
+            override fun removeUpdate(e: DocumentEvent) = editorChanged()
+            override fun changedUpdate(e: DocumentEvent) = editorChanged()
+
+            private fun editorChanged() {
+                editor.toolTipText = editor.text
+                combo.toolTipText = editor.text
+                onDirty()
+            }
         }
     )
     editor?.addKeyListener(object : KeyAdapter() {

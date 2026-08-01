@@ -42,8 +42,13 @@ When updating a documented test total, start from clean reports:
 ./gradlew :core:cleanTest cleanTest :core:test test --rerun-tasks --max-workers=2 --no-parallel
 ```
 
-For release preparation, run `./gradlew releaseCheck`. The environment guide
-describes the SDK and Plugin Verifier configuration used by that task.
+For release preparation, run `./gradlew releaseCheck`. It checks the oldest and
+current Rider endpoints locally; CI verifies every supported Rider platform
+branch. The environment guide owns the exact SDK and verifier configuration.
+For repeated install-from-disk testing, use the temporary
+`localPluginVersion` override documented in
+[docs/SETUP.md](docs/SETUP.md#plugin-versions-during-development); do not bump
+formal release metadata for each local build.
 
 ## Optional Diagnostics
 

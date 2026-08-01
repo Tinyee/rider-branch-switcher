@@ -1,22 +1,19 @@
 package com.submodule.branchswitcher.ui
 
 import com.intellij.ui.JBColor
-import com.intellij.util.ui.JBUI
 import com.submodule.branchswitcher.Bundle
 import com.submodule.branchswitcher.log.AppLogger
 import com.submodule.branchswitcher.git.PresetDiscoveryGitClient
 import com.submodule.branchswitcher.model.Preset
 import com.submodule.branchswitcher.switch.shortLabel
-import java.awt.BorderLayout
 import java.awt.Component
 import java.awt.Container
-import java.awt.Dimension
-import java.awt.FlowLayout
 import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
 import java.io.File
 import java.nio.file.Path
 import javax.swing.Box
+import javax.swing.BoxLayout
 import javax.swing.JButton
 import javax.swing.JComboBox
 import javax.swing.JLabel
@@ -63,25 +60,16 @@ internal class SubmoduleRowManager(
             font = font.deriveFont(8f)
             foreground = JBColor(0x9E9E9E, 0x757575)
         }
-        val rowPanel = object : JPanel(BorderLayout()) {
-            override fun getMaximumSize(): Dimension =
-                Dimension(Short.MAX_VALUE.toInt(), preferredSize.height)
-        }.apply {
-            border = JBUI.Borders.empty(2, 12, 2, 4)
-            alignmentX = JPanel.LEFT_ALIGNMENT
-            val labelPanel = JPanel(FlowLayout(FlowLayout.LEFT, 0, 0)).apply {
-                isOpaque = false
-                add(dot)
-                add(Box.createHorizontalStrut(4))
-                add(JLabel(shortLabel(path)).apply {
-                    preferredSize = Dimension(JBUI.scale(120), preferredSize.height)
-                    toolTipText = path
-                })
-            }
-            add(labelPanel, BorderLayout.WEST)
-            add(combo, BorderLayout.CENTER)
-
+        val labelPanel = JPanel().apply {
+            layout = BoxLayout(this, BoxLayout.X_AXIS)
+            isOpaque = false
+            add(dot)
+            add(Box.createHorizontalStrut(4))
+            add(ShrinkableLabel(shortLabel(path)).apply {
+                toolTipText = path
+            })
         }
+        val rowPanel = responsiveFormRow(labelPanel, combo)
         installContextMenu(rowPanel, path)
         val row = SubRow(path, combo, rowPanel, statusDot = dot)
         subRows[path] = row

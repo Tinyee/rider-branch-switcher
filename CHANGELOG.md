@@ -52,10 +52,24 @@
   for first-time preflight without reusing snapshots in write or recovery steps.
 - Retain and report submodules initialized before a later switch failure or
   cancellation instead of deleting worktrees without a checkpoint.
-- Require JDK 21 for IntelliJ Platform 2026.1 builds and CI.
+- Compile against the IntelliJ Platform 2025.1 API baseline with Java 21 and
+  Kotlin 2.1 API compatibility; verify every supported Rider platform branch
+  in CI without packaging a newer Kotlin standard library.
 - Remove duplicate and non-behavioral tests, strengthen previously vacuous
   assertions, add focused failure-path coverage, and drop the single-use
   Kotest dependency.
+- Make Tool Window content follow the visible viewport width and centralize
+  responsive action, form-row, and overflow layouts for narrow sidebars.
+- Align preset headers and compact actions with the approved Tool Window
+  design, omit the redundant current-preset switch action, and render overflow
+  commands through a shared, theme-aware overflow popup.
+- Preserve compact controls under extreme widths, elide long branch and preset
+  text with full-value tooltips, and allow narrow preflight tables to scroll
+  horizontally instead of crushing their columns.
+- Ignore hidden regions during responsive measurement and clamp inset and
+  stacked-indent placement when a Tool Window is narrower than its padding.
+- Explain each global switch setting in context and clarify the actual behavior
+  of dirty-worktree strategies, Git timeouts, fetch, pull, and submodule init.
 
 ### Fixed
 
@@ -81,6 +95,15 @@
   cancellation, so recovery receives the latest execution state.
 - Reset the Tool Window switching indicator even when VCS refresh or result
   presentation fails.
+- Prevent narrow Tool Windows from clipping strategy text, preset actions,
+  branch selectors, and save controls beyond the right edge.
+- Preserve stacked footer height when a preset is reopened after a narrow
+  Tool Window resize, keep overflow actions visible during action changes, and
+  stack Add Submodule, Discard, and Save on one left baseline before any
+  control can be clipped.
+- Keep top-level and footer actions inside their parent bounds even below the
+  Tool Window's normal minimum width, and limit an expanded log to one third of
+  the available height.
 
 ### Removed
 
@@ -91,7 +114,7 @@
 
 ### Quality
 
-- 224 automated tests in 37 classes across core, platform, and real Git CLI
+- 228 automated tests in 36 classes across core, platform, and real Git CLI
   integration coverage.
 - CI runs tests, plugin build, Detekt, structural checks, and Plugin Verifier
   across the supported matrix.

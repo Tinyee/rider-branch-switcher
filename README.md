@@ -34,9 +34,9 @@ configuration cleanup and be shared by the team.
 
 ## Supported IDEs
 
-The plugin uses IntelliJ Platform APIs and the bundled `Git4Idea` plugin.
-The unified IntelliJ IDEA distribution is the primary build target and Rider
-is the current compatibility target. See the
+The plugin uses IntelliJ Platform APIs and the bundled `Git4Idea` plugin. It is
+compiled against the IntelliJ Platform 2025.1 API baseline, and Rider 2025.1
+and newer are the currently verified product targets. See the
 [support matrix](docs/SETUP.md#support-matrix-policy) for the evidence required
 before claiming support for another IDE family.
 
@@ -66,7 +66,7 @@ build/distributions/submodule-branch-switcher-*.zip
 1. Open the **SubmoduleBranches** Tool Window.
 2. Click **From Current State** to create a preset from the current main repo and submodule branches.
 3. Edit the preset branch targets if needed.
-4. Click **Switch to this Preset**.
+4. Click **Switch**.
 5. Review the dry-run preview and confirm.
 
 Example preset file:
@@ -99,11 +99,11 @@ Configure global behavior at `Settings | Version Control | Submodule Branch Swit
 
 | Option | Default | Description |
 | --- | --- | --- |
-| Dirty working tree | Stash changes | Strategy for uncommitted changes: stash, skip, or force. |
-| Timeout | 60s | Maximum time per Git command. |
-| Fetch before switch | On | Run `git fetch --prune` before checkout. |
-| Pull after switch | On | Run `git pull --ff-only` after checkout. |
-| Confirm before init | Off | Ask before initializing missing submodule directories. |
+| Uncommitted changes | Stash changes | Stash and restore changes, skip dirty repositories, or try checkout without stashing. |
+| Git command timeout | 60s | Maximum time for each inspection, fetch, checkout, pull, or submodule command. |
+| Refresh remote branches | On | Run `git fetch --prune` before checkout; report failures and continue where possible. |
+| Fast-forward target branches | On | Run `git pull --ff-only` after checkout without automatically merging diverged branches. |
+| Confirm missing submodules | Off | Ask before initializing each missing submodule directory. |
 
 ## Contributing
 
