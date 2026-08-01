@@ -433,7 +433,7 @@ class SwitchStepTest {
         )
         val state = SwitchState().withSuccessfulCheckout(".")
 
-        val execution = CheckoutStep(SwitchTargetScope.SUBMODULES).run(c, state)
+        val execution = SubmoduleTreeStep().run(c, state)
 
         assertEquals(
             mapOf("SubA" to "submodule init failed"),
@@ -460,13 +460,13 @@ class SwitchStepTest {
             preset = Preset("moved", "main", mapOf("OldSub" to "dev")),
         )
 
-        val execution = CheckoutStep(SwitchTargetScope.SUBMODULES).run(
+        val execution = SubmoduleTreeStep().run(
             c,
             SwitchState().withSuccessfulCheckout("."),
         )
 
         assertEquals(
-            mapOf("OldSub" to "not registered in target .gitmodules"),
+            mapOf("OldSub" to "not registered in current .gitmodules graph"),
             (execution.result as StepResult.Partial).failures,
         )
         assertEquals(0, checkoutCalls)
@@ -505,7 +505,7 @@ class SwitchStepTest {
             ),
         )
 
-        val execution = CheckoutStep(SwitchTargetScope.SUBMODULES).run(
+        val execution = SubmoduleTreeStep().run(
             c,
             SwitchState().withSuccessfulCheckout("."),
         )

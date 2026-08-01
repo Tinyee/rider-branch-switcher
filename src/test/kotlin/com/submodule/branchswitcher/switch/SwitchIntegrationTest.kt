@@ -217,6 +217,48 @@ class SwitchIntegrationTest {
     }
 
     @Test
+    fun `nested child added by parent pull is initialized before the child switch`() {
+        val childAuthor = createRepo(tmpDir, "child-author")
+        createBranch(childAuthor, "release")
+        val childRemote = createBareClone(childAuthor, "child-remote.git")
+
+        val parentAuthor = createRepo(tmpDir, "parent-author")
+        val parentRemote = createBareClone(parentAuthor, "parent-remote.git")
+        gitOk(parentAuthor, "remote", "add", "origin", parentRemote.absolutePath)
+
+        val mainAuthor = createRepo(tmpDir, "main-author")
+        addSubmodule(mainAuthor, parentRemote, "Parent")
+        val mainRemote = createBareClone(mainAuthor, "main-remote.git")
+        val local = cloneRepo(mainRemote, "project")
+        gitOk(local, "-c", "protocol.file.allow=always", "submodule", "update", "--init", "--recursive")
+
+        addSubmodule(parentAuthor, childRemote, "Nested")
+        gitOk(parentAuthor, "push", "origin", "main")
+
+        val nested = File(local, "Parent/Nested")
+        assertFalse("Nested child should initially exist only in the parent remote", nested.exists())
+
+        val (ok, logs) = runSwitch(
+            local,
+            Preset(
+                "nested-addition",
+                "main",
+                linkedMapOf("Parent" to "main", "Parent/Nested" to "release"),
+            ),
+            SwitchOptions(DirtyAction.Stash, pull = true, fetchFirst = true),
+        )
+
+        assertTrue("Nested child should initialize after its parent pull. Logs: $logs", ok)
+        assertTrue("Nested child worktree should be created", git.isGitRepo(nested))
+        assertEquals("release", git.currentBranch(nested))
+        val parentPull = logs.indexOfFirst { it.contains("pull ok - Parent") }
+        val nestedInit = logs.indexOfFirst { it.contains("submodule init ok") }
+        assertTrue("Parent pull must happen before nested initialization. Logs: $logs", parentPull >= 0)
+        assertTrue("Nested initialization should be logged. Logs: $logs", nestedInit >= 0)
+        assertTrue("Parent pull must precede nested initialization. Logs: $logs", parentPull < nestedInit)
+    }
+
+    @Test
     fun `moved submodule initializes its new path without deleting the obsolete worktree`() {
         val submoduleSource = createRepo(tmpDir, "submodule-source")
         createBranch(submoduleSource, "release")

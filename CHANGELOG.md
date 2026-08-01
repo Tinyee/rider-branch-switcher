@@ -39,6 +39,9 @@
   pure core rules while keeping Swing rendering in `PresetEditor`.
 - Split checkout orchestration from missing-submodule initialization and branch
   selection, and make background result handling explicit.
+- Process nested submodules parent-first, including parent pull and sync before
+  child discovery and initialization, and block child mutations when the main
+  checkout or required sync fails.
 - Split derive into explicit preflight, checkpoint, and execution phases, with
   platform cancellation and rollback owned by `DeriveBranchRunner`.
 - Separate preset clipboard transfer and current-state creation from collection

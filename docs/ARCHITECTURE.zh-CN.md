@@ -42,11 +42,12 @@ IntelliJ、platform、service 或 UI；core 不能引用 IntelliJ 或桌面 UI�
 3. [`SwitchExecutor.kt`](../core/src/main/kotlin/com/submodule/branchswitcher/switch/SwitchExecutor.kt)
    查看完整步骤顺序。
 4. [`CheckoutStep.kt`](../core/src/main/kotlin/com/submodule/branchswitcher/switch/CheckoutStep.kt)
-   查看 checkout 的整体编排，再阅读
+   查看主仓 checkout，再阅读
+   [`SubmoduleTreeStep.kt`](../core/src/main/kotlin/com/submodule/branchswitcher/switch/SubmoduleTreeStep.kt)、
    [`SubmoduleInitializer.kt`](../core/src/main/kotlin/com/submodule/branchswitcher/switch/SubmoduleInitializer.kt)
    和
    [`BranchCheckout.kt`](../core/src/main/kotlin/com/submodule/branchswitcher/switch/BranchCheckout.kt)
-   了解缺失子模块初始化、目标 `.gitmodules` 路径校验和分支选择。路径迁移后，
+   了解父级优先的子模块流程、缺失子模块初始化、`.gitmodules` 路径校验和分支选择。路径迁移后，
    新路径可以正常初始化，preset 中已废弃的旧路径会被跳过，但本地旧工作树不会自动删除。
 5. [`SwitchRecoveryExecutor.kt`](../core/src/main/kotlin/com/submodule/branchswitcher/switch/SwitchRecoveryExecutor.kt)
    了解 checkpoint、回滚和 stash 恢复。
@@ -84,12 +85,13 @@ Git 命令：
 1. 处理已有仓库的 dirty worktree。
 2. Fetch、checkout、pull 主仓库。
 3. 根据更新后的 `.gitmodules` 执行 `submodule sync --recursive`。
-4. Fetch 已存在的子模块。
-5. 初始化本地缺失的子模块，并切换每个目标分支。
-6. Pull 已成功切换的子模块。
+4. 按父级优先顺序逐个处理子模块：初始化、fetch、checkout、pull。
+5. 父子模块完成 pull 后同步并重新读取其 `.gitmodules`，再处理下一层子模块。
 
 主仓库必须先更新，因为远端主分支可能刚增加或修改子模块。缺失子模块使用
-`git submodule update --init --recursive -- <path>` 初始化。
+`git submodule update --init --recursive -- <path>` 初始化；嵌套子模块会在其直接父仓库中
+使用相对路径初始化。主仓 checkout 或 submodule sync 失败时，后续子模块目标会被禁用，
+但流水线仍会恢复此前创建的 stash。
 
 切换前会记录 checkpoint。每个步骤返回新的 `SwitchState`，而不是直接修改共享状态。
 这样即使中途抛异常或取消，恢复流程仍然知道哪些仓库已切换、哪些 stash 尚未恢复。
