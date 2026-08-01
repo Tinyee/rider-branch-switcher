@@ -532,6 +532,31 @@ class SwitchIntegrationTest {
     }
 
     @Test
+    fun `derive blocks an obsolete retained submodule worktree`() {
+        val root = createRepo(tmpDir, "project")
+        val submoduleSource = createRepo(tmpDir, "submodule-source")
+        addSubmodule(root, submoduleSource, "SubA")
+        gitOk(root, "submodule", "update", "--init", "--recursive")
+
+        val obsoleteWorktree = File(root, "SubA")
+        gitOk(root, "rm", "--cached", "SubA")
+        assertTrue(File(root, ".gitmodules").delete())
+        gitOk(root, "add", "-u")
+        gitOk(root, "commit", "-m", "remove submodule registration")
+        assertTrue("Obsolete worktree should remain available locally", git.isGitRepo(obsoleteWorktree))
+
+        val result = DeriveBranchExecutor(root.toPath(), deriveLog(), git).execute(
+            Preset("obsolete", "main", mapOf("SubA" to "main")),
+            "feature",
+        )
+
+        assertTrue(result.preflightBlocked)
+        assertEquals(listOf("SubA"), result.skipped)
+        assertFalse(git.localBranchExists(root, "feature"))
+        assertFalse(git.localBranchExists(obsoleteWorktree, "feature"))
+    }
+
+    @Test
     fun `derive blocks on dirty repo when requireClean is true`() {
         val root = createRepo(tmpDir, "project")
         File(root, "dirty.txt").writeText("uncommitted")

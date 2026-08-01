@@ -42,6 +42,9 @@
 - Process nested submodules parent-first, including parent pull and sync before
   child discovery and initialization, and block child mutations when the main
   checkout or required sync fails.
+- Share current `.gitmodules` registration checks across full-preset,
+  single-repository, and derive writes so retained obsolete worktrees cannot be
+  modified accidentally.
 - Split derive into explicit preflight, checkpoint, and execution phases, with
   platform cancellation and rollback owned by `DeriveBranchRunner`.
 - Separate preset clipboard transfer and current-state creation from collection

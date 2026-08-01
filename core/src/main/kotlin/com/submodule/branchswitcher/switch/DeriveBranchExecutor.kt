@@ -59,11 +59,20 @@ class DeriveBranchExecutor(
         val dirty = mutableListOf<String>()
         val branchMismatch = mutableListOf<String>()
         val probeFailures = mutableListOf<String>()
+        val registeredPaths = git.registeredSubmodulePaths(projectRoot.toFile())
 
         for (target in targets) {
             if (isCancelled()) break
             val repositoryDirectory = resolveGitDir(projectRoot, target.path)
             val repositoryLabel = labelFor(target.path)
+
+            if (submoduleRegistrationStatus(target.path, registeredPaths) ==
+                SubmoduleRegistrationStatus.UNREGISTERED
+            ) {
+                log.warn("[derive] $repositoryLabel: not registered in current .gitmodules graph - blocked")
+                skipped.add(target.path)
+                continue
+            }
 
             if (!repositoryDirectory.exists() || !git.isGitRepo(repositoryDirectory)) {
                 log.warn("[derive] $repositoryLabel: not a git repo - blocked")

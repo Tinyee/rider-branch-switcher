@@ -39,7 +39,9 @@ class SubmoduleTreeStep : SwitchStep {
                     continue
                 }
 
-                if (registeredPaths?.contains(target.path) == false) {
+                if (submoduleRegistrationStatus(target.path, registeredPaths) ==
+                    SubmoduleRegistrationStatus.UNREGISTERED
+                ) {
                     context.log.warn(
                         "[skip] ${target.path} - not registered in current .gitmodules graph; " +
                             "obsolete worktree retained",

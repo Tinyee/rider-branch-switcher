@@ -4,7 +4,9 @@ import com.submodule.branchswitcher.git.GitResult
 import com.submodule.branchswitcher.operation.GitOperationResult
 import com.submodule.branchswitcher.operation.GitOperationRunner
 import com.submodule.branchswitcher.switch.CancellationClassifier
+import com.submodule.branchswitcher.switch.SubmoduleRegistrationStatus
 import com.submodule.branchswitcher.switch.resolveGitDir
+import com.submodule.branchswitcher.switch.submoduleRegistrationStatus
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -12,6 +14,7 @@ import java.nio.file.Path
 import java.util.concurrent.atomic.AtomicBoolean
 
 enum class SingleRepositorySkipReason {
+    NOT_REGISTERED,
     NOT_INITIALIZED,
     DIRTY,
     ALREADY_ON_TARGET,
@@ -65,6 +68,11 @@ class SingleRepositorySwitcher(
             when (val background = operations.run(title) { indicator, operation ->
                 indicator.isIndeterminate = true
                 when {
+                    submoduleRegistrationStatus(
+                        path,
+                        operation.registeredSubmodulePaths(root.toFile()),
+                    ) == SubmoduleRegistrationStatus.UNREGISTERED ->
+                        SingleRepositorySwitchResult.Skipped(SingleRepositorySkipReason.NOT_REGISTERED)
                     !dir.exists() || !operation.isGitRepo(dir) ->
                         SingleRepositorySwitchResult.Skipped(SingleRepositorySkipReason.NOT_INITIALIZED)
                     operation.isDirty(dir) ->

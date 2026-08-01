@@ -159,6 +159,8 @@ internal class PresetListManager(
                     }
                     is SingleRepositorySwitchResult.Skipped -> {
                         val reason = when (result.reason) {
+                            SingleRepositorySkipReason.NOT_REGISTERED ->
+                                "repository is not registered in the current submodule graph"
                             SingleRepositorySkipReason.NOT_INITIALIZED -> "repository is not initialized"
                             SingleRepositorySkipReason.DIRTY -> "working tree dirty"
                             SingleRepositorySkipReason.ALREADY_ON_TARGET -> "already on $target"
