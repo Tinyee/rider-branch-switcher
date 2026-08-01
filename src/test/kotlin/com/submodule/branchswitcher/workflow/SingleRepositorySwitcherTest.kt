@@ -200,6 +200,7 @@ class SingleRepositorySwitcherTest {
             ) { _, method, _ ->
                 when (method.name) {
                     "close", "cancel" -> null
+                    "registeredSubmodules" -> null
                     "registeredSubmodulePaths" -> registeredPaths
                     "repositoryIdentity" -> identity
                     "isGitRepo" -> true

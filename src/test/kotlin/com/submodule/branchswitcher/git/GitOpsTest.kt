@@ -100,6 +100,32 @@ class GitOpsTest {
         }
     }
 
+    @Test
+    fun `git config semantics preserve quoted comment characters and ignore trailing comments`() {
+        writeGitmodules(
+            """
+            [submodule "quoted"]
+                path = "folder # one" # trailing comment
+            [submodule "plain"]
+                path = SubA ; another comment
+            """.trimIndent(),
+        )
+
+        assertEquals(listOf("folder # one", "SubA"), git.listSubmodulePaths(tmpDir.toFile()))
+    }
+
+    @Test(expected = GitQueryException::class)
+    fun `malformed gitmodules fails instead of returning a partial topology`() {
+        writeGitmodules(
+            """
+            [submodule "broken]
+                path = SubA
+            """.trimIndent(),
+        )
+
+        git.listSubmodulePaths(tmpDir.toFile())
+    }
+
     // ── Nested submodule discovery ──────────────────────────────────
 
     @Test
@@ -137,6 +163,14 @@ class GitOpsTest {
         )
         val paths = git.listSubmodulePaths(tmpDir.toFile())
         assertEquals(listOf("SubA", "SubA/SubA1", "SubA/SubA2"), paths)
+        assertEquals(
+            listOf(
+                SubmoduleRegistration("SubA", "SubA", "."),
+                SubmoduleRegistration("SubA/SubA1", "SubA1", "SubA"),
+                SubmoduleRegistration("SubA/SubA2", "SubA2", "SubA"),
+            ),
+            git.registeredSubmodules(tmpDir.toFile()),
+        )
     }
 
     @Test

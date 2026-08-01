@@ -39,6 +39,13 @@ data class RepositoryIdentity(
     val superprojectRoot: String?,
 )
 
+/** One `.gitmodules` entry with its full project path and immediate parent path. */
+data class SubmoduleRegistration(
+    val path: String,
+    val sectionName: String,
+    val parentPath: String,
+)
+
 /** Repository metadata shared by multiple Git workflows. */
 interface GitRepositoryQuery {
     /** True when [workDir] is a usable git repository. */
@@ -49,6 +56,8 @@ interface GitRepositoryQuery {
     fun revParseHead(workDir: File): String?
     /** Returns stable repository storage and superproject paths, or null when unsupported. */
     fun repositoryIdentity(workDir: File): RepositoryIdentity? = null
+    /** Returns the selected fetch remote URL, or null when the repository has no remote. */
+    fun remoteUrl(workDir: File): String? = null
 }
 
 /** Read-only Git operations used to detect the current repository state. */
@@ -59,11 +68,14 @@ interface RepositoryStateGitClient : GitRepositoryQuery {
 
 /** Read-only access to the submodule paths registered by the current worktree graph. */
 interface SubmoduleRegistrationQuery {
+    /** Returns structured registrations when the implementation can parse section identity. */
+    fun registeredSubmodules(gitRoot: File): List<SubmoduleRegistration>? = null
     /**
      * Returns paths registered by the checked-out `.gitmodules` graph.
      * Null means the implementation cannot validate registration reliably.
      */
-    fun registeredSubmodulePaths(gitRoot: File): Set<String>? = null
+    fun registeredSubmodulePaths(gitRoot: File): Set<String>? =
+        registeredSubmodules(gitRoot)?.mapTo(linkedSetOf(), SubmoduleRegistration::path)
 }
 
 /** Git operations required by the branch-switch pipeline. */

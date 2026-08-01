@@ -475,6 +475,35 @@ class SwitchStepTest {
     }
 
     @Test
+    fun `submodule remote added after checkpoint blocks checkout`() {
+        projectRoot.resolve("SubA").toFile().mkdirs()
+        var checkoutCalls = 0
+        val validatingGit = object : GitClient by fakeGit {
+            override fun isGitRepo(workDir: File): Boolean = true
+            override fun registeredSubmodulePaths(gitRoot: File): Set<String> = setOf("SubA")
+            override fun remoteUrl(workDir: File): String = "replacement-url"
+
+            override fun checkoutExisting(workDir: File, branch: String): GitResult {
+                checkoutCalls++
+                return GitResult("checkout", 0, "", "")
+            }
+        }
+        val c = context().copy(
+            git = validatingGit,
+            preset = Preset("replacement", "main", mapOf("SubA" to "dev")),
+            checkpoint = mapOf("SubA" to CheckpointEntry("before", "main", remoteUrl = null)),
+        )
+
+        val execution = SubmoduleTreeStep().run(c, SwitchState().withSuccessfulCheckout("."))
+
+        assertEquals(
+            mapOf("SubA" to "registered repository remote changed"),
+            (execution.result as StepResult.Partial).failures,
+        )
+        assertEquals(0, checkoutCalls)
+    }
+
+    @Test
     fun `nested registration refreshes after parent checkout`() {
         projectRoot.resolve("Parent/Nested").toFile().mkdirs()
         val checkedOut = mutableListOf<String>()

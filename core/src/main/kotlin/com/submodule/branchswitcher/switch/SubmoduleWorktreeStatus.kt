@@ -1,6 +1,8 @@
 package com.submodule.branchswitcher.switch
 
+import com.submodule.branchswitcher.git.GitRepositoryQuery
 import com.submodule.branchswitcher.git.RepositoryIdentity
+import com.submodule.branchswitcher.git.SubmoduleRegistration
 import java.io.File
 
 /** Whether a repository worktree is associated with a superproject inside this project. */
@@ -15,6 +17,7 @@ fun submoduleWorktreeStatus(
     path: String,
     worktree: File,
     identity: RepositoryIdentity?,
+    expectedGitDirectory: String? = null,
 ): SubmoduleWorktreeStatus {
     if (path == ".") return SubmoduleWorktreeStatus.ASSOCIATED
     if (identity == null) return SubmoduleWorktreeStatus.UNKNOWN
@@ -24,6 +27,9 @@ fun submoduleWorktreeStatus(
     val parent = superproject.canonicalFile.toPath()
     val child = worktree.canonicalFile.toPath()
     val gitDirectory = File(identity.gitDirectory).canonicalFile.toPath()
+    if (expectedGitDirectory != null && gitDirectory != File(expectedGitDirectory).canonicalFile.toPath()) {
+        return SubmoduleWorktreeStatus.NOT_ASSOCIATED
+    }
     val metadataIsExternal = !gitDirectory.startsWith(child)
     val parentIsInProject = parent == root || parent.startsWith(root)
     val childIsBelowParent = child != parent && child.startsWith(parent)
@@ -32,4 +38,19 @@ fun submoduleWorktreeStatus(
     } else {
         SubmoduleWorktreeStatus.NOT_ASSOCIATED
     }
+}
+
+fun expectedSubmoduleGitDirectory(
+    projectRoot: File,
+    registration: SubmoduleRegistration?,
+    git: GitRepositoryQuery,
+): String? {
+    registration ?: return null
+    val parent = if (registration.parentPath == ".") {
+        projectRoot
+    } else {
+        resolveGitDir(projectRoot.toPath(), registration.parentPath)
+    }
+    val parentGitDirectory = git.repositoryIdentity(parent)?.gitDirectory ?: return null
+    return File(parentGitDirectory, "modules/${registration.sectionName}").canonicalPath
 }

@@ -182,6 +182,18 @@ internal class GitCommandClient(
         }
     }
 
+    override fun remoteUrl(workDir: File): String? {
+        val remotesResult = run(workDir, "remote")
+        if (!remotesResult.ok) throw GitQueryException(remotesResult)
+        val remotes = remotesResult.stdout.lines().map(String::trim).filter(String::isNotEmpty)
+        if (remotes.isEmpty()) return null
+        val remote = selectRemoteName(remotes)
+        remoteCache[workDir.absolutePath] = remote
+        val urlResult = run(workDir, "remote", "get-url", remote)
+        if (!urlResult.ok) throw GitQueryException(urlResult)
+        return urlResult.stdout.trim().ifEmpty { null }
+    }
+
     override fun remoteBranchExists(workDir: File, branch: String): Boolean {
         val result = run(workDir, "show-ref", "--verify", "--quiet", "refs/remotes/${remoteName(workDir)}/$branch")
         return when {
@@ -209,11 +221,15 @@ internal class GitCommandClient(
     override fun submoduleInitPath(gitRoot: File, path: String): GitResult =
         run(gitRoot, "submodule", "update", "--init", "--recursive", "--", path)
 
-    override fun registeredSubmodulePaths(gitRoot: File): Set<String> =
-        listSubmodulePaths(gitRoot).toSet()
+    override fun registeredSubmodules(gitRoot: File): List<SubmoduleRegistration> =
+        listSubmoduleRegistrations(gitRoot)
 
     override fun listSubmodulePaths(gitRoot: File): List<String> {
-        val result = mutableListOf<String>()
+        return listSubmoduleRegistrations(gitRoot).map(SubmoduleRegistration::path)
+    }
+
+    private fun listSubmoduleRegistrations(gitRoot: File): List<SubmoduleRegistration> {
+        val result = mutableListOf<SubmoduleRegistration>()
         val visited = HashSet<String>()
         val rootCanonical = try {
             gitRoot.canonicalFile.path
@@ -221,15 +237,15 @@ internal class GitCommandClient(
             gitRoot.absolutePath
         }
         visited.add(rootCanonical)
-        collectSubmodulePaths(gitRoot, "", result, visited, rootCanonical)
+        collectSubmoduleRegistrations(gitRoot, "", result, visited, rootCanonical)
         return result
     }
 
     @Suppress("TooGenericExceptionCaught") // canonical-path failures must skip unsafe submodule entries
-    private fun collectSubmodulePaths(
+    private fun collectSubmoduleRegistrations(
         baseDir: File,
         prefix: String,
-        result: MutableList<String>,
+        result: MutableList<SubmoduleRegistration>,
         visited: MutableSet<String>,
         rootCanonical: String,
         depth: Int = 0,
@@ -237,13 +253,8 @@ internal class GitCommandClient(
         if (depth > MAX_SUBMODULE_DEPTH) return
         val file = File(baseDir, ".gitmodules")
         if (!file.exists()) return
-        val paths = file.readLines().mapNotNull { raw ->
-            val line = raw.trim()
-            if (line.isEmpty() || line.startsWith("#") || line.startsWith(";")) return@mapNotNull null
-            val value = PATH_LINE_REGEX.find(line)?.groupValues?.get(1) ?: return@mapNotNull null
-            value.trim().trim('"').takeIf { it.isNotEmpty() }
-        }
-        for (path in paths) {
+        val entries = readSubmoduleEntries(baseDir, file)
+        for ((sectionName, path) in entries) {
             if (!isSafeSubmodulePath(path)) continue
             val fullPath = if (prefix.isEmpty()) path else "$prefix/$path"
             val subDir = File(baseDir, path)
@@ -255,8 +266,41 @@ internal class GitCommandClient(
             }
             if (!resolved.startsWith(rootCanonical + File.separator)) continue
             if (!visited.add(resolved)) continue
-            result.add(fullPath)
-            collectSubmodulePaths(subDir, fullPath, result, visited, rootCanonical, depth + 1)
+            result.add(
+                SubmoduleRegistration(
+                    path = fullPath,
+                    sectionName = sectionName,
+                    parentPath = prefix.ifEmpty { "." },
+                ),
+            )
+            collectSubmoduleRegistrations(subDir, fullPath, result, visited, rootCanonical, depth + 1)
+        }
+    }
+
+    private fun readSubmoduleEntries(baseDir: File, file: File): List<Pair<String, String>> {
+        val result = run(
+            baseDir,
+            "config",
+            "--null",
+            "--file",
+            file.absolutePath,
+            "--get-regexp",
+            SUBMODULE_PATH_KEY_REGEX,
+        )
+        if (!result.ok) {
+            if (result.exitCode == 1 && result.failureKind == GitFailureKind.GIT_FAILED) return emptyList()
+            throw GitQueryException(result)
+        }
+        return result.stdout.split('\u0000').mapNotNull { record ->
+            if (record.isEmpty()) return@mapNotNull null
+            val separator = record.indexOf('\n')
+            if (separator <= 0) throw GitQueryException(
+                GitResult(result.cmd, 1, result.stdout, "invalid null-delimited git config output"),
+            )
+            val key = record.substring(0, separator)
+            val path = record.substring(separator + 1)
+            val sectionName = key.removePrefix(SUBMODULE_KEY_PREFIX).removeSuffix(SUBMODULE_PATH_SUFFIX)
+            sectionName to path
         }
     }
 
@@ -301,7 +345,9 @@ internal class GitCommandClient(
 
     companion object {
         private const val MAX_SUBMODULE_DEPTH = 10
-        private val PATH_LINE_REGEX = Regex("""^path\s*=\s*(.+?)\s*$""", RegexOption.IGNORE_CASE)
+        private const val SUBMODULE_PATH_KEY_REGEX = "^submodule\\..*\\.path$"
+        private const val SUBMODULE_KEY_PREFIX = "submodule."
+        private const val SUBMODULE_PATH_SUFFIX = ".path"
         private val LOG = Logger.getLogger(GitCommandClient::class.java.name)
     }
 }

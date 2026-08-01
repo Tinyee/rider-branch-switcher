@@ -48,6 +48,9 @@
 - Verify initialized submodule worktree ownership before writes and persist the
   canonical Git-directory identity in switch and derive checkpoints, preventing
   recovery from modifying a replacement repository at the same path.
+- Parse `.gitmodules` through Git's null-delimited config output and retain
+  section/parent identity, rejecting swapped submodule paths and same-path
+  repository URL replacements before fetch or checkout.
 - Split derive into explicit preflight, checkpoint, and execution phases, with
   platform cancellation and rollback owned by `DeriveBranchRunner`.
 - Separate preset clipboard transfer and current-state creation from collection

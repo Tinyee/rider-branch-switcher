@@ -152,7 +152,11 @@ Checkpoints also retain the canonical Git directory identity. Recovery and
 derive rollback skip a path if a different repository later occupies it.
 Before ordinary writes, an initialized submodule must report a superproject
 inside the project and external Git metadata rather than a standalone `.git`
-directory in the worktree.
+directory in the worktree. Structured `.gitmodules` registrations also retain
+the section name and immediate parent. The expected `.git/modules/<section>`
+directory must match the worktree identity, which rejects swapped paths. A
+checkpointed remote URL must still match after `submodule sync`, which rejects
+repository replacement at an unchanged path.
 Submodules initialized by the failed or cancelled switch are deliberately
 retained: they had no pre-switch checkpoint, and deleting a newly populated
 worktree could discard useful data. Recovery logs and notifications list those
@@ -249,6 +253,10 @@ processes. It admits at most four active Git processes and assigns their stdout
 and stderr pipes to a dedicated eight-thread drain executor. Stdout is capped at
 8 MiB and fails explicitly when exceeded; stderr retains only its final 128 KiB
 for diagnostics.
+
+`.gitmodules` values are read through `git config --null --file`, not a custom
+line parser, so Git owns quoting, comments, escaping, and malformed-file
+diagnostics.
 
 Each background write enters through the pure `GitOperationRunner` contract and
 opens its own `GitOperationSession`. `GitBackgroundRunner` is the IntelliJ

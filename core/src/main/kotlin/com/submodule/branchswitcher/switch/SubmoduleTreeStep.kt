@@ -1,5 +1,6 @@
 package com.submodule.branchswitcher.switch
 
+import com.submodule.branchswitcher.git.SubmoduleRegistration
 import com.submodule.branchswitcher.model.RepoTarget
 
 /**
@@ -19,7 +20,7 @@ class SubmoduleTreeStep : SwitchStep {
 
         val failures = linkedMapOf<String, String>()
         var nextState = state
-        var registeredPaths = loadRegisteredPaths(context, nextState)
+        var registrations = loadRegistrations(context, nextState)
 
         try {
             for ((index, target) in targets.withIndex()) {
@@ -39,7 +40,7 @@ class SubmoduleTreeStep : SwitchStep {
                     continue
                 }
 
-                if (submoduleRegistrationStatus(target.path, registeredPaths) ==
+                if (submoduleRegistrationStatus(target.path, registrations.paths) ==
                     SubmoduleRegistrationStatus.UNREGISTERED
                 ) {
                     context.log.warn(
@@ -78,10 +79,25 @@ class SubmoduleTreeStep : SwitchStep {
                         target.path,
                         directory,
                         context.git.repositoryIdentity(directory),
+                        expectedSubmoduleGitDirectory(
+                            context.projectRoot.toFile(),
+                            registrations.byPath[target.path],
+                            context.git,
+                        ),
                     ) == SubmoduleWorktreeStatus.NOT_ASSOCIATED
                 ) {
                     context.log.warn("[skip] ${target.path} - repository is not associated with its superproject")
                     failures[target.path] = "repository is not associated with its superproject"
+                    nextState = disableDescendants(nextState, targets, target.path)
+                    nextState = restoreTargetStash(context, nextState, target.path, failures)
+                    continue
+                }
+
+                val checkpointEntry = context.checkpoint[target.path]
+                val currentRemote = context.git.remoteUrl(directory)
+                if (checkpointEntry != null && checkpointEntry.remoteUrl != currentRemote) {
+                    context.log.warn("[skip] ${target.path} - registered repository remote changed")
+                    failures[target.path] = "registered repository remote changed"
                     nextState = disableDescendants(nextState, targets, target.path)
                     nextState = restoreTargetStash(context, nextState, target.path, failures)
                     continue
@@ -121,7 +137,7 @@ class SubmoduleTreeStep : SwitchStep {
                         failures[target.path] = "nested submodule sync failed"
                         nextState = disableDescendants(nextState, targets, target.path)
                     }
-                    registeredPaths = loadRegisteredPaths(context, nextState)
+                    registrations = loadRegistrations(context, nextState)
                 }
                 nextState = restoreTargetStash(context, nextState, target.path, failures)
             }
@@ -133,12 +149,19 @@ class SubmoduleTreeStep : SwitchStep {
         return StepExecution(result, nextState)
     }
 
-    private fun loadRegisteredPaths(context: SwitchContext, state: SwitchState): Set<String>? =
-        if (state.checkoutSucceeded(".")) {
-            context.git.registeredSubmodulePaths(context.projectRoot.toFile())
+    private fun loadRegistrations(context: SwitchContext, state: SwitchState): RegistrationSnapshot {
+        if (!state.checkoutSucceeded(".")) return RegistrationSnapshot(null, emptyMap())
+        val root = context.projectRoot.toFile()
+        val registrations = context.git.registeredSubmodules(root)
+        return if (registrations == null) {
+            RegistrationSnapshot(context.git.registeredSubmodulePaths(root), emptyMap())
         } else {
-            null
+            RegistrationSnapshot(
+                registrations.mapTo(linkedSetOf()) { it.path },
+                registrations.associateBy { it.path },
+            )
         }
+    }
 
     private fun restoreTargetStash(
         context: SwitchContext,
@@ -200,6 +223,11 @@ class SubmoduleTreeStep : SwitchStep {
     }
 
     private data class RegistrationLocation(val root: java.io.File, val path: String)
+
+    private data class RegistrationSnapshot(
+        val paths: Set<String>?,
+        val byPath: Map<String, SubmoduleRegistration>,
+    )
 
     private fun updateProgress(context: SwitchContext, index: Int, total: Int, path: String) {
         context.progressHandle?.apply {
