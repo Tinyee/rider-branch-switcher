@@ -3,6 +3,7 @@ package com.submodule.branchswitcher.ui
 import com.intellij.openapi.project.Project
 import com.submodule.branchswitcher.Bundle
 import com.submodule.branchswitcher.log.AppLogger
+import com.submodule.branchswitcher.log.withContext
 import com.submodule.branchswitcher.model.PreflightRow
 import com.submodule.branchswitcher.model.Preset
 import com.submodule.branchswitcher.model.ResolvedSwitchRequest
@@ -70,7 +71,8 @@ class SwitchFlowCoordinator(
         project.invokeLaterIfAlive(block)
     }
 
-    suspend fun preflight(root: Path, preset: Preset): List<PreflightRow> = preflightUi.probe(root, preset)
+    suspend fun preflight(root: Path, preset: Preset, log: AppLogger): List<PreflightRow> =
+        preflightUi.probe(root, preset, log)
 
     fun showForceWarning(preset: Preset, probeResult: List<PreflightRow>): Boolean =
         preflightUi.confirmForceSwitch(preset, probeResult)
@@ -116,22 +118,23 @@ class SwitchFlowCoordinator(
             } finally {
                 writeLease.close()
             }
-            val refreshResult = refreshVcsRepos(project, root, preset.submodules.keys)
+            val operationLog = log.withContext(runResult.operationId)
+            val refreshResult = refreshVcsRepos(project, root, preset.submodules.keys, operationLog)
             uiLater {
                 completion.completeAfter {
-                    logVcsRefresh(log, refreshResult)
+                    logVcsRefresh(operationLog, refreshResult)
                     resultPresenter.presentSwitchResult(
                         preset = preset,
                         runResult = runResult,
                         onSuccess = onSuccess,
-                        onRollback = { execution -> rollbackSwitch(root, execution, log) },
+                        onRollback = { execution -> rollbackSwitch(root, execution, operationLog) },
                     )
                 }
             }
         }
         completion.completeWhenFailed(job) { failure ->
             if (!platformCancellationClassifier.isCancellation(failure)) {
-                log.error("switch completion failed: ${failure.javaClass.simpleName}: ${failure.message}")
+                log.error("switch completion failed", failure)
             }
         }
     }
@@ -157,7 +160,7 @@ class SwitchFlowCoordinator(
                     is GitOperationResult.Cancelled -> rollbackBackgroundResult.value ?: false
                     is GitOperationResult.Failed -> {
                         val error = rollbackBackgroundResult.error
-                        log.error("notification rollback: ${error.javaClass.simpleName}: ${error.message}")
+                        log.error("notification rollback failed", error)
                         false
                     }
                 }
@@ -165,7 +168,7 @@ class SwitchFlowCoordinator(
                 writeLease.close()
             }
             val checkpointPaths = execution.checkpoint.orEmpty().keys.filterTo(mutableSetOf()) { it != "." }
-            val refreshResult = refreshVcsRepos(project, root, checkpointPaths)
+            val refreshResult = refreshVcsRepos(project, root, checkpointPaths, log)
             uiLater {
                 logVcsRefresh(log, refreshResult)
                 resultPresenter.presentRollbackResult(execution, rollbackSucceeded)

@@ -1,6 +1,8 @@
 package com.submodule.branchswitcher.workflow
 
 import com.submodule.branchswitcher.log.AppLogger
+import com.submodule.branchswitcher.log.newOperationId
+import com.submodule.branchswitcher.log.withContext
 import com.submodule.branchswitcher.model.ResolvedSwitchRequest
 import com.submodule.branchswitcher.operation.GitOperationResult
 import com.submodule.branchswitcher.operation.GitOperationRunner
@@ -11,6 +13,7 @@ import com.submodule.branchswitcher.switch.SwitchRecoveryExecutor
 import java.nio.file.Path
 
 data class SwitchRunResult(
+    val operationId: String,
     val cancelled: Boolean,
     val execution: SwitchExecutionResult?,
     val recovery: SwitchRecoveryResult? = null,
@@ -53,11 +56,27 @@ class SwitchRunner(
         request: ResolvedSwitchRequest,
         log: AppLogger,
     ): SwitchRunResult {
+        val operationId = newOperationId("switch")
+        val operationLog = log.withContext(operationId)
+        val preset = request.preset
+        val options = request.options
+        operationLog.activity(
+            "operation started: root=${projectRoot.toAbsolutePath().normalize()}, " +
+                "preset='${preset.name}', targets=${preset.targets().size}",
+        )
+        operationLog.info(
+            "options: dirty=${options.dirty}, fetchFirst=${options.fetchFirst}, " +
+                "pull=${options.pull}, confirmBeforeInit=${options.confirmBeforeInit}",
+        )
+        preset.targets().forEach { target ->
+            operationLog.info("requested target: path=${target.path}, branch=${target.branch}")
+        }
         val backgroundResult = operations.run(title) { indicator, operation ->
             indicator.isIndeterminate = true
+            operationLog.logGitRuntime(operation, projectRoot.toFile())
             SwitchExecutor(
                 projectRoot,
-                log,
+                operationLog,
                 operation,
                 indicator,
                 indicator,
@@ -66,7 +85,7 @@ class SwitchRunner(
             ).execute(request)
         }
 
-        val backgroundOutcome = interpretBackgroundResult(backgroundResult, log)
+        val backgroundOutcome = interpretBackgroundResult(backgroundResult, operationLog)
         var wasCancelled = backgroundOutcome.cancelled
         var executionResult = backgroundOutcome.execution
         var recoveryResult: SwitchRecoveryResult? = null
@@ -75,16 +94,24 @@ class SwitchRunner(
             wasCancelled = true
         }
         if (wasCancelled && executionResult != null) {
-            val cancelledRecovery = recoverCancelledSwitch(executionResult, log)
+            val cancelledRecovery = recoverCancelledSwitch(executionResult, operationLog)
             executionResult = cancelledRecovery.execution
             recoveryResult = cancelledRecovery.recovery
         }
 
-        return SwitchRunResult(
+        val result = SwitchRunResult(
+            operationId = operationId,
             cancelled = wasCancelled,
             execution = executionResult,
             recovery = recoveryResult,
         )
+        operationLog.activity(
+            "operation finished: cancelled=${result.cancelled}, " +
+                "status=${result.execution?.status ?: "unavailable"}, " +
+                "failures=${result.execution?.failures?.size ?: 0}, " +
+                "recovery=${result.recovery?.let { if (it.ok) "ok" else "failed" } ?: "not-needed"}",
+        )
+        return result
     }
 
     private fun interpretBackgroundResult(
@@ -102,7 +129,7 @@ class SwitchRunner(
             }
             is GitOperationResult.Failed -> {
                 val error = result.error
-                log.error("switch: ${error.javaClass.simpleName}: ${error.message}")
+                log.error("switch workflow failed", error)
                 BackgroundSwitchOutcome(cancelled = false, execution = null)
             }
         }
@@ -119,7 +146,7 @@ class SwitchRunner(
         val recoveryOperation = try {
             operations.openOperation()
         } catch (e: RuntimeException) {
-            log.error("cancel recovery session: ${e.javaClass.simpleName}: ${e.message}")
+            log.error("cancel recovery session could not be opened", e)
             return CancelledSwitchRecovery(
                 execution = execution,
                 recovery = SwitchRecoveryResult(
@@ -139,7 +166,7 @@ class SwitchRunner(
                 ),
             )
         } catch (e: RuntimeException) {
-            log.error("cancel recovery: ${e.javaClass.simpleName}: ${e.message}")
+            log.error("cancel recovery failed", e)
             CancelledSwitchRecovery(
                 execution = execution,
                 recovery = SwitchRecoveryResult(

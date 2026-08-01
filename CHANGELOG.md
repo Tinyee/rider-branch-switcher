@@ -82,6 +82,9 @@
   stacked-indent placement when a Tool Window is narrower than its padding.
 - Explain each global switch setting in context and clarify the actual behavior
   of dirty-worktree strategies, Git timeouts, fetch, pull, and submodule init.
+- Persist all Tool Window log levels to `idea.log`, correlate write workflows
+  with operation IDs, retain exception stack traces, and record bounded runtime,
+  request, checkpoint, recovery, VCS refresh, and final-result diagnostics.
 
 ### Fixed
 
@@ -96,6 +99,8 @@
   interruption signal.
 - Bound Git stdout capture, retain only a bounded stderr diagnostic tail, and
   drain process streams through dedicated capacity instead of the common pool.
+- Report Git output-capture failures explicitly instead of continuing with
+  silently empty command output.
 - Cancel branch discovery and its Git operation when an editor is hidden,
   removed, or superseded, and reject stale results at UI delivery.
 - Correct submodule-row context-menu hit handling.

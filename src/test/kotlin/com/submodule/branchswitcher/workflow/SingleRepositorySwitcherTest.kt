@@ -4,6 +4,7 @@ import com.submodule.branchswitcher.git.GitOperationProvider
 import com.submodule.branchswitcher.git.GitOperationSession
 import com.submodule.branchswitcher.git.GitResult
 import com.submodule.branchswitcher.git.RepositoryIdentity
+import com.submodule.branchswitcher.log.createStringAppender
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.runBlocking
@@ -78,13 +79,18 @@ class SingleRepositorySwitcherTest {
             localBranchExists = true
             remoteBranchExists = true
         }
-        val switcher = switcher(git)
+        val logs = mutableListOf<String>()
+        val switcher = switcher(git, logs = logs)
 
         val result = runSwitch(switcher, root.toPath(), "module", "dev")
 
         assertTrue(result is SingleRepositorySwitchResult.Success)
         assertEquals(1, git.checkoutExistingCount)
         assertEquals(0, git.checkoutRemoteCount)
+        val operationId = Regex("\\[single-switch-[0-9a-f]{8}]").find(logs.first())?.value
+        assertTrue(operationId != null)
+        assertTrue(logs.any { it.startsWith("$operationId operation started: root=") })
+        assertTrue(logs.any { it.startsWith("$operationId operation finished: status=success") })
     }
 
     @Test
@@ -159,7 +165,7 @@ class SingleRepositorySwitcherTest {
         target: String,
     ): SingleRepositorySwitchResult {
         val result = CompletableDeferred<SingleRepositorySwitchResult>()
-        check(switcher.start(this, root, path, target, "Switching") { result.complete(it) })
+        check(switcher.start(this, root, path, target, "Switching") { result.complete(it.result) })
         return result.await()
     }
 
@@ -167,9 +173,11 @@ class SingleRepositorySwitcherTest {
         git: RecordingGit,
         tryAcquireWrite: () -> AutoCloseable? = { countingLease {} },
         completion: TestOperationCompletion = TestOperationCompletion.COMPLETE,
+        logs: MutableList<String>? = null,
     ) = SingleRepositorySwitcher(
         operations = TestGitOperationRunner(git.provider, completion),
         tryAcquireWrite = tryAcquireWrite,
+        log = createStringAppender { message -> logs?.add(message) },
     )
 
     private fun countingLease(onClose: () -> Unit) = AutoCloseable(onClose)

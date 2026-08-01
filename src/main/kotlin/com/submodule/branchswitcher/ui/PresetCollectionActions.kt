@@ -77,12 +77,12 @@ internal class PresetCollectionActions(
                     log.debug("loaded ${parsed.presets.size} preset(s) from $file")
                     host.refreshList()
                     host.notifyStateChanged()
-                }.onFailure {
-                    log.error("${it.message}")
+                }.onFailure { error ->
+                    log.error("preset load failed", error)
                     Notifier.error(
                         project,
                         Bundle.msg("preset.load.failed"),
-                        it.message ?: Bundle.msg("error.unknown"),
+                        error.message ?: Bundle.msg("error.unknown"),
                     )
                 }
             }
@@ -224,7 +224,7 @@ internal class PresetCollectionActions(
     }
 
     private fun reportSaveFailure(error: Exception) {
-        log.error("preset save failed: ${error.javaClass.simpleName}: ${error.message}")
+        log.error("preset save failed", error)
         Notifier.error(
             project,
             Bundle.msg("preset.save.failed"),

@@ -1,9 +1,9 @@
 package com.submodule.branchswitcher.git
 
+import com.intellij.openapi.diagnostic.Logger as IdeaLogger
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
-import java.util.logging.Logger
 
 fun selectRemoteName(remotes: List<String>): String = when {
     remotes.isEmpty() -> "origin"
@@ -75,6 +75,15 @@ internal class GitCommandClient(
             runCatching { File(path).canonicalPath }.getOrElse { File(path).absolutePath }
         }
         return RepositoryIdentity(gitDirectory, superprojectRoot)
+    }
+
+    override fun runtimeInfo(workDir: File): GitRuntimeInfo {
+        val result = run(workDir, "--version")
+        if (!result.ok) throw GitQueryException(result)
+        return GitRuntimeInfo(
+            version = result.stdout.trim().ifEmpty { "unknown" },
+            timeoutSeconds = processRunner.effectiveTimeoutSeconds,
+        )
     }
 
     override fun isDirty(workDir: File): Boolean {
@@ -149,25 +158,18 @@ internal class GitCommandClient(
     }
 
     override fun localBranchProbe(workDir: File, branch: String): Boolean? {
-        return try {
-            val result = run(workDir, "show-ref", "--verify", "--quiet", "refs/heads/$branch")
-            when {
-                result.ok -> true
-                result.exitCode == 1 -> false
-                else -> null
-            }
-        } catch (_: Exception) {
-            null
+        val result = run(workDir, "show-ref", "--verify", "--quiet", "refs/heads/$branch")
+        return when {
+            result.ok -> true
+            result.exitCode == 1 -> false
+            else -> throw GitQueryException(result)
         }
     }
 
     override fun dirtyProbe(workDir: File): Boolean? {
-        return try {
-            val result = run(workDir, "status", "--porcelain")
-            if (result.ok) result.stdout.isNotBlank() else null
-        } catch (_: Exception) {
-            null
-        }
+        val result = run(workDir, "status", "--porcelain")
+        if (!result.ok) throw GitQueryException(result)
+        return result.stdout.isNotBlank()
     }
 
     private fun remoteName(workDir: File): String {
@@ -261,7 +263,7 @@ internal class GitCommandClient(
             val resolved = try {
                 subDir.canonicalFile.path
             } catch (e: Exception) {
-                LOG.warning("Cannot resolve canonical path for submodule $fullPath: ${e.message}")
+                LOG.warn("Cannot resolve canonical path for submodule $fullPath", e)
                 continue
             }
             if (!resolved.startsWith(rootCanonical + File.separator)) continue
@@ -348,6 +350,6 @@ internal class GitCommandClient(
         private const val SUBMODULE_PATH_KEY_REGEX = "^submodule\\..*\\.path$"
         private const val SUBMODULE_KEY_PREFIX = "submodule."
         private const val SUBMODULE_PATH_SUFFIX = ".path"
-        private val LOG = Logger.getLogger(GitCommandClient::class.java.name)
+        private val LOG = IdeaLogger.getInstance("SubmoduleBranchSwitcher")
     }
 }

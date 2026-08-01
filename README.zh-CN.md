@@ -99,6 +99,16 @@ preset 加载时会先检查 `.idea/branch-presets.json`，再检查
 | 快进目标分支 | 开启 | checkout 后执行 `git pull --ff-only`，分叉时不会自动 merge。 |
 | 确认缺失子模块 | 关闭 | 初始化每个本地缺失的子模块前先询问。 |
 
+## 故障诊断
+
+每次完整切换、派生分支和单仓切换都会生成操作 ID，例如
+`switch-a1b2c3d4`。Tool Window 展示最近的日志；所有级别同时写入 IntelliJ
+持久化的 `idea.log`，logger 名称为 `SubmoduleBranchSwitcher`。意外异常会在其中保留完整堆栈。
+
+通过 `Help | Show Log in ...` 找到 `idea.log`，按同一个操作 ID 收集全部行即可还原
+项目根目录、请求目标、实际选项、checkpoint、Git 失败详情、恢复动作和最终结果。
+remote URL 只记录不可逆指纹，不会暴露凭据或私有地址。
+
 ## 参与开发
 
 本地环境、架构边界、验证方式和审查约定见

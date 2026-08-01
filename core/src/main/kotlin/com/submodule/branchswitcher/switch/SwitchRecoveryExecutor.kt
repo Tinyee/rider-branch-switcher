@@ -32,17 +32,17 @@ class SwitchRecoveryExecutor(
         val rollbackOk = try {
             result.checkpoint.isNullOrEmpty() || rollback(result)
         } catch (e: RuntimeException) {
-            log.error("[rollback] exception: ${e.javaClass.simpleName}: ${e.message}")
+            log.error("[rollback] exception", e)
             false
         }
         val stashRestore = try {
             restoreTrackedStashes(result)
         } catch (e: SwitchStepException) {
             val error = e.cause
-            log.error("[stash restore] exception: ${error.javaClass.simpleName}: ${error.message}")
+            log.error("[stash restore] exception", error)
             StashRestoreResult(e.latestState, mapOf("." to "stash recovery exception"))
         } catch (e: RuntimeException) {
-            log.error("[stash restore] exception: ${e.javaClass.simpleName}: ${e.message}")
+            log.error("[stash restore] exception", e)
             StashRestoreResult(result.state, mapOf("." to "stash recovery exception"))
         }
         return SwitchRecoveryOutcome(rollbackOk, stashRestore)

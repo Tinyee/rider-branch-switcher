@@ -69,7 +69,7 @@ class RepositoryStateDetector(
                 cancellationClassifier.rethrowIfCancellation(e)
                 branches[path] = null
                 dirty[path] = false
-                log.error("[detect] $path: ${e.javaClass.simpleName}: ${e.message}")
+                log.error("[detect] $path failed", e)
             }
         }
         return RepositoryStateSnapshot(request.id, branches, dirty)

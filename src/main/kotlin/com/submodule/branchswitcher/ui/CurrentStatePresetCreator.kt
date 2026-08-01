@@ -137,7 +137,7 @@ internal class CurrentStatePresetCreator(
         } catch (_: com.intellij.openapi.progress.ProcessCanceledException) {
             null
         } catch (e: Exception) {
-            log.error("probe current state failed: ${e.javaClass.simpleName}: ${e.message}")
+            log.error("probe current state failed", e)
             Notifier.warn(project, Bundle.msg("plugin.title"), "${e.javaClass.simpleName}: ${e.message}")
             null
         }

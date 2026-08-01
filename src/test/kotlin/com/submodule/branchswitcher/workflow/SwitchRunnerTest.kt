@@ -58,19 +58,30 @@ class SwitchRunnerTest {
     fun `execute returns ok when shared runner completes switch pipeline`() = runBlocking {
         val root = Files.createTempDirectory("switch-runner-ok")
         initGitRepo(root.toFile())
-        val git = RecordingGit()
+        val git = object : RecordingGit() {
+            override fun runtimeInfo(workDir: File) =
+                throw IllegalStateException("version unavailable")
+        }
         val runner = runner(root, git)
+        val logs = mutableListOf<String>()
 
         val result = runner.execute(
             title = "Switching",
             request = request(fetchFirst = false, pull = false),
-            log = createStringAppender {},
+            log = createStringAppender(logs::add),
         )
 
         assertTrue(result.ok)
         assertFalse(result.cancelled)
         assertNotNull(result.execution)
         assertEquals(1, git.submoduleSyncCount)
+        assertTrue(result.operationId.matches(Regex("switch-[0-9a-f]{8}")))
+        assertTrue(logs.any { it.contains("[${result.operationId}] operation started: root=") })
+        assertTrue(logs.any { it.contains("[${result.operationId}] options: dirty=") })
+        assertTrue(logs.any { it.contains("runtime inspection failed") && it.contains("version unavailable") })
+        assertTrue(logs.any { it.contains("[${result.operationId}] requested target: path=., branch=main") })
+        assertTrue(logs.any { it.contains("[${result.operationId}] [checkpoint]") })
+        assertTrue(logs.any { it.contains("[${result.operationId}] operation finished: cancelled=false") })
     }
 
     @Test

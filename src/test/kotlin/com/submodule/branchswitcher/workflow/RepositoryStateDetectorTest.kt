@@ -61,7 +61,9 @@ class RepositoryStateDetectorTest {
         assertEquals("main", snapshot.branches["."])
         assertEquals(null, snapshot.branches["module"])
         assertFalse(snapshot.dirtyRepositories.getValue("module"))
-        assertTrue(logs.any { "[detect] module: IllegalStateException: unreadable" in it })
+        assertTrue(logs.any {
+            "[detect] module failed" in it && "IllegalStateException: unreadable" in it
+        })
     }
 
     @Test

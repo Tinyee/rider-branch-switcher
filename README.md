@@ -105,6 +105,19 @@ Configure global behavior at `Settings | Version Control | Submodule Branch Swit
 | Fast-forward target branches | On | Run `git pull --ff-only` after checkout without automatically merging diverged branches. |
 | Confirm missing submodules | Off | Ask before initializing each missing submodule directory. |
 
+## Diagnostics
+
+Every switch, derive, and single-repository write receives an operation ID such
+as `switch-a1b2c3d4`. The Tool Window shows the latest entries, while all levels
+are also written under `SubmoduleBranchSwitcher` in the persistent IntelliJ
+`idea.log`. Unexpected exceptions include their full stack trace there.
+
+Use `Help | Show Log in ...` to locate `idea.log`, then collect all lines with
+the same operation ID. They include the project root, requested targets,
+effective options, checkpoints, Git failure diagnostics, recovery actions, and
+the final result. Remote URLs are represented only by non-reversible
+fingerprints so credentials and private addresses are not exposed.
+
 ## Contributing
 
 For local setup, architecture boundaries, validation, and review conventions,

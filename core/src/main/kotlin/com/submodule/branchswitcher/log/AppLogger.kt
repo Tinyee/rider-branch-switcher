@@ -1,5 +1,7 @@
 package com.submodule.branchswitcher.log
 
+import java.util.UUID
+
 /**
  * Structured logger that routes to both the IntelliJ diagnostic log
  * and the tool window log panel (via [onAppend]).
@@ -10,10 +12,34 @@ package com.submodule.branchswitcher.log
 interface AppLogger {
     fun info(msg: String)
     fun warn(msg: String)
+    fun warn(msg: String, error: Throwable) {
+        warn("$msg: ${error.javaClass.simpleName}: ${error.message}")
+    }
     fun error(msg: String)
+    fun error(msg: String, error: Throwable) {
+        error("$msg: ${error.javaClass.simpleName}: ${error.message}")
+    }
     fun debug(msg: String)
     /** User-initiated actions / operations (derive, rollback, switch start/end). Rendered in blue. */
     fun activity(msg: String)
+}
+
+/** Short correlation ID used to group one write workflow in persistent IDE logs. */
+fun newOperationId(kind: String): String = "$kind-${UUID.randomUUID().toString().take(8)}"
+
+/** Prefixes every message while preserving Throwable-aware logging for diagnostic stack traces. */
+fun AppLogger.withContext(context: String): AppLogger {
+    val delegate = this
+    fun prefix(message: String) = "[$context] $message"
+    return object : AppLogger {
+        override fun info(msg: String) = delegate.info(prefix(msg))
+        override fun warn(msg: String) = delegate.warn(prefix(msg))
+        override fun warn(msg: String, error: Throwable) = delegate.warn(prefix(msg), error)
+        override fun error(msg: String) = delegate.error(prefix(msg))
+        override fun error(msg: String, error: Throwable) = delegate.error(prefix(msg), error)
+        override fun debug(msg: String) = delegate.debug(prefix(msg))
+        override fun activity(msg: String) = delegate.activity(prefix(msg))
+    }
 }
 
 data class LogEntry(val level: Level, val message: String) {

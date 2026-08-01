@@ -264,6 +264,16 @@ stdout 超过 8 MiB 会明确失败，stderr 只保留最后 128 KiB 诊断内�
 查询 remote 名称，最多三个进程。真正的切换、checkpoint 和恢复仍在写操作附近重新读取状态，
 不会使用可能过期的界面快照。
 
+## 故障日志
+
+`ToolWindowLogger` 会把所有可见级别同时写入名为 `SubmoduleBranchSwitcher` 的 IntelliJ
+诊断 logger。Tool Window 是有行数上限的临时视图，持久化排障来源是 `idea.log`；带 Throwable
+的 warn/error 会在其中保留完整堆栈。
+
+完整切换、Derive 和单仓切换分别生成短操作 ID。请求参数、实际选项、各仓 checkpoint、Git
+失败详情、恢复动作、VCS 刷新和最终摘要使用同一个 ID。remote URL 不记录原文，只记录
+SHA-256 指纹，既能比较切换前后身份，又不会泄露凭据或私有地址。
+
 ## 修改代码时先找职责
 
 - 修改切换规则：`core/switch`
