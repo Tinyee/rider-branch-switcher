@@ -20,7 +20,7 @@ class SubmoduleTreeStep : SwitchStep {
 
         val failures = linkedMapOf<String, String>()
         var nextState = state
-        var registrations = loadRegistrations(context, nextState)
+        var topology = loadTopology(context, nextState)
 
         try {
             for ((index, target) in targets.withIndex()) {
@@ -40,9 +40,7 @@ class SubmoduleTreeStep : SwitchStep {
                     continue
                 }
 
-                if (submoduleRegistrationStatus(target.path, registrations.paths) ==
-                    SubmoduleRegistrationStatus.UNREGISTERED
-                ) {
+                if (topology.isUnregistered(target.path)) {
                     context.log.warn(
                         "[skip] ${target.path} - not registered in current .gitmodules graph; " +
                             "obsolete worktree retained",
@@ -60,7 +58,7 @@ class SubmoduleTreeStep : SwitchStep {
                     context,
                     targets,
                     target,
-                    registrations.byPath[target.path],
+                    topology.byPath[target.path],
                 )
                 val preparation = SubmoduleInitializer.prepare(
                     context = context,
@@ -79,17 +77,17 @@ class SubmoduleTreeStep : SwitchStep {
                     continue
                 }
 
-                if (submoduleWorktreeStatus(
+                if (isUnassociatedSubmoduleWorktree(
                         context.projectRoot.toFile(),
                         target.path,
                         directory,
                         context.git.repositoryIdentity(directory),
                         expectedSubmoduleGitDirectory(
                             context.projectRoot.toFile(),
-                            registrations.byPath[target.path],
+                            topology.byPath[target.path],
                             context.git,
                         ),
-                    ) == SubmoduleWorktreeStatus.NOT_ASSOCIATED
+                    )
                 ) {
                     context.log.warn("[skip] ${target.path} - repository is not associated with its superproject")
                     failures[target.path] = "repository is not associated with its superproject"
@@ -142,7 +140,7 @@ class SubmoduleTreeStep : SwitchStep {
                         failures[target.path] = "nested submodule sync failed"
                         nextState = disableDescendants(nextState, targets, target.path)
                     }
-                    registrations = loadRegistrations(context, nextState)
+                    topology = loadTopology(context, nextState)
                 }
                 nextState = restoreTargetStash(context, nextState, target.path, failures)
             }
@@ -154,19 +152,12 @@ class SubmoduleTreeStep : SwitchStep {
         return StepExecution(result, nextState)
     }
 
-    private fun loadRegistrations(context: SwitchContext, state: SwitchState): RegistrationSnapshot {
-        if (!state.checkoutSucceeded(".")) return RegistrationSnapshot(null, emptyMap())
-        val root = context.projectRoot.toFile()
-        val registrations = context.git.registeredSubmodules(root)
-        return if (registrations == null) {
-            RegistrationSnapshot(context.git.registeredSubmodulePaths(root), emptyMap())
+    private fun loadTopology(context: SwitchContext, state: SwitchState): SubmoduleTopology =
+        if (state.checkoutSucceeded(".")) {
+            context.git.loadSubmoduleTopology(context.projectRoot.toFile())
         } else {
-            RegistrationSnapshot(
-                registrations.mapTo(linkedSetOf()) { it.path },
-                registrations.associateBy { it.path },
-            )
+            SubmoduleTopology(null, emptyMap())
         }
-    }
 
     private fun restoreTargetStash(
         context: SwitchContext,
@@ -241,11 +232,6 @@ class SubmoduleTreeStep : SwitchStep {
     }
 
     private data class RegistrationLocation(val root: java.io.File, val path: String)
-
-    private data class RegistrationSnapshot(
-        val paths: Set<String>?,
-        val byPath: Map<String, SubmoduleRegistration>,
-    )
 
     private fun updateProgress(context: SwitchContext, index: Int, total: Int, path: String) {
         context.progressHandle?.apply {

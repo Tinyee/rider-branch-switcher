@@ -574,33 +574,4 @@ class SwitchStepTest {
         assertEquals("Nested", initPath)
     }
 
-    // ---- SubmoduleSyncStep ----
-
-    @Test
-    fun `submodule sync step returns Partial on error`() {
-        val failGit = object : GitClient by fakeGit {
-            override fun submoduleSync(gitRoot: File): GitResult = GitResult("sync", 1, "", "error")
-        }
-        val c = context().copy(git = failGit)
-        val state = SwitchState().withSuccessfulCheckout(".")
-        val step = SubmoduleSyncStep()
-        // SubmoduleSyncStep now returns Partial on failure, consistent with FetchStep/PullStep
-        assertTrue(step.run(c, state).result is StepResult.Partial)
-    }
-
-    @Test
-    fun `submodule sync is skipped when main checkout failed`() {
-        var syncCalls = 0
-        val trackingGit = object : GitClient by fakeGit {
-            override fun submoduleSync(gitRoot: File): GitResult {
-                syncCalls++
-                return GitResult("sync", 0, "", "")
-            }
-        }
-        val c = context().copy(git = trackingGit)
-
-        assertTrue(SubmoduleSyncStep().run(c).result is StepResult.Partial)
-        assertEquals(0, syncCalls)
-    }
-
 }

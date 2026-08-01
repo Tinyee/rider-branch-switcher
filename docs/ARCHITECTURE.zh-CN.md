@@ -93,7 +93,7 @@ Git 命令：
 使用相对路径初始化。主仓 checkout 或 submodule sync 失败时，后续子模块目标会被禁用，
 但流水线仍会恢复此前创建的 stash。
 
-完整切换、右键单仓切换和 Derive 共用 `submoduleRegistrationStatus` 写入门禁。
+完整切换、右键单仓切换和 Derive 共用 `SubmoduleTopology.isUnregistered` 写入门禁。
 已经不在当前 `.gitmodules` 图中的旧 worktree 会保留在磁盘上，但这些入口不会再修改它。
 Recovery 不使用当前注册状态，因为主仓回滚后某个 checkpoint 路径可能合法地变为废弃路径；
 它通过独立的 checkpoint 安全规则恢复。

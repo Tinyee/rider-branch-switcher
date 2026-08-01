@@ -88,37 +88,13 @@ class SwitchExecutorTest {
     }
 
     @Test
-    fun `checkout failure prevents pull and submodule sync`() {
-        var pullCalls = 0
-        var syncCalls = 0
-        val failingGit = object : GitClient by fakeGit {
-            override fun checkoutExisting(workDir: File, branch: String): GitResult =
-                GitResult("checkout", 1, "", "checkout failed")
-            override fun pullFf(workDir: File, branch: String): GitResult {
-                pullCalls++
-                return GitResult("pull", 0, "", "")
-            }
-            override fun submoduleSync(gitRoot: File): GitResult {
-                syncCalls++
-                return GitResult("sync", 0, "", "")
-            }
-        }
-        val pullPreset = Preset("test", "dev", emptyMap())
-        val executor = SwitchExecutor(projectRoot, createStringAppender { log += it }, failingGit)
-
-        assertFalse(executor.executeTest(pullPreset, SwitchOptions(DirtyAction.Stash, pull = true, fetchFirst = false)))
-        assertEquals("Failed checkout must not pull the old branch", 0, pullCalls)
-        assertEquals("Failed main checkout must not sync submodules", 0, syncCalls)
-    }
-
-    @Test
-    fun `failed main checkout prevents every submodule mutation`() {
+    fun `failed main checkout prevents every downstream repository mutation`() {
         val submodule = projectRoot.resolve("SubA").toFile()
         initGitRepo(submodule)
-        val submoduleMutations = mutableListOf<String>()
+        val downstreamMutations = mutableListOf<String>()
         val failingGit = object : GitClient by fakeGit {
             override fun fetch(workDir: File): GitResult {
-                if (workDir == submodule) submoduleMutations += "fetch"
+                if (workDir == submodule) downstreamMutations += "submodule fetch"
                 return GitResult("fetch", 0, "", "")
             }
 
@@ -126,13 +102,18 @@ class SwitchExecutorTest {
                 if (workDir == projectRoot.toFile()) {
                     return GitResult("checkout", 1, "", "checkout failed")
                 }
-                submoduleMutations += "checkout"
+                downstreamMutations += "submodule checkout"
                 return GitResult("checkout", 0, "", "")
             }
 
             override fun pullFf(workDir: File, branch: String): GitResult {
-                if (workDir == submodule) submoduleMutations += "pull"
+                downstreamMutations += if (workDir == submodule) "submodule pull" else "main pull"
                 return GitResult("pull", 0, "", "")
+            }
+
+            override fun submoduleSync(gitRoot: File): GitResult {
+                downstreamMutations += "submodule sync"
+                return GitResult("sync", 0, "", "")
             }
         }
         val executor = SwitchExecutor(projectRoot, createStringAppender { log += it }, failingGit)
@@ -144,7 +125,7 @@ class SwitchExecutorTest {
 
         assertFalse(result.ok)
         assertTrue(result.state.isSkipped("SubA"))
-        assertEquals(emptyList<String>(), submoduleMutations)
+        assertEquals(emptyList<String>(), downstreamMutations)
     }
 
     @Test

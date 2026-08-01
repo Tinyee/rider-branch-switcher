@@ -4,12 +4,10 @@ import com.submodule.branchswitcher.git.GitResult
 import com.submodule.branchswitcher.operation.GitOperationResult
 import com.submodule.branchswitcher.operation.GitOperationRunner
 import com.submodule.branchswitcher.switch.CancellationClassifier
-import com.submodule.branchswitcher.switch.SubmoduleRegistrationStatus
-import com.submodule.branchswitcher.switch.SubmoduleWorktreeStatus
 import com.submodule.branchswitcher.switch.expectedSubmoduleGitDirectory
+import com.submodule.branchswitcher.switch.isUnassociatedSubmoduleWorktree
+import com.submodule.branchswitcher.switch.loadSubmoduleTopology
 import com.submodule.branchswitcher.switch.resolveGitDir
-import com.submodule.branchswitcher.switch.submoduleRegistrationStatus
-import com.submodule.branchswitcher.switch.submoduleWorktreeStatus
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -70,29 +68,23 @@ class SingleRepositorySwitcher(
             val dir = resolveGitDir(root, path)
             when (val background = operations.run(title) { indicator, operation ->
                 indicator.isIndeterminate = true
-                val registrations = operation.registeredSubmodules(root.toFile())
-                val registeredPaths = registrations
-                    ?.mapTo(linkedSetOf()) { registration -> registration.path }
-                    ?: operation.registeredSubmodulePaths(root.toFile())
+                val topology = operation.loadSubmoduleTopology(root.toFile())
                 when {
-                    submoduleRegistrationStatus(
-                        path,
-                        registeredPaths,
-                    ) == SubmoduleRegistrationStatus.UNREGISTERED ->
+                    topology.isUnregistered(path) ->
                         SingleRepositorySwitchResult.Skipped(SingleRepositorySkipReason.NOT_REGISTERED)
                     !dir.exists() || !operation.isGitRepo(dir) ->
                         SingleRepositorySwitchResult.Skipped(SingleRepositorySkipReason.NOT_INITIALIZED)
-                    submoduleWorktreeStatus(
+                    isUnassociatedSubmoduleWorktree(
                         root.toFile(),
                         path,
                         dir,
                         operation.repositoryIdentity(dir),
                         expectedSubmoduleGitDirectory(
                             root.toFile(),
-                            registrations?.firstOrNull { registration -> registration.path == path },
+                            topology.byPath[path],
                             operation,
                         ),
-                    ) == SubmoduleWorktreeStatus.NOT_ASSOCIATED ->
+                    ) ->
                         SingleRepositorySwitchResult.Skipped(SingleRepositorySkipReason.NOT_REGISTERED)
                     operation.isDirty(dir) ->
                         SingleRepositorySwitchResult.Skipped(SingleRepositorySkipReason.DIRTY)
