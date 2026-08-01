@@ -12,7 +12,7 @@ val useChinaMirrors = providers.gradleProperty("useChinaMirrors")
     .toBoolean()
 
 group = "com.submodule"
-version = "0.7.0"
+version = providers.gradleProperty("localPluginVersion").getOrElse("0.7.0")
 
 repositories {
     mavenCentral()
@@ -29,21 +29,25 @@ repositories {
 val platformType = providers.gradleProperty("platform.type")
 val platformVersion = providers.gradleProperty("platform.version")
 val platformLocalPath = providers.gradleProperty("platform.localPath").orNull
-val verifierIdeCodes = providers.gradleProperty("plugin.verifier.ideCodes")
-    .orElse(platformType)
+val verifierIdeTargets = providers.gradleProperty("plugin.verifier.ideTargets")
+    .orElse("RD:${platformVersion.get()}")
     .get()
     .split(',')
-    .map { it.trim() }
-    .filter { it.isNotEmpty() }
+    .mapNotNull { target ->
+        val value = target.trim().takeIf { it.isNotEmpty() } ?: return@mapNotNull null
+        val parts = value.split(':', limit = 2).map(String::trim)
+        require(parts.size == 2 && parts.all(String::isNotEmpty)) {
+            "Invalid plugin.verifier.ideTargets entry '$value'; expected PRODUCT:VERSION"
+        }
+        parts[0] to parts[1]
+    }
 
 dependencies {
     intellijPlatform {
         if (!platformLocalPath.isNullOrBlank()) {
             local(platformLocalPath)
         } else {
-            create(platformType, platformVersion) {
-                useInstaller.set(false)
-            }
+            create(platformType, platformVersion)
         }
         bundledPlugin("Git4Idea")
     }
@@ -60,6 +64,8 @@ dependencies {
 kotlin {
     jvmToolchain(21)
     compilerOptions {
+        languageVersion.set(org.jetbrains.kotlin.gradle.dsl.KotlinVersion.KOTLIN_2_1)
+        apiVersion.set(org.jetbrains.kotlin.gradle.dsl.KotlinVersion.KOTLIN_2_1)
         jvmDefault.set(org.jetbrains.kotlin.gradle.dsl.JvmDefaultMode.NO_COMPATIBILITY)
     }
 }
@@ -80,9 +86,10 @@ intellijPlatform {
     }
     pluginVerification {
         ides {
-            verifierIdeCodes.forEach { code ->
-                create(code, platformVersion.get()) {
-                    useInstaller.set(false)
+            verifierIdeTargets.forEach { (productCode, version) ->
+                create(productCode, version) {
+                    // Rider installers are not supported by IntelliJ Platform Gradle Plugin 2.11.
+                    useInstaller.set(productCode != "RD")
                 }
             }
         }

@@ -212,6 +212,45 @@ boundary. Platform tests separately assert real background session open,
 cancel, close, preserved completion, and exception conversion contracts.
 The full `releaseCheck` passed after the boundary changes.
 
+## 2026-08-01 - Responsive Tool Window Layout
+
+Narrow Tool Windows previously clipped controls because the preset scroll
+content retained its preferred width beyond the viewport. Layout ownership was
+centralized in the plugin UI layer:
+
+- Scroll content now tracks the rendered viewport width and never relies on a
+  hidden horizontal extent.
+- Two-region action and form rows stack according to measured component sizes,
+  not a locale-specific fixed breakpoint.
+- Command buttons retain their native preferred width; only branch form fields
+  expand into remaining space, with an explicit maximum width.
+- Preset headers preserve the primary and overflow actions while collapsing the
+  secondary derive action into the existing menu.
+- Provisional sizing can conservatively stack from the narrowest laid-out
+  component/ancestor width, but it never demotes the last rendered stacked
+  height. Only `doLayout()` changes the mode from the assigned row width, then
+  schedules one ancestor revalidation. This prevents delayed hidden-resize
+  events and stale `BoxLayout` caches from clipping reopened footer actions.
+- Action allocation shrinks primary controls before the overflow trigger, and
+  recomputes secondary visibility when the primary action is shown or hidden.
+- Footer commands use nested responsive rows. At extreme widths Discard and
+  Save stack explicitly, so `FlowLayout` cannot wrap Save into a clipped line.
+- The current preset omits its unavailable switch action instead of reserving
+  space for a disabled button.
+- Overflow commands use one shared Swing popup that preserves IntelliJ
+  Look-and-Feel and keyboard behavior while owning the approved width,
+  grouping, icon spacing, destructive tone, and right-edge anchoring.
+- Main and submodule branch rows share one responsive form layout.
+
+The approved wide, compact, narrow, and expanded-menu states are retained in
+the interactive [`design/branch-switcher-ui-v1.html`](design/branch-switcher-ui-v1.html)
+reference so later maintenance can compare behavior without treating the mockup
+as a second implementation specification.
+
+The former pure Boolean width rule and its synthetic test were removed. Swing
+layout tests now verify viewport width adoption, hidden-row reopening, stacked
+component bounds, and overflow-action priority directly.
+
 ## Maintenance
 
 Record temporary findings in the relevant issue or pull request. Add to this

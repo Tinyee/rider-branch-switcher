@@ -45,7 +45,7 @@ run broader checks.
 | `core/switch` | Preflight, ordered switch steps, checkpoints, recovery, derive | `SwitchExecutor.kt`, `SwitchRecoveryExecutor.kt` |
 | `core/git` | Capability-oriented Git interfaces and results | `GitClient.kt` |
 | `core/operation` | Platform-independent background Git result and progress contracts | `GitOperationRunner.kt` |
-| `core/presentation` | Pure import, preset editing, shortcut, preview, and layout decisions | `PresetEditRules.kt`, `SwitchPreviewRules.kt` |
+| `core/presentation` | Pure import, preset editing, shortcut, and preview decisions | `PresetEditRules.kt`, `SwitchPreviewRules.kt` |
 | `service` | Project-scoped state, preset repository, write lease | `BranchSwitcherService.kt`, `PresetRepository.kt` |
 | `workflow` | Reusable application use cases independent of screens and IntelliJ APIs | `SwitchRunner.kt`, `DeriveBranchRunner.kt`, `SingleRepositorySwitcher.kt` |
 | `platform` | IntelliJ progress/cancellation/background adapters | `GitBackgroundRunner.kt`, `SwitchAdapters.kt` |
@@ -184,9 +184,43 @@ on lazy initialization or reaches back through the other to complete its
 construction.
 
 Import validation remains a pure rule in `core/presentation`. Swing layout
-helpers stay in the plugin `ui` package. UI collaborators delegate
-all writes through the collection persistence path, so save failures and screen
-refresh behavior remain consistent.
+helpers stay in the plugin `ui` package. `ViewportWidthPanel` makes scroll
+content adopt the visible Tool Window width, `ResponsiveRowPanel` stacks two
+regions only when their rendered content no longer fits,
+`TrailingControlRowPanel` reserves the trailing icon action before eliding long
+leading text, and `CollapsibleActionBar` retains primary and overflow actions while moving a
+secondary action into the existing overflow menu. Main and submodule branch
+selectors share one responsive form-row builder. These components measure
+actual Swing preferred sizes: command buttons keep their native compact width,
+while branch fields use the remaining space up to a bounded maximum. Form rows
+and preset headers therefore adapt to localized text and Look-and-Feel metrics;
+the only explicit width transition is the approved 340 px compact mode that
+turns Add Preset into an icon and moves Derive into overflow. Preset identity
+and actions share one row when they fit and stack without stretching at compact
+widths. Hidden regions reserve neither a gap nor a second line, and inset or
+stacked-indent offsets are clamped when the assigned width is smaller than the
+normal padding. Before a row receives its next rendered width, provisional
+sizing keeps the last rendered stacked height and may conservatively stack from
+the narrowest laid-out ancestor. Only `doLayout()` may change the row mode from
+its assigned width; a mode change schedules one ancestor revalidation so `BoxLayout` cannot
+retain a stale one-line height. Overflow allocation preserves the more button
+before shrinking primary actions. The editor footer uses a nested responsive
+row, so Add Submodule stacks first and Discard/Save stack again at extreme
+widths instead of relying on implicit `FlowLayout` wrapping. All three footer
+actions share one left baseline while stacked; the outer row still places the
+save group on the right when horizontal space is available. Responsive rows
+report a zero content minimum width because their custom layout already clips
+or stacks every child within the assigned viewport; minimum height follows the
+current horizontal or stacked mode. This prevents `BoxLayout` from allocating
+an off-screen natural width. The current preset omits the
+redundant unavailable switch action. Overflow actions use one shared Swing menu
+that retains IntelliJ Look-and-Feel behavior while bounding the design width,
+grouping, icon spacing, destructive tone, and right-edge anchoring. The approved
+interactive layout reference is stored in
+[`design/branch-switcher-ui-v1.html`](design/branch-switcher-ui-v1.html).
+
+UI collaborators delegate all writes through the collection persistence path,
+so save failures and screen refresh behavior remain consistent.
 
 ## Git And Cancellation
 

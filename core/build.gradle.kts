@@ -18,11 +18,13 @@ repositories {
 }
 
 dependencies {
-    implementation("org.jetbrains.kotlin:kotlin-stdlib")
+    // Compile against Kotlin without packaging a newer stdlib than the oldest supported IDE provides.
+    compileOnly("org.jetbrains.kotlin:kotlin-stdlib")
     // Provided by IntelliJ Platform at plugin runtime; core tests bring their own copies.
     compileOnly("com.google.code.gson:gson:2.11.0")
     testImplementation("com.google.code.gson:gson:2.11.0")
     testImplementation("junit:junit:4.13.2")
+    testImplementation("org.jetbrains.kotlin:kotlin-stdlib")
     testImplementation("org.jetbrains.kotlin:kotlin-test")
     testRuntimeOnly("org.junit.vintage:junit-vintage-engine:5.10.2")
 }
@@ -30,6 +32,8 @@ dependencies {
 kotlin {
     jvmToolchain(21)
     compilerOptions {
+        languageVersion.set(org.jetbrains.kotlin.gradle.dsl.KotlinVersion.KOTLIN_2_1)
+        apiVersion.set(org.jetbrains.kotlin.gradle.dsl.KotlinVersion.KOTLIN_2_1)
         jvmDefault.set(org.jetbrains.kotlin.gradle.dsl.JvmDefaultMode.NO_COMPATIBILITY)
     }
 }
@@ -51,7 +55,6 @@ pitest {
             "com.submodule.branchswitcher.model.PresetValidationKt",
             "com.submodule.branchswitcher.switch.DeriveNotification*",
             "com.submodule.branchswitcher.presentation.PresetImportResultKt",
-            "com.submodule.branchswitcher.presentation.UiLayoutRulesKt",
             "com.submodule.branchswitcher.presentation.SwitchPreviewRulesKt",
             "com.submodule.branchswitcher.switch.SwitchPreflight",
         )
@@ -63,7 +66,6 @@ pitest {
             "com.submodule.branchswitcher.switch.DeriveNotificationTest",
             "com.submodule.branchswitcher.switch.SwitchPreflightTest",
             "com.submodule.branchswitcher.presentation.PresetImportRulesTest",
-            "com.submodule.branchswitcher.presentation.UiLayoutRulesTest",
             "com.submodule.branchswitcher.presentation.SwitchPreviewRulesTest",
         )
     )

@@ -17,6 +17,7 @@ work into another file.
 | [`ROADMAP.md`](ROADMAP.md) | Future priorities and explicit non-goals |
 | [`../CHANGELOG.md`](../CHANGELOG.md) | Versioned delivered changes |
 | [`encoding-and-line-endings.md`](encoding-and-line-endings.md) | Repository text-format policy |
+| [`design/branch-switcher-ui-v1.html`](design/branch-switcher-ui-v1.html) | Interactive Tool Window design reference at wide, compact, and narrow widths |
 
 The English and Chinese READMEs intentionally mirror each other. The Chinese
 architecture guide is an onboarding companion rather than a second normative

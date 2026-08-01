@@ -63,6 +63,14 @@ internal class ToolWindowLogPanel : JPanel(BorderLayout()) {
         add(logScrollPane, BorderLayout.CENTER)
     }
 
+    override fun getPreferredSize(): Dimension {
+        val preferred = super.getPreferredSize()
+        val parentHeight = parent?.height?.takeIf { it > 0 } ?: return preferred
+        if (!isExpanded) return preferred
+        val maximumLogHeight = maxOf(toggleLabel.preferredSize.height, parentHeight / 3)
+        return Dimension(preferred.width, minOf(preferred.height, maximumLogHeight))
+    }
+
     fun append(entry: LogEntry) {
         ApplicationManager.getApplication().invokeLater {
             trimDocument()
