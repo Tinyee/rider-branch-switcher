@@ -10,7 +10,7 @@ class SubmoduleSyncStep : SwitchStep {
             context.log.info("[skip] submodule sync - main checkout did not succeed")
             return StepExecution(
                 StepResult.Partial(mapOf("." to "sync skipped: main checkout failed")),
-                state,
+                state.withSubmodulesDisabled(context),
             )
         }
         val dir = context.projectRoot.toFile()
@@ -20,7 +20,15 @@ class SubmoduleSyncStep : SwitchStep {
             return StepExecution(StepResult.Success, state)
         } else {
             context.log.warn(" submodule sync failed: ${s.diagnostic()}")
-            return StepExecution(StepResult.Partial(mapOf("." to "submodule sync failed")), state)
+            return StepExecution(
+                StepResult.Partial(mapOf("." to "submodule sync failed")),
+                state.withSubmodulesDisabled(context),
+            )
         }
     }
+
+    private fun SwitchState.withSubmodulesDisabled(context: SwitchContext): SwitchState =
+        context.preset.targetsFor(SwitchTargetScope.SUBMODULES).fold(this) { current, target ->
+            current.withSkipped(target.path)
+        }
 }

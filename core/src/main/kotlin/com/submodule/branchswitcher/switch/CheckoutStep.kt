@@ -27,7 +27,7 @@ class CheckoutStep(
                 val label = if (isMain) context.projectRoot.fileName.toString() else target.path
 
                 if (nextState.isSkipped(target.path)) {
-                    context.log.info("[skip] $label - skipped by dirty handling")
+                    context.log.info("[skip] $label - target disabled by an earlier step")
                     continue
                 }
 
