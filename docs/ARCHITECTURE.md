@@ -138,6 +138,13 @@ normally, while a stale preset path is skipped and its obsolete local worktree
 is retained. Nested initialization runs from the immediate parent repository,
 not from the project root.
 
+`submoduleRegistrationStatus` is the shared write gate for preset switching,
+single-repository switching, and derive operations. A retained worktree whose
+path is absent from the current `.gitmodules` graph remains on disk but cannot
+be modified through those workflows. Recovery deliberately does not use current
+registration because rolling the main repository back may legitimately make a
+checkpointed path obsolete.
+
 `SwitchRecoveryExecutor` independently attempts repository rollback and stash
 restoration. It compares both branch and commit SHA, restores detached HEAD
 state, and refuses a destructive hard reset when the working tree is dirty.

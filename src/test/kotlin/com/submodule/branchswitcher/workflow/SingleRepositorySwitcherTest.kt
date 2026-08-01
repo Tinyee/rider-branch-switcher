@@ -87,6 +87,25 @@ class SingleRepositorySwitcherTest {
     }
 
     @Test
+    fun `unregistered retained worktree is never switched`() = runBlocking {
+        val root = temp.newFolder("root")
+        root.resolve("module").mkdirs()
+        val git = RecordingGit().apply {
+            registeredPaths = emptySet()
+            localBranchExists = true
+        }
+
+        val result = runSwitch(switcher(git), root.toPath(), "module", "dev")
+
+        assertEquals(
+            SingleRepositorySwitchResult.Skipped(SingleRepositorySkipReason.NOT_REGISTERED),
+            result,
+        )
+        assertEquals(0, git.checkoutExistingCount)
+        assertEquals(0, git.checkoutRemoteCount)
+    }
+
+    @Test
     fun `missing branch and failed checkout remain Git failures`() = runBlocking {
         val root = temp.newFolder("root")
         root.resolve("module").mkdirs()
@@ -153,6 +172,7 @@ class SingleRepositorySwitcherTest {
         var localBranchExists = false
         var remoteBranchExists = false
         var checkoutResult = GitResult("checkout", 0, "", "")
+        var registeredPaths: Set<String>? = null
         var openCount = 0
         var checkoutExistingCount = 0
         var checkoutRemoteCount = 0
@@ -171,6 +191,7 @@ class SingleRepositorySwitcherTest {
             ) { _, method, _ ->
                 when (method.name) {
                     "close", "cancel" -> null
+                    "registeredSubmodulePaths" -> registeredPaths
                     "isGitRepo" -> true
                     "isDirty" -> dirty
                     "currentBranch" -> branch

@@ -49,8 +49,17 @@ interface RepositoryStateGitClient : GitRepositoryQuery {
     fun isDirty(workDir: File): Boolean
 }
 
+/** Read-only access to the submodule paths registered by the current worktree graph. */
+interface SubmoduleRegistrationQuery {
+    /**
+     * Returns paths registered by the checked-out `.gitmodules` graph.
+     * Null means the implementation cannot validate registration reliably.
+     */
+    fun registeredSubmodulePaths(gitRoot: File): Set<String>? = null
+}
+
 /** Git operations required by the branch-switch pipeline. */
-interface SwitchGitClient : RepositoryStateGitClient, GitCancellation {
+interface SwitchGitClient : RepositoryStateGitClient, SubmoduleRegistrationQuery, GitCancellation {
     /** Checks whether refs/heads/<branch> exists (plumbing: show-ref --verify). */
     fun localBranchExists(workDir: File, branch: String): Boolean
     /** Checks whether refs/remotes/origin/<branch> exists (plumbing: show-ref --verify). */
@@ -74,15 +83,10 @@ interface SwitchGitClient : RepositoryStateGitClient, GitCancellation {
     fun submoduleSync(gitRoot: File): GitResult
     /** Runs `git submodule update --init --recursive -- <path>`. */
     fun submoduleInitPath(gitRoot: File, path: String): GitResult
-    /**
-     * Returns paths registered by the checked-out `.gitmodules` graph.
-     * Null means the implementation cannot validate registration reliably.
-     */
-    fun registeredSubmodulePaths(gitRoot: File): Set<String>? = null
 }
 
 /** Git operations required by derive-branch preflight, execution, and rollback. */
-interface DeriveGitClient : GitRepositoryQuery {
+interface DeriveGitClient : GitRepositoryQuery, SubmoduleRegistrationQuery {
     /** Tri-state probe for safety gates: true=exists, false=not, null=unknown/error. */
     fun localBranchProbe(workDir: File, branch: String): Boolean? = null
     /** Tri-state probe for safety gates: true=dirty, false=clean, null=unknown/error. */
