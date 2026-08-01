@@ -8,6 +8,7 @@ import java.nio.file.Path
 data class CheckpointEntry(
     val sha: String,
     val branch: String?,
+    val repositoryId: String? = null,
 )
 
 enum class SwitchExecutionStatus {

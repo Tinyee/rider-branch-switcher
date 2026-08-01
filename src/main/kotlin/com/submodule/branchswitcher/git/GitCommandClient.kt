@@ -58,6 +58,25 @@ internal class GitCommandClient(
         return topLevel == requested
     }
 
+    override fun repositoryIdentity(workDir: File): RepositoryIdentity? {
+        if (!workDir.isDirectory) return null
+        val result = run(workDir, "rev-parse", "--absolute-git-dir", "--show-superproject-working-tree")
+        if (!result.ok) {
+            if (File(workDir, ".git").exists() || result.failureKind != GitFailureKind.GIT_FAILED) {
+                throw GitQueryException(result)
+            }
+            return null
+        }
+        val lines = result.stdout.lineSequence().map(String::trim).filter(String::isNotEmpty).toList()
+        val gitDirectory = lines.firstOrNull()?.let { path ->
+            runCatching { File(path).canonicalPath }.getOrElse { File(path).absolutePath }
+        } ?: throw GitQueryException(result)
+        val superprojectRoot = lines.getOrNull(1)?.let { path ->
+            runCatching { File(path).canonicalPath }.getOrElse { File(path).absolutePath }
+        }
+        return RepositoryIdentity(gitDirectory, superprojectRoot)
+    }
+
     override fun isDirty(workDir: File): Boolean {
         val result = run(workDir, "status", "--porcelain")
         if (!result.ok) throw GitQueryException(result)

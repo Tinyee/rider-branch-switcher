@@ -33,6 +33,12 @@ enum class GitFailureKind { NONE, CANCELLED, INTERRUPTED, TIMEOUT, START_FAILED,
 /** A Git read/query failed and cannot be safely interpreted as a normal negative result. */
 class GitQueryException(val result: GitResult) : RuntimeException(result.diagnostic())
 
+/** Stable repository metadata used to reject replaced worktrees during writes and recovery. */
+data class RepositoryIdentity(
+    val gitDirectory: String,
+    val superprojectRoot: String?,
+)
+
 /** Repository metadata shared by multiple Git workflows. */
 interface GitRepositoryQuery {
     /** True when [workDir] is a usable git repository. */
@@ -41,6 +47,8 @@ interface GitRepositoryQuery {
     fun currentBranch(workDir: File): String?
     /** Returns the SHA of HEAD, or null if the repo has no commits. */
     fun revParseHead(workDir: File): String?
+    /** Returns stable repository storage and superproject paths, or null when unsupported. */
+    fun repositoryIdentity(workDir: File): RepositoryIdentity? = null
 }
 
 /** Read-only Git operations used to detect the current repository state. */

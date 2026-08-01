@@ -5,8 +5,10 @@ import com.submodule.branchswitcher.operation.GitOperationResult
 import com.submodule.branchswitcher.operation.GitOperationRunner
 import com.submodule.branchswitcher.switch.CancellationClassifier
 import com.submodule.branchswitcher.switch.SubmoduleRegistrationStatus
+import com.submodule.branchswitcher.switch.SubmoduleWorktreeStatus
 import com.submodule.branchswitcher.switch.resolveGitDir
 import com.submodule.branchswitcher.switch.submoduleRegistrationStatus
+import com.submodule.branchswitcher.switch.submoduleWorktreeStatus
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -75,6 +77,13 @@ class SingleRepositorySwitcher(
                         SingleRepositorySwitchResult.Skipped(SingleRepositorySkipReason.NOT_REGISTERED)
                     !dir.exists() || !operation.isGitRepo(dir) ->
                         SingleRepositorySwitchResult.Skipped(SingleRepositorySkipReason.NOT_INITIALIZED)
+                    submoduleWorktreeStatus(
+                        root.toFile(),
+                        path,
+                        dir,
+                        operation.repositoryIdentity(dir),
+                    ) == SubmoduleWorktreeStatus.NOT_ASSOCIATED ->
+                        SingleRepositorySwitchResult.Skipped(SingleRepositorySkipReason.NOT_REGISTERED)
                     operation.isDirty(dir) ->
                         SingleRepositorySwitchResult.Skipped(SingleRepositorySkipReason.DIRTY)
                     operation.currentBranch(dir) == target ->

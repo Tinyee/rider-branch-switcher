@@ -100,6 +100,9 @@ Recovery 不使用当前注册状态，因为主仓回滚后某个 checkpoint �
 
 切换前会记录 checkpoint。每个步骤返回新的 `SwitchState`，而不是直接修改共享状态。
 这样即使中途抛异常或取消，恢复流程仍然知道哪些仓库已切换、哪些 stash 尚未恢复。
+checkpoint 还会记录规范化后的 Git 目录身份；如果同一路径后来被另一个仓库占用，
+Recovery 和 Derive rollback 会拒绝修改它。普通写入前也会确认已初始化子模块属于项目内的
+superproject，并使用父仓吸收后的外部 Git 元数据，而不是 worktree 内独立的 `.git` 目录。
 
 缺失子模块 init 成功后，路径会立刻写入 `SwitchState`。如果后面的 fetch、checkout
 或 pull 失败，恢复流程不会删除这个新工作区，因为它在切换前没有 checkpoint，自动删除还可能

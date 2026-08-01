@@ -148,6 +148,11 @@ checkpointed path obsolete.
 `SwitchRecoveryExecutor` independently attempts repository rollback and stash
 restoration. It compares both branch and commit SHA, restores detached HEAD
 state, and refuses a destructive hard reset when the working tree is dirty.
+Checkpoints also retain the canonical Git directory identity. Recovery and
+derive rollback skip a path if a different repository later occupies it.
+Before ordinary writes, an initialized submodule must report a superproject
+inside the project and external Git metadata rather than a standalone `.git`
+directory in the worktree.
 Submodules initialized by the failed or cancelled switch are deliberately
 retained: they had no pre-switch checkpoint, and deleting a newly populated
 worktree could discard useful data. Recovery logs and notifications list those

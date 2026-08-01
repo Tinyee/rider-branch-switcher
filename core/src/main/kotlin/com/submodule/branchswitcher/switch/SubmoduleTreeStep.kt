@@ -73,6 +73,20 @@ class SubmoduleTreeStep : SwitchStep {
                     continue
                 }
 
+                if (submoduleWorktreeStatus(
+                        context.projectRoot.toFile(),
+                        target.path,
+                        directory,
+                        context.git.repositoryIdentity(directory),
+                    ) == SubmoduleWorktreeStatus.NOT_ASSOCIATED
+                ) {
+                    context.log.warn("[skip] ${target.path} - repository is not associated with its superproject")
+                    failures[target.path] = "repository is not associated with its superproject"
+                    nextState = disableDescendants(nextState, targets, target.path)
+                    nextState = restoreTargetStash(context, nextState, target.path, failures)
+                    continue
+                }
+
                 if (context.options.fetchFirst) {
                     val fetch = context.git.fetch(directory)
                     if (!fetch.ok) {

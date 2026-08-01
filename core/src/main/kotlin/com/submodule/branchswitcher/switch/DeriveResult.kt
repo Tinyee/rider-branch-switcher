@@ -4,6 +4,7 @@ package com.submodule.branchswitcher.switch
 data class DeriveCheckpointEntry(
     val sha: String,
     val branch: String?,
+    val repositoryId: String? = null,
 )
 
 /** Pure result DTO for derive-branch execution and notification decisions. */
