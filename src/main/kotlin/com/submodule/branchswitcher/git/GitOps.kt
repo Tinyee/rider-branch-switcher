@@ -1,5 +1,6 @@
 package com.submodule.branchswitcher.git
 
+import com.intellij.openapi.diagnostic.Logger
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 
@@ -44,11 +45,26 @@ class GitOps private constructor(
         GitCommandClient(components.processRunner, components.remoteCache)
 
     companion object {
+        private val LOG = Logger.getInstance("SubmoduleBranchSwitcher")
+
         // --version output is one line, so asynchronous stream draining is unnecessary here.
-        fun isGitOnPath(): Boolean = try {
-            ProcessBuilder("git", "--version").redirectErrorStream(true).start().waitFor() == 0
-        } catch (_: Exception) {
-            false
+        @Suppress("TooGenericExceptionCaught") // availability checks convert all process-start failures to diagnostics
+        fun isGitOnPath(): Boolean {
+            return try {
+                val exitCode = ProcessBuilder("git", "--version")
+                    .redirectErrorStream(true)
+                    .start()
+                    .waitFor()
+                if (exitCode != 0) LOG.warn("Git availability check failed with exit code $exitCode")
+                exitCode == 0
+            } catch (interrupted: InterruptedException) {
+                Thread.currentThread().interrupt()
+                LOG.warn("Git availability check was interrupted", interrupted)
+                false
+            } catch (error: Exception) {
+                LOG.warn("Git availability check failed", error)
+                false
+            }
         }
     }
 }

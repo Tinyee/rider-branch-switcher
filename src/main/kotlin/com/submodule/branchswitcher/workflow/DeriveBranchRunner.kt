@@ -1,6 +1,8 @@
 package com.submodule.branchswitcher.workflow
 
 import com.submodule.branchswitcher.log.AppLogger
+import com.submodule.branchswitcher.log.newOperationId
+import com.submodule.branchswitcher.log.withContext
 import com.submodule.branchswitcher.model.Preset
 import com.submodule.branchswitcher.operation.GitOperationResult
 import com.submodule.branchswitcher.operation.GitOperationRunner
@@ -11,6 +13,7 @@ import java.nio.file.Path
 
 /** Final derive workflow outcome consumed by UI presentation code. */
 data class DeriveRunResult(
+    val operationId: String,
     val cancelled: Boolean,
     val execution: DeriveResult?,
     val rollbackFailures: List<String> = emptyList(),
@@ -39,18 +42,28 @@ class DeriveBranchRunner(
         branchName: String,
         log: AppLogger,
     ): DeriveRunResult {
+        val operationId = newOperationId("derive")
+        val operationLog = log.withContext(operationId)
+        operationLog.activity(
+            "operation started: root=${projectRoot.toAbsolutePath().normalize()}, " +
+                "preset='${preset.name}', branch=$branchName, targets=${preset.targets().size}",
+        )
+        preset.targets().forEach { target ->
+            operationLog.info("baseline target: path=${target.path}, branch=${target.branch}")
+        }
         val backgroundResult = operations.run(title) { indicator, gitOperation ->
             indicator.isIndeterminate = true
+            operationLog.logGitRuntime(gitOperation, projectRoot.toFile())
             val executor = DeriveBranchExecutor(
                 projectRoot = projectRoot,
-                log = log,
+                log = operationLog,
                 git = gitOperation,
                 cancelled = { indicator.isCanceled },
                 classifier = cancellationClassifier,
             )
             val deriveResult = executor.execute(preset, branchName)
             val rollbackFailures = if (!deriveResult.allOk && deriveResult.succeeded.isNotEmpty()) {
-                log.activity("[derive] rolling back ${deriveResult.succeeded.size} succeeded repo(s)...")
+                operationLog.activity("[derive] rolling back ${deriveResult.succeeded.size} succeeded repo(s)...")
                 executor.rollbackSucceeded(deriveResult, branchName)
             } else {
                 emptyList()
@@ -58,27 +71,36 @@ class DeriveBranchRunner(
             BackgroundDeriveOutcome(deriveResult, rollbackFailures)
         }
 
-        return when (backgroundResult) {
+        val result = when (backgroundResult) {
             is GitOperationResult.Completed -> DeriveRunResult(
+                operationId = operationId,
                 cancelled = false,
                 execution = backgroundResult.value.deriveResult,
                 rollbackFailures = backgroundResult.value.rollbackFailures,
             )
             is GitOperationResult.Cancelled -> {
-                log.info("[cancelled] derive cancelled by user")
+                operationLog.info("[cancelled] derive cancelled by user")
                 val deriveResult = backgroundResult.value?.deriveResult
                 DeriveRunResult(
+                    operationId = operationId,
                     cancelled = true,
                     execution = deriveResult,
-                    rollbackFailures = rollbackAfterCancellation(deriveResult, branchName, log),
+                    rollbackFailures = rollbackAfterCancellation(deriveResult, branchName, operationLog),
                 )
             }
             is GitOperationResult.Failed -> {
                 val error = backgroundResult.error
-                log.error("derive: ${error.javaClass.simpleName}: ${error.message}")
-                DeriveRunResult(cancelled = false, execution = null)
+                operationLog.error("derive workflow failed", error)
+                DeriveRunResult(operationId = operationId, cancelled = false, execution = null)
             }
         }
+        operationLog.activity(
+            "operation finished: cancelled=${result.cancelled}, " +
+                "succeeded=${result.execution?.succeeded?.size ?: 0}, " +
+                "failed=${result.execution?.failed?.size ?: 0}, " +
+                "rollbackFailures=${result.rollbackFailures.size}",
+        )
+        return result
     }
 
     @Suppress("TooGenericExceptionCaught") // cancellation recovery returns a report instead of escaping
@@ -96,7 +118,7 @@ class DeriveBranchRunner(
         val rollbackOperation = try {
             operations.openOperation()
         } catch (e: RuntimeException) {
-            log.error("derive rollback session: ${e.javaClass.simpleName}: ${e.message}")
+            log.error("derive rollback session could not be opened", e)
             return listOf("(session)")
         }
         return try {
@@ -110,7 +132,7 @@ class DeriveBranchRunner(
                 classifier = cancellationClassifier,
             ).rollbackSucceeded(execution, branchName)
         } catch (e: Exception) {
-            log.error("derive rollback after cancel: ${e.javaClass.simpleName}: ${e.message}")
+            log.error("derive rollback after cancel failed", e)
             listOf("(exception)")
         } finally {
             rollbackOperation.close()

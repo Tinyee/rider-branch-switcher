@@ -402,6 +402,20 @@ class GitOpsTest {
         assertTrue(stderrThread.get().startsWith(GIT_DRAIN_THREAD_PREFIX))
     }
 
+    @Test
+    fun `stream capture failure is returned instead of silently losing command output`() {
+        val failingStream = object : InputStream() {
+            override fun read(): Int = throw java.io.IOException("stream unavailable")
+        }
+        val process = ControllableProcess(finished = true, stdoutStream = failingStream)
+        val runner = GitProcessRunner(timeoutSeconds = 10) { process }
+
+        val result = runner.run(tmpDir.toFile(), AtomicBoolean(false), "status")
+
+        assertEquals(GitFailureKind.OUTPUT_CAPTURE, result.failureKind)
+        assertTrue(result.stderr.contains("java.io.IOException: stream unavailable"))
+    }
+
     private class ControllableProcess(
         private val finished: Boolean,
         private val interruptOnWait: Boolean = false,

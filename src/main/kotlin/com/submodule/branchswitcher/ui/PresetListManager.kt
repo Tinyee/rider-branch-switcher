@@ -7,13 +7,13 @@ import com.intellij.util.ui.JBUI
 import com.submodule.branchswitcher.Bundle
 import com.submodule.branchswitcher.Notifier
 import com.submodule.branchswitcher.log.AppLogger
+import com.submodule.branchswitcher.log.withContext
 import com.submodule.branchswitcher.model.Preset
 import com.submodule.branchswitcher.platform.logVcsRefresh
 import com.submodule.branchswitcher.platform.GitBackgroundRunner
 import com.submodule.branchswitcher.platform.platformCancellationClassifier
 import com.submodule.branchswitcher.platform.refreshVcsRepos
 import com.submodule.branchswitcher.service.BranchSwitcherService
-import com.submodule.branchswitcher.workflow.SingleRepositorySkipReason
 import com.submodule.branchswitcher.workflow.SingleRepositorySwitchResult
 import com.submodule.branchswitcher.workflow.SingleRepositorySwitcher
 import java.awt.BorderLayout
@@ -49,6 +49,7 @@ internal class PresetListManager(
     private val singleRepositorySwitcher = SingleRepositorySwitcher(
         operations = GitBackgroundRunner(project, service.gitClient),
         tryAcquireWrite = service::tryAcquireWrite,
+        log = log,
         cancellationClassifier = platformCancellationClassifier,
     )
 
@@ -137,12 +138,12 @@ internal class PresetListManager(
             path = path,
             target = target,
             title = Bundle.msg("progress.switching.to", target),
-        ) { result ->
-            val refreshResult = refreshVcsRepos(project, root, setOf(path))
+        ) { outcome ->
+            val operationLog = log.withContext(outcome.operationId)
+            val refreshResult = refreshVcsRepos(project, root, setOf(path), operationLog)
             project.invokeLaterIfAlive {
-                when (result) {
+                when (outcome.result) {
                     is SingleRepositorySwitchResult.Success -> {
-                        log.debug("[switch] $path -> $target ok")
                         Notifier.info(
                             project,
                             Bundle.msg("switch.complete"),
@@ -150,35 +151,17 @@ internal class PresetListManager(
                         )
                     }
                     is SingleRepositorySwitchResult.GitFailure -> {
-                        log.warn("[switch] $path failed: ${result.result.diagnostic()}")
                         Notifier.warn(
                             project,
                             Bundle.msg("switch.failed"),
                             Bundle.msg("notify.switch.only.failed", path, target),
                         )
                     }
-                    is SingleRepositorySwitchResult.Skipped -> {
-                        val reason = when (result.reason) {
-                            SingleRepositorySkipReason.NOT_REGISTERED ->
-                                "repository is not registered in the current submodule graph"
-                            SingleRepositorySkipReason.NOT_INITIALIZED -> "repository is not initialized"
-                            SingleRepositorySkipReason.DIRTY -> "working tree dirty"
-                            SingleRepositorySkipReason.ALREADY_ON_TARGET -> "already on $target"
-                        }
-                        log.warn("[switch] $path skipped: $reason")
-                    }
-                    SingleRepositorySwitchResult.Cancelled -> {
-                        log.info("[switch] $path: cancelled")
-                        log.warn("[switch] $path skipped: cancelled")
-                    }
-                    is SingleRepositorySwitchResult.Unexpected -> {
-                        val error = result.error
-                        val detail = "${error.javaClass.simpleName}: ${error.message}"
-                        log.error("[switch] $path: $detail")
-                        log.warn("[switch] $path skipped: $detail")
-                    }
+                    is SingleRepositorySwitchResult.Skipped -> Unit
+                    SingleRepositorySwitchResult.Cancelled -> Unit
+                    is SingleRepositorySwitchResult.Unexpected -> Unit
                 }
-                logVcsRefresh(log, refreshResult)
+                logVcsRefresh(operationLog, refreshResult)
                 notifyStateChanged()
             }
         }

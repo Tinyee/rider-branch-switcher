@@ -1,6 +1,10 @@
 package com.submodule.branchswitcher.workflow
 
+import com.submodule.branchswitcher.git.GitOperationSession
 import com.submodule.branchswitcher.git.GitResult
+import com.submodule.branchswitcher.log.AppLogger
+import com.submodule.branchswitcher.log.newOperationId
+import com.submodule.branchswitcher.log.withContext
 import com.submodule.branchswitcher.operation.GitOperationResult
 import com.submodule.branchswitcher.operation.GitOperationRunner
 import com.submodule.branchswitcher.switch.CancellationClassifier
@@ -8,9 +12,11 @@ import com.submodule.branchswitcher.switch.expectedSubmoduleGitDirectory
 import com.submodule.branchswitcher.switch.isUnassociatedSubmoduleWorktree
 import com.submodule.branchswitcher.switch.loadSubmoduleTopology
 import com.submodule.branchswitcher.switch.resolveGitDir
+import com.submodule.branchswitcher.switch.SubmoduleTopology
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import java.io.File
 import java.nio.file.Path
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -29,10 +35,16 @@ sealed class SingleRepositorySwitchResult {
     data class Unexpected(val error: Exception) : SingleRepositorySwitchResult()
 }
 
+data class SingleRepositorySwitchOutcome(
+    val operationId: String,
+    val result: SingleRepositorySwitchResult,
+)
+
 /** Executes one repository checkout with the shared write and Git task lifecycle. */
 class SingleRepositorySwitcher(
     private val operations: GitOperationRunner,
     private val tryAcquireWrite: () -> AutoCloseable?,
+    private val log: AppLogger,
     private val cancellationClassifier: CancellationClassifier = CancellationClassifier.DEFAULT,
 ) {
     /**
@@ -45,12 +57,23 @@ class SingleRepositorySwitcher(
         path: String,
         target: String,
         title: String,
-        onResult: (SingleRepositorySwitchResult) -> Unit,
+        onResult: (SingleRepositorySwitchOutcome) -> Unit,
     ): Boolean {
-        val writeLease = tryAcquireWrite() ?: return false
+        val operationId = newOperationId("single-switch")
+        val operationLog = log.withContext(operationId)
+        val writeLease = tryAcquireWrite()
+        if (writeLease == null) {
+            operationLog.warn("operation rejected: another repository write is already running")
+            return false
+        }
         val guardedLease = CloseOnce(writeLease)
         val job = scope.launch(Dispatchers.Default) {
-            onResult(execute(root, path, target, title, guardedLease))
+            onResult(
+                SingleRepositorySwitchOutcome(
+                    operationId = operationId,
+                    result = execute(root, path, target, title, guardedLease, operationLog),
+                ),
+            )
         }
         job.invokeOnCompletion { guardedLease.close() }
         return true
@@ -63,39 +86,34 @@ class SingleRepositorySwitcher(
         target: String,
         title: String,
         writeLease: AutoCloseable,
+        operationLog: AppLogger,
     ): SingleRepositorySwitchResult {
-        return try {
+        operationLog.activity(
+            "operation started: root=${root.toAbsolutePath().normalize()}, path=$path, branch=$target",
+        )
+        val result = try {
             val dir = resolveGitDir(root, path)
             when (val background = operations.run(title) { indicator, operation ->
                 indicator.isIndeterminate = true
+                operationLog.logGitRuntime(operation, root.toFile())
                 val topology = operation.loadSubmoduleTopology(root.toFile())
                 when {
-                    topology.isUnregistered(path) ->
+                    topology.isUnregistered(path) -> {
+                        operationLog.warn("safety gate: path is not registered in the current .gitmodules graph")
                         SingleRepositorySwitchResult.Skipped(SingleRepositorySkipReason.NOT_REGISTERED)
-                    !dir.exists() || !operation.isGitRepo(dir) ->
+                    }
+                    !dir.exists() || !operation.isGitRepo(dir) -> {
+                        operationLog.warn("safety gate: repository is not initialized at ${dir.absolutePath}")
                         SingleRepositorySwitchResult.Skipped(SingleRepositorySkipReason.NOT_INITIALIZED)
-                    isUnassociatedSubmoduleWorktree(
-                        root.toFile(),
+                    }
+                    else -> switchInitializedRepository(
+                        root,
                         path,
+                        target,
                         dir,
-                        operation.repositoryIdentity(dir),
-                        expectedSubmoduleGitDirectory(
-                            root.toFile(),
-                            topology.byPath[path],
-                            operation,
-                        ),
-                    ) ->
-                        SingleRepositorySwitchResult.Skipped(SingleRepositorySkipReason.NOT_REGISTERED)
-                    operation.isDirty(dir) ->
-                        SingleRepositorySwitchResult.Skipped(SingleRepositorySkipReason.DIRTY)
-                    operation.currentBranch(dir) == target ->
-                        SingleRepositorySwitchResult.Skipped(SingleRepositorySkipReason.ALREADY_ON_TARGET)
-                    operation.localBranchExists(dir, target) ->
-                        operation.checkoutExisting(dir, target).toSwitchResult()
-                    operation.remoteBranchExists(dir, target) ->
-                        operation.checkoutFromRemote(dir, target).toSwitchResult()
-                    else -> SingleRepositorySwitchResult.GitFailure(
-                        GitResult("checkout", 1, "", "branch $target not found"),
+                        topology,
+                        operation,
+                        operationLog,
                     )
                 }
             }) {
@@ -111,6 +129,60 @@ class SingleRepositorySwitcher(
             }
         } finally {
             writeLease.close()
+        }
+        when (result) {
+            is SingleRepositorySwitchResult.Success ->
+                operationLog.activity("operation finished: status=success, path=$path, branch=$target")
+            is SingleRepositorySwitchResult.GitFailure ->
+                operationLog.warn("operation finished: status=git-failure, ${result.result.diagnostic()}")
+            is SingleRepositorySwitchResult.Skipped ->
+                operationLog.warn("operation finished: status=skipped, reason=${result.reason}")
+            SingleRepositorySwitchResult.Cancelled ->
+                operationLog.info("operation finished: status=cancelled")
+            is SingleRepositorySwitchResult.Unexpected ->
+                operationLog.error("operation finished: status=unexpected-failure", result.error)
+        }
+        return result
+    }
+
+    private fun switchInitializedRepository(
+        root: Path,
+        path: String,
+        target: String,
+        directory: File,
+        topology: SubmoduleTopology,
+        operation: GitOperationSession,
+        operationLog: AppLogger,
+    ): SingleRepositorySwitchResult {
+        val identity = operation.repositoryIdentity(directory)
+        val expectedGitDirectory = expectedSubmoduleGitDirectory(root.toFile(), topology.byPath[path], operation)
+        if (isUnassociatedSubmoduleWorktree(
+                root.toFile(),
+                path,
+                directory,
+                identity,
+                expectedGitDirectory,
+            )
+        ) {
+            operationLog.warn(
+                "safety gate: repository is not associated with its superproject; " +
+                    "actualGitDir=${identity?.gitDirectory}, expectedGitDir=$expectedGitDirectory, " +
+                    "superproject=${identity?.superprojectRoot}",
+            )
+            return SingleRepositorySwitchResult.Skipped(SingleRepositorySkipReason.NOT_REGISTERED)
+        }
+        return when {
+            operation.isDirty(directory) ->
+                SingleRepositorySwitchResult.Skipped(SingleRepositorySkipReason.DIRTY)
+            operation.currentBranch(directory) == target ->
+                SingleRepositorySwitchResult.Skipped(SingleRepositorySkipReason.ALREADY_ON_TARGET)
+            operation.localBranchExists(directory, target) ->
+                operation.checkoutExisting(directory, target).toSwitchResult()
+            operation.remoteBranchExists(directory, target) ->
+                operation.checkoutFromRemote(directory, target).toSwitchResult()
+            else -> SingleRepositorySwitchResult.GitFailure(
+                GitResult("checkout", 1, "", "branch $target not found"),
+            )
         }
     }
 

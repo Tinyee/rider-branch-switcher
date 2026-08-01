@@ -18,6 +18,7 @@ data class GitResult(
             stderr.startsWith("timeout after ") -> GitFailureKind.TIMEOUT
             stderr.startsWith("failed to start: ") -> GitFailureKind.START_FAILED
             stderr.startsWith("output limit exceeded: ") -> GitFailureKind.OUTPUT_LIMIT
+            stderr.startsWith("output capture ") -> GitFailureKind.OUTPUT_CAPTURE
             else -> GitFailureKind.GIT_FAILED
         }
 
@@ -28,7 +29,16 @@ data class GitResult(
     }
 }
 
-enum class GitFailureKind { NONE, CANCELLED, INTERRUPTED, TIMEOUT, START_FAILED, OUTPUT_LIMIT, GIT_FAILED }
+enum class GitFailureKind {
+    NONE,
+    CANCELLED,
+    INTERRUPTED,
+    TIMEOUT,
+    START_FAILED,
+    OUTPUT_LIMIT,
+    OUTPUT_CAPTURE,
+    GIT_FAILED,
+}
 
 /** A Git read/query failed and cannot be safely interpreted as a normal negative result. */
 class GitQueryException(val result: GitResult) : RuntimeException(result.diagnostic())
@@ -37,6 +47,12 @@ class GitQueryException(val result: GitResult) : RuntimeException(result.diagnos
 data class RepositoryIdentity(
     val gitDirectory: String,
     val superprojectRoot: String?,
+)
+
+/** Runtime details needed to reproduce Git process behavior from diagnostic logs. */
+data class GitRuntimeInfo(
+    val version: String,
+    val timeoutSeconds: Int,
 )
 
 /** One `.gitmodules` entry with its full project path and immediate parent path. */
@@ -58,6 +74,8 @@ interface GitRepositoryQuery {
     fun repositoryIdentity(workDir: File): RepositoryIdentity? = null
     /** Returns the selected fetch remote URL, or null when the repository has no remote. */
     fun remoteUrl(workDir: File): String? = null
+    /** Returns the Git executable version and effective per-command timeout when supported. */
+    fun runtimeInfo(workDir: File): GitRuntimeInfo? = null
 }
 
 /** Read-only Git operations used to detect the current repository state. */

@@ -2,6 +2,7 @@ package com.submodule.branchswitcher.switch
 
 import com.submodule.branchswitcher.git.SwitchGitClient
 import com.submodule.branchswitcher.log.AppLogger
+import com.submodule.branchswitcher.log.diagnosticFingerprint
 import com.submodule.branchswitcher.model.Preset
 import java.nio.file.Path
 
@@ -27,15 +28,24 @@ internal class SwitchCheckpointRecorder(
             if (!dir.exists() || !git.isGitRepo(dir)) continue
             val label = if (target.path == ".") projectRoot.fileName.toString() else target.path
             val identity = git.repositoryIdentity(dir)
+            val expectedGitDirectory = expectedSubmoduleGitDirectory(
+                projectRoot.toFile(),
+                topology.byPath[target.path],
+                git,
+            )
             if (isUnassociatedSubmoduleWorktree(
                     projectRoot.toFile(),
                     target.path,
                     dir,
                     identity,
-                    expectedSubmoduleGitDirectory(projectRoot.toFile(), topology.byPath[target.path], git),
+                    expectedGitDirectory,
                 )
             ) {
-                log.error("[checkpoint] $label: repository is not associated with its superproject")
+                log.error(
+                    "[checkpoint] $label: repository is not associated with its superproject; " +
+                        "actualGitDir=${identity?.gitDirectory}, expectedGitDir=$expectedGitDirectory, " +
+                        "superproject=${identity?.superprojectRoot}",
+                )
                 return null
             }
             val sha = git.revParseHead(dir)
@@ -43,11 +53,18 @@ internal class SwitchCheckpointRecorder(
                 log.error("[checkpoint] $label: unable to read HEAD")
                 return null
             }
+            val branch = git.currentBranch(dir)
+            val remoteUrl = git.remoteUrl(dir)
             checkpoint[target.path] = CheckpointEntry(
                 sha,
-                git.currentBranch(dir),
+                branch,
                 identity?.gitDirectory,
-                git.remoteUrl(dir),
+                remoteUrl,
+            )
+            log.info(
+                "[checkpoint] $label: branch=${branch ?: "(detached)"}, head=${sha.take(12)}, " +
+                    "gitDir=${identity?.gitDirectory ?: "unknown"}, " +
+                    "remoteId=${diagnosticFingerprint(remoteUrl)}",
             )
         }
         return checkpoint

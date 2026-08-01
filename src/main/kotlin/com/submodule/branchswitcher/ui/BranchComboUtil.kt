@@ -162,7 +162,7 @@ internal fun loadComboBranches(
             scheduleUi(updateUi)
         } catch (e: Exception) {
             endLoad()
-            log.warn("loadBranches UI update failed for ${dir.name}: ${e.message}")
+            log.warn("loadBranches UI update failed for ${dir.name}", e)
         }
     }
 
@@ -189,17 +189,17 @@ internal fun loadComboBranches(
                 finish(null)
                 throw CancellationException("branch discovery cancelled").apply { initCause(e) }
             }
-            log.warn("loadBranches failed for ${dir.name}: ${e.message}")
+            log.warn("loadBranches failed for ${dir.name}", e)
             BranchComboLoadResult(current, emptyList())
         } catch (e: Exception) {
-            log.warn("loadBranches failed for ${dir.name}: ${e.message}")
+            log.warn("loadBranches failed for ${dir.name}", e)
             BranchComboLoadResult(current, emptyList())
         }
         finish(loadResult)
     }
     handle.invokeOnCompletion { failure ->
         if (failure != null && failure !is CancellationException) {
-            log.warn("loadBranches failed for ${dir.name}: ${failure.message}")
+            log.warn("loadBranches failed for ${dir.name}", failure)
         }
         finish(null)
     }

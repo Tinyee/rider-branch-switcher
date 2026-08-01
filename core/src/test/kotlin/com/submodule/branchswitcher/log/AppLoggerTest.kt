@@ -72,6 +72,40 @@ class AppLoggerTest {
     }
 
     @Test
+    fun `context logger prefixes messages and preserves throwable logging`() {
+        val calls = mutableListOf<String>()
+        val logger = object : AppLogger {
+            override fun info(msg: String) = Unit
+            override fun warn(msg: String) = Unit
+            override fun error(msg: String) = Unit
+            override fun debug(msg: String) = Unit
+            override fun activity(msg: String) = Unit
+            override fun error(msg: String, error: Throwable) {
+                calls += "$msg|${error.javaClass.simpleName}|${error.message}"
+            }
+        }.withContext("switch-test")
+
+        logger.error("operation failed", IllegalStateException("broken"))
+
+        assertEquals(
+            listOf("[switch-test] operation failed|IllegalStateException|broken"),
+            calls,
+        )
+    }
+
+    @Test
+    fun `diagnostic fingerprint is stable without exposing its source`() {
+        val remote = "https://user:secret@example.test/private/repo.git"
+
+        val first = diagnosticFingerprint(remote)
+
+        assertEquals(first, diagnosticFingerprint(remote))
+        assertEquals(12, first.length)
+        assertFalse(first.contains("secret"))
+        assertEquals("none", diagnosticFingerprint(null))
+    }
+
+    @Test
     fun `fatal step is logged as error`() {
         val fatalStep = object : SwitchStep {
             override val name = "always-fatal"

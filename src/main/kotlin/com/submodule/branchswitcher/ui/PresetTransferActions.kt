@@ -36,7 +36,7 @@ internal class PresetTransferActions(
                 Bundle.msg("notify.exported", host.editors.size),
             )
         } catch (e: Exception) {
-            log.error("[export] failed: ${e.message}")
+            log.error("[export] failed", e)
             Notifier.error(
                 project,
                 Bundle.msg("notify.export.complete"),
@@ -95,7 +95,7 @@ internal class PresetTransferActions(
                 )
             }
         } catch (e: Exception) {
-            log.error("[import] error: ${e.message}")
+            log.error("[import] failed", e)
             Messages.showWarningDialog(
                 project,
                 "${Bundle.msg("dialog.import.failed")}: ${e.message}",

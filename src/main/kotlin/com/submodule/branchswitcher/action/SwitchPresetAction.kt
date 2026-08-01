@@ -10,7 +10,7 @@ import com.submodule.branchswitcher.BranchSwitchListener
 import com.submodule.branchswitcher.Bundle
 import com.submodule.branchswitcher.Notifier
 import com.submodule.branchswitcher.log.AppLogger
-import com.submodule.branchswitcher.log.LogEntry
+import com.submodule.branchswitcher.log.ToolWindowLogger
 import com.submodule.branchswitcher.model.Preset
 import com.submodule.branchswitcher.platform.gitRootPath
 import com.submodule.branchswitcher.presentation.ShortcutPresetLoadDecision
@@ -81,7 +81,7 @@ class SwitchPresetAction : AnAction() {
         val coordinator = SwitchFlowCoordinator(project, service)
         service.scope.launch(Dispatchers.Default) {
             try {
-                val probeResult = coordinator.preflight(root, preset)
+                val probeResult = coordinator.preflight(root, preset, collector)
                 if (!coordinator.showForceWarning(preset, probeResult)) {
                     collector.warn("switch cancelled by user - Force dirty strategy declined")
                     return@launch
@@ -97,7 +97,7 @@ class SwitchPresetAction : AnAction() {
             } catch (_: kotlinx.coroutines.CancellationException) {
                 // user cancelled
             } catch (e: Exception) {
-                collector.error("shortcut switch failed: ${e.javaClass.simpleName}: ${e.message}")
+                collector.error("shortcut switch failed", e)
                 project.invokeLaterIfAlive {
                     Notifier.error(project, Bundle.msg("notify.preflight.failed"),
                         Bundle.msg("notify.preflight.failed.msg", e.javaClass.simpleName, e.message ?: ""))
@@ -106,15 +106,7 @@ class SwitchPresetAction : AnAction() {
         }
     }
 
-    private fun actionLogger(project: Project): AppLogger = object : AppLogger {
-        private fun emit(level: LogEntry.Level, message: String) {
-            project.messageBus.syncPublisher(BranchSwitchListener.TOPIC).onLog(LogEntry(level, message))
-        }
-
-        override fun info(msg: String) = emit(LogEntry.Level.INFO, msg)
-        override fun warn(msg: String) = emit(LogEntry.Level.WARN, msg)
-        override fun error(msg: String) = emit(LogEntry.Level.ERROR, msg)
-        override fun debug(msg: String) = emit(LogEntry.Level.DEBUG, msg)
-        override fun activity(msg: String) = emit(LogEntry.Level.ACTIVITY, msg)
+    private fun actionLogger(project: Project): AppLogger = ToolWindowLogger { entry ->
+        project.messageBus.syncPublisher(BranchSwitchListener.TOPIC).onLog(entry)
     }
 }

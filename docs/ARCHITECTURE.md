@@ -281,6 +281,20 @@ repository, one remote-name query. Its failures remain fail-closed. Switch
 steps, checkpoints, and recovery deliberately keep fresh reads adjacent to
 mutation rather than consuming these display-oriented snapshots.
 
+## Diagnostic Logging
+
+`ToolWindowLogger` mirrors every user-visible level to the IntelliJ diagnostic
+logger named `SubmoduleBranchSwitcher`; the Tool Window is a bounded transient
+view, while `idea.log` is the durable diagnostic source. Throwable-aware
+`warn`/`error` calls retain full stack traces in `idea.log` and keep the Tool
+Window message concise.
+
+Each switch, derive, and single-repository write wraps its logger with a short
+operation ID. Request context, effective options, per-repository checkpoints,
+Git diagnostics, recovery actions, VCS refresh, and final summaries retain that
+ID. Repository URLs are never logged directly; SHA-256 fingerprints allow
+before/after comparison without exposing credentials or private locations.
+
 ## Change Guide
 
 Use the narrowest owner for a change:

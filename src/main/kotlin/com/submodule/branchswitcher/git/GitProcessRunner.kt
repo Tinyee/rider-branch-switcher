@@ -14,10 +14,12 @@ internal fun safeTimeoutSeconds(timeoutSeconds: Int): Int =
  * Runs one Git process with bounded execution and cooperative cancellation.
  */
 internal class GitProcessRunner(
-    private val timeoutSeconds: Int,
+    timeoutSeconds: Int,
     private val outputDrainer: GitOutputDrainer = GitOutputDrainer(),
     private val processStarter: (ProcessBuilder) -> Process,
 ) {
+    val effectiveTimeoutSeconds: Int = safeTimeoutSeconds(timeoutSeconds)
+
     /** Executes `git [args]` in [workDir], polling for cancellation and timeout every 100ms. */
     @Suppress("TooGenericExceptionCaught") // injected process starters must be converted to structured failures
     fun run(
@@ -59,14 +61,18 @@ internal class GitProcessRunner(
         val process = try {
             processStarter(builder)
         } catch (e: Exception) {
-            return GitResult(commandLabel, -1, "", "failed to start: ${e.message}")
+            return GitResult(
+                commandLabel,
+                -1,
+                "",
+                "failed to start: ${e.javaClass.name}: ${e.message}",
+            )
         }
 
         val stdoutLimitExceeded = AtomicBoolean(false)
         val stdoutFuture = outputDrainer.captureStdout(process.inputStream, stdoutLimitExceeded)
         val stderrFuture = outputDrainer.captureStderr(process.errorStream)
 
-        val effectiveTimeoutSeconds = safeTimeoutSeconds(timeoutSeconds)
         val deadline = System.nanoTime() +
             TimeUnit.SECONDS.toNanos(effectiveTimeoutSeconds.toLong())
         var exitCode = -1
@@ -109,6 +115,10 @@ internal class GitProcessRunner(
             Thread.currentThread().interrupt()
             return GitResult(commandLabel, -1, "", "interrupted")
         }
+        val captureFailure = stdout.failure ?: stderr.failure
+        if (captureFailure != null) {
+            return GitResult(commandLabel, -1, "", captureFailure)
+        }
         if (stdout.capture.truncated) {
             return GitResult(commandLabel, -1, "", stdoutLimitMessage())
         }
@@ -139,6 +149,7 @@ internal class GitProcessRunner(
     private data class AwaitedCapture(
         val capture: GitCapturedOutput,
         val interrupted: Boolean,
+        val failure: String? = null,
     )
 
     private fun awaitCapture(future: Future<GitCapturedOutput>): AwaitedCapture {
@@ -148,11 +159,20 @@ internal class GitProcessRunner(
                 return AwaitedCapture(future.get(5, TimeUnit.SECONDS), interrupted)
             } catch (_: InterruptedException) {
                 interrupted = true
-            } catch (_: ExecutionException) {
-                return AwaitedCapture(GitCapturedOutput("", truncated = false), interrupted)
+            } catch (error: ExecutionException) {
+                val cause = error.cause ?: error
+                return AwaitedCapture(
+                    GitCapturedOutput("", truncated = false),
+                    interrupted,
+                    "output capture failed: ${cause.javaClass.name}: ${cause.message}",
+                )
             } catch (_: TimeoutException) {
                 future.cancel(true)
-                return AwaitedCapture(GitCapturedOutput("", truncated = false), interrupted)
+                return AwaitedCapture(
+                    GitCapturedOutput("", truncated = false),
+                    interrupted,
+                    "output capture timed out after 5s",
+                )
             }
         }
         future.cancel(true)

@@ -5,6 +5,9 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.Messages
 import com.submodule.branchswitcher.Bundle
 import com.submodule.branchswitcher.TaskBridge
+import com.submodule.branchswitcher.log.AppLogger
+import com.submodule.branchswitcher.log.newOperationId
+import com.submodule.branchswitcher.log.withContext
 import com.submodule.branchswitcher.model.PreflightRow
 import com.submodule.branchswitcher.model.Preset
 import com.submodule.branchswitcher.platform.ProgressCancellationHandle
@@ -20,16 +23,41 @@ internal class SwitchPreflightUi(
     private val project: Project,
     private val service: BranchSwitcherService,
 ) {
-    suspend fun probe(root: Path, preset: Preset): List<PreflightRow> {
+    @Suppress("TooGenericExceptionCaught") // platform task failures are logged before crossing the UI boundary
+    suspend fun probe(root: Path, preset: Preset, log: AppLogger): List<PreflightRow> {
         val git = service.gitClient
-        return TaskBridge.runModal(project, Bundle.msg("progress.preflight"), true) { indicator ->
-            indicator.isIndeterminate = false
-            SwitchPreflight(git, Bundle.msg("preflight.probe.error.suffix"), platformCancellationClassifier)
-                .probe(root, preset, ProgressCancellationHandle(indicator)) { index, total, label ->
-                    indicator.text2 = label
-                    indicator.fraction = index.toDouble() / total
+        val operationLog = log.withContext(newOperationId("preflight"))
+        operationLog.activity(
+            "operation started: root=${root.toAbsolutePath().normalize()}, " +
+                "preset='${preset.name}', targets=${preset.targets().size}",
+        )
+        val rows = try {
+            TaskBridge.runModal(project, Bundle.msg("progress.preflight"), true) { indicator ->
+                indicator.isIndeterminate = false
+                SwitchPreflight(
+                    git,
+                    Bundle.msg("preflight.probe.error.suffix"),
+                    platformCancellationClassifier,
+                ) { path, error ->
+                    operationLog.warn("repository probe failed: path=$path", error)
                 }
+                    .probe(root, preset, ProgressCancellationHandle(indicator)) { index, total, label ->
+                        indicator.text2 = label
+                        indicator.fraction = index.toDouble() / total
+                    }
+            }
+        } catch (error: Exception) {
+            if (platformCancellationClassifier.isCancellation(error)) {
+                operationLog.info("operation finished: status=cancelled")
+            } else {
+                operationLog.error("operation finished: status=failed", error)
+            }
+            throw error
         }
+        operationLog.activity(
+            "operation finished: rows=${rows.size}, probeFailures=${rows.count { it.probeError != null }}",
+        )
+        return rows
     }
 
     fun confirmForceSwitch(preset: Preset, probeResult: List<PreflightRow>): Boolean {

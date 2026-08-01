@@ -134,7 +134,7 @@ class SwitchExecutor @JvmOverloads constructor(
                     executionStatus = SwitchExecutionStatus.CANCELLED
                 } else {
                     val reason = "${error.javaClass.simpleName}: ${error.message}"
-                    log.error("[failed] ${step.name}: $reason")
+                    log.error("[failed] ${step.name}", error)
                     failures[step.name] = reason
                     executionStatus = SwitchExecutionStatus.FAILED
                 }

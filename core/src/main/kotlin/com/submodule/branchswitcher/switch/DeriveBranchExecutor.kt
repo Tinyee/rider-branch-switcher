@@ -78,15 +78,22 @@ class DeriveBranchExecutor(
                 skipped.add(target.path)
                 continue
             }
+            val repositoryIdentity = git.repositoryIdentity(repositoryDirectory)
+            val expectedGitDirectory = expectedSubmoduleGitDirectory(root, topology.byPath[target.path], git)
             if (isUnassociatedSubmoduleWorktree(
                     projectRoot.toFile(),
                     target.path,
                     repositoryDirectory,
-                    git.repositoryIdentity(repositoryDirectory),
-                    expectedSubmoduleGitDirectory(root, topology.byPath[target.path], git),
+                    repositoryIdentity,
+                    expectedGitDirectory,
                 )
             ) {
-                log.warn("[derive] $repositoryLabel: repository is not associated with its superproject - blocked")
+                log.warn(
+                    "[derive] $repositoryLabel: repository is not associated with its superproject - blocked; " +
+                        "actualGitDir=${repositoryIdentity?.gitDirectory}, " +
+                        "expectedGitDir=$expectedGitDirectory, " +
+                        "superproject=${repositoryIdentity?.superprojectRoot}",
+                )
                 skipped.add(target.path)
                 continue
             }
@@ -97,7 +104,7 @@ class DeriveBranchExecutor(
                 git.currentBranch(repositoryDirectory)
             } catch (e: Exception) {
                 rethrowIfCancellation(e)
-                log.warn("[derive] $repositoryLabel: cannot detect current branch - ${e.message}")
+                log.warn("[derive] $repositoryLabel: cannot detect current branch", e)
                 probeFailures.add(target.path)
                 continue
             }
@@ -120,7 +127,7 @@ class DeriveBranchExecutor(
                 git.localBranchProbe(repositoryDirectory, branchName)
             } catch (e: Exception) {
                 rethrowIfCancellation(e)
-                log.warn("[derive] $repositoryLabel: branch existence probe failed - ${e.message}")
+                log.warn("[derive] $repositoryLabel: branch existence probe failed", e)
                 null
             }
             if (branchAlreadyExists == null) {
@@ -140,7 +147,7 @@ class DeriveBranchExecutor(
                     git.dirtyProbe(repositoryDirectory)
                 } catch (e: Exception) {
                     rethrowIfCancellation(e)
-                    log.warn("[derive] $repositoryLabel: dirty probe failed - ${e.message}")
+                    log.warn("[derive] $repositoryLabel: dirty probe failed", e)
                     null
                 }
                 if (isDirty == null) {
@@ -182,10 +189,15 @@ class DeriveBranchExecutor(
                 val sha = git.revParseHead(repositoryDirectory)
                 if (sha != null) {
                     val branch = git.currentBranch(repositoryDirectory)
+                    val repositoryId = git.repositoryIdentity(repositoryDirectory)?.gitDirectory
                     entries[target.path] = DeriveCheckpointEntry(
                         sha,
                         branch,
-                        git.repositoryIdentity(repositoryDirectory)?.gitDirectory,
+                        repositoryId,
+                    )
+                    log.info(
+                        "[derive checkpoint] $repositoryLabel: branch=${branch ?: "(detached)"}, " +
+                            "head=${sha.take(12)}, gitDir=${repositoryId ?: "unknown"}",
                     )
                 } else {
                     log.warn("[derive] $repositoryLabel: no HEAD - cannot checkpoint")
@@ -193,7 +205,7 @@ class DeriveBranchExecutor(
                 }
             } catch (e: Exception) {
                 rethrowIfCancellation(e)
-                log.warn("[derive] $repositoryLabel: checkpoint failed - ${e.message}")
+                log.warn("[derive] $repositoryLabel: checkpoint failed", e)
                 checkpointFailures.add(target.path)
             }
         }
@@ -235,7 +247,7 @@ class DeriveBranchExecutor(
                 }
             } catch (e: Exception) {
                 rethrowIfCancellation(e)
-                log.warn("[derive] $repositoryLabel: exception - ${e.javaClass.simpleName}: ${e.message}")
+                log.warn("[derive] $repositoryLabel: branch creation exception", e)
                 failed[target.path] = "${e.javaClass.simpleName}: ${e.message}"
             }
         }
@@ -303,7 +315,7 @@ class DeriveBranchExecutor(
                 }
             } catch (e: Exception) {
                 rethrowIfCancellation(e)
-                log.warn("[derive] $path: rollback exception - ${e.javaClass.simpleName}: ${e.message}")
+                log.warn("[derive] $path: rollback exception", e)
                 rollbackFailures.add(path)
             }
         }

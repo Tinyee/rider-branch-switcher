@@ -13,12 +13,18 @@ class ToolWindowLogger(
     private val ideaLogger = IdeaLogger.getInstance("SubmoduleBranchSwitcher")
 
     override fun info(msg: String) {
+        ideaLogger.info(msg)
         onAppend(LogEntry(LogEntry.Level.INFO, msg))
     }
 
     override fun warn(msg: String) {
         ideaLogger.warn(msg)
         onAppend(LogEntry(LogEntry.Level.WARN, msg))
+    }
+
+    override fun warn(msg: String, error: Throwable) {
+        ideaLogger.warn(msg, error)
+        onAppend(LogEntry(LogEntry.Level.WARN, "$msg: ${error.javaClass.simpleName}: ${error.message}"))
     }
 
     override fun error(msg: String) {
@@ -30,12 +36,19 @@ class ToolWindowLogger(
         onAppend(LogEntry(LogEntry.Level.ERROR, msg))
     }
 
+    override fun error(msg: String, error: Throwable) {
+        ideaLogger.warn(msg, error)
+        onAppend(LogEntry(LogEntry.Level.ERROR, "$msg: ${error.javaClass.simpleName}: ${error.message}"))
+    }
+
     override fun debug(msg: String) {
-        ideaLogger.debug(msg)
+        // Diagnostic support must not depend on the IDE's debug-log configuration.
+        ideaLogger.info(msg)
         onAppend(LogEntry(LogEntry.Level.DEBUG, msg))
     }
 
     override fun activity(msg: String) {
+        ideaLogger.info(msg)
         onAppend(LogEntry(LogEntry.Level.ACTIVITY, msg))
     }
 }

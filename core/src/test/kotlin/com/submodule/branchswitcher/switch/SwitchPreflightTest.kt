@@ -127,7 +127,10 @@ class SwitchPreflightTest {
         val throwingGit = object : GitClient by fakeGit {
             override fun dirtyFileCount(workDir: File): Int = throw java.io.IOException("git failed")
         }
-        val preflight = SwitchPreflight(throwingGit)
+        val failures = mutableListOf<Pair<String, Exception>>()
+        val preflight = SwitchPreflight(throwingGit, onProbeFailure = { path, error ->
+            failures += path to error
+        })
         val preset = Preset("test", "main")
         val rows = preflight.probe(projectRoot, preset)
         assertEquals(1, rows.size)
@@ -136,6 +139,8 @@ class SwitchPreflightTest {
         assertFalse(rows[0].hasLocal)
         assertTrue("should be branchMissing", rows[0].branchMissing)
         assertEquals("IOException: git failed", rows[0].probeError)
+        assertEquals(listOf("."), failures.map { it.first })
+        assertTrue(failures.single().second is java.io.IOException)
     }
 
     @Test

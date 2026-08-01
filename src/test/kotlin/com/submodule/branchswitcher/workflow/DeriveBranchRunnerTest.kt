@@ -22,12 +22,13 @@ class DeriveBranchRunnerTest {
             projectRoot = root,
             operations = TestGitOperationRunner(git, TestOperationCompletion.CANCEL_AFTER),
         )
+        val logs = mutableListOf<String>()
 
         val result = runner.execute(
             title = "Deriving",
             preset = Preset("main", "main"),
             branchName = "feature",
-            log = createStringAppender {},
+            log = createStringAppender(logs::add),
         )
 
         assertTrue(result.cancelled)
@@ -36,6 +37,10 @@ class DeriveBranchRunnerTest {
         assertEquals(2, git.openCount)
         assertEquals(2, git.closeCount)
         assertEquals(1, git.cancelCount)
+        assertTrue(result.operationId.matches(Regex("derive-[0-9a-f]{8}")))
+        assertTrue(logs.any { it.contains("[${result.operationId}] operation started: root=") })
+        assertTrue(logs.any { it.contains("[${result.operationId}] baseline target: path=., branch=main") })
+        assertTrue(logs.any { it.contains("[${result.operationId}] operation finished: cancelled=true") })
     }
 
     private class RecordingDeriveGit : GitClient {

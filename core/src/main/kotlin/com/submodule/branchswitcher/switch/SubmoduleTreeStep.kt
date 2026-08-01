@@ -1,6 +1,7 @@
 package com.submodule.branchswitcher.switch
 
 import com.submodule.branchswitcher.git.SubmoduleRegistration
+import com.submodule.branchswitcher.log.diagnosticFingerprint
 import com.submodule.branchswitcher.model.RepoTarget
 
 /**
@@ -77,19 +78,26 @@ class SubmoduleTreeStep : SwitchStep {
                     continue
                 }
 
+                val repositoryIdentity = context.git.repositoryIdentity(directory)
+                val expectedGitDirectory = expectedSubmoduleGitDirectory(
+                    context.projectRoot.toFile(),
+                    topology.byPath[target.path],
+                    context.git,
+                )
                 if (isUnassociatedSubmoduleWorktree(
                         context.projectRoot.toFile(),
                         target.path,
                         directory,
-                        context.git.repositoryIdentity(directory),
-                        expectedSubmoduleGitDirectory(
-                            context.projectRoot.toFile(),
-                            topology.byPath[target.path],
-                            context.git,
-                        ),
+                        repositoryIdentity,
+                        expectedGitDirectory,
                     )
                 ) {
-                    context.log.warn("[skip] ${target.path} - repository is not associated with its superproject")
+                    context.log.warn(
+                        "[skip] ${target.path} - repository is not associated with its superproject; " +
+                            "actualGitDir=${repositoryIdentity?.gitDirectory}, " +
+                            "expectedGitDir=$expectedGitDirectory, " +
+                            "superproject=${repositoryIdentity?.superprojectRoot}",
+                    )
                     failures[target.path] = "repository is not associated with its superproject"
                     nextState = disableDescendants(nextState, targets, target.path)
                     nextState = restoreTargetStash(context, nextState, target.path, failures)
@@ -99,7 +107,11 @@ class SubmoduleTreeStep : SwitchStep {
                 val checkpointEntry = context.checkpoint[target.path]
                 val currentRemote = context.git.remoteUrl(directory)
                 if (checkpointEntry != null && checkpointEntry.remoteUrl != currentRemote) {
-                    context.log.warn("[skip] ${target.path} - registered repository remote changed")
+                    context.log.warn(
+                        "[skip] ${target.path} - registered repository remote changed; " +
+                            "before=${diagnosticFingerprint(checkpointEntry.remoteUrl)}, " +
+                            "current=${diagnosticFingerprint(currentRemote)}",
+                    )
                     failures[target.path] = "registered repository remote changed"
                     nextState = disableDescendants(nextState, targets, target.path)
                     nextState = restoreTargetStash(context, nextState, target.path, failures)

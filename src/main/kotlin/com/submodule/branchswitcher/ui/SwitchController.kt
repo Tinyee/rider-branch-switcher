@@ -4,6 +4,7 @@ import com.intellij.icons.AllIcons
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.Messages
 import com.submodule.branchswitcher.log.AppLogger
+import com.submodule.branchswitcher.log.withContext
 import com.submodule.branchswitcher.Notifier
 import com.submodule.branchswitcher.Bundle
 import com.submodule.branchswitcher.model.Preset
@@ -39,13 +40,13 @@ internal class SwitchController(
         val root = gitRoot() ?: return
         service.scope.launch(Dispatchers.Default) {
             val probeResult = try {
-                coordinator.preflight(root, preset)
+                coordinator.preflight(root, preset, log)
             } catch (_: CancellationException) {
                 return@launch
             } catch (_: com.intellij.openapi.progress.ProcessCanceledException) {
                 return@launch
             } catch (e: Exception) {
-                log.error("preflight probe failed: ${e.javaClass.simpleName}: ${e.message}")
+                log.error("preflight probe failed", e)
                 invokeLaterIfProjectAlive {
                     Notifier.error(project, Bundle.msg("notify.preflight.failed"),
                         Bundle.msg("notify.preflight.failed.msg", e.javaClass.simpleName, e.message ?: ""))
@@ -84,10 +85,11 @@ internal class SwitchController(
             } finally {
                 writeLease.close()
             }
-            val refreshResult = refreshVcsRepos(project, root, preset.submodules.keys)
+            val operationLog = log.withContext(runResult.operationId)
+            val refreshResult = refreshVcsRepos(project, root, preset.submodules.keys, operationLog)
 
             invokeLaterIfProjectAlive {
-                logVcsRefresh(log, refreshResult)
+                logVcsRefresh(operationLog, refreshResult)
                 onStateChanged()
                 showDeriveNotification(runResult, branchName)
             }

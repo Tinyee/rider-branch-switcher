@@ -222,7 +222,7 @@ internal class PresetEditor(
             }
         } catch (e: Exception) {
             persistenceInProgress = false
-            log.error("save failed: ${e.message}")
+            log.error("save failed", e)
             updateUnsavedState()
         }
     }
@@ -440,7 +440,7 @@ internal class PresetEditor(
             }
         } catch (e: Exception) {
             persistenceInProgress = false
-            log.error("rename failed: ${e.message}")
+            log.error("rename failed", e)
             updateUnsavedState()
         }
     }

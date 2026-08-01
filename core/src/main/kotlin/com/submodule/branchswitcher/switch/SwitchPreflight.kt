@@ -16,6 +16,7 @@ class SwitchPreflight(
     private val git: SwitchPreflightGitClient,
     private val probeErrorSuffix: String = "[probe error]",
     private val classifier: CancellationClassifier = CancellationClassifier.DEFAULT,
+    private val onProbeFailure: (path: String, error: Exception) -> Unit = { _, _ -> },
 ) {
     /**
      * Iterates all targets in [preset], probing each for current branch, dirty status,
@@ -84,6 +85,7 @@ class SwitchPreflight(
             )
         } catch (e: Exception) {
             classifier.rethrowIfCancellation(e)
+            onProbeFailure(target.path, e)
             // probe failure -> fail-closed row (includes platform cancellation if classifier says so)
             // Fail closed per repo: one flaky git command must not abort the whole preflight.
             // All flags default to blocking/unknown so the user sees this repo as a warning.

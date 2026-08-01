@@ -48,6 +48,7 @@ fun refreshVcsRepos(
     project: com.intellij.openapi.project.Project,
     root: java.nio.file.Path,
     submodulePaths: Set<String>,
+    log: AppLogger,
 ): VcsRefreshResult {
     val lfs = com.intellij.openapi.vfs.LocalFileSystem.getInstance()
     val mgr = git4idea.repo.GitRepositoryManager.getInstance(project)
@@ -63,16 +64,16 @@ fun refreshVcsRepos(
         } catch (e: Exception) {
             if (platformCancellationClassifier.isCancellation(e)) throw e
             failures[path] = "${e.javaClass.simpleName}: ${e.message}"
+            log.warn("[vcs] $path refresh failed", e)
         }
     }
     return VcsRefreshResult(refreshedRepositories, failures)
 }
 
 fun logVcsRefresh(log: AppLogger, result: VcsRefreshResult) {
-    log.debug("[vcs] refreshed ${result.refreshedRepositories} repo(s)")
-    result.failures.forEach { (path, error) ->
-        log.warn("[vcs] $path refresh failed: $error")
-    }
+    log.debug(
+        "[vcs] refreshed ${result.refreshedRepositories} repo(s), failures=${result.failures.size}",
+    )
 }
 
 /** Platform classifier: recognizes both JDK CancellationException and IntelliJ ProcessCanceledException. */
