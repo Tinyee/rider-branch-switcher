@@ -56,7 +56,12 @@ class SubmoduleTreeStep : SwitchStep {
                 context.log.info("")
                 context.log.info("--- ${target.path} - ${target.branch} ---")
                 val directory = resolveGitDir(context.projectRoot, target.path)
-                val registration = registrationLocation(context, targets, target)
+                val registration = registrationLocation(
+                    context,
+                    targets,
+                    target,
+                    registrations.byPath[target.path],
+                )
                 val preparation = SubmoduleInitializer.prepare(
                     context = context,
                     target = target,
@@ -207,7 +212,20 @@ class SubmoduleTreeStep : SwitchStep {
         context: SwitchContext,
         targets: List<RepoTarget>,
         target: RepoTarget,
+        registration: SubmoduleRegistration?,
     ): RegistrationLocation {
+        if (registration != null) {
+            return if (registration.parentPath == ".") {
+                RegistrationLocation(context.projectRoot.toFile(), target.path)
+            } else {
+                RegistrationLocation(
+                    resolveGitDir(context.projectRoot, registration.parentPath),
+                    target.path.removePrefix("${registration.parentPath}/"),
+                )
+            }
+        }
+
+        // Compatibility fallback for Git clients that expose paths without section/parent metadata.
         val parent = targets
             .asSequence()
             .filter { candidate -> target.path.startsWith("${candidate.path}/") }
