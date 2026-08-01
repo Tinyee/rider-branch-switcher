@@ -104,6 +104,8 @@
 - Keep top-level and footer actions inside their parent bounds even below the
   Tool Window's normal minimum width, and limit an expanded log to one third of
   the available height.
+- Skip preset paths that no longer appear in the target branch's `.gitmodules`
+  after the main checkout, while retaining obsolete worktrees to avoid data loss.
 
 ### Removed
 
@@ -114,7 +116,7 @@
 
 ### Quality
 
-- 228 automated tests in 36 classes across core, platform, and real Git CLI
+- 233 automated tests in 36 classes across core, platform, and real Git CLI
   integration coverage.
 - CI runs tests, plugin build, Detekt, structural checks, and Plugin Verifier
   across the supported matrix.

@@ -130,6 +130,9 @@ flowchart TD
 `SwitchState` between steps. Stateful steps preserve the latest state even when
 an exception or cancellation occurs, so recovery still knows which stashes and
 checkouts completed and which missing submodules were initialized by the switch.
+After the main checkout, `CheckoutStep` validates submodule targets against the
+new `.gitmodules` graph. A moved path can be initialized normally, while a stale
+preset path is skipped and its obsolete local worktree is retained.
 
 `SwitchRecoveryExecutor` independently attempts repository rollback and stash
 restoration. It compares both branch and commit SHA, restores detached HEAD

@@ -216,6 +216,44 @@ class SwitchIntegrationTest {
         assertTrue("Main pull must happen before submodule initialization", mainPull >= 0 && mainPull < submoduleInit)
     }
 
+    @Test
+    fun `moved submodule initializes its new path without deleting the obsolete worktree`() {
+        val submoduleSource = createRepo(tmpDir, "submodule-source")
+        createBranch(submoduleSource, "release")
+
+        val mainAuthor = createRepo(tmpDir, "main-author")
+        addSubmodule(mainAuthor, submoduleSource, "modules/old-path")
+        gitOk(mainAuthor, "checkout", "-b", "moved")
+        gitOk(mainAuthor, "mv", "modules/old-path", "modules/new-path")
+        gitOk(mainAuthor, "commit", "-m", "move submodule path")
+        gitOk(mainAuthor, "checkout", "main")
+
+        val mainRemote = createBareClone(mainAuthor, "main-remote.git")
+        val local = cloneRepo(mainRemote, "project")
+        gitOk(local, "-c", "protocol.file.allow=always", "submodule", "update", "--init", "--recursive")
+
+        val oldPath = File(local, "modules/old-path")
+        val newPath = File(local, "modules/new-path")
+        assertTrue("The old submodule should be initialized before switching", git.isGitRepo(oldPath))
+        assertFalse("The new submodule path should not exist before switching", newPath.exists())
+
+        val (ok, logs) = runSwitch(
+            local,
+            Preset("moved", "moved", mapOf("modules/new-path" to "release")),
+            SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false),
+        )
+
+        assertTrue("The moved submodule should initialize and switch. Logs: $logs", ok)
+        assertEquals("moved", git.currentBranch(local))
+        assertTrue("The new submodule worktree should be initialized", git.isGitRepo(newPath))
+        assertEquals("release", git.currentBranch(newPath))
+        assertTrue("The plugin must not delete the obsolete worktree automatically", oldPath.exists())
+        assertFalse(
+            "The obsolete path should no longer be tracked by the target parent branch",
+            runGit(local, "ls-files", "--error-unmatch", "modules/old-path").first == 0,
+        )
+    }
+
     // ---- Rollback ----
 
     @Test

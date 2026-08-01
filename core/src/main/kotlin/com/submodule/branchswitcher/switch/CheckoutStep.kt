@@ -14,6 +14,7 @@ class CheckoutStep(
         val failures = LinkedHashMap<String, String>()
         var nextState = state
         var mainCheckoutSucceeded = state.checkoutSucceeded(".")
+        var registeredPaths = loadRegisteredSubmodulePaths(context, mainCheckoutSucceeded)
         val targets = context.preset.targetsFor(scope)
 
         try {
@@ -32,6 +33,16 @@ class CheckoutStep(
 
                 context.log.info("")
                 context.log.info("--- $label - ${target.branch} ---")
+
+                if (!isMain && mainCheckoutSucceeded && registeredPaths?.contains(target.path) == false) {
+                    context.log.warn(
+                        "[skip] $label - not registered in target .gitmodules; " +
+                            "obsolete worktree retained",
+                    )
+                    failures[target.path] = "not registered in target .gitmodules"
+                    nextState = nextState.withSkipped(target.path)
+                    continue
+                }
 
                 val preparation = SubmoduleInitializer.prepare(
                     context = context,
@@ -80,8 +91,9 @@ class CheckoutStep(
                 if (checkoutFailure != null) {
                     failures[target.path] = checkoutFailure
                 }
-                if (isMain && checkout.succeeded) {
-                    mainCheckoutSucceeded = true
+                if (checkout.succeeded) {
+                    if (isMain) mainCheckoutSucceeded = true
+                    registeredPaths = loadRegisteredSubmodulePaths(context, mainCheckoutSucceeded)
                 }
             }
         } catch (error: RuntimeException) {
@@ -94,6 +106,15 @@ class CheckoutStep(
             StepResult.Partial(failures)
         }
         return StepExecution(result, nextState)
+    }
+
+    private fun loadRegisteredSubmodulePaths(
+        context: SwitchContext,
+        mainCheckoutSucceeded: Boolean,
+    ): Set<String>? = if (mainCheckoutSucceeded) {
+        context.git.registeredSubmodulePaths(context.projectRoot.toFile())
+    } else {
+        null
     }
 
     private fun updateProgress(
