@@ -113,6 +113,8 @@
   options remain global Settings.
 - Remove the experimental quick-switch text field and local telemetry feature
   before public release.
+- Remove the stale manual 51-repository wall-clock benchmark; deterministic Git
+  call-budget and real process-budget tests retain large-project coverage.
 
 ### Quality
 
