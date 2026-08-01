@@ -60,20 +60,14 @@ class DeriveBranchExecutor(
         val branchMismatch = mutableListOf<String>()
         val probeFailures = mutableListOf<String>()
         val root = projectRoot.toFile()
-        val registrations = git.registeredSubmodules(root)
-        val registeredPaths = registrations
-            ?.mapTo(linkedSetOf()) { registration -> registration.path }
-            ?: git.registeredSubmodulePaths(root)
-        val registrationsByPath = registrations?.associateBy { registration -> registration.path }.orEmpty()
+        val topology = git.loadSubmoduleTopology(root)
 
         for (target in targets) {
             if (isCancelled()) break
             val repositoryDirectory = resolveGitDir(projectRoot, target.path)
             val repositoryLabel = labelFor(target.path)
 
-            if (submoduleRegistrationStatus(target.path, registeredPaths) ==
-                SubmoduleRegistrationStatus.UNREGISTERED
-            ) {
+            if (topology.isUnregistered(target.path)) {
                 log.warn("[derive] $repositoryLabel: not registered in current .gitmodules graph - blocked")
                 skipped.add(target.path)
                 continue
@@ -84,13 +78,13 @@ class DeriveBranchExecutor(
                 skipped.add(target.path)
                 continue
             }
-            if (submoduleWorktreeStatus(
+            if (isUnassociatedSubmoduleWorktree(
                     projectRoot.toFile(),
                     target.path,
                     repositoryDirectory,
                     git.repositoryIdentity(repositoryDirectory),
-                    expectedSubmoduleGitDirectory(root, registrationsByPath[target.path], git),
-                ) == SubmoduleWorktreeStatus.NOT_ASSOCIATED
+                    expectedSubmoduleGitDirectory(root, topology.byPath[target.path], git),
+                )
             ) {
                 log.warn("[derive] $repositoryLabel: repository is not associated with its superproject - blocked")
                 skipped.add(target.path)

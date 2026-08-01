@@ -21,22 +21,19 @@ internal class SwitchCheckpointRecorder(
      */
     fun record(preset: Preset): Map<String, CheckpointEntry>? {
         val checkpoint = LinkedHashMap<String, CheckpointEntry>()
-        val registrations = git.registeredSubmodules(projectRoot.toFile())
-            ?.associateBy { registration -> registration.path }
-            .orEmpty()
+        val topology = git.loadSubmoduleTopology(projectRoot.toFile())
         for (target in preset.targets()) {
             val dir = resolveGitDir(projectRoot, target.path)
             if (!dir.exists() || !git.isGitRepo(dir)) continue
             val label = if (target.path == ".") projectRoot.fileName.toString() else target.path
             val identity = git.repositoryIdentity(dir)
-            if (submoduleWorktreeStatus(
+            if (isUnassociatedSubmoduleWorktree(
                     projectRoot.toFile(),
                     target.path,
                     dir,
                     identity,
-                    expectedSubmoduleGitDirectory(projectRoot.toFile(), registrations[target.path], git),
-                ) ==
-                SubmoduleWorktreeStatus.NOT_ASSOCIATED
+                    expectedSubmoduleGitDirectory(projectRoot.toFile(), topology.byPath[target.path], git),
+                )
             ) {
                 log.error("[checkpoint] $label: repository is not associated with its superproject")
                 return null
