@@ -79,7 +79,7 @@ version so the IDE cannot keep an older installation with the same plugin
 version:
 
 ```bash
-./gradlew buildPlugin -PlocalPluginVersion=0.7.0.20260801.1
+./gradlew buildPlugin -PlocalPluginVersion=0.8.0.20260801.1
 ```
 
 Increment the final segment for each package installed into the same IDE. This

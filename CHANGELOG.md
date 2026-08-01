@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.7.0] - In development
+## [0.8.0] - In development
 
 ### Added
 
