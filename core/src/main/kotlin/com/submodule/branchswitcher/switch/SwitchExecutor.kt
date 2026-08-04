@@ -29,7 +29,7 @@ data class SwitchExecutionResult(
     val status: SwitchExecutionStatus,
     val checkpoint: Map<String, CheckpointEntry>?,
     val state: SwitchState,
-    val failures: Map<String, String> = emptyMap(),
+    val issues: List<OperationIssue> = emptyList(),
 ) {
     val ok: Boolean get() = status == SwitchExecutionStatus.SUCCESS
     val cancelled: Boolean get() = status == SwitchExecutionStatus.CANCELLED
@@ -82,7 +82,14 @@ class SwitchExecutor @JvmOverloads constructor(
                 status = SwitchExecutionStatus.FAILED,
                 checkpoint = null,
                 state = switchState,
-                failures = mapOf("." to "unable to record every existing repository"),
+                issues = listOf(
+                    OperationIssue(
+                        stage = OperationStage.CHECKPOINT,
+                        code = OperationIssueCode.CHECKPOINT_UNAVAILABLE,
+                        repositoryPath = ".",
+                        severity = OperationIssueSeverity.ERROR,
+                    ),
+                ),
             )
         }
 
@@ -103,7 +110,7 @@ class SwitchExecutor @JvmOverloads constructor(
         context.progressHandle?.isIndeterminate = false
 
         var executionStatus = SwitchExecutionStatus.SUCCESS
-        val failures = linkedMapOf<String, String>()
+        val issues = mutableListOf<OperationIssue>()
         for (step in steps) {
             context.progressHandle?.text = step.name
             try {
@@ -133,9 +140,13 @@ class SwitchExecutor @JvmOverloads constructor(
                     log.info("[cancelled] during step: ${step.name}")
                     executionStatus = SwitchExecutionStatus.CANCELLED
                 } else {
-                    val reason = "${error.javaClass.simpleName}: ${error.message}"
                     log.error("[failed] ${step.name}", error)
-                    failures[step.name] = reason
+                    issues += OperationIssue(
+                        stage = step.stage,
+                        code = OperationIssueCode.STEP_FAILED,
+                        severity = OperationIssueSeverity.ERROR,
+                        diagnostic = "${error.javaClass.simpleName}: ${error.message}",
+                    )
                     executionStatus = SwitchExecutionStatus.FAILED
                 }
                 break
@@ -143,16 +154,16 @@ class SwitchExecutor @JvmOverloads constructor(
             switchState = stepExecution.state
             when (val stepResult = stepExecution.result) {
                 is StepResult.Fatal -> {
-                    log.error(" ${stepResult.reason}")
-                    failures[step.name] = stepResult.reason
+                    log.error("${stepResult.issue.code}: ${stepResult.issue.diagnostic.orEmpty()}")
+                    issues += stepResult.issue
                     executionStatus = SwitchExecutionStatus.FAILED
                     break
                 }
                 is StepResult.Partial -> {
-                    stepResult.failures.forEach { (path, message) ->
-                        log.warn("$path: $message")
+                    stepResult.issues.forEach { issue ->
+                        log.warn("${issue.repositoryPath ?: step.name}: ${issue.code}")
                     }
-                    failures.putAll(stepResult.failures)
+                    issues += stepResult.issues
                     if (executionStatus == SwitchExecutionStatus.SUCCESS) {
                         executionStatus = SwitchExecutionStatus.PARTIAL
                     }
@@ -164,7 +175,7 @@ class SwitchExecutor @JvmOverloads constructor(
         log.activity(
             if (executionStatus == SwitchExecutionStatus.SUCCESS) "=== done ===" else "=== done with errors ===",
         )
-        return SwitchExecutionResult(executionStatus, switchCheckpoint, switchState, failures)
+        return SwitchExecutionResult(executionStatus, switchCheckpoint, switchState, issues)
     }
 
 }

@@ -1,6 +1,7 @@
 package com.submodule.branchswitcher.log
 
 import java.util.UUID
+import java.time.Instant
 
 /**
  * Structured logger that routes to both the IntelliJ diagnostic log
@@ -27,6 +28,20 @@ interface AppLogger {
 /** Short correlation ID used to group one write workflow in persistent IDE logs. */
 fun newOperationId(kind: String): String = "$kind-${UUID.randomUUID().toString().take(8)}"
 
+/** Correlates every phase of one user workflow under a single stable identifier. */
+data class OperationContext(
+    val id: String,
+    val phase: String? = null,
+) {
+    fun inPhase(name: String): OperationContext = copy(phase = name)
+
+    internal val logLabel: String get() = phase?.let { "$id/$it" } ?: id
+}
+
+fun newOperationContext(kind: String): OperationContext = OperationContext(newOperationId(kind))
+
+fun AppLogger.withContext(context: OperationContext): AppLogger = withContext(context.logLabel)
+
 /** Prefixes every message while preserving Throwable-aware logging for diagnostic stack traces. */
 fun AppLogger.withContext(context: String): AppLogger {
     val delegate = this
@@ -42,7 +57,11 @@ fun AppLogger.withContext(context: String): AppLogger {
     }
 }
 
-data class LogEntry(val level: Level, val message: String) {
+data class LogEntry(
+    val level: Level,
+    val message: String,
+    val createdAt: Instant = Instant.now(),
+) {
     enum class Level { INFO, WARN, ERROR, DEBUG, ACTIVITY }
 }
 

@@ -42,12 +42,11 @@ class GitBatchInspectionIntegrationTest {
             builder.start()
         }
         val detector = RepositoryStateDetector(
-            gitClient = { git },
             log = createStringAppender {},
             cancellationClassifier = CancellationClassifier.DEFAULT,
         )
 
-        val snapshot = detector.detect(detector.begin(root, listOf(".") + submodulePaths))
+        val snapshot = detector.detect(detector.begin(root, listOf(".") + submodulePaths), git)
 
         assertEquals(5, snapshot.branches.size)
         assertEquals("one status process per repository", 5, starts.get())

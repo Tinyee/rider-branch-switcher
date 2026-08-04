@@ -150,7 +150,8 @@ Treat compatibility as evidence-based:
 | IntelliJ IDEA | Expected compatible, not product-certified | The common API build provides source compatibility evidence; add IDEA Plugin Verifier and a manual Git-project smoke test before advertising it separately. |
 | PyCharm / WebStorm / CLion | Not claimed | Add explicit `PRODUCT:VERSION` verifier targets, confirm CI can resolve them, and do a tool-window/settings/manual Git smoke test first. |
 
-Do not broaden Marketplace wording from "JetBrains IDEs that support Git projects" to a named IDE list until the corresponding row has evidence.
+Keep Marketplace wording at "verified with Rider 2025.1 and newer" until the
+corresponding row has product-specific verifier and smoke-test evidence.
 
 ## Common Issues
 

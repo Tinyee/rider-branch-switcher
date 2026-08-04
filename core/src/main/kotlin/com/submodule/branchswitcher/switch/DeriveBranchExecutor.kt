@@ -51,135 +51,138 @@ class DeriveBranchExecutor(
         return createBranches(preflight.eligibleTargets, branchName, checkpoint.entries)
     }
 
-    @Suppress("TooGenericExceptionCaught") // Git query adapters vary; cancellation is rethrown
     private fun runPreflight(targets: List<RepoTarget>, branchName: String): DerivePreflightResult {
         val eligibleTargets = mutableListOf<RepoTarget>()
-        val branchExists = mutableListOf<String>()
-        val skipped = mutableListOf<String>()
-        val dirty = mutableListOf<String>()
-        val branchMismatch = mutableListOf<String>()
-        val probeFailures = mutableListOf<String>()
-        val root = projectRoot.toFile()
-        val topology = git.loadSubmoduleTopology(root)
+        val outcomes = mutableListOf<DeriveRepositoryOutcome>()
+        val topology = git.loadSubmoduleTopology(projectRoot.toFile())
 
         for (target in targets) {
             if (isCancelled()) break
-            val repositoryDirectory = resolveGitDir(projectRoot, target.path)
-            val repositoryLabel = labelFor(target.path)
-
-            if (topology.isUnregistered(target.path)) {
-                log.warn("[derive] $repositoryLabel: not registered in current .gitmodules graph - blocked")
-                skipped.add(target.path)
-                continue
-            }
-
-            if (!repositoryDirectory.exists() || !git.isGitRepo(repositoryDirectory)) {
-                log.warn("[derive] $repositoryLabel: not a git repo - blocked")
-                skipped.add(target.path)
-                continue
-            }
-            val repositoryIdentity = git.repositoryIdentity(repositoryDirectory)
-            val expectedGitDirectory = expectedSubmoduleGitDirectory(root, topology.byPath[target.path], git)
-            if (isUnassociatedSubmoduleWorktree(
-                    projectRoot.toFile(),
-                    target.path,
-                    repositoryDirectory,
-                    repositoryIdentity,
-                    expectedGitDirectory,
-                )
-            ) {
-                log.warn(
-                    "[derive] $repositoryLabel: repository is not associated with its superproject - blocked; " +
-                        "actualGitDir=${repositoryIdentity?.gitDirectory}, " +
-                        "expectedGitDir=$expectedGitDirectory, " +
-                        "superproject=${repositoryIdentity?.superprojectRoot}",
-                )
-                skipped.add(target.path)
-                continue
-            }
-
-            // Base branch gate: repo must be on the preset's named target branch.
-            val expectedBranch = target.branch
-            val currentBranch = try {
-                git.currentBranch(repositoryDirectory)
-            } catch (e: Exception) {
-                rethrowIfCancellation(e)
-                log.warn("[derive] $repositoryLabel: cannot detect current branch", e)
-                probeFailures.add(target.path)
-                continue
-            }
-            if (currentBranch == null) {
-                log.warn("[derive] $repositoryLabel: detached HEAD or current branch unavailable - blocked")
-                branchMismatch.add(target.path)
-                continue
-            }
-            if (currentBranch != expectedBranch) {
-                log.warn(
-                    "[derive] $repositoryLabel: expected branch '$expectedBranch', " +
-                        "actual '$currentBranch' - blocked",
-                )
-                branchMismatch.add(target.path)
-                continue
-            }
-
-            // Branch existence probe (fail-closed: null -> error)
-            val branchAlreadyExists = try {
-                git.localBranchProbe(repositoryDirectory, branchName)
-            } catch (e: Exception) {
-                rethrowIfCancellation(e)
-                log.warn("[derive] $repositoryLabel: branch existence probe failed", e)
-                null
-            }
-            if (branchAlreadyExists == null) {
-                log.warn("[derive] $repositoryLabel: cannot check branch existence - blocked")
-                probeFailures.add(target.path)
-                continue
-            }
-            if (branchAlreadyExists) {
-                log.warn("[derive] $repositoryLabel: branch '$branchName' already exists - blocked")
-                branchExists.add(target.path)
-                continue
-            }
-
-            // Dirty probe (fail-closed when requireClean: null -> error)
-            if (requireClean) {
-                val isDirty = try {
-                    git.dirtyProbe(repositoryDirectory)
-                } catch (e: Exception) {
-                    rethrowIfCancellation(e)
-                    log.warn("[derive] $repositoryLabel: dirty probe failed", e)
-                    null
-                }
-                if (isDirty == null) {
-                    log.warn("[derive] $repositoryLabel: cannot check dirty status - blocked")
-                    probeFailures.add(target.path)
-                    continue
-                }
-                if (isDirty) {
-                    log.warn("[derive] $repositoryLabel: working tree is dirty - blocked")
-                    dirty.add(target.path)
-                    continue
-                }
-            }
-
-            eligibleTargets.add(target)
+            val outcome = inspectPreflightTarget(target, branchName, topology)
+            if (outcome == null) eligibleTargets += target else outcomes += outcome
         }
 
         return DerivePreflightResult(
             eligibleTargets = eligibleTargets,
-            branchExists = branchExists,
-            skipped = skipped,
-            dirty = dirty,
-            branchMismatch = branchMismatch,
-            probeFailures = probeFailures,
+            outcomes = outcomes,
             cancelled = isCancelled(),
         )
+    }
+
+    private fun inspectPreflightTarget(
+        target: RepoTarget,
+        branchName: String,
+        topology: SubmoduleTopology,
+    ): DeriveRepositoryOutcome? {
+        val directory = resolveGitDir(projectRoot, target.path)
+        val label = labelFor(target.path)
+        if (topology.isUnregistered(target.path)) {
+            log.warn("[derive] $label: not registered in current .gitmodules graph - blocked")
+            return target.outcome(DeriveRepositoryStatus.SKIPPED, OperationIssueCode.SUBMODULE_NOT_REGISTERED)
+        }
+        if (!directory.exists() || !git.isGitRepo(directory)) {
+            log.warn("[derive] $label: not a git repo - blocked")
+            return target.outcome(DeriveRepositoryStatus.SKIPPED, OperationIssueCode.REPOSITORY_MISSING)
+        }
+
+        val identity = git.repositoryIdentity(directory)
+        val expectedGitDirectory = expectedSubmoduleGitDirectory(
+            projectRoot.toFile(),
+            topology.byPath[target.path],
+            git,
+        )
+        if (isUnassociatedSubmoduleWorktree(
+                projectRoot.toFile(),
+                target.path,
+                directory,
+                identity,
+                expectedGitDirectory,
+            )
+        ) {
+            log.warn(
+                "[derive] $label: repository is not associated with its superproject - blocked; " +
+                    "actualGitDir=${identity?.gitDirectory}, expectedGitDir=$expectedGitDirectory, " +
+                    "superproject=${identity?.superprojectRoot}",
+            )
+            return target.outcome(DeriveRepositoryStatus.SKIPPED, OperationIssueCode.REPOSITORY_IDENTITY_CHANGED)
+        }
+
+        val currentBranchProbe = probe(label, "current branch") { git.currentBranch(directory) }
+        if (currentBranchProbe.failed) {
+            return target.outcome(
+                DeriveRepositoryStatus.PREFLIGHT_FAILED,
+                OperationIssueCode.PREFLIGHT_FAILED,
+                currentBranchProbe.diagnostic,
+            )
+        }
+        val currentBranch = currentBranchProbe.value
+        if (currentBranch == null) {
+            log.warn("[derive] $label: detached HEAD or current branch unavailable - blocked")
+            return target.outcome(DeriveRepositoryStatus.BRANCH_MISMATCH, OperationIssueCode.BRANCH_MISMATCH)
+        }
+        if (currentBranch != target.branch) {
+            log.warn("[derive] $label: expected branch '${target.branch}', actual '$currentBranch' - blocked")
+            return target.outcome(
+                DeriveRepositoryStatus.BRANCH_MISMATCH,
+                OperationIssueCode.BRANCH_MISMATCH,
+                "expected=${target.branch}, actual=$currentBranch",
+            )
+        }
+
+        val branchExistsProbe = probe(label, "branch existence") {
+            git.localBranchProbe(directory, branchName)
+        }
+        if (branchExistsProbe.failed) {
+            return target.outcome(
+                DeriveRepositoryStatus.PREFLIGHT_FAILED,
+                OperationIssueCode.PREFLIGHT_FAILED,
+                branchExistsProbe.diagnostic,
+            )
+        }
+        if (branchExistsProbe.value == true) {
+            log.warn("[derive] $label: branch '$branchName' already exists - blocked")
+            return target.outcome(DeriveRepositoryStatus.BRANCH_EXISTS, OperationIssueCode.BRANCH_ALREADY_EXISTS)
+        }
+
+        if (requireClean) {
+            val dirtyProbe = probe(label, "dirty state") { git.dirtyProbe(directory) }
+            if (dirtyProbe.failed) {
+                return target.outcome(
+                    DeriveRepositoryStatus.PREFLIGHT_FAILED,
+                    OperationIssueCode.PREFLIGHT_FAILED,
+                    dirtyProbe.diagnostic,
+                )
+            }
+            if (dirtyProbe.value == true) {
+                log.warn("[derive] $label: working tree is dirty - blocked")
+                return target.outcome(DeriveRepositoryStatus.DIRTY, OperationIssueCode.WORKTREE_DIRTY)
+            }
+        }
+        return null
+    }
+
+    @Suppress("TooGenericExceptionCaught") // Git probe adapters vary; cancellation is rethrown
+    private fun <T> probe(
+        label: String,
+        description: String,
+        query: () -> T,
+    ): ProbeResult<T> = try {
+        ProbeResult(query())
+    } catch (error: Exception) {
+        rethrowIfCancellation(error)
+        log.warn("[derive] $label: $description probe failed", error)
+        ProbeResult(null, error)
+    }
+
+    private data class ProbeResult<T>(val value: T?, val error: Exception? = null) {
+        val failed: Boolean get() = error != null
+        val diagnostic: String? get() = error?.let { "${it.javaClass.simpleName}: ${it.message}" }
     }
 
     @Suppress("TooGenericExceptionCaught") // Git query adapters vary; cancellation is rethrown
     private fun captureCheckpoint(eligibleTargets: List<RepoTarget>): DeriveCheckpointResult {
         val entries = LinkedHashMap<String, DeriveCheckpointEntry>()
-        val checkpointFailures = mutableListOf<String>()
+        val checkpointFailures = mutableListOf<DeriveRepositoryOutcome>()
 
         for (target in eligibleTargets) {
             if (isCancelled()) break
@@ -201,12 +204,19 @@ class DeriveBranchExecutor(
                     )
                 } else {
                     log.warn("[derive] $repositoryLabel: no HEAD - cannot checkpoint")
-                    checkpointFailures.add(target.path)
+                    checkpointFailures += target.outcome(
+                        DeriveRepositoryStatus.CHECKPOINT_FAILED,
+                        OperationIssueCode.DERIVE_CHECKPOINT_FAILED,
+                    )
                 }
             } catch (e: Exception) {
                 rethrowIfCancellation(e)
                 log.warn("[derive] $repositoryLabel: checkpoint failed", e)
-                checkpointFailures.add(target.path)
+                checkpointFailures += target.outcome(
+                    DeriveRepositoryStatus.CHECKPOINT_FAILED,
+                    OperationIssueCode.DERIVE_CHECKPOINT_FAILED,
+                    "${e.javaClass.simpleName}: ${e.message}",
+                )
             }
         }
 
@@ -223,8 +233,7 @@ class DeriveBranchExecutor(
         branchName: String,
         checkpoint: Map<String, DeriveCheckpointEntry>,
     ): DeriveResult {
-        val succeeded = mutableListOf<String>()
-        val failed = LinkedHashMap<String, String>()
+        val outcomes = mutableListOf<DeriveRepositoryOutcome>()
         var executionCancelled = false
 
         for (target in eligibleTargets) {
@@ -238,29 +247,32 @@ class DeriveBranchExecutor(
             try {
                 val checkoutResult = git.checkoutNewBranch(repositoryDirectory, branchName)
                 if (checkoutResult.ok) {
-                    succeeded.add(target.path)
+                    outcomes += DeriveRepositoryOutcome(target.path, DeriveRepositoryStatus.SUCCEEDED)
                     log.activity("[derive] $repositoryLabel: created branch $branchName")
                 } else {
                     val diagnostic = checkoutResult.diagnostic()
-                    failed[target.path] = diagnostic
+                    outcomes += target.outcome(
+                        DeriveRepositoryStatus.FAILED,
+                        OperationIssueCode.BRANCH_CREATE_FAILED,
+                        diagnostic,
+                        OperationStage.DERIVE,
+                    )
                     log.warn("[derive] $repositoryLabel: FAILED - $diagnostic")
                 }
             } catch (e: Exception) {
                 rethrowIfCancellation(e)
                 log.warn("[derive] $repositoryLabel: branch creation exception", e)
-                failed[target.path] = "${e.javaClass.simpleName}: ${e.message}"
+                outcomes += target.outcome(
+                    DeriveRepositoryStatus.FAILED,
+                    OperationIssueCode.BRANCH_CREATE_FAILED,
+                    "${e.javaClass.simpleName}: ${e.message}",
+                    OperationStage.DERIVE,
+                )
             }
         }
 
         return DeriveResult(
-            succeeded = succeeded,
-            branchExists = emptyList(),
-            skipped = emptyList(),
-            dirty = emptyList(),
-            branchMismatch = emptyList(),
-            preflightError = emptyList(),
-            checkpointFailed = emptyList(),
-            failed = failed,
+            outcomes = outcomes,
             checkpoint = checkpoint,
             cancelled = executionCancelled,
         )
@@ -328,6 +340,22 @@ class DeriveBranchExecutor(
     private fun labelFor(path: String): String =
         if (path == ".") projectRoot.fileName.toString() else path
 
+    private fun RepoTarget.outcome(
+        status: DeriveRepositoryStatus,
+        code: OperationIssueCode,
+        diagnostic: String? = null,
+        stage: OperationStage = OperationStage.PREFLIGHT,
+    ) = DeriveRepositoryOutcome(
+        repositoryPath = path,
+        status = status,
+        issue = OperationIssue(
+            stage = stage,
+            code = code,
+            repositoryPath = path,
+            diagnostic = diagnostic,
+        ),
+    )
+
     private fun rethrowIfCancellation(e: Exception) {
         if (classifier.isCancellation(e)) throw e
     }
@@ -335,29 +363,13 @@ class DeriveBranchExecutor(
 
 private data class DerivePreflightResult(
     val eligibleTargets: List<RepoTarget>,
-    val branchExists: List<String>,
-    val skipped: List<String>,
-    val dirty: List<String>,
-    val branchMismatch: List<String>,
-    val probeFailures: List<String>,
+    val outcomes: List<DeriveRepositoryOutcome>,
     val cancelled: Boolean,
 ) {
-    val hasIssues: Boolean
-        get() = branchExists.isNotEmpty() ||
-            skipped.isNotEmpty() ||
-            dirty.isNotEmpty() ||
-            branchMismatch.isNotEmpty() ||
-            probeFailures.isNotEmpty()
+    val hasIssues: Boolean get() = outcomes.isNotEmpty()
 
     fun toDeriveResult(cancelled: Boolean = false): DeriveResult = DeriveResult(
-        succeeded = emptyList(),
-        branchExists = branchExists,
-        skipped = skipped,
-        dirty = dirty,
-        branchMismatch = branchMismatch,
-        preflightError = probeFailures,
-        checkpointFailed = emptyList(),
-        failed = emptyMap(),
+        outcomes = outcomes,
         checkpoint = emptyMap(),
         cancelled = cancelled,
     )
@@ -365,21 +377,14 @@ private data class DerivePreflightResult(
 
 private data class DeriveCheckpointResult(
     val entries: Map<String, DeriveCheckpointEntry>,
-    val checkpointFailures: List<String>,
+    val checkpointFailures: List<DeriveRepositoryOutcome>,
     val cancelled: Boolean,
 ) {
     fun toDeriveResult(
         cancelled: Boolean = false,
         includeEntries: Boolean = true,
     ): DeriveResult = DeriveResult(
-        succeeded = emptyList(),
-        branchExists = emptyList(),
-        skipped = emptyList(),
-        dirty = emptyList(),
-        branchMismatch = emptyList(),
-        preflightError = emptyList(),
-        checkpointFailed = checkpointFailures,
-        failed = emptyMap(),
+        outcomes = checkpointFailures,
         checkpoint = if (includeEntries) entries else emptyMap(),
         cancelled = cancelled,
     )

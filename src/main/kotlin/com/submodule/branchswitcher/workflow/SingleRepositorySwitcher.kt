@@ -95,7 +95,7 @@ class SingleRepositorySwitcher(
             val dir = resolveGitDir(root, path)
             when (val background = operations.run(title) { indicator, operation ->
                 indicator.isIndeterminate = true
-                operationLog.logGitRuntime(operation, root.toFile())
+                operationLog.logGitRuntime(operation, root.toFile(), cancellationClassifier)
                 val topology = operation.loadSubmoduleTopology(root.toFile())
                 when {
                     topology.isUnregistered(path) -> {

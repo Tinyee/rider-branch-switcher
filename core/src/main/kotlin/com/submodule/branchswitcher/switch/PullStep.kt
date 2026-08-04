@@ -5,19 +5,20 @@ class PullStep(
     private val scope: SwitchTargetScope = SwitchTargetScope.ALL,
 ) : SwitchStep {
     override val name = scopedStepName("pull", scope)
+    override val stage = OperationStage.PULL
 
     override fun execute(context: SwitchContext, state: SwitchState): StepExecution {
         if (!context.options.pull) {
             val restore = restoreTrackedStashes(context, state)
-            val result = if (restore.failures.isEmpty()) {
+            val result = if (restore.issues.isEmpty()) {
                 StepResult.Success
             } else {
-                StepResult.Partial(restore.failures)
+                StepResult.Partial(restore.issues)
             }
             return StepExecution(result, restore.state)
         }
 
-        val failures = LinkedHashMap<String, String>()
+        val issues = mutableListOf<OperationIssue>()
         for (target in context.preset.targetsFor(scope)) {
             val repositoryDirectory = resolveGitDir(context.projectRoot, target.path)
             if (!repositoryDirectory.exists() || !context.git.isGitRepo(repositoryDirectory)) continue
@@ -39,12 +40,17 @@ class PullStep(
                 context.log.info("pull ok - ${target.path}")
             } else {
                 context.log.warn(" pull failed (kept local): ${pullResult.diagnostic()}")
-                failures[target.path] = "pull had warnings"
+                issues += OperationIssue(
+                    stage = stage,
+                    code = OperationIssueCode.PULL_FAILED,
+                    repositoryPath = target.path,
+                    diagnostic = pullResult.diagnostic(),
+                )
             }
         }
         val restore = restoreTrackedStashes(context, state)
-        failures.putAll(restore.failures)
-        val result = if (failures.isEmpty()) StepResult.Success else StepResult.Partial(failures)
+        issues += restore.issues
+        val result = if (issues.isEmpty()) StepResult.Success else StepResult.Partial(issues)
         return StepExecution(result, restore.state)
     }
 
@@ -59,7 +65,7 @@ class PullStep(
 
 data class StashRestoreResult(
     val state: SwitchState,
-    val failures: Map<String, String>,
+    val issues: List<OperationIssue>,
 )
 
 /** Restores tracked stashes and retains failed entries so a later recovery can retry them. */
@@ -71,7 +77,7 @@ internal fun restoreTrackedStashes(
     state: SwitchState,
     selectedPaths: Set<String>? = null,
 ): StashRestoreResult {
-    val failures = linkedMapOf<String, String>()
+    val issues = mutableListOf<OperationIssue>()
     var nextState = state
     try {
         for ((path, msg) in state.stashesSnapshot()) {
@@ -79,7 +85,11 @@ internal fun restoreTrackedStashes(
             val repositoryDirectory = resolveGitDir(projectRoot, path)
             if (!repositoryDirectory.exists() || !git.isGitRepo(repositoryDirectory)) {
                 log.warn("[fail] stash pop skipped - repository unavailable for $path ($msg)")
-                failures[path] = "stash repository unavailable"
+                issues += OperationIssue(
+                    stage = OperationStage.STASH_RESTORE,
+                    code = OperationIssueCode.STASH_REPOSITORY_UNAVAILABLE,
+                    repositoryPath = path,
+                )
                 continue
             }
             val popResult = git.stashPop(repositoryDirectory)
@@ -88,11 +98,16 @@ internal fun restoreTrackedStashes(
                 nextState = nextState.withoutStash(path)
             } else {
                 log.warn("[fail] stash pop failed for $path: ${popResult.diagnostic()}")
-                failures[path] = "stash pop failed"
+                issues += OperationIssue(
+                    stage = OperationStage.STASH_RESTORE,
+                    code = OperationIssueCode.STASH_RESTORE_FAILED,
+                    repositoryPath = path,
+                    diagnostic = popResult.diagnostic(),
+                )
             }
         }
     } catch (e: RuntimeException) {
         throw SwitchStepException(nextState, e)
     }
-    return StashRestoreResult(nextState, failures)
+    return StashRestoreResult(nextState, issues)
 }

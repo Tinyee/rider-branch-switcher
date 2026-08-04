@@ -27,22 +27,22 @@ class RepositoryStateDetectorTest {
             branches[module] = "develop"
             dirty[module] = true
         }
-        var provided: RepositoryStateGitClient = git
         val detector = RepositoryStateDetector(
-            gitClient = { provided },
             log = createStringAppender {},
             cancellationClassifier = CancellationClassifier.DEFAULT,
         )
 
-        val snapshot = detector.detect(detector.begin(root.toPath(), listOf(".", "module", "missing")))
+        val snapshot = detector.detect(
+            detector.begin(root.toPath(), listOf(".", "module", "missing")),
+            git,
+        )
 
         assertEquals(mapOf("." to "main", "module" to "develop", "missing" to null), snapshot.branches)
         assertEquals(mapOf("." to false, "module" to true, "missing" to false), snapshot.dirtyRepositories)
 
         val replacement = RecordingGit()
-        provided = replacement
-        detector.detect(detector.begin(root.toPath(), listOf(".")))
-        assertEquals("provider must be resolved for each detection", 1, replacement.currentBranchCalls)
+        detector.detect(detector.begin(root.toPath(), listOf(".")), replacement)
+        assertEquals("each detection uses its explicit Git session", 1, replacement.currentBranchCalls)
     }
 
     @Test
@@ -54,9 +54,9 @@ class RepositoryStateDetectorTest {
             branches[root] = "main"
             failures += module
         }
-        val detector = detector(git, logs)
+        val detector = detector(logs)
 
-        val snapshot = detector.detect(detector.begin(root.toPath(), listOf(".", "module")))
+        val snapshot = detector.detect(detector.begin(root.toPath(), listOf(".", "module")), git)
 
         assertEquals("main", snapshot.branches["."])
         assertEquals(null, snapshot.branches["module"])
@@ -70,10 +70,10 @@ class RepositoryStateDetectorTest {
     fun `cancellation is not converted into an unreadable repository`() {
         val root = temp.newFolder("root")
         val git = RecordingGit().apply { cancellation = root }
-        val detector = detector(git)
+        val detector = detector()
         val request = detector.begin(root.toPath(), listOf("."))
 
-        assertThrows(CancellationException::class.java) { detector.detect(request) }
+        assertThrows(CancellationException::class.java) { detector.detect(request, git) }
     }
 
     @Test
@@ -98,21 +98,17 @@ class RepositoryStateDetectorTest {
             override fun revParseHead(workDir: File): String = "sha"
             override fun isDirty(workDir: File): Boolean = false
         }
-        detector = detector(git)
+        detector = detector()
         val request = detector.begin(root.toPath(), listOf(".", "module-a", "module-b"))
 
-        val staleSnapshot = detector.detect(request)
+        val staleSnapshot = detector.detect(request, git)
 
         assertEquals(1, git.currentBranchCalls)
         assertEquals(setOf("."), staleSnapshot.branches.keys)
         assertFalse(detector.isLatest(staleSnapshot))
     }
 
-    private fun detector(
-        git: RepositoryStateGitClient,
-        logs: MutableList<String> = mutableListOf(),
-    ) = RepositoryStateDetector(
-        gitClient = { git },
+    private fun detector(logs: MutableList<String> = mutableListOf()) = RepositoryStateDetector(
         log = createStringAppender { logs += it },
         cancellationClassifier = CancellationClassifier.DEFAULT,
     )

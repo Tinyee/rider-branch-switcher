@@ -53,7 +53,7 @@ class DeriveBranchRunner(
         }
         val backgroundResult = operations.run(title) { indicator, gitOperation ->
             indicator.isIndeterminate = true
-            operationLog.logGitRuntime(gitOperation, projectRoot.toFile())
+            operationLog.logGitRuntime(gitOperation, projectRoot.toFile(), cancellationClassifier)
             val executor = DeriveBranchExecutor(
                 projectRoot = projectRoot,
                 log = operationLog,
@@ -97,7 +97,7 @@ class DeriveBranchRunner(
         operationLog.activity(
             "operation finished: cancelled=${result.cancelled}, " +
                 "succeeded=${result.execution?.succeeded?.size ?: 0}, " +
-                "failed=${result.execution?.failed?.size ?: 0}, " +
+                "failed=${result.execution?.failedOutcomes?.size ?: 0}, " +
                 "rollbackFailures=${result.rollbackFailures.size}",
         )
         return result

@@ -1,5 +1,6 @@
 package com.submodule.branchswitcher.switch
 
+import com.submodule.branchswitcher.git.RepositoryIdentity
 import com.submodule.branchswitcher.model.RepoTarget
 import java.io.File
 
@@ -12,8 +13,9 @@ import java.io.File
 internal object SubmoduleInitializer {
     data class Result(
         val ready: Boolean,
-        val failure: String? = null,
+        val issue: OperationIssue? = null,
         val initializedBySwitch: Boolean = false,
+        val repositoryIdentity: RepositoryIdentity? = null,
     )
 
     fun prepare(
@@ -23,36 +25,86 @@ internal object SubmoduleInitializer {
         registrationRoot: File,
         registrationPath: String,
     ): Result {
-        if (!context.git.isGitRepo(directory)) {
-            if (context.confirmBeforeInit && context.cancellationHandle?.isCanceled != true) {
-                val confirmed = context.onConfirmSubmoduleInit?.invoke(target.path) ?: false
-                if (!confirmed) {
-                    context.log.info("[skip] init declined for ${target.path}")
-                    return Result(ready = false, failure = "init declined")
-                }
-            }
+        if (context.git.isGitRepo(directory)) {
+            return verifyReady(context, target, directory, initializedBySwitch = false)
+        }
 
-            context.log.info(
-                "dir missing, trying: git submodule update --init --recursive -- $registrationPath " +
-                    "(${target.path})",
+        if (context.confirmBeforeInit && context.cancellationHandle?.isCanceled != true) {
+            val confirmed = context.onConfirmSubmoduleInit?.invoke(target.path) ?: false
+            if (!confirmed) {
+                context.log.info("[skip] init declined for ${target.path}")
+                return Result(
+                    ready = false,
+                    issue = initIssue(target.path, OperationIssueCode.SUBMODULE_INIT_DECLINED),
+                )
+            }
+        }
+
+        context.log.info(
+            "dir missing, trying: git submodule update --init --recursive -- $registrationPath " +
+                "(${target.path})",
+        )
+        val initResult = context.git.submoduleInitPath(registrationRoot, registrationPath)
+        if (!initResult.ok) {
+            context.log.warn("[skip] submodule init failed: ${initResult.diagnostic()}")
+            return Result(
+                ready = false,
+                issue = initIssue(
+                    target.path,
+                    OperationIssueCode.SUBMODULE_INIT_FAILED,
+                    initResult.diagnostic(),
+                ),
             )
-            val initResult = context.git.submoduleInitPath(registrationRoot, registrationPath)
-            if (!initResult.ok) {
-                context.log.warn("[skip] submodule init failed: ${initResult.diagnostic()}")
-                return Result(ready = false, failure = "submodule init failed")
-            }
-            context.log.info("submodule init ok; the new worktree will be retained if a later step fails")
-            return Result(ready = true, initializedBySwitch = true)
         }
+        return verifyReady(context, target, directory, initializedBySwitch = true)
+    }
 
+    private fun verifyReady(
+        context: SwitchContext,
+        target: RepoTarget,
+        directory: File,
+        initializedBySwitch: Boolean,
+    ): Result {
         if (!directory.exists()) {
-            context.log.info("[skip] dir not found: ${directory.absolutePath}")
-            return Result(ready = false, failure = "dir not found")
+            context.log.warn("[skip] ${target.path} initialization completed without creating its directory")
+            return Result(
+                ready = false,
+                issue = initIssue(target.path, OperationIssueCode.SUBMODULE_DIRECTORY_MISSING),
+            )
         }
         if (!context.git.isGitRepo(directory)) {
-            context.log.info("[skip] not a git repo")
-            return Result(ready = false, failure = "not a git repo")
+            context.log.warn("[skip] ${target.path} initialization completed without a usable Git repository")
+            return Result(
+                ready = false,
+                issue = initIssue(target.path, OperationIssueCode.SUBMODULE_REPOSITORY_MISSING),
+            )
         }
-        return Result(ready = true)
+        val identity = context.git.repositoryIdentity(directory)
+        if (identity == null) {
+            context.log.warn("[skip] ${target.path} repository identity is unavailable")
+            return Result(
+                ready = false,
+                issue = initIssue(target.path, OperationIssueCode.REPOSITORY_IDENTITY_UNAVAILABLE),
+            )
+        }
+        if (initializedBySwitch) {
+            context.log.info("submodule init ok; the new worktree will be retained if a later step fails")
+        }
+        return Result(
+            ready = true,
+            initializedBySwitch = initializedBySwitch,
+            repositoryIdentity = identity,
+        )
     }
+
+    private fun initIssue(
+        path: String,
+        code: OperationIssueCode,
+        diagnostic: String? = null,
+    ) = OperationIssue(
+        stage = OperationStage.SUBMODULE_INIT,
+        code = code,
+        repositoryPath = path,
+        diagnostic = diagnostic,
+    )
 }

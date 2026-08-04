@@ -5,6 +5,7 @@ import com.submodule.branchswitcher.model.RepoTarget
 /** Checks out the main repository after its optional fetch. */
 class CheckoutStep : SwitchStep {
     override val name = "checkout main"
+    override val stage = OperationStage.CHECKOUT
 
     override fun execute(context: SwitchContext, state: SwitchState): StepExecution {
         val target = RepoTarget(".", context.preset.main)
@@ -25,15 +26,23 @@ class CheckoutStep : SwitchStep {
         if (!directory.exists() || !context.git.isGitRepo(directory)) {
             context.log.warn("[fail] main repository is unavailable")
             return StepExecution(
-                StepResult.Partial(mapOf(target.path to "main repository unavailable")),
+                StepResult.Partial(
+                    listOf(
+                        OperationIssue(
+                            stage = stage,
+                            code = OperationIssueCode.MAIN_REPOSITORY_UNAVAILABLE,
+                            repositoryPath = target.path,
+                        ),
+                    ),
+                ),
                 state,
             )
         }
 
         val checkout = BranchCheckout.execute(context, target, directory, state)
-        val result = checkout.failure?.let { failure ->
-            StepResult.Partial(mapOf(target.path to failure))
-        } ?: StepResult.Success
+        val result = checkout.issues.takeIf(List<OperationIssue>::isNotEmpty)
+            ?.let(StepResult::Partial)
+            ?: StepResult.Success
         return StepExecution(result, checkout.state)
     }
 }

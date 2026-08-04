@@ -4,6 +4,8 @@ import com.submodule.branchswitcher.executeTest
 
 import com.submodule.branchswitcher.git.GitClient
 import com.submodule.branchswitcher.git.GitResult
+import com.submodule.branchswitcher.git.RepositoryIdentity
+import com.submodule.branchswitcher.git.SubmoduleRegistration
 import com.submodule.branchswitcher.model.DirtyAction
 import com.submodule.branchswitcher.model.Preset
 import com.submodule.branchswitcher.model.SwitchOptions
@@ -114,6 +116,24 @@ class LargeRepoScalabilityTest {
         override fun revParseHead(workDir: File): String? {
             count("revParseHead"); return "abc123"
         }
+        override fun repositoryIdentity(workDir: File): RepositoryIdentity {
+            count("repositoryIdentity")
+            val root = tmpDir.toFile()
+            val gitDirectory = if (workDir.canonicalFile == root.canonicalFile) {
+                File(root, ".git")
+            } else {
+                File(root, ".git/modules/${workDir.name}")
+            }
+            val superproject = root.takeIf { workDir.canonicalFile != root.canonicalFile }?.canonicalPath
+            return RepositoryIdentity(gitDirectory.canonicalPath, superproject)
+        }
+        override fun remoteUrl(workDir: File): String? = null
+        override fun registeredSubmodules(gitRoot: File): List<SubmoduleRegistration> =
+            (1..submoduleCount).map { SubmoduleRegistration("sub-$it", "sub-$it", ".") }
+        override fun resetHard(workDir: File, revision: String): GitResult = GitResult("reset", 0, "", "")
+        override fun cancel() = Unit
+        override fun localBranchProbe(workDir: File, branch: String): Boolean = true
+        override fun dirtyProbe(workDir: File): Boolean = false
         override fun stashPop(workDir: File): GitResult {
             count("stashPop"); return GitResult("pop", 0, "", "")
         }

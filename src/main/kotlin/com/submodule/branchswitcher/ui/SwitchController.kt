@@ -4,6 +4,7 @@ import com.intellij.icons.AllIcons
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.Messages
 import com.submodule.branchswitcher.log.AppLogger
+import com.submodule.branchswitcher.log.newOperationContext
 import com.submodule.branchswitcher.log.withContext
 import com.submodule.branchswitcher.Notifier
 import com.submodule.branchswitcher.Bundle
@@ -36,11 +37,13 @@ internal class SwitchController(
 
     private val coordinator = SwitchFlowCoordinator(project, service)
 
+    @Suppress("TooGenericExceptionCaught") // platform preflight adapters report unrelated failures through one UI boundary
     fun runSwitch(preset: Preset) {
         val root = gitRoot() ?: return
+        val operationContext = newOperationContext("switch")
         service.scope.launch(Dispatchers.Default) {
             val probeResult = try {
-                coordinator.preflight(root, preset, log)
+                coordinator.preflight(root, preset, log, operationContext)
             } catch (_: CancellationException) {
                 return@launch
             } catch (_: com.intellij.openapi.progress.ProcessCanceledException) {
@@ -57,7 +60,7 @@ internal class SwitchController(
                 val request = service.resolveSwitchRequest(preset)
                 if (SwitchPreviewDialog.showAndConfirm(project, request, probeResult)) {
                     setSwitchInProgress(true)
-                    coordinator.executeAndNotify(root, request, log,
+                    coordinator.executeAndNotify(root, request, log, operationContext,
                         onFinished = { setSwitchInProgress(false) })
                 }
             }

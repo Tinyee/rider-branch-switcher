@@ -204,6 +204,7 @@ internal class PresetEditor(
         }
     }
 
+    @Suppress("TooGenericExceptionCaught") // persistence callbacks may expose unrelated IO and serialization failures
     private fun saveChanges() {
         if (persistenceInProgress) return
         val editedPreset = buildEditedPreset()
@@ -412,6 +413,7 @@ internal class PresetEditor(
     private fun presetNameTooltip(name: String): String =
         "$name (${Bundle.msg("label.rename.tip")})"
 
+    @Suppress("TooGenericExceptionCaught") // rename persists through the same callback boundary as save
     private fun rename() {
         if (persistenceInProgress) return
         val requestedName = com.intellij.openapi.ui.Messages.showInputDialog(

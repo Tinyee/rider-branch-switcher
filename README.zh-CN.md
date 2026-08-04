@@ -102,12 +102,13 @@ preset 加载时会先检查 `.idea/branch-presets.json`，再检查
 ## 故障诊断
 
 每次完整切换、派生分支和单仓切换都会生成操作 ID，例如
-`switch-a1b2c3d4`。Tool Window 展示最近的日志；所有级别同时写入 IntelliJ
+`switch-a1b2c3d4`；预检、执行、刷新和恢复用阶段后缀继续沿用同一个 ID。Tool Window
+会显示时间戳，并支持过滤/复制最近一次写操作、清空当前视图和打开完整日志；所有级别同时写入 IntelliJ
 持久化的 `idea.log`，logger 名称为 `SubmoduleBranchSwitcher`。意外异常会在其中保留完整堆栈。
 
 通过 `Help | Show Log in ...` 找到 `idea.log`，按同一个操作 ID 收集全部行即可还原
 项目根目录、请求目标、实际选项、checkpoint、Git 失败详情、恢复动作和最终结果。
-remote URL 只记录不可逆指纹，不会暴露凭据或私有地址。
+Git 诊断中的 URI/SCP remote 和疑似凭据会替换成不可逆占位符，不会暴露私有地址或密钥。
 
 ## 参与开发
 

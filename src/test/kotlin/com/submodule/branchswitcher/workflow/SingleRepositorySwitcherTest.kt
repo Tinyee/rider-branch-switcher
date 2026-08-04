@@ -4,6 +4,7 @@ import com.submodule.branchswitcher.git.GitOperationProvider
 import com.submodule.branchswitcher.git.GitOperationSession
 import com.submodule.branchswitcher.git.GitResult
 import com.submodule.branchswitcher.git.RepositoryIdentity
+import com.submodule.branchswitcher.git.SubmoduleRegistration
 import com.submodule.branchswitcher.log.createStringAppender
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -205,12 +206,13 @@ class SingleRepositorySwitcherTest {
             return Proxy.newProxyInstance(
                 GitOperationSession::class.java.classLoader,
                 arrayOf(GitOperationSession::class.java),
-            ) { _, method, _ ->
+            ) { _, method, arguments ->
                 when (method.name) {
                     "close", "cancel" -> null
-                    "registeredSubmodules" -> null
-                    "registeredSubmodulePaths" -> registeredPaths
-                    "repositoryIdentity" -> identity
+                    "registeredSubmodules" -> (registeredPaths ?: setOf("module")).map { path ->
+                        SubmoduleRegistration(path, path.substringAfterLast('/'), ".")
+                    }
+                    "repositoryIdentity" -> identity ?: defaultIdentity(arguments?.firstOrNull() as java.io.File)
                     "isGitRepo" -> true
                     "isDirty" -> dirty
                     "currentBranch" -> branch
@@ -228,6 +230,16 @@ class SingleRepositorySwitcherTest {
                 }
             } as GitOperationSession
         }
+
+        private fun defaultIdentity(workDir: java.io.File): RepositoryIdentity =
+            if (workDir.name == "module") {
+                RepositoryIdentity(
+                    workDir.parentFile.resolve(".git/modules/module").canonicalPath,
+                    workDir.parentFile.canonicalPath,
+                )
+            } else {
+                RepositoryIdentity(workDir.resolve(".git").canonicalPath, null)
+            }
     }
 
     companion object {

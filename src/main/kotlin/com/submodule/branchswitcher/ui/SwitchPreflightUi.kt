@@ -6,7 +6,7 @@ import com.intellij.openapi.ui.Messages
 import com.submodule.branchswitcher.Bundle
 import com.submodule.branchswitcher.TaskBridge
 import com.submodule.branchswitcher.log.AppLogger
-import com.submodule.branchswitcher.log.newOperationId
+import com.submodule.branchswitcher.log.OperationContext
 import com.submodule.branchswitcher.log.withContext
 import com.submodule.branchswitcher.model.PreflightRow
 import com.submodule.branchswitcher.model.Preset
@@ -24,9 +24,14 @@ internal class SwitchPreflightUi(
     private val service: BranchSwitcherService,
 ) {
     @Suppress("TooGenericExceptionCaught") // platform task failures are logged before crossing the UI boundary
-    suspend fun probe(root: Path, preset: Preset, log: AppLogger): List<PreflightRow> {
+    suspend fun probe(
+        root: Path,
+        preset: Preset,
+        log: AppLogger,
+        operationContext: OperationContext,
+    ): List<PreflightRow> {
         val git = service.gitClient
-        val operationLog = log.withContext(newOperationId("preflight"))
+        val operationLog = log.withContext(operationContext.inPhase("preflight"))
         operationLog.activity(
             "operation started: root=${root.toAbsolutePath().normalize()}, " +
                 "preset='${preset.name}', targets=${preset.targets().size}",

@@ -3,6 +3,7 @@ package com.submodule.branchswitcher.switch
 import com.submodule.branchswitcher.git.SubmoduleRegistration
 import com.submodule.branchswitcher.log.diagnosticFingerprint
 import com.submodule.branchswitcher.model.RepoTarget
+import java.io.File
 
 /**
  * Updates submodules in parent-first order.
@@ -13,169 +14,260 @@ import com.submodule.branchswitcher.model.RepoTarget
  */
 class SubmoduleTreeStep : SwitchStep {
     override val name = "switch submodules"
+    override val stage = OperationStage.CHECKOUT
 
     @Suppress("TooGenericExceptionCaught") // preserve completed per-repository state across Git failures
     override fun execute(context: SwitchContext, state: SwitchState): StepExecution {
         val targets = context.preset.targetsFor(SwitchTargetScope.SUBMODULES)
         if (targets.isEmpty()) return StepExecution(StepResult.Success, state)
 
-        val failures = linkedMapOf<String, String>()
-        var nextState = state
-        var topology = loadTopology(context, nextState)
-
+        val issues = mutableListOf<OperationIssue>()
+        var traversal = SubmoduleTraversal(state, loadTopology(context, state))
         try {
             for ((index, target) in targets.withIndex()) {
                 updateProgress(context, index, targets.size, target.path)
                 context.cancellationHandle?.checkCanceled()
-
-                if (nextState.isSkipped(target.path)) {
-                    context.log.info("[skip] ${target.path} - target disabled by an earlier step")
-                    nextState = restoreTargetStash(context, nextState, target.path, failures)
-                    continue
-                }
-
-                if (!nextState.checkoutSucceeded(".")) {
-                    failures[target.path] = "main checkout did not succeed"
-                    nextState = disableTargetAndDescendants(nextState, targets, target.path)
-                    nextState = restoreTargetStash(context, nextState, target.path, failures)
-                    continue
-                }
-
-                if (topology.isUnregistered(target.path)) {
-                    context.log.warn(
-                        "[skip] ${target.path} - not registered in current .gitmodules graph; " +
-                            "obsolete worktree retained",
-                    )
-                    failures[target.path] = "not registered in current .gitmodules graph"
-                    nextState = disableTargetAndDescendants(nextState, targets, target.path)
-                    nextState = restoreTargetStash(context, nextState, target.path, failures)
-                    continue
-                }
-
-                context.log.info("")
-                context.log.info("--- ${target.path} - ${target.branch} ---")
-                val directory = resolveGitDir(context.projectRoot, target.path)
-                val registration = registrationLocation(
-                    context,
-                    targets,
-                    target,
-                    topology.byPath[target.path],
-                )
-                val preparation = SubmoduleInitializer.prepare(
-                    context = context,
-                    target = target,
-                    directory = directory,
-                    registrationRoot = registration.root,
-                    registrationPath = registration.path,
-                )
-                if (preparation.initializedBySwitch) {
-                    nextState = nextState.withInitializedSubmodule(target.path)
-                }
-                preparation.failure?.let { failures[target.path] = it }
-                if (!preparation.ready) {
-                    nextState = disableDescendants(nextState, targets, target.path)
-                    nextState = restoreTargetStash(context, nextState, target.path, failures)
-                    continue
-                }
-
-                val repositoryIdentity = context.git.repositoryIdentity(directory)
-                val expectedGitDirectory = expectedSubmoduleGitDirectory(
-                    context.projectRoot.toFile(),
-                    topology.byPath[target.path],
-                    context.git,
-                )
-                if (isUnassociatedSubmoduleWorktree(
-                        context.projectRoot.toFile(),
-                        target.path,
-                        directory,
-                        repositoryIdentity,
-                        expectedGitDirectory,
-                    )
-                ) {
-                    context.log.warn(
-                        "[skip] ${target.path} - repository is not associated with its superproject; " +
-                            "actualGitDir=${repositoryIdentity?.gitDirectory}, " +
-                            "expectedGitDir=$expectedGitDirectory, " +
-                            "superproject=${repositoryIdentity?.superprojectRoot}",
-                    )
-                    failures[target.path] = "repository is not associated with its superproject"
-                    nextState = disableDescendants(nextState, targets, target.path)
-                    nextState = restoreTargetStash(context, nextState, target.path, failures)
-                    continue
-                }
-
-                val checkpointEntry = context.checkpoint[target.path]
-                val currentRemote = context.git.remoteUrl(directory)
-                if (checkpointEntry != null && checkpointEntry.remoteUrl != currentRemote) {
-                    context.log.warn(
-                        "[skip] ${target.path} - registered repository remote changed; " +
-                            "before=${diagnosticFingerprint(checkpointEntry.remoteUrl)}, " +
-                            "current=${diagnosticFingerprint(currentRemote)}",
-                    )
-                    failures[target.path] = "registered repository remote changed"
-                    nextState = disableDescendants(nextState, targets, target.path)
-                    nextState = restoreTargetStash(context, nextState, target.path, failures)
-                    continue
-                }
-
-                if (context.options.fetchFirst) {
-                    val fetch = context.git.fetch(directory)
-                    if (!fetch.ok) {
-                        context.log.warn("fetch warn: ${fetch.diagnostic()} (${target.path})")
-                        failures[target.path] = "fetch had warnings"
-                    }
-                }
-
-                val checkout = BranchCheckout.execute(context, target, directory, nextState)
-                nextState = checkout.state
-                checkout.failure?.let { failures[target.path] = it }
-                if (!checkout.succeeded) {
-                    nextState = disableDescendants(nextState, targets, target.path)
-                    nextState = restoreTargetStash(context, nextState, target.path, failures)
-                    continue
-                }
-
-                if (context.options.pull) {
-                    val pull = context.git.pullFf(directory, target.branch)
-                    if (!pull.ok) {
-                        context.log.warn("pull failed (kept local): ${pull.diagnostic()}")
-                        failures[target.path] = "pull had warnings"
-                    } else {
-                        context.log.info("pull ok - ${target.path}")
-                    }
-                }
-
-                if (hasDescendants(targets, target.path)) {
-                    val sync = context.git.submoduleSync(directory)
-                    if (!sync.ok) {
-                        context.log.warn("nested submodule sync failed: ${sync.diagnostic()} (${target.path})")
-                        failures[target.path] = "nested submodule sync failed"
-                        nextState = disableDescendants(nextState, targets, target.path)
-                    }
-                    topology = loadTopology(context, nextState)
-                }
-                nextState = restoreTargetStash(context, nextState, target.path, failures)
+                traversal = processTarget(context, targets, target, traversal, issues)
             }
+        } catch (error: SwitchStepException) {
+            throw error
+        } catch (error: RuntimeException) {
+            throw SwitchStepException(traversal.state, error)
+        }
+
+        val result = if (issues.isEmpty()) StepResult.Success else StepResult.Partial(issues)
+        return StepExecution(result, traversal.state)
+    }
+
+    private fun processTarget(
+        context: SwitchContext,
+        targets: List<RepoTarget>,
+        target: RepoTarget,
+        traversal: SubmoduleTraversal,
+        issues: MutableList<OperationIssue>,
+    ): SubmoduleTraversal {
+        val preparation = prepareTarget(context, targets, target, traversal, issues)
+        val directory = preparation.directory ?: return traversal.copy(state = preparation.state)
+        return updatePreparedTarget(
+            context,
+            targets,
+            target,
+            directory,
+            traversal.copy(state = preparation.state),
+            issues,
+        )
+    }
+
+    @Suppress("TooGenericExceptionCaught") // initialization state must survive later validation errors
+    private fun prepareTarget(
+        context: SwitchContext,
+        targets: List<RepoTarget>,
+        target: RepoTarget,
+        traversal: SubmoduleTraversal,
+        issues: MutableList<OperationIssue>,
+    ): PreparedSubmodule {
+        var nextState = traversal.state
+        try {
+            if (nextState.isSkipped(target.path)) {
+                context.log.info("[skip] ${target.path} - target disabled by an earlier step")
+                return rejectedTarget(context, target, nextState, issues)
+            }
+            if (!nextState.checkoutSucceeded(".")) {
+                issues += OperationIssue(stage, OperationIssueCode.MAIN_CHECKOUT_REQUIRED, target.path)
+                nextState = disableTargetAndDescendants(nextState, targets, target.path)
+                return rejectedTarget(context, target, nextState, issues)
+            }
+            if (traversal.topology.isUnregistered(target.path)) {
+                context.log.warn(
+                    "[skip] ${target.path} - not registered in current .gitmodules graph; " +
+                        "obsolete worktree retained",
+                )
+                issues += OperationIssue(
+                    OperationStage.TOPOLOGY,
+                    OperationIssueCode.SUBMODULE_NOT_REGISTERED,
+                    target.path,
+                )
+                nextState = disableTargetAndDescendants(nextState, targets, target.path)
+                return rejectedTarget(context, target, nextState, issues)
+            }
+
+            context.log.info("")
+            context.log.info("--- ${target.path} - ${target.branch} ---")
+            val directory = resolveGitDir(context.projectRoot, target.path)
+            val registration = registrationLocation(
+                context,
+                target,
+                traversal.topology.byPath.getValue(target.path),
+            )
+            val preparation = SubmoduleInitializer.prepare(
+                context,
+                target,
+                directory,
+                registration.root,
+                registration.path,
+            )
+            if (preparation.initializedBySwitch) nextState = nextState.withInitializedSubmodule(target.path)
+            preparation.issue?.let(issues::add)
+            if (!preparation.ready) {
+                nextState = disableDescendants(nextState, targets, target.path)
+                return rejectedTarget(context, target, nextState, issues)
+            }
+
+            val expectedGitDirectory = expectedSubmoduleGitDirectory(
+                context.projectRoot.toFile(),
+                traversal.topology.byPath[target.path],
+                context.git,
+            )
+            if (isUnassociatedSubmoduleWorktree(
+                    context.projectRoot.toFile(),
+                    target.path,
+                    directory,
+                    preparation.repositoryIdentity,
+                    expectedGitDirectory,
+                )
+            ) {
+                context.log.warn(
+                    "[skip] ${target.path} - repository is not associated with its superproject; " +
+                        "actualGitDir=${preparation.repositoryIdentity?.gitDirectory}, " +
+                        "expectedGitDir=$expectedGitDirectory, " +
+                        "superproject=${preparation.repositoryIdentity?.superprojectRoot}",
+                )
+                issues += OperationIssue(
+                    OperationStage.TOPOLOGY,
+                    OperationIssueCode.REPOSITORY_IDENTITY_CHANGED,
+                    target.path,
+                )
+                nextState = disableDescendants(nextState, targets, target.path)
+                return rejectedTarget(context, target, nextState, issues)
+            }
+
+            val checkpoint = context.checkpoint[target.path]
+            val currentRemote = context.git.remoteUrl(directory)
+            if (checkpoint != null && checkpoint.remoteUrl != currentRemote) {
+                context.log.warn(
+                    "[skip] ${target.path} - registered repository remote changed; " +
+                        "before=${diagnosticFingerprint(checkpoint.remoteUrl)}, " +
+                        "current=${diagnosticFingerprint(currentRemote)}",
+                )
+                issues += OperationIssue(
+                    OperationStage.TOPOLOGY,
+                    OperationIssueCode.REPOSITORY_REMOTE_CHANGED,
+                    target.path,
+                )
+                nextState = disableDescendants(nextState, targets, target.path)
+                return rejectedTarget(context, target, nextState, issues)
+            }
+            return PreparedSubmodule(nextState, directory)
         } catch (error: RuntimeException) {
             throw SwitchStepException(nextState, error)
         }
-
-        val result = if (failures.isEmpty()) StepResult.Success else StepResult.Partial(failures)
-        return StepExecution(result, nextState)
     }
+
+    @Suppress("TooGenericExceptionCaught") // checkout state must survive pull, sync, or stash errors
+    private fun updatePreparedTarget(
+        context: SwitchContext,
+        targets: List<RepoTarget>,
+        target: RepoTarget,
+        directory: File,
+        traversal: SubmoduleTraversal,
+        issues: MutableList<OperationIssue>,
+    ): SubmoduleTraversal {
+        var nextState = traversal.state
+        var topology = traversal.topology
+        try {
+            fetchIfEnabled(context, target, directory, issues)
+            val checkout = BranchCheckout.execute(context, target, directory, nextState)
+            nextState = checkout.state
+            issues += checkout.issues
+            if (!checkout.succeeded) {
+                nextState = disableDescendants(nextState, targets, target.path)
+                nextState = restoreTargetStash(context, nextState, target.path, issues)
+                return SubmoduleTraversal(nextState, topology)
+            }
+
+            pullIfEnabled(context, target, directory, issues)
+            if (hasDescendants(targets, target.path)) {
+                val sync = context.git.submoduleSync(directory)
+                if (!sync.ok) {
+                    context.log.warn("nested submodule sync failed: ${sync.diagnostic()} (${target.path})")
+                    issues += OperationIssue(
+                        OperationStage.SUBMODULE_SYNC,
+                        OperationIssueCode.SUBMODULE_SYNC_FAILED,
+                        target.path,
+                        diagnostic = sync.diagnostic(),
+                    )
+                    nextState = disableDescendants(nextState, targets, target.path)
+                }
+                topology = loadTopology(context, nextState)
+            }
+            nextState = restoreTargetStash(context, nextState, target.path, issues)
+            return SubmoduleTraversal(nextState, topology)
+        } catch (error: RuntimeException) {
+            throw SwitchStepException(nextState, error)
+        }
+    }
+
+    private fun fetchIfEnabled(
+        context: SwitchContext,
+        target: RepoTarget,
+        directory: File,
+        issues: MutableList<OperationIssue>,
+    ) {
+        if (!context.options.fetchFirst) return
+        val fetch = context.git.fetch(directory)
+        if (fetch.ok) return
+        context.log.warn("fetch warn: ${fetch.diagnostic()} (${target.path})")
+        issues += OperationIssue(
+            OperationStage.FETCH,
+            OperationIssueCode.FETCH_FAILED,
+            target.path,
+            diagnostic = fetch.diagnostic(),
+        )
+    }
+
+    private fun pullIfEnabled(
+        context: SwitchContext,
+        target: RepoTarget,
+        directory: File,
+        issues: MutableList<OperationIssue>,
+    ) {
+        if (!context.options.pull) return
+        val pull = context.git.pullFf(directory, target.branch)
+        if (pull.ok) {
+            context.log.info("pull ok - ${target.path}")
+            return
+        }
+        context.log.warn("pull failed (kept local): ${pull.diagnostic()}")
+        issues += OperationIssue(
+            OperationStage.PULL,
+            OperationIssueCode.PULL_FAILED,
+            target.path,
+            diagnostic = pull.diagnostic(),
+        )
+    }
+
+    private fun rejectedTarget(
+        context: SwitchContext,
+        target: RepoTarget,
+        state: SwitchState,
+        issues: MutableList<OperationIssue>,
+    ) = PreparedSubmodule(
+        restoreTargetStash(context, state, target.path, issues),
+        directory = null,
+    )
 
     private fun loadTopology(context: SwitchContext, state: SwitchState): SubmoduleTopology =
         if (state.checkoutSucceeded(".")) {
             context.git.loadSubmoduleTopology(context.projectRoot.toFile())
         } else {
-            SubmoduleTopology(null, emptyMap())
+            SubmoduleTopology(emptySet(), emptyMap())
         }
 
     private fun restoreTargetStash(
         context: SwitchContext,
         state: SwitchState,
         path: String,
-        failures: MutableMap<String, String>,
+        issues: MutableList<OperationIssue>,
     ): SwitchState {
         val restore = restoreTrackedStashes(
             context.projectRoot,
@@ -184,7 +276,7 @@ class SubmoduleTreeStep : SwitchStep {
             state,
             setOf(path),
         )
-        restore.failures.forEach { (failedPath, failure) -> failures[failedPath] = failure }
+        issues += restore.issues
         return restore.state
     }
 
@@ -213,37 +305,22 @@ class SubmoduleTreeStep : SwitchStep {
 
     private fun registrationLocation(
         context: SwitchContext,
-        targets: List<RepoTarget>,
         target: RepoTarget,
-        registration: SubmoduleRegistration?,
+        registration: SubmoduleRegistration,
     ): RegistrationLocation {
-        if (registration != null) {
-            return if (registration.parentPath == ".") {
-                RegistrationLocation(context.projectRoot.toFile(), target.path)
-            } else {
-                RegistrationLocation(
-                    resolveGitDir(context.projectRoot, registration.parentPath),
-                    target.path.removePrefix("${registration.parentPath}/"),
-                )
-            }
-        }
-
-        // Compatibility fallback for Git clients that expose paths without section/parent metadata.
-        val parent = targets
-            .asSequence()
-            .filter { candidate -> target.path.startsWith("${candidate.path}/") }
-            .maxByOrNull { candidate -> candidate.path.length }
-        return if (parent == null) {
+        return if (registration.parentPath == ".") {
             RegistrationLocation(context.projectRoot.toFile(), target.path)
         } else {
             RegistrationLocation(
-                resolveGitDir(context.projectRoot, parent.path),
-                target.path.removePrefix("${parent.path}/"),
+                resolveGitDir(context.projectRoot, registration.parentPath),
+                target.path.removePrefix("${registration.parentPath}/"),
             )
         }
     }
 
-    private data class RegistrationLocation(val root: java.io.File, val path: String)
+    private data class SubmoduleTraversal(val state: SwitchState, val topology: SubmoduleTopology)
+    private data class PreparedSubmodule(val state: SwitchState, val directory: File?)
+    private data class RegistrationLocation(val root: File, val path: String)
 
     private fun updateProgress(context: SwitchContext, index: Int, total: Int, path: String) {
         context.progressHandle?.apply {

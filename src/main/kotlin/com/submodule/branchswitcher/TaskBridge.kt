@@ -86,6 +86,7 @@ object TaskBridge {
     ) = runBackground(TaskRunner.DEFAULT, project, title, canBeCancelled, onCancel, onFinished, block)
 
     /** Internal entry-point with injectable [TaskRunner] for testing. Project is nullable for tests. */
+    @Suppress("TooGenericExceptionCaught") // task callbacks and platform scheduling share this lifecycle boundary
     internal suspend fun runBackground(
         taskRunner: TaskRunner,
         project: Project?,

@@ -1,12 +1,17 @@
 package com.submodule.branchswitcher.workflow
 
 import com.submodule.branchswitcher.log.AppLogger
-import com.submodule.branchswitcher.log.newOperationId
+import com.submodule.branchswitcher.log.OperationContext
+import com.submodule.branchswitcher.log.newOperationContext
 import com.submodule.branchswitcher.log.withContext
 import com.submodule.branchswitcher.model.ResolvedSwitchRequest
 import com.submodule.branchswitcher.operation.GitOperationResult
 import com.submodule.branchswitcher.operation.GitOperationRunner
 import com.submodule.branchswitcher.switch.CancellationClassifier
+import com.submodule.branchswitcher.switch.OperationIssue
+import com.submodule.branchswitcher.switch.OperationIssueCode
+import com.submodule.branchswitcher.switch.OperationIssueSeverity
+import com.submodule.branchswitcher.switch.OperationStage
 import com.submodule.branchswitcher.switch.SwitchExecutionResult
 import com.submodule.branchswitcher.switch.SwitchExecutor
 import com.submodule.branchswitcher.switch.SwitchRecoveryExecutor
@@ -23,9 +28,9 @@ data class SwitchRunResult(
 
 data class SwitchRecoveryResult(
     val rollbackOk: Boolean,
-    val stashFailures: Map<String, String>,
+    val issues: List<OperationIssue>,
 ) {
-    val ok: Boolean get() = rollbackOk && stashFailures.isEmpty()
+    val ok: Boolean get() = rollbackOk && issues.isEmpty()
 }
 
 private data class BackgroundSwitchOutcome(
@@ -55,9 +60,10 @@ class SwitchRunner(
         title: String,
         request: ResolvedSwitchRequest,
         log: AppLogger,
+        operationContext: OperationContext = newOperationContext("switch"),
     ): SwitchRunResult {
-        val operationId = newOperationId("switch")
-        val operationLog = log.withContext(operationId)
+        val operationId = operationContext.id
+        val operationLog = log.withContext(operationContext.inPhase("execute"))
         val preset = request.preset
         val options = request.options
         operationLog.activity(
@@ -73,7 +79,7 @@ class SwitchRunner(
         }
         val backgroundResult = operations.run(title) { indicator, operation ->
             indicator.isIndeterminate = true
-            operationLog.logGitRuntime(operation, projectRoot.toFile())
+            operationLog.logGitRuntime(operation, projectRoot.toFile(), cancellationClassifier)
             SwitchExecutor(
                 projectRoot,
                 operationLog,
@@ -94,7 +100,8 @@ class SwitchRunner(
             wasCancelled = true
         }
         if (wasCancelled && executionResult != null) {
-            val cancelledRecovery = recoverCancelledSwitch(executionResult, operationLog)
+            val recoveryLog = log.withContext(operationContext.inPhase("recovery"))
+            val cancelledRecovery = recoverCancelledSwitch(executionResult, recoveryLog)
             executionResult = cancelledRecovery.execution
             recoveryResult = cancelledRecovery.recovery
         }
@@ -108,7 +115,7 @@ class SwitchRunner(
         operationLog.activity(
             "operation finished: cancelled=${result.cancelled}, " +
                 "status=${result.execution?.status ?: "unavailable"}, " +
-                "failures=${result.execution?.failures?.size ?: 0}, " +
+                "issues=${result.execution?.issues?.size ?: 0}, " +
                 "recovery=${result.recovery?.let { if (it.ok) "ok" else "failed" } ?: "not-needed"}",
         )
         return result
@@ -151,7 +158,7 @@ class SwitchRunner(
                 execution = execution,
                 recovery = SwitchRecoveryResult(
                     rollbackOk = false,
-                    stashFailures = mapOf("." to "could not open recovery session"),
+                    issues = listOf(recoveryIssue(OperationIssueCode.RECOVERY_SESSION_UNAVAILABLE)),
                 ),
             )
         }
@@ -162,7 +169,7 @@ class SwitchRunner(
                 execution = execution.copy(state = recoveryOutcome.stashRestore.state),
                 recovery = SwitchRecoveryResult(
                     rollbackOk = recoveryOutcome.rollbackOk,
-                    stashFailures = recoveryOutcome.stashRestore.failures,
+                    issues = recoveryOutcome.issues,
                 ),
             )
         } catch (e: RuntimeException) {
@@ -171,11 +178,18 @@ class SwitchRunner(
                 execution = execution,
                 recovery = SwitchRecoveryResult(
                     rollbackOk = false,
-                    stashFailures = mapOf("." to "recovery exception"),
+                    issues = listOf(recoveryIssue(OperationIssueCode.RECOVERY_FAILED)),
                 ),
             )
         } finally {
             recoveryOperation.close()
         }
     }
+
+    private fun recoveryIssue(code: OperationIssueCode) = OperationIssue(
+        stage = OperationStage.RECOVERY,
+        code = code,
+        repositoryPath = ".",
+        severity = OperationIssueSeverity.ERROR,
+    )
 }

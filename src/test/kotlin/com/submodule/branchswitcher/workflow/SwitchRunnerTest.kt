@@ -4,6 +4,8 @@ import com.submodule.branchswitcher.git.GitClient
 import com.submodule.branchswitcher.git.GitOperationProvider
 import com.submodule.branchswitcher.git.GitOperationSession
 import com.submodule.branchswitcher.git.GitResult
+import com.submodule.branchswitcher.git.RepositoryIdentity
+import com.submodule.branchswitcher.git.SubmoduleRegistration
 import com.submodule.branchswitcher.git.GitWorkflowClient
 import com.submodule.branchswitcher.log.createStringAppender
 import com.submodule.branchswitcher.model.Preset
@@ -76,12 +78,13 @@ class SwitchRunnerTest {
         assertNotNull(result.execution)
         assertEquals(1, git.submoduleSyncCount)
         assertTrue(result.operationId.matches(Regex("switch-[0-9a-f]{8}")))
-        assertTrue(logs.any { it.contains("[${result.operationId}] operation started: root=") })
-        assertTrue(logs.any { it.contains("[${result.operationId}] options: dirty=") })
+        val executionContext = "[${result.operationId}/execute]"
+        assertTrue(logs.any { it.contains("$executionContext operation started: root=") })
+        assertTrue(logs.any { it.contains("$executionContext options: dirty=") })
         assertTrue(logs.any { it.contains("runtime inspection failed") && it.contains("version unavailable") })
-        assertTrue(logs.any { it.contains("[${result.operationId}] requested target: path=., branch=main") })
-        assertTrue(logs.any { it.contains("[${result.operationId}] [checkpoint]") })
-        assertTrue(logs.any { it.contains("[${result.operationId}] operation finished: cancelled=false") })
+        assertTrue(logs.any { it.contains("$executionContext requested target: path=., branch=main") })
+        assertTrue(logs.any { it.contains("$executionContext [checkpoint]") })
+        assertTrue(logs.any { it.contains("$executionContext operation finished: cancelled=false") })
     }
 
     @Test
@@ -245,6 +248,13 @@ class SwitchRunnerTest {
         }
 
         override fun currentBranch(workDir: File): String? = branch
+        override fun repositoryIdentity(workDir: File): RepositoryIdentity =
+            RepositoryIdentity(File(workDir, ".git").absolutePath, null)
+        override fun remoteUrl(workDir: File): String? = null
+        override fun registeredSubmodules(gitRoot: File): List<SubmoduleRegistration> = emptyList()
+        override fun resetHard(workDir: File, revision: String): GitResult = ok("reset")
+        override fun localBranchProbe(workDir: File, branch: String): Boolean = true
+        override fun dirtyProbe(workDir: File): Boolean = false
         override fun isDirty(workDir: File): Boolean = false
         override fun dirtyFileCount(workDir: File): Int = 0
         override fun stash(workDir: File, message: String): GitResult = ok("stash")

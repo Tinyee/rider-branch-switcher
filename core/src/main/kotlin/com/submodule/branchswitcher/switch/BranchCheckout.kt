@@ -8,7 +8,7 @@ internal object BranchCheckout {
     data class Result(
         val state: SwitchState,
         val succeeded: Boolean,
-        val failure: String? = null,
+        val issues: List<OperationIssue> = emptyList(),
     )
 
     fun execute(
@@ -42,7 +42,18 @@ internal object BranchCheckout {
 
         if (!checkoutResult.ok) {
             context.log.warn("[fail] checkout: ${checkoutResult.diagnostic()}")
-            return Result(state, succeeded = false, failure = "checkout failed")
+            return Result(
+                state,
+                succeeded = false,
+                issues = listOf(
+                    OperationIssue(
+                        stage = OperationStage.CHECKOUT,
+                        code = OperationIssueCode.CHECKOUT_FAILED,
+                        repositoryPath = target.path,
+                        diagnostic = checkoutResult.diagnostic(),
+                    ),
+                ),
+            )
         }
 
         context.log.info("checkout ok")
@@ -65,7 +76,7 @@ internal object BranchCheckout {
         context.log.warn("[fail] branch '${target.branch}' not found locally or on origin")
         val trackedStash = state.trackedStash(target.path)
         if (trackedStash == null) {
-            return Result(state, succeeded = false, failure = "branch not found")
+            return Result(state, succeeded = false, issues = listOf(branchMissingIssue(target.path)))
         }
 
         val popResult = context.git.stashPop(directory)
@@ -74,7 +85,15 @@ internal object BranchCheckout {
             return Result(
                 state,
                 succeeded = false,
-                failure = "branch not found + stash pop failed",
+                issues = listOf(
+                    branchMissingIssue(target.path),
+                    OperationIssue(
+                        stage = OperationStage.STASH_RESTORE,
+                        code = OperationIssueCode.STASH_RESTORE_FAILED,
+                        repositoryPath = target.path,
+                        diagnostic = popResult.diagnostic(),
+                    ),
+                ),
             )
         }
 
@@ -82,7 +101,13 @@ internal object BranchCheckout {
         return Result(
             state = state.withoutStash(target.path),
             succeeded = false,
-            failure = "branch not found",
+            issues = listOf(branchMissingIssue(target.path)),
         )
     }
+
+    private fun branchMissingIssue(path: String) = OperationIssue(
+        stage = OperationStage.CHECKOUT,
+        code = OperationIssueCode.BRANCH_NOT_FOUND,
+        repositoryPath = path,
+    )
 }

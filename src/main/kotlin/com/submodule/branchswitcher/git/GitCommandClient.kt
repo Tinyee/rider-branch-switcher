@@ -157,7 +157,7 @@ internal class GitCommandClient(
         }
     }
 
-    override fun localBranchProbe(workDir: File, branch: String): Boolean? {
+    override fun localBranchProbe(workDir: File, branch: String): Boolean {
         val result = run(workDir, "show-ref", "--verify", "--quiet", "refs/heads/$branch")
         return when {
             result.ok -> true
@@ -166,7 +166,7 @@ internal class GitCommandClient(
         }
     }
 
-    override fun dirtyProbe(workDir: File): Boolean? {
+    override fun dirtyProbe(workDir: File): Boolean {
         val result = run(workDir, "status", "--porcelain")
         if (!result.ok) throw GitQueryException(result)
         return result.stdout.isNotBlank()

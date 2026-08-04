@@ -113,6 +113,7 @@ fun filterBranchPopup(combo: JComboBox<String>, editor: JTextField) {
  * Sets the combo to its loading state, runs discovery through [branchLoads], then
  * restores the full list and current selection on the UI thread.
  */
+@Suppress("TooGenericExceptionCaught") // Git, coroutine, and UI scheduler failures converge at this async boundary
 internal fun loadComboBranches(
     combo: JComboBox<String>,
     dir: File,

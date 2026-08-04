@@ -5,6 +5,33 @@ It records durable project decisions and historical outcomes, not active work.
 Current behavior is defined by the code, tests, [architecture](ARCHITECTURE.md),
 [roadmap](ROADMAP.md), and [changelog](../CHANGELOG.md).
 
+## 2026-08-04 - Safety, Recovery, And Diagnostics Review
+
+Ten prioritized findings were resolved in one maintenance pass:
+
+- Git command diagnostics sanitize URI/SCP remotes and credential-like values.
+- Successful submodule initialization must leave a directory, usable Git
+  repository, and repository identity before checkout can continue.
+- Write-facing Git capability interfaces no longer hide unsafe optional
+  defaults; probe failures fail closed.
+- `quickCheck` rejects any IntelliJ API reference in `workflow/`, including
+  fully qualified references, and Detekt now enforces pragmatic complexity
+  limits with an empty baseline.
+- Switch and derive outcomes use structured stage/code/path issues instead of
+  parallel string maps.
+- Preflight, execute, refresh, and recovery share one phased operation context.
+- Repository-state refresh owns a cancellable operation session and suppresses
+  superseded delivery.
+- Recovery builds an inspectable plan, revalidates identity before every write,
+  blocks dirty hard resets, verifies final HEAD, and reports per-path outcomes.
+- The Tool Window diagnostics gained timestamps, latest-operation filtering and
+  copying, clear, and complete-log access.
+- Product wording now claims Rider 2025.1+ verification while describing other
+  IntelliJ IDE families as not yet product-certified.
+
+The long dirty-handling, derive-preflight, and submodule-traversal methods were
+split along domain phases rather than exempted from the new complexity rules.
+
 ## 2026-06-08 - UI And Repository Review
 
 The first review covered the Tool Window redesign and then expanded to the

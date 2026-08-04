@@ -13,7 +13,8 @@ fun isUnassociatedSubmoduleWorktree(
     identity: RepositoryIdentity?,
     expectedGitDirectory: String? = null,
 ): Boolean {
-    if (path == "." || identity == null) return false
+    if (path == ".") return false
+    identity ?: return true
     val superproject = identity.superprojectRoot?.let(::File)
         ?: return true
     val root = projectRoot.canonicalFile.toPath()

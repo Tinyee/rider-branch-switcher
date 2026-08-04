@@ -19,16 +19,19 @@ style:
 
 complexity:
   CyclomaticComplexMethod:
-    active: false
+    active: true
+    threshold: 30
   NestedBlockDepth:
-    active: false
+    active: true
+    threshold: 5
   LongParameterList:
     functionThreshold: 12
     constructorThreshold: 13
   TooManyFunctions:
     active: false
   LongMethod:
-    active: false
+    active: true
+    threshold: 120
 
 naming:
   VariableNaming:

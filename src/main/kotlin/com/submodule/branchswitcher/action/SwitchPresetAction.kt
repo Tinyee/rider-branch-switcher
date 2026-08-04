@@ -10,6 +10,7 @@ import com.submodule.branchswitcher.BranchSwitchListener
 import com.submodule.branchswitcher.Bundle
 import com.submodule.branchswitcher.Notifier
 import com.submodule.branchswitcher.log.AppLogger
+import com.submodule.branchswitcher.log.newOperationContext
 import com.submodule.branchswitcher.log.ToolWindowLogger
 import com.submodule.branchswitcher.model.Preset
 import com.submodule.branchswitcher.platform.gitRootPath
@@ -72,6 +73,7 @@ class SwitchPresetAction : AnAction() {
         executeSwitch(project, service, preset)
     }
 
+    @Suppress("TooGenericExceptionCaught") // shortcut entry reports all non-cancellation workflow failures consistently
     private fun executeSwitch(project: Project, service: BranchSwitcherService, preset: Preset) {
         val root = project.gitRootPath() ?: run {
             Notifier.error(project, Bundle.msg("plugin.title"), Bundle.msg("git.root.not.found"))
@@ -79,9 +81,10 @@ class SwitchPresetAction : AnAction() {
         }
         val collector = actionLogger(project)
         val coordinator = SwitchFlowCoordinator(project, service)
+        val operationContext = newOperationContext("switch")
         service.scope.launch(Dispatchers.Default) {
             try {
-                val probeResult = coordinator.preflight(root, preset, collector)
+                val probeResult = coordinator.preflight(root, preset, collector, operationContext)
                 if (!coordinator.showForceWarning(preset, probeResult)) {
                     collector.warn("switch cancelled by user - Force dirty strategy declined")
                     return@launch
@@ -91,7 +94,7 @@ class SwitchPresetAction : AnAction() {
                     return@launch
                 }
                 val request = service.resolveSwitchRequest(preset)
-                coordinator.executeAndNotify(root, request, collector) {
+                coordinator.executeAndNotify(root, request, collector, operationContext) {
                     project.messageBus.syncPublisher(BranchSwitchListener.TOPIC).onBranchSwitched()
                 }
             } catch (_: kotlinx.coroutines.CancellationException) {

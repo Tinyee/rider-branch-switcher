@@ -3,6 +3,7 @@ package com.submodule.branchswitcher.ui
 import com.intellij.openapi.project.Project
 import com.submodule.branchswitcher.Bundle
 import com.submodule.branchswitcher.log.AppLogger
+import com.submodule.branchswitcher.log.OperationContext
 import com.submodule.branchswitcher.log.withContext
 import com.submodule.branchswitcher.model.PreflightRow
 import com.submodule.branchswitcher.model.Preset
@@ -71,8 +72,12 @@ class SwitchFlowCoordinator(
         project.invokeLaterIfAlive(block)
     }
 
-    suspend fun preflight(root: Path, preset: Preset, log: AppLogger): List<PreflightRow> =
-        preflightUi.probe(root, preset, log)
+    suspend fun preflight(
+        root: Path,
+        preset: Preset,
+        log: AppLogger,
+        operationContext: OperationContext,
+    ): List<PreflightRow> = preflightUi.probe(root, preset, log, operationContext)
 
     fun showForceWarning(preset: Preset, probeResult: List<PreflightRow>): Boolean =
         preflightUi.confirmForceSwitch(preset, probeResult)
@@ -91,6 +96,7 @@ class SwitchFlowCoordinator(
         root: Path,
         request: ResolvedSwitchRequest,
         log: AppLogger,
+        operationContext: OperationContext,
         onSuccess: (() -> Unit)? = null,
         onFinished: (() -> Unit)? = null,
     ) {
@@ -113,12 +119,15 @@ class SwitchFlowCoordinator(
                     cancellationClassifier = platformCancellationClassifier,
                     confirmSubmoduleInitialization = preflightUi::confirmSubmoduleInitialization,
                 ).execute(
-                    title = Bundle.msg("progress.switching"), request = request, log = log,
+                    title = Bundle.msg("progress.switching"),
+                    request = request,
+                    log = log,
+                    operationContext = operationContext,
                 )
             } finally {
                 writeLease.close()
             }
-            val operationLog = log.withContext(runResult.operationId)
+            val operationLog = log.withContext(operationContext.inPhase("refresh"))
             val refreshResult = refreshVcsRepos(project, root, preset.submodules.keys, operationLog)
             uiLater {
                 completion.completeAfter {
@@ -127,7 +136,7 @@ class SwitchFlowCoordinator(
                         preset = preset,
                         runResult = runResult,
                         onSuccess = onSuccess,
-                        onRollback = { execution -> rollbackSwitch(root, execution, operationLog) },
+                        onRollback = { execution -> rollbackSwitch(root, execution, log, operationContext) },
                     )
                 }
             }
@@ -139,12 +148,18 @@ class SwitchFlowCoordinator(
         }
     }
 
-    private fun rollbackSwitch(root: Path, execution: SwitchExecutionResult, log: AppLogger) {
+    private fun rollbackSwitch(
+        root: Path,
+        execution: SwitchExecutionResult,
+        log: AppLogger,
+        operationContext: OperationContext,
+    ) {
         val writeLease = service.tryAcquireWrite()
         if (writeLease == null) {
             uiLater { resultPresenter.showWriteBusy() }
             return
         }
+        val recoveryLog = log.withContext(operationContext.inPhase("recovery"))
         service.scope.launch(Dispatchers.Default) {
             val rollbackSucceeded = try {
                 val rollbackBackgroundResult = GitBackgroundRunner(project, service.gitClient).run(
@@ -152,7 +167,7 @@ class SwitchFlowCoordinator(
                 ) { indicator, operation ->
                     indicator.isIndeterminate = true
                     indicator.text = Bundle.msg("progress.rollback")
-                    val recovery = SwitchRecoveryExecutor(root, log, operation)
+                    val recovery = SwitchRecoveryExecutor(root, recoveryLog, operation)
                     recovery.recover(execution).ok
                 }
                 when (rollbackBackgroundResult) {
@@ -160,7 +175,7 @@ class SwitchFlowCoordinator(
                     is GitOperationResult.Cancelled -> rollbackBackgroundResult.value ?: false
                     is GitOperationResult.Failed -> {
                         val error = rollbackBackgroundResult.error
-                        log.error("notification rollback failed", error)
+                        recoveryLog.error("notification rollback failed", error)
                         false
                     }
                 }
@@ -168,9 +183,10 @@ class SwitchFlowCoordinator(
                 writeLease.close()
             }
             val checkpointPaths = execution.checkpoint.orEmpty().keys.filterTo(mutableSetOf()) { it != "." }
-            val refreshResult = refreshVcsRepos(project, root, checkpointPaths, log)
+            val refreshLog = log.withContext(operationContext.inPhase("recovery-refresh"))
+            val refreshResult = refreshVcsRepos(project, root, checkpointPaths, refreshLog)
             uiLater {
-                logVcsRefresh(log, refreshResult)
+                logVcsRefresh(refreshLog, refreshResult)
                 resultPresenter.presentRollbackResult(execution, rollbackSucceeded)
             }
         }

@@ -5,11 +5,12 @@ class FetchStep(
     private val scope: SwitchTargetScope = SwitchTargetScope.ALL,
 ) : SwitchStep {
     override val name = scopedStepName("fetch", scope)
+    override val stage = OperationStage.FETCH
 
     override fun execute(context: SwitchContext, state: SwitchState): StepExecution {
         if (!context.options.fetchFirst) return StepExecution(StepResult.Success, state)
 
-        val failures = LinkedHashMap<String, String>()
+        val issues = mutableListOf<OperationIssue>()
         for (target in context.preset.targetsFor(scope)) {
             context.cancellationHandle?.checkCanceled()
             if (state.isSkipped(target.path)) {
@@ -22,10 +23,15 @@ class FetchStep(
             val f = context.git.fetch(dir)
             if (!f.ok) {
                 context.log.warn("fetch warn: ${f.diagnostic()} (${target.path})")
-                failures[target.path] = "fetch had warnings"
+                issues += OperationIssue(
+                    stage = stage,
+                    code = OperationIssueCode.FETCH_FAILED,
+                    repositoryPath = target.path,
+                    diagnostic = f.diagnostic(),
+                )
             }
         }
-        val result = if (failures.isEmpty()) StepResult.Success else StepResult.Partial(failures)
+        val result = if (issues.isEmpty()) StepResult.Success else StepResult.Partial(issues)
         return StepExecution(result, state)
     }
 }

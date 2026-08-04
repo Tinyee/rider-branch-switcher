@@ -17,7 +17,33 @@ class DeriveNotificationTest {
         failed: Map<String, String> = emptyMap(),
         checkpoint: Map<String, DeriveCheckpointEntry> = emptyMap(),
         cancelled: Boolean = false,
-    ) = DeriveResult(succeeded, branchExists, skipped, dirty, branchMismatch, preflightError, checkpointFailed, failed, checkpoint, cancelled)
+    ): DeriveResult {
+        val outcomes = buildList {
+            fun addPaths(paths: List<String>, status: DeriveRepositoryStatus) {
+                addAll(paths.map { DeriveRepositoryOutcome(it, status) })
+            }
+            addPaths(succeeded, DeriveRepositoryStatus.SUCCEEDED)
+            addPaths(branchExists, DeriveRepositoryStatus.BRANCH_EXISTS)
+            addPaths(skipped, DeriveRepositoryStatus.SKIPPED)
+            addPaths(dirty, DeriveRepositoryStatus.DIRTY)
+            addPaths(branchMismatch, DeriveRepositoryStatus.BRANCH_MISMATCH)
+            addPaths(preflightError, DeriveRepositoryStatus.PREFLIGHT_FAILED)
+            addPaths(checkpointFailed, DeriveRepositoryStatus.CHECKPOINT_FAILED)
+            addAll(failed.map { (path, diagnostic) ->
+                DeriveRepositoryOutcome(
+                    repositoryPath = path,
+                    status = DeriveRepositoryStatus.FAILED,
+                    issue = OperationIssue(
+                        stage = OperationStage.DERIVE,
+                        code = OperationIssueCode.BRANCH_CREATE_FAILED,
+                        repositoryPath = path,
+                        diagnostic = diagnostic,
+                    ),
+                )
+            })
+        }
+        return DeriveResult(outcomes, checkpoint, cancelled)
+    }
 
     @Test
     fun `cancelled with rollback failures returns ROLLBACK_FAILED`() {
