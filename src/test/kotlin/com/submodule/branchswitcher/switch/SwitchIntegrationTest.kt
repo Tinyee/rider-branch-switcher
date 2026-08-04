@@ -552,7 +552,7 @@ class SwitchIntegrationTest {
     fun `derive blocks when branch existence probe throws`() {
         val root = createRepo(tmpDir, "project")
         val throwingGit = object : GitClient by git {
-            override fun localBranchProbe(workDir: java.io.File, branch: String): Boolean? =
+            override fun localBranchProbe(workDir: java.io.File, branch: String): Boolean =
                 throw RuntimeException("branch probe failed")
         }
 
@@ -569,7 +569,7 @@ class SwitchIntegrationTest {
     fun `derive blocks when dirty probe throws`() {
         val root = createRepo(tmpDir, "project")
         val throwingGit = object : GitClient by git {
-            override fun dirtyProbe(workDir: java.io.File): Boolean? =
+            override fun dirtyProbe(workDir: java.io.File): Boolean =
                 throw RuntimeException("dirty probe failed")
         }
 
@@ -749,8 +749,10 @@ class SwitchIntegrationTest {
 
         assertEquals("main should succeed", 1, result.succeeded.size)
         assertTrue("SubA should have been called", subACalled)
-        assertEquals("SubA should be in failed", 1, result.failed.size)
-        assertTrue(result.failed["SubA"]!!.contains("simulated crash"))
+        assertEquals("SubA should be in failed", 1, result.failedOutcomes.size)
+        val failedOutcome = result.failedOutcomes.single()
+        assertEquals("SubA", failedOutcome.repositoryPath)
+        assertTrue(failedOutcome.issue?.diagnostic.orEmpty().contains("simulated crash"))
         assertFalse("allOk false when one failed", result.allOk)
 
         // Rollback: main should be restored, derived branch deleted

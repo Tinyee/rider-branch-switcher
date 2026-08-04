@@ -17,9 +17,9 @@ sealed class StepResult {
     /** Step completed successfully, continue pipeline. */
     object Success : StepResult()
     /** Step failed fatally - pipeline must abort. */
-    data class Fatal(val reason: String) : StepResult()
+    data class Fatal(val issue: OperationIssue) : StepResult()
     /** Step completed with partial failures - continue but mark overall as warning. */
-    data class Partial(val failures: Map<String, String>) : StepResult()
+    data class Partial(val issues: List<OperationIssue>) : StepResult()
 }
 
 /**
@@ -115,6 +115,7 @@ data class SwitchContext(
 interface SwitchStep {
     /** Human-readable name for logging/progress display. */
     val name: String
+    val stage: OperationStage
     /** Execute this step and explicitly return the state for the next step. */
     fun execute(context: SwitchContext, state: SwitchState): StepExecution
 }

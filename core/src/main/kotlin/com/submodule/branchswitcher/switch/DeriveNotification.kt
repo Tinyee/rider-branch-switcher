@@ -60,5 +60,9 @@ fun deriveNotification(
     if (rollbackFailureCount > 0)
         return DeriveNotification.Failure(DeriveNotification.Reason.ROLLBACK_FAILED, branchName, rollbackFailureCount)
 
-    return DeriveNotification.Failure(DeriveNotification.Reason.PARTIAL, branchName, result.failed.size)
+    return DeriveNotification.Failure(
+        DeriveNotification.Reason.PARTIAL,
+        branchName,
+        result.failedOutcomes.size,
+    )
 }

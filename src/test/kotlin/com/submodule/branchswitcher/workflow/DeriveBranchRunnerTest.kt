@@ -4,6 +4,8 @@ import com.submodule.branchswitcher.git.GitClient
 import com.submodule.branchswitcher.git.GitOperationSession
 import com.submodule.branchswitcher.git.GitResult
 import com.submodule.branchswitcher.git.GitWorkflowClient
+import com.submodule.branchswitcher.git.RepositoryIdentity
+import com.submodule.branchswitcher.git.SubmoduleRegistration
 import com.submodule.branchswitcher.log.createStringAppender
 import com.submodule.branchswitcher.model.Preset
 import kotlinx.coroutines.runBlocking
@@ -66,6 +68,12 @@ class DeriveBranchRunnerTest {
         override fun isGitRepo(workDir: File): Boolean = true
         override fun currentBranch(workDir: File): String = currentBranch
         override fun revParseHead(workDir: File): String = "abc123"
+        override fun repositoryIdentity(workDir: File): RepositoryIdentity =
+            RepositoryIdentity(File(workDir, ".git").absolutePath, null)
+        override fun remoteUrl(workDir: File): String? = null
+        override fun registeredSubmodules(gitRoot: File): List<SubmoduleRegistration> = emptyList()
+        override fun resetHard(workDir: File, revision: String): GitResult = ok("reset")
+        override fun cancel() = Unit
         override fun dirtyProbe(workDir: File): Boolean = false
         override fun localBranchProbe(workDir: File, branch: String): Boolean = branch == currentBranch
 

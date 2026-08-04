@@ -6,6 +6,7 @@ import com.submodule.branchswitcher.executeResultTest
 import com.submodule.branchswitcher.git.GitClient
 import com.submodule.branchswitcher.git.GitResult
 import com.submodule.branchswitcher.git.RepositoryIdentity
+import com.submodule.branchswitcher.git.SubmoduleRegistration
 import com.submodule.branchswitcher.log.createStringAppender
 import com.submodule.branchswitcher.model.DirtyAction
 import com.submodule.branchswitcher.model.Preset
@@ -41,6 +42,24 @@ class SwitchExecutorTest {
         override fun stashPop(workDir: File): GitResult = GitResult("pop", 0, "", "")
         override fun checkoutNewBranch(workDir: File, branch: String): GitResult = GitResult("checkout", 0, "", "")
         override fun deleteBranch(workDir: File, branch: String): GitResult = GitResult("branch", 0, "", "")
+        override fun repositoryIdentity(workDir: File): RepositoryIdentity {
+            val root = projectRoot.toFile().canonicalFile
+            val directory = if (workDir.canonicalFile == root) {
+                File(root, ".git")
+            } else {
+                File(root, ".git/modules/${workDir.name}")
+            }
+            return RepositoryIdentity(directory.absolutePath, root.takeIf { workDir.canonicalFile != root }?.path)
+        }
+        override fun remoteUrl(workDir: File): String? = null
+        override fun registeredSubmodules(gitRoot: File): List<SubmoduleRegistration> = listOf(
+            SubmoduleRegistration("SubA", "SubA", "."),
+            SubmoduleRegistration("SubB", "SubB", "."),
+        )
+        override fun resetHard(workDir: File, revision: String): GitResult = GitResult("reset", 0, "", "")
+        override fun cancel() = Unit
+        override fun localBranchProbe(workDir: File, branch: String): Boolean = localBranchExists(workDir, branch)
+        override fun dirtyProbe(workDir: File): Boolean = isDirty(workDir)
     }
 
     private val projectRoot = java.nio.file.Files.createTempDirectory("test-executor")
@@ -177,6 +196,28 @@ class SwitchExecutorTest {
     }
 
     @Test
+    fun `recovery plan exposes repository stash and retained initialization actions`() {
+        val execution = SwitchExecutionResult(
+            status = SwitchExecutionStatus.FAILED,
+            checkpoint = linkedMapOf(
+                "." to CheckpointEntry("main-sha", "main", "main-repository"),
+                "SubA" to CheckpointEntry("sub-sha", null, "sub-repository"),
+            ),
+            state = SwitchState()
+                .withTrackedStash("SubA", "before -> dev")
+                .withInitializedSubmodule("SubB"),
+        )
+
+        val plan = recovery().plan(execution)
+
+        assertEquals(listOf(".", "SubA"), plan.repositories.map { it.repositoryPath })
+        assertEquals(listOf("main-sha", "sub-sha"), plan.repositories.map { it.targetSha })
+        assertEquals(listOf("SubA"), plan.stashes.map { it.repositoryPath })
+        assertEquals(setOf("SubB"), plan.retainedInitializedSubmodules)
+        assertTrue(plan.issues.isEmpty())
+    }
+
+    @Test
     fun `successful execution captures the main repository checkpoint`() {
         val executor = SwitchExecutor(projectRoot, createStringAppender { log += it }, fakeGit)
         val result = executor.executeResultTest(
@@ -261,8 +302,10 @@ class SwitchExecutorTest {
             SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false),
         )
 
-        assertFalse(recovery(rollbackGit).rollback(result))
-        assertTrue(log.any { it.contains("SHA checkout also failed") })
+        val recovery = recovery(rollbackGit)
+        val recoveryResult = recovery.execute(recovery.plan(result))
+        assertFalse(recoveryResult.ok)
+        assertEquals(OperationIssueCode.CHECKOUT_FAILED, recoveryResult.issues.single().code)
     }
 
     @Test
@@ -349,7 +392,7 @@ class SwitchExecutorTest {
         val outcome = recovery(recoveryGit).recover(execution)
 
         assertFalse(outcome.rollbackOk)
-        assertTrue(outcome.stashRestore.failures.isEmpty())
+        assertTrue(outcome.stashRestore.issues.isEmpty())
         assertEquals(listOf("SubA"), stashPopCalls)
         assertFalse(outcome.stashRestore.state.hasStashes())
     }
@@ -368,6 +411,7 @@ class SwitchExecutorTest {
         }
         val first = object : SwitchStep {
             override val name = "first"
+            override val stage = OperationStage.CHECKOUT
             override fun execute(context: SwitchContext, state: SwitchState): StepExecution {
                 executed += name
                 cancelled = true
@@ -376,6 +420,7 @@ class SwitchExecutorTest {
         }
         val second = object : SwitchStep {
             override val name = "second"
+            override val stage = OperationStage.CHECKOUT
             override fun execute(context: SwitchContext, state: SwitchState): StepExecution {
                 executed += name
                 return StepExecution(StepResult.Success, state)
@@ -462,7 +507,10 @@ class SwitchExecutorTest {
         assertEquals(SwitchExecutionStatus.FAILED, result.status)
         assertNotNull(result.checkpoint)
         assertEquals(setOf("."), result.state.stashesSnapshot().keys)
-        assertTrue(result.failures.getValue("dirty handling").contains("query failed"))
+        val issue = result.issues.single()
+        assertEquals(OperationStage.DIRTY_HANDLING, issue.stage)
+        assertEquals(OperationIssueCode.STEP_FAILED, issue.code)
+        assertTrue(issue.diagnostic.orEmpty().contains("query failed"))
     }
 
     @Test
@@ -691,9 +739,11 @@ class SwitchExecutorTest {
             state = SwitchState(),
         )
 
-        assertFalse(recovery(dirtyGit).rollback(execution))
+        val recovery = recovery(dirtyGit)
+        val recoveryResult = recovery.execute(recovery.plan(execution))
+        assertFalse(recoveryResult.ok)
         assertEquals(0, resetCalls)
-        assertTrue(log.any { it.contains("reset blocked") && it.contains("dirty") })
+        assertEquals(OperationIssueCode.WORKTREE_DIRTY, recoveryResult.issues.single().code)
     }
 
     // -- confirmBeforeInit fail-closed ---------------------------------

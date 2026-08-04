@@ -108,15 +108,18 @@ Configure global behavior at `Settings | Version Control | Submodule Branch Swit
 ## Diagnostics
 
 Every switch, derive, and single-repository write receives an operation ID such
-as `switch-a1b2c3d4`. The Tool Window shows the latest entries, while all levels
+as `switch-a1b2c3d4`; preflight, execution, refresh, and recovery keep that ID
+with a phase suffix. The Tool Window timestamps entries and can filter or copy
+the latest write, clear its bounded view, and reveal the complete IDE log. All levels
 are also written under `SubmoduleBranchSwitcher` in the persistent IntelliJ
 `idea.log`. Unexpected exceptions include their full stack trace there.
 
 Use `Help | Show Log in ...` to locate `idea.log`, then collect all lines with
 the same operation ID. They include the project root, requested targets,
 effective options, checkpoints, Git failure diagnostics, recovery actions, and
-the final result. Remote URLs are represented only by non-reversible
-fingerprints so credentials and private addresses are not exposed.
+the final result. Git diagnostics replace URI/SCP remotes and credential-like
+values with non-reversible placeholders so private addresses and secrets are
+not exposed.
 
 ## Contributing
 

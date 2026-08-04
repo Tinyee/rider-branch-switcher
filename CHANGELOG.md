@@ -20,7 +20,7 @@
 
 - Split pure domain and switch logic into the `core` JVM module; IntelliJ,
   process, service, workflow, and UI concerns remain in the plugin module.
-- Return structured switch status, checkpoint, failures, and immutable state
+- Return structured switch status, checkpoint, issue codes, and immutable state
   from the switch pipeline.
 - Separate checkpoint capture and recovery from forward switch execution.
 - Split Git capabilities by workflow while retaining `GitClient` as the
@@ -85,6 +85,16 @@
 - Persist all Tool Window log levels to `idea.log`, correlate write workflows
   with operation IDs, retain exception stack traces, and record bounded runtime,
   request, checkpoint, recovery, VCS refresh, and final-result diagnostics.
+- Keep preflight, execution, refresh, and recovery under one phased operation
+  context; sanitize Git remotes and credential-like diagnostic values.
+- Model recovery as an inspectable plan with per-repository outcomes,
+  execution-time safety checks, and HEAD postcondition verification.
+- Give repository-state refresh an isolated cancellable Git session and reject
+  superseded snapshots at final UI delivery.
+- Add timestamps, latest-operation filter/copy, clear, and full `idea.log`
+  actions to the bounded Tool Window diagnostics.
+- Enable Detekt limits for method length, nesting depth, and cyclomatic
+  complexity, then split the existing switch/derive hotspots to comply.
 
 ### Fixed
 
@@ -135,8 +145,7 @@
 
 ### Quality
 
-- 233 automated tests in 36 classes across core, platform, and real Git CLI
-  integration coverage.
+- Behavior-focused tests cover core, platform, and real Git CLI integration.
 - CI runs tests, plugin build, Detekt, structural checks, and Plugin Verifier
   across the supported matrix.
 - `quickCheck` enforces module direction, background Git lifecycle, write-lease

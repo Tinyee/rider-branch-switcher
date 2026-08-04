@@ -19,9 +19,9 @@ import com.submodule.branchswitcher.log.ToolWindowLogger
 import com.submodule.branchswitcher.platform.gitRootPath
 import com.submodule.branchswitcher.service.BranchSwitcherService
 import com.submodule.branchswitcher.workflow.RepositoryStateDetector
+import com.submodule.branchswitcher.workflow.RepositoryStateRefreshCoordinator
 import com.submodule.branchswitcher.platform.platformCancellationClassifier
 import com.submodule.branchswitcher.settings.BranchSwitcherConfigurable
-import kotlinx.coroutines.launch
 import java.awt.BorderLayout
 import java.awt.Dimension
 import java.awt.Font
@@ -85,9 +85,16 @@ class BranchSwitcherPanel(
     // ── Logger ──────────────────────────────────────────────────
     private val logger: AppLogger = ToolWindowLogger(logPanel::append)
     private val stateDetector = RepositoryStateDetector(
-        { service.gitClient },
         logger,
         platformCancellationClassifier,
+    )
+    private val stateRefreshes = RepositoryStateRefreshCoordinator(
+        scope = service.scope,
+        openOperation = service.gitClient::openOperation,
+        detector = stateDetector,
+        log = logger,
+        deliver = project::invokeLaterIfAlive,
+        cancellationClassifier = platformCancellationClassifier,
     )
 
     // ── Explicit command wiring ─────────────────────────────────
@@ -267,7 +274,7 @@ class BranchSwitcherPanel(
     }
 
     override fun dispose() {
-        // Alarm and listeners are registered as children of this panel.
+        stateRefreshes.close()
     }
 
     private fun gitRoot(): Path? {
@@ -288,21 +295,16 @@ class BranchSwitcherPanel(
         currentEditors.forEach {
             repositoryPaths.addAll(it.currentPreset().submodules.keys)
         }
-        val request = stateDetector.begin(root, repositoryPaths)
         val pinnedEditors = currentEditors.toList()
-        service.scope.launch(kotlinx.coroutines.Dispatchers.IO) {
-            val snapshot = stateDetector.detect(request)
-            project.invokeLaterIfAlive {
-                if (!stateDetector.isLatest(snapshot)) return@invokeLaterIfAlive
-                pinnedEditors.forEach { editor ->
-                    if (editor in currentEditors) {
-                        editor.applyCurrentState(snapshot.branches, snapshot.dirtyRepositories)
-                    }
+        stateRefreshes.refresh(root, repositoryPaths) { snapshot ->
+            pinnedEditors.forEach { editor ->
+                if (editor in currentEditors) {
+                    editor.applyCurrentState(snapshot.branches, snapshot.dirtyRepositories)
                 }
-                presetsInner.revalidate()
-                presetsInner.repaint()
-                logDetected(currentEditors.toList(), snapshot.branches, snapshot.dirtyRepositories)
             }
+            presetsInner.revalidate()
+            presetsInner.repaint()
+            logDetected(currentEditors.toList(), snapshot.branches, snapshot.dirtyRepositories)
         }
     }
 

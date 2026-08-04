@@ -5,7 +5,8 @@
     <resource-bundle>messages.BranchSwitcherBundle</resource-bundle>
     <description><![CDATA[
         One-click switch the main repo and all its submodules to a preset branch combination.
-        Works across JetBrains IDEs that support Git projects and the IntelliJ Platform VCS APIs.
+        Verified with Rider 2025.1 and newer. Built on common IntelliJ Platform Git/VCS APIs;
+        other IDE families are not yet product-certified.
         <br><br>
         <b>Core workflow:</b>
         <ul>

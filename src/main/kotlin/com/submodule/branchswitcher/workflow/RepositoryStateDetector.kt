@@ -27,7 +27,6 @@ class RepositoryStateRequest internal constructor(
  * Git probes were running.
  */
 class RepositoryStateDetector(
-    private val gitClient: () -> RepositoryStateGitClient,
     private val log: AppLogger,
     private val cancellationClassifier: CancellationClassifier = CancellationClassifier.DEFAULT,
 ) {
@@ -41,8 +40,10 @@ class RepositoryStateDetector(
         )
 
     @Suppress("TooGenericExceptionCaught")
-    fun detect(request: RepositoryStateRequest): RepositoryStateSnapshot {
-        val git = gitClient()
+    fun detect(
+        request: RepositoryStateRequest,
+        git: RepositoryStateGitClient,
+    ): RepositoryStateSnapshot {
         val branches = LinkedHashMap<String, String?>(request.paths.size)
         val dirty = LinkedHashMap<String, Boolean>(request.paths.size)
         for (path in request.paths) {
@@ -77,6 +78,10 @@ class RepositoryStateDetector(
 
     fun isLatest(snapshot: RepositoryStateSnapshot): Boolean =
         snapshot.requestId == latestRequestId.get()
+
+    fun invalidate() {
+        latestRequestId.incrementAndGet()
+    }
 
     private fun isLatest(request: RepositoryStateRequest): Boolean =
         request.id == latestRequestId.get()

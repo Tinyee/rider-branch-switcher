@@ -50,7 +50,7 @@ IntelliJ、platform、service 或 UI；core 不能引用 IntelliJ 或桌面 UI�
    了解父级优先的子模块流程、缺失子模块初始化、`.gitmodules` 路径校验和分支选择。路径迁移后，
    新路径可以正常初始化，preset 中已废弃的旧路径会被跳过，但本地旧工作树不会自动删除。
 5. [`SwitchRecoveryExecutor.kt`](../core/src/main/kotlin/com/submodule/branchswitcher/switch/SwitchRecoveryExecutor.kt)
-   了解 checkpoint、回滚和 stash 恢复。
+   了解 `SwitchRecoveryPlan`、逐仓恢复结果和 stash 恢复。
 6. [`GitOperationRunner.kt`](../core/src/main/kotlin/com/submodule/branchswitcher/operation/GitOperationRunner.kt)、
    [`SwitchRunner.kt`](../src/main/kotlin/com/submodule/branchswitcher/workflow/SwitchRunner.kt) 和
    [`GitBackgroundRunner.kt`](../src/main/kotlin/com/submodule/branchswitcher/platform/GitBackgroundRunner.kt)
@@ -98,10 +98,16 @@ Git 命令：
 Recovery 不使用当前注册状态，因为主仓回滚后某个 checkpoint 路径可能合法地变为废弃路径；
 它通过独立的 checkpoint 安全规则恢复。
 
+预检、执行、刷新和恢复共用一个 `OperationContext`，日志中的操作 ID 不会在预检后断开。
+可恢复失败使用包含阶段、错误码和仓库路径的 `OperationIssue`，展示文字不再承担控制流语义。
+
 切换前会记录 checkpoint。每个步骤返回新的 `SwitchState`，而不是直接修改共享状态。
 这样即使中途抛异常或取消，恢复流程仍然知道哪些仓库已切换、哪些 stash 尚未恢复。
 checkpoint 还会记录规范化后的 Git 目录身份；如果同一路径后来被另一个仓库占用，
-Recovery 和 Derive rollback 会拒绝修改它。普通写入前也会确认已初始化子模块属于项目内的
+Recovery 会先生成可检查的 `SwitchRecoveryPlan`，再逐项执行。每次 checkout 或 reset 前都会
+重新确认路径和仓库身份；只有破坏性的 hard reset 要求工作区干净，普通 checkout 由 Git 自己
+拒绝冲突，从而允许刚恢复的用户改动跟随回原分支。命令成功后还会校验最终 HEAD；重复执行已恢复的动作不会
+再次写入。Recovery 和 Derive rollback 会拒绝修改被替换的仓库。普通写入前也会确认已初始化子模块属于项目内的
 superproject，并使用父仓吸收后的外部 Git 元数据，而不是 worktree 内独立的 `.git` 目录。
 结构化注册信息还保留 `.gitmodules` section 名和直接父路径，worktree 必须匹配对应的
 `.git/modules/<section>`；因此两个子模块交换路径时不会操作旧 worktree。`submodule sync`
@@ -127,6 +133,9 @@ preset 会按 `.idea/branch-presets.json`、项目根目录 `.branch-presets.jso
 子模块行被移除、同一个下拉框启动更新的加载时，旧协程和旧 Git 进程会一起取消；组合框上的
 代次标记会阻止旧结果回写新界面。
 
+仓库状态刷新由 `RepositoryStateRefreshCoordinator` 管理独立 Git 会话。新刷新会取消旧协程和
+旧 Git 进程，最终 UI 投递仍会检查代次；Tool Window 销毁时会关闭当前刷新。
+
 ## 派生分支流程
 
 派生分支和完整切换使用同一种后台任务边界：
@@ -151,7 +160,8 @@ SwitchController
 - `CurrentStatePresetCreator` 探测所有仓库当前分支，并从完整快照创建 preset。
 - `PresetEditor` 渲染和绑定单个 preset 的事件，`PresetEditRules` 负责纯草稿构造、
   未保存状态和重命名判断，`SubmoduleRowManager` 管理动态变化的子模块行。
-- `ToolWindowLogPanel` 管理日志折叠、颜色、文本裁剪和展示状态。
+- `ToolWindowLogPanel` 管理时间戳、最近写操作过滤/复制、清空、文本上限和完整
+  `idea.log` 入口。
 
 `BranchSwitcherPanel` 会先构造 `SwitchController`，再把明确的命令回调传给
 `PresetListManager`。两者不再依赖延迟初始化来解决循环组装。

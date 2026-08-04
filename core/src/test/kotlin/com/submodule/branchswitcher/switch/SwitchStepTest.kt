@@ -2,6 +2,7 @@ package com.submodule.branchswitcher.switch
 
 import com.submodule.branchswitcher.git.GitClient
 import com.submodule.branchswitcher.git.GitResult
+import com.submodule.branchswitcher.git.RepositoryIdentity
 import com.submodule.branchswitcher.git.SubmoduleRegistration
 import com.submodule.branchswitcher.log.createStringAppender
 import com.submodule.branchswitcher.model.DirtyAction
@@ -38,6 +39,24 @@ class SwitchStepTest {
         override fun listSubmodulePaths(gitRoot: File): List<String> = emptyList()
         override fun listAllBranches(workDir: File): List<String> = listOf("main", "dev")
         override fun revParseHead(workDir: File): String? = "abc123"
+        override fun repositoryIdentity(workDir: File): RepositoryIdentity {
+            val root = projectRoot.toFile().canonicalFile
+            val sectionName = workDir.name
+            val gitDirectory = if (workDir.canonicalFile == root) {
+                File(root, ".git")
+            } else {
+                File(root, ".git/modules/$sectionName")
+            }
+            return RepositoryIdentity(gitDirectory.absolutePath, root.takeIf { workDir.canonicalFile != root }?.path)
+        }
+        override fun remoteUrl(workDir: File): String? = null
+        override fun registeredSubmodules(gitRoot: File): List<SubmoduleRegistration> = listOf(
+            SubmoduleRegistration("SubA", "SubA", "."),
+        )
+        override fun resetHard(workDir: File, revision: String): GitResult = GitResult("reset", 0, "", "")
+        override fun cancel() = Unit
+        override fun localBranchProbe(workDir: File, branch: String): Boolean = localBranchExists(workDir, branch)
+        override fun dirtyProbe(workDir: File): Boolean = isDirty(workDir)
     }
 
     private fun context(opts: SwitchOptions = SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false)) =
@@ -254,7 +273,10 @@ class SwitchStepTest {
 
         val result = FetchStep().run(c).result
 
-        assertEquals(mapOf("." to "fetch had warnings"), (result as StepResult.Partial).failures)
+        assertEquals(
+            listOf("." to OperationIssueCode.FETCH_FAILED),
+            (result as StepResult.Partial).issues.map { it.repositoryPath to it.code },
+        )
     }
 
     // ---- PullStep ----
@@ -309,8 +331,8 @@ class SwitchStepTest {
         val execution = PullStep().run(c, state)
 
         assertEquals(
-            mapOf("." to "pull had warnings"),
-            (execution.result as StepResult.Partial).failures,
+            listOf("." to OperationIssueCode.PULL_FAILED),
+            (execution.result as StepResult.Partial).issues.map { it.repositoryPath to it.code },
         )
         assertEquals(1, popCalls)
         assertFalse(execution.state.hasStashes())
@@ -437,12 +459,41 @@ class SwitchStepTest {
         val execution = SubmoduleTreeStep().run(c, state)
 
         assertEquals(
-            mapOf("SubA" to "submodule init failed"),
-            (execution.result as StepResult.Partial).failures,
+            listOf("SubA" to OperationIssueCode.SUBMODULE_INIT_FAILED),
+            (execution.result as StepResult.Partial).issues.map { it.repositoryPath to it.code },
         )
         assertEquals(0, checkoutCalls)
         assertTrue(execution.state.initializedSubmodulesSnapshot().isEmpty())
         assertFalse(execution.state.checkoutSucceeded("SubA"))
+    }
+
+    @Test
+    fun `successful init command without a usable repository fails its target locally`() {
+        var checkoutCalls = 0
+        val incompleteGit = object : GitClient by fakeGit {
+            override fun isGitRepo(workDir: File): Boolean = workDir.name != "SubA"
+            override fun submoduleInitPath(gitRoot: File, path: String): GitResult =
+                GitResult("init", 0, "", "")
+
+            override fun checkoutExisting(workDir: File, branch: String): GitResult {
+                checkoutCalls++
+                return GitResult("checkout", 0, "", "")
+            }
+        }
+        val execution = SubmoduleTreeStep().run(
+            context().copy(
+                git = incompleteGit,
+                preset = Preset("test", "main", mapOf("SubA" to "dev")),
+            ),
+            SwitchState().withSuccessfulCheckout("."),
+        )
+
+        assertEquals(
+            listOf("SubA" to OperationIssueCode.SUBMODULE_DIRECTORY_MISSING),
+            (execution.result as StepResult.Partial).issues.map { it.repositoryPath to it.code },
+        )
+        assertEquals(0, checkoutCalls)
+        assertTrue(execution.state.initializedSubmodulesSnapshot().isEmpty())
     }
 
     @Test
@@ -467,8 +518,8 @@ class SwitchStepTest {
         )
 
         assertEquals(
-            mapOf("OldSub" to "not registered in current .gitmodules graph"),
-            (execution.result as StepResult.Partial).failures,
+            listOf("OldSub" to OperationIssueCode.SUBMODULE_NOT_REGISTERED),
+            (execution.result as StepResult.Partial).issues.map { it.repositoryPath to it.code },
         )
         assertEquals(0, checkoutCalls)
         assertTrue(execution.state.isSkipped("OldSub"))
@@ -498,8 +549,8 @@ class SwitchStepTest {
         val execution = SubmoduleTreeStep().run(c, SwitchState().withSuccessfulCheckout("."))
 
         assertEquals(
-            mapOf("SubA" to "registered repository remote changed"),
-            (execution.result as StepResult.Partial).failures,
+            listOf("SubA" to OperationIssueCode.REPOSITORY_REMOTE_CHANGED),
+            (execution.result as StepResult.Partial).issues.map { it.repositoryPath to it.code },
         )
         assertEquals(0, checkoutCalls)
     }
@@ -512,13 +563,32 @@ class SwitchStepTest {
         val validatingGit = object : GitClient by fakeGit {
             override fun isGitRepo(workDir: File): Boolean = true
 
-            override fun registeredSubmodulePaths(gitRoot: File): Set<String> {
+            override fun registeredSubmodules(gitRoot: File): List<SubmoduleRegistration> {
                 registrationReads++
                 return if (registrationReads == 1) {
-                    setOf("Parent")
+                    listOf(SubmoduleRegistration("Parent", "Parent", "."))
                 } else {
-                    setOf("Parent", "Parent/Nested")
+                    listOf(
+                        SubmoduleRegistration("Parent", "Parent", "."),
+                        SubmoduleRegistration("Parent/Nested", "Nested", "Parent"),
+                    )
                 }
+            }
+
+            override fun repositoryIdentity(workDir: File): RepositoryIdentity {
+                val root = projectRoot.toFile().canonicalFile
+                val relative = workDir.canonicalFile.relativeTo(root).invariantSeparatorsPath
+                val gitDirectory = when (relative) {
+                    "" -> File(root, ".git")
+                    "Parent" -> File(root, ".git/modules/Parent")
+                    else -> File(root, ".git/modules/Parent/modules/Nested")
+                }
+                val superproject = when (relative) {
+                    "" -> null
+                    "Parent" -> root.path
+                    else -> File(root, "Parent").path
+                }
+                return RepositoryIdentity(gitDirectory.absolutePath, superproject)
             }
 
             override fun checkoutExisting(workDir: File, branch: String): GitResult {
@@ -559,7 +629,22 @@ class SwitchStepTest {
             override fun submoduleInitPath(gitRoot: File, path: String): GitResult {
                 initRoot = gitRoot
                 initPath = path
+                File(gitRoot, path).mkdirs()
                 return GitResult("init", 0, "", "")
+            }
+
+            override fun isGitRepo(workDir: File): Boolean = workDir.exists() && workDir.name == "Nested"
+
+            override fun repositoryIdentity(workDir: File): RepositoryIdentity {
+                val root = projectRoot.toFile().canonicalFile
+                return when (workDir.name) {
+                    "Parent" -> RepositoryIdentity(File(root, ".git/modules/Parent").path, root.path)
+                    "Nested" -> RepositoryIdentity(
+                        File(root, ".git/modules/Parent/modules/Nested").path,
+                        File(root, "Parent").path,
+                    )
+                    else -> RepositoryIdentity(File(root, ".git").path, null)
+                }
             }
         }
         val c = context().copy(
@@ -569,7 +654,7 @@ class SwitchStepTest {
 
         val execution = SubmoduleTreeStep().run(c, SwitchState().withSuccessfulCheckout("."))
 
-        assertTrue(execution.result is StepResult.Success)
+        assertTrue("Expected nested init success, got ${execution.result}", execution.result is StepResult.Success)
         assertEquals(parent.canonicalFile, initRoot?.canonicalFile)
         assertEquals("Nested", initPath)
     }

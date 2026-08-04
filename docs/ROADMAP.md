@@ -35,29 +35,9 @@ Candidate verification order:
 
 ## P3: Targeted Maintainability
 
-This is the complete active P3 inventory. Apply an item only when a feature,
-bug, or measured limitation makes the change worthwhile. Historical P3
-observations that were resolved by architecture work remain in
+This is the complete active P3 inventory. Completed state-refresh, recovery
+plan, and structured-diagnostic work is recorded in
 [`review-history.md`](review-history.md).
-
-### P3-04: Isolate Tool Window State Refresh
-
-`BranchSwitcherPanel` owns repository-state subscriptions, debounce timing,
-stale-result filtering, and snapshot delivery. Extract a coordinator only when
-that lifecycle grows further; do not split visual panels merely to reduce line
-counts.
-
-### P3-05: Model Recovery As A Plan
-
-Recovery executes directly from checkpoints and tracked stashes. Introduce an
-inspectable rollback plan before execution only if recovery needs preview,
-retry selection, audit output, or additional recovery strategies.
-
-### P3-07: Use Structured Recoverable Diagnostics
-
-Some recoverable failures still cross layer boundaries as user-visible strings.
-Replace them with richer domain errors when retry actions, diagnostics, or
-localized presentation need structured data.
 
 ### P3-08: Re-evaluate The Git Backend With Evidence
 
@@ -65,4 +45,4 @@ The plugin uses the Git CLI. Consider a Git4Idea migration only after measured
 evidence identifies a compatibility, performance, or credential-handling
 limitation that the CLI implementation cannot reasonably address.
 
-These items do not currently block feature work or the first release.
+This item does not currently block maintenance or the first release.

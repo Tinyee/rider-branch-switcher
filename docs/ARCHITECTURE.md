@@ -42,12 +42,12 @@ run broader checks.
 | Area | Responsibility | Main entry points |
 | --- | --- | --- |
 | `core/model` | Presets, resolved requests, switch options | `PresetConfig.kt` |
-| `core/switch` | Preflight, ordered switch steps, checkpoints, recovery, derive | `SwitchExecutor.kt`, `SwitchRecoveryExecutor.kt` |
+| `core/switch` | Preflight, ordered steps, structured issues, recovery plans, derive | `SwitchExecutor.kt`, `SwitchRecoveryExecutor.kt` |
 | `core/git` | Capability-oriented Git interfaces and results | `GitClient.kt` |
 | `core/operation` | Platform-independent background Git result and progress contracts | `GitOperationRunner.kt` |
 | `core/presentation` | Pure import, preset editing, shortcut, and preview decisions | `PresetEditRules.kt`, `SwitchPreviewRules.kt` |
 | `service` | Project-scoped state, preset repository, write lease | `BranchSwitcherService.kt`, `PresetRepository.kt` |
-| `workflow` | Reusable application use cases independent of screens and IntelliJ APIs | `SwitchRunner.kt`, `DeriveBranchRunner.kt`, `SingleRepositorySwitcher.kt` |
+| `workflow` | Reusable use cases and cancellable read coordination independent of IntelliJ APIs | `SwitchRunner.kt`, `RepositoryStateRefreshCoordinator.kt` |
 | `platform` | IntelliJ progress/cancellation/background adapters | `GitBackgroundRunner.kt`, `SwitchAdapters.kt` |
 | `git` | CLI command construction, inspection, and process lifecycle | `GitOps.kt`, `GitCommandClient.kt`, `GitProcessRunner.kt`, `GitOutputDrainer.kt` |
 | `ui` | Tool Window, editors, dialogs, notifications, and screen commands | `BranchSwitcherPanel.kt`, `PresetEditor.kt`, `SwitchFlowCoordinator.kt` |
@@ -126,6 +126,11 @@ flowchart TD
     Result -->|failure or cancellation| Recovery["SwitchRecoveryExecutor"]
 ```
 
+One `OperationContext` is created before preflight and reused for execute,
+refresh, and recovery phases. Log prefixes therefore keep one operation ID,
+such as `switch-a1b2c3d4/preflight` and `switch-a1b2c3d4/execute`, across the
+whole user action.
+
 `SwitchExecutor` records a checkpoint before mutation and passes an immutable
 `SwitchState` between steps. Stateful steps preserve the latest state even when
 an exception or cancellation occurs, so recovery still knows which stashes and
@@ -145,9 +150,15 @@ be modified through those workflows. Recovery deliberately does not use current
 registration because rolling the main repository back may legitimately make a
 checkpointed path obsolete.
 
-`SwitchRecoveryExecutor` independently attempts repository rollback and stash
-restoration. It compares both branch and commit SHA, restores detached HEAD
-state, and refuses a destructive hard reset when the working tree is dirty.
+`SwitchRecoveryExecutor` first builds an immutable `SwitchRecoveryPlan` listing
+repository targets, stash actions, and retained initialized worktrees. The plan
+is inspectable before execution. Repository actions are idempotent and report a
+structured per-path outcome. Every mutation rechecks repository existence and
+identity; destructive reset additionally requires a clean worktree, while plain
+checkout lets Git reject conflicts so restored user changes can travel back to
+their original branch. Successful commands must satisfy the checkpoint HEAD
+postcondition. Repository rollback and stash restoration remain
+independent, so one failure does not prevent the other.
 Checkpoints also retain the canonical Git directory identity. Recovery and
 derive rollback skip a path if a different repository later occupies it.
 Before ordinary writes, an initialized submodule must report a superproject
@@ -161,6 +172,10 @@ Submodules initialized by the failed or cancelled switch are deliberately
 retained: they had no pre-switch checkpoint, and deleting a newly populated
 worktree could discard useful data. Recovery logs and notifications list those
 retained paths.
+
+Recoverable switch and derive failures use `OperationIssue` stage/code/path
+values. Human-readable Git details remain optional diagnostics rather than the
+authoritative control-flow result.
 
 `SwitchPreflightUi` owns modal probing and confirmation dialogs.
 `SwitchFlowCoordinator` owns write leases, switch and rollback execution, and
@@ -198,13 +213,19 @@ Tool Window. Its collaborators divide those commands by side effect:
   preset from that snapshot.
 - `PresetEditor` renders and edits one preset; pure `PresetEditRules` build and
   compare drafts, while `SubmoduleRowManager` owns dynamic submodule rows.
-- `ToolWindowLogPanel` owns collapsible log rendering, document trimming, and
-  log presentation state.
+- `ToolWindowLogPanel` owns bounded log rendering, timestamps, latest-operation
+  filtering/copying, clearing, and access to the complete `idea.log`.
 
 `BranchSwitcherPanel` constructs `SwitchController` before `PresetListManager`
 and passes explicit command callbacks between them. Neither collaborator relies
 on lazy initialization or reaches back through the other to complete its
 construction.
+
+Repository-state subscriptions and the Swing debounce remain in
+`BranchSwitcherPanel`, while `RepositoryStateRefreshCoordinator` owns each
+cancellable read session. Starting a newer refresh cancels the older coroutine
+and Git process; generation checks at final UI delivery prevent stale snapshots
+from updating preset editors. Closing the panel cancels the active session.
 
 Import validation remains a pure rule in `core/presentation`. Swing layout
 helpers stay in the plugin `ui` package. `ViewportWidthPanel` makes scroll
@@ -274,7 +295,9 @@ the same combo, cancels both its coroutine and active Git process. A per-combo
 generation token prevents an older result from updating newer UI state.
 
 Read-only branch discovery and repository-state Git commands run on the I/O
-dispatcher and deliver only final snapshots to the UI thread. Repository-state
+dispatcher and deliver only final snapshots to the UI thread. Each state
+refresh owns an isolated operation session that is cancelled when superseded or
+disposed. Repository-state
 refresh batches branch, HEAD, and dirty status into one CLI process per
 repository. Preflight adds one refs query and, on the first query for a
 repository, one remote-name query. Its failures remain fail-closed. Switch
@@ -290,10 +313,12 @@ view, while `idea.log` is the durable diagnostic source. Throwable-aware
 Window message concise.
 
 Each switch, derive, and single-repository write wraps its logger with a short
-operation ID. Request context, effective options, per-repository checkpoints,
-Git diagnostics, recovery actions, VCS refresh, and final summaries retain that
-ID. Repository URLs are never logged directly; SHA-256 fingerprints allow
-before/after comparison without exposing credentials or private locations.
+operation ID and phase. Request context, effective options, structured issue
+codes, per-repository checkpoints, recovery actions, VCS refresh, and final
+summaries retain that ID. The Tool Window adds timestamps and can filter or copy
+the latest write operation, clear its bounded view, or reveal the complete
+`idea.log`. Git diagnostics sanitize URI/SCP remotes and credential-like values;
+SHA-256 placeholders still allow comparison without exposing private locations.
 
 ## Change Guide
 

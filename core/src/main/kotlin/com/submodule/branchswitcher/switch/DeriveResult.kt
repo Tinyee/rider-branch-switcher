@@ -7,24 +7,57 @@ data class DeriveCheckpointEntry(
     val repositoryId: String? = null,
 )
 
-/** Pure result DTO for derive-branch execution and notification decisions. */
+enum class DeriveRepositoryStatus {
+    SUCCEEDED,
+    BRANCH_EXISTS,
+    SKIPPED,
+    DIRTY,
+    BRANCH_MISMATCH,
+    PREFLIGHT_FAILED,
+    CHECKPOINT_FAILED,
+    FAILED,
+}
+
+/** One authoritative derive outcome per repository instead of parallel category lists. */
+data class DeriveRepositoryOutcome(
+    val repositoryPath: String,
+    val status: DeriveRepositoryStatus,
+    val issue: OperationIssue? = null,
+)
+
 data class DeriveResult(
-    val succeeded: List<String>,
-    val branchExists: List<String>,
-    val skipped: List<String>,
-    val dirty: List<String>,
-    val branchMismatch: List<String>,
-    val preflightError: List<String>,
-    val checkpointFailed: List<String>,
-    val failed: Map<String, String>,
+    val outcomes: List<DeriveRepositoryOutcome>,
     val checkpoint: Map<String, DeriveCheckpointEntry>,
     val cancelled: Boolean = false,
 ) {
-    val allOk: Boolean get() = !cancelled && succeeded.isNotEmpty() && failed.isEmpty()
-    val preflightBlocked: Boolean get() = !cancelled && succeeded.isEmpty() && failed.isEmpty() &&
-        (branchExists.isNotEmpty() || skipped.isNotEmpty() || dirty.isNotEmpty() ||
-            branchMismatch.isNotEmpty() || preflightError.isNotEmpty())
-    val checkpointBlocked: Boolean get() = !cancelled && succeeded.isEmpty() && failed.isEmpty() &&
-        !preflightBlocked && checkpointFailed.isNotEmpty()
+    val succeeded: List<String> get() = pathsWith(DeriveRepositoryStatus.SUCCEEDED)
+    val branchExists: List<String> get() = pathsWith(DeriveRepositoryStatus.BRANCH_EXISTS)
+    val skipped: List<String> get() = pathsWith(DeriveRepositoryStatus.SKIPPED)
+    val dirty: List<String> get() = pathsWith(DeriveRepositoryStatus.DIRTY)
+    val branchMismatch: List<String> get() = pathsWith(DeriveRepositoryStatus.BRANCH_MISMATCH)
+    val preflightError: List<String> get() = pathsWith(DeriveRepositoryStatus.PREFLIGHT_FAILED)
+    val checkpointFailed: List<String> get() = pathsWith(DeriveRepositoryStatus.CHECKPOINT_FAILED)
+    val failedOutcomes: List<DeriveRepositoryOutcome>
+        get() = outcomes.filter { it.status == DeriveRepositoryStatus.FAILED }
+    val issues: List<OperationIssue> get() = outcomes.mapNotNull(DeriveRepositoryOutcome::issue)
+
+    val allOk: Boolean get() = !cancelled && succeeded.isNotEmpty() && failedOutcomes.isEmpty()
+    val preflightBlocked: Boolean get() = !cancelled && succeeded.isEmpty() &&
+        outcomes.any { it.status in PREFLIGHT_BLOCKING_STATUSES }
+    val checkpointBlocked: Boolean get() = !cancelled && succeeded.isEmpty() && !preflightBlocked &&
+        checkpointFailed.isNotEmpty()
     val actualCreated: Int get() = succeeded.size
+
+    private fun pathsWith(status: DeriveRepositoryStatus): List<String> =
+        outcomes.filter { it.status == status }.map(DeriveRepositoryOutcome::repositoryPath)
+
+    private companion object {
+        val PREFLIGHT_BLOCKING_STATUSES = setOf(
+            DeriveRepositoryStatus.BRANCH_EXISTS,
+            DeriveRepositoryStatus.SKIPPED,
+            DeriveRepositoryStatus.DIRTY,
+            DeriveRepositoryStatus.BRANCH_MISMATCH,
+            DeriveRepositoryStatus.PREFLIGHT_FAILED,
+        )
+    }
 }

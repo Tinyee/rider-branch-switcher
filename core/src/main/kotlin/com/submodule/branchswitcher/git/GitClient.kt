@@ -1,5 +1,6 @@
 package com.submodule.branchswitcher.git
 
+import com.submodule.branchswitcher.log.sanitizeDiagnosticText
 import java.io.File
 
 /** Result of a git CLI command. [ok] is true when exitCode == 0. */
@@ -24,8 +25,9 @@ data class GitResult(
 
     /** Compact, bounded failure detail for user-facing logs. */
     fun diagnostic(maxLines: Int = 5, maxChars: Int = 1000): String {
-        val detail = stderr.lineSequence().take(maxLines).joinToString("\n").take(maxChars)
-        return "[$failureKind] $cmd (exit $exitCode): ${detail.ifEmpty { "no stderr" }}"
+        val bounded = stderr.lineSequence().take(maxLines).joinToString("\n").take(maxChars)
+        val detail = sanitizeDiagnosticText(bounded)
+        return "[$failureKind] ${sanitizeDiagnosticText(cmd)} (exit $exitCode): ${detail.ifEmpty { "no stderr" }}"
     }
 }
 
@@ -86,18 +88,19 @@ interface RepositoryStateGitClient : GitRepositoryQuery {
 
 /** Read-only access to the submodule paths registered by the current worktree graph. */
 interface SubmoduleRegistrationQuery {
-    /** Returns structured registrations when the implementation can parse section identity. */
-    fun registeredSubmodules(gitRoot: File): List<SubmoduleRegistration>? = null
-    /**
-     * Returns paths registered by the checked-out `.gitmodules` graph.
-     * Null means the implementation cannot validate registration reliably.
-     */
-    fun registeredSubmodulePaths(gitRoot: File): Set<String>? =
-        registeredSubmodules(gitRoot)?.mapTo(linkedSetOf(), SubmoduleRegistration::path)
+    /** Returns the complete checked-out `.gitmodules` graph with stable section identity. */
+    fun registeredSubmodules(gitRoot: File): List<SubmoduleRegistration>
+
+    fun registeredSubmodulePaths(gitRoot: File): Set<String> =
+        registeredSubmodules(gitRoot).mapTo(linkedSetOf(), SubmoduleRegistration::path)
 }
 
 /** Git operations required by the branch-switch pipeline. */
 interface SwitchGitClient : RepositoryStateGitClient, SubmoduleRegistrationQuery, GitCancellation {
+    /** Write safety requires implementations to identify the repository backing an existing worktree. */
+    override fun repositoryIdentity(workDir: File): RepositoryIdentity?
+    /** Write safety records the selected remote before submodule synchronization. */
+    override fun remoteUrl(workDir: File): String?
     /** Checks whether refs/heads/<branch> exists (plumbing: show-ref --verify). */
     fun localBranchExists(workDir: File, branch: String): Boolean
     /** Checks whether refs/remotes/origin/<branch> exists (plumbing: show-ref --verify). */
@@ -111,8 +114,7 @@ interface SwitchGitClient : RepositoryStateGitClient, SubmoduleRegistrationQuery
     /** Checks out an existing local branch by name. */
     fun checkoutExisting(workDir: File, branch: String): GitResult
     /** Resets the current branch and worktree to a checkpoint commit. */
-    fun resetHard(workDir: File, revision: String): GitResult =
-        GitResult("git reset --hard $revision", 1, "", "resetHard not implemented")
+    fun resetHard(workDir: File, revision: String): GitResult
     /** Creates a local branch from origin/<branch> and checks it out. */
     fun checkoutFromRemote(workDir: File, branch: String): GitResult
     /** Pulls with --ff-only from origin for the given branch. */
@@ -125,10 +127,12 @@ interface SwitchGitClient : RepositoryStateGitClient, SubmoduleRegistrationQuery
 
 /** Git operations required by derive-branch preflight, execution, and rollback. */
 interface DeriveGitClient : GitRepositoryQuery, SubmoduleRegistrationQuery {
-    /** Tri-state probe for safety gates: true=exists, false=not, null=unknown/error. */
-    fun localBranchProbe(workDir: File, branch: String): Boolean? = null
-    /** Tri-state probe for safety gates: true=dirty, false=clean, null=unknown/error. */
-    fun dirtyProbe(workDir: File): Boolean? = null
+    /** Write safety requires implementations to identify the repository backing an existing worktree. */
+    override fun repositoryIdentity(workDir: File): RepositoryIdentity?
+    /** Probe failures must throw; callers fail closed at the workflow boundary. */
+    fun localBranchProbe(workDir: File, branch: String): Boolean
+    /** Probe failures must throw; callers fail closed at the workflow boundary. */
+    fun dirtyProbe(workDir: File): Boolean
     /** Creates a new branch from current HEAD and checks it out. */
     fun checkoutNewBranch(workDir: File, branch: String): GitResult
     /** Checks out an existing local branch or commit. */
@@ -179,9 +183,9 @@ interface SwitchPreflightBatchGitClient {
 interface GitCancellation {
     /**
      * Cancels the active operation and its currently running git command (if any).
-     * Default is a no-op for test doubles that don't spawn real processes.
+     * Implementations without processes must still acknowledge cancellation explicitly.
      */
-    fun cancel() {}
+    fun cancel()
 }
 
 /** All workflow capabilities exposed by a concrete Git implementation or operation session. */

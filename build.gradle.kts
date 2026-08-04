@@ -183,10 +183,12 @@ fun scanQuickChecks(
     if (enforceCoreBoundary) {
         val sourceLines = fileTree(srcRoot).filter { it.extension == "kt" }
             .flatMap { it.readLines() }
-        val intellijImports = sourceLines
-            .filter { it.trimStart().startsWith("import com.intellij") }
-        if (intellijImports.isNotEmpty()) {
-            fail("Core imports IntelliJ API: ${intellijImports.take(3)}")
+        val intellijReferences = sourceLines.filter { line ->
+            val code = line.substringBefore("//").trimStart()
+            code.contains("com.intellij.")
+        }
+        if (intellijReferences.isNotEmpty()) {
+            fail("Core references IntelliJ API: ${intellijReferences.take(3)}")
         }
         val desktopUiImports = sourceLines.filter {
             val line = it.trimStart()
@@ -229,11 +231,14 @@ fun scanQuickChecks(
 
     val workflowDir = file("$srcRoot/com/submodule/branchswitcher/workflow")
     if (workflowDir.exists()) {
-        val intellijImports = fileTree(workflowDir).filter { it.extension == "kt" }
+        val intellijReferences = fileTree(workflowDir).filter { it.extension == "kt" }
             .flatMap { it.readLines() }
-            .filter { it.trimStart().startsWith("import com.intellij") }
-        if (intellijImports.isNotEmpty()) {
-            fail("workflow imports IntelliJ API: ${intellijImports.take(3)}")
+            .filter { line ->
+                val code = line.substringBefore("//").trimStart()
+                code.contains("com.intellij.")
+            }
+        if (intellijReferences.isNotEmpty()) {
+            fail("workflow references IntelliJ API: ${intellijReferences.take(3)}")
         }
     }
 
@@ -340,6 +345,7 @@ tasks {
                 "violates-workflow-imports-ui.kt" to "workflow/_fixture_test_",
                 "violates-workflow-imports-platform.kt" to "workflow/_fixture_test_",
                 "violates-workflow-intellij.kt" to "workflow/_fixture_test_",
+                "violates-workflow-intellij-qualified.kt" to "workflow/_fixture_test_",
             )
             val defaultDir = "_fixture_test_"
 
@@ -368,9 +374,9 @@ tasks {
                             name.contains("cancel") -> "runBackground without"
                             name.contains("write") -> "tryAcquireWrite without writeLease.close"
                             name.contains("switch") -> "switch/ imports ui/"
-                            name.contains("workflow-intellij") -> "workflow imports IntelliJ API"
+                            name.contains("workflow-intellij") -> "workflow references IntelliJ API"
                             name.contains("workflow") -> "workflow has forbidden layer imports"
-                            name.contains("core-intellij") -> "Core imports IntelliJ API"
+                            name.contains("core-intellij") -> "Core references IntelliJ API"
                             name.contains("core-desktop-ui") -> "Core imports desktop UI"
                             name.contains("deprecated") -> "Deprecated API"
                             else -> name

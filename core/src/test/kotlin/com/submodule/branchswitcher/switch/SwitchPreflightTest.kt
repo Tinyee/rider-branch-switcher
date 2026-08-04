@@ -2,6 +2,8 @@ package com.submodule.branchswitcher.switch
 
 import com.submodule.branchswitcher.git.GitClient
 import com.submodule.branchswitcher.git.GitResult
+import com.submodule.branchswitcher.git.RepositoryIdentity
+import com.submodule.branchswitcher.git.SubmoduleRegistration
 import com.submodule.branchswitcher.model.Preset
 import org.junit.Assert.*
 import org.junit.Before
@@ -31,6 +33,15 @@ class SwitchPreflightTest {
         override fun listSubmodulePaths(gitRoot: File): List<String> = listOf("SubA", "SubB")
         override fun listAllBranches(workDir: File): List<String> = listOf("main", "dev", "feature-x")
         override fun revParseHead(workDir: File): String? = "abc123"
+        override fun repositoryIdentity(workDir: File): RepositoryIdentity =
+            RepositoryIdentity(File(workDir, ".git").absolutePath, null)
+        override fun remoteUrl(workDir: File): String? = null
+        override fun registeredSubmodules(gitRoot: File): List<SubmoduleRegistration> =
+            listSubmodulePaths(gitRoot).map { SubmoduleRegistration(it, it, ".") }
+        override fun resetHard(workDir: File, revision: String) = GitResult("reset", 0, "", "")
+        override fun cancel() = Unit
+        override fun localBranchProbe(workDir: File, branch: String): Boolean = localBranchExists(workDir, branch)
+        override fun dirtyProbe(workDir: File): Boolean = isDirty(workDir)
     }
 
     private val projectRoot: Path = Files.createTempDirectory("test-preflight")

@@ -6,22 +6,17 @@ import java.io.File
 
 /** One consistent view of the currently checked-out `.gitmodules` graph. */
 class SubmoduleTopology internal constructor(
-    val paths: Set<String>?,
+    val paths: Set<String>,
     val byPath: Map<String, SubmoduleRegistration>,
 ) {
-    /** True only when production Git data proves that a submodule path is obsolete. */
-    fun isUnregistered(path: String): Boolean = path != "." && paths != null && path !in paths
+    fun isUnregistered(path: String): Boolean = path != "." && path !in paths
 }
 
-/** Loads structured registrations when available, with a path-only compatibility fallback. */
+/** Loads one complete, structured view of the checked-out submodule graph. */
 fun SubmoduleRegistrationQuery.loadSubmoduleTopology(gitRoot: File): SubmoduleTopology {
     val registrations = registeredSubmodules(gitRoot)
-    return if (registrations == null) {
-        SubmoduleTopology(registeredSubmodulePaths(gitRoot), emptyMap())
-    } else {
-        SubmoduleTopology(
-            registrations.mapTo(linkedSetOf(), SubmoduleRegistration::path),
-            registrations.associateBy(SubmoduleRegistration::path),
-        )
-    }
+    return SubmoduleTopology(
+        registrations.mapTo(linkedSetOf(), SubmoduleRegistration::path),
+        registrations.associateBy(SubmoduleRegistration::path),
+    )
 }
