@@ -38,7 +38,10 @@ class GitOps private constructor(
     override fun inspectPreflight(
         workDir: File,
         targetBranches: Set<String>,
-    ): GitRepositoryInspection = components.directClient.inspectPreflight(workDir, targetBranches)
+    ): GitRepositoryInspection =
+        GitCommandClient(components.processRunner, ConcurrentHashMap()).use { operation ->
+            operation.inspectPreflight(workDir, targetBranches)
+        }
 
     override fun openOperation(): GitOperationSession =
         GitCommandClient(components.processRunner, ConcurrentHashMap())
