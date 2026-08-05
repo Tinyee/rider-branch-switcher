@@ -62,12 +62,11 @@ class SingleRepositorySwitcher(
             onBusy = {
                 operationLog.warn("operation rejected: another repository write is already running")
             },
+            afterRelease = onResult,
         ) {
-            onResult(
-                SingleRepositorySwitchOutcome(
-                    operationId = operationId,
-                    result = execute(root, path, target, title, operationLog),
-                ),
+            SingleRepositorySwitchOutcome(
+                operationId = operationId,
+                result = execute(root, path, target, title, operationLog),
             )
         }
         return job != null

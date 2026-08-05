@@ -74,8 +74,18 @@ internal class SwitchController(
             onBusy = {
                 Notifier.warn(project, Bundle.msg("notify.write.busy"), Bundle.msg("notify.write.busy.msg"))
             },
+            afterRelease = { runResult ->
+                val operationLog = log.withContext(runResult.operationId)
+                val refreshResult = refreshVcsRepos(project, root, preset.submodules.keys, operationLog)
+
+                invokeLaterIfProjectAlive {
+                    logVcsRefresh(operationLog, refreshResult)
+                    onStateChanged()
+                    showDeriveNotification(runResult, branchName)
+                }
+            },
         ) {
-            val runResult = DeriveBranchRunner(
+            DeriveBranchRunner(
                     projectRoot = root,
                     operations = GitBackgroundRunner(project, service.gitClient),
                     cancellationClassifier = platformCancellationClassifier,
@@ -85,14 +95,6 @@ internal class SwitchController(
                     branchName = branchName,
                     log = log,
                 )
-            val operationLog = log.withContext(runResult.operationId)
-            val refreshResult = refreshVcsRepos(project, root, preset.submodules.keys, operationLog)
-
-            invokeLaterIfProjectAlive {
-                logVcsRefresh(operationLog, refreshResult)
-                onStateChanged()
-                showDeriveNotification(runResult, branchName)
-            }
         }
     }
 

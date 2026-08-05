@@ -14,9 +14,10 @@ class WriteOperationLauncher(
     private val dispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) {
     /** Returns null and calls [onBusy] when another write already owns the lease. */
-    fun launch(
+    fun <T> launch(
         onBusy: () -> Unit,
-        operation: suspend () -> Unit,
+        afterRelease: suspend (T) -> Unit = {},
+        operation: suspend () -> T,
     ): Job? {
         val acquiredLease = tryAcquireWrite()
         if (acquiredLease == null) {
@@ -26,11 +27,12 @@ class WriteOperationLauncher(
 
         val writeLease = CloseOnce(acquiredLease)
         val job = scope.launch(dispatcher) {
-            try {
+            val result = try {
                 operation()
             } finally {
                 writeLease.close()
             }
+            afterRelease(result)
         }
         job.invokeOnCompletion { writeLease.close() }
         return job
