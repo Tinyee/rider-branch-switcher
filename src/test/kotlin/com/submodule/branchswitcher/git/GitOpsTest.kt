@@ -259,7 +259,7 @@ class GitOpsTest {
     }
 
     @Test
-    fun `remote selection cache is isolated between operation sessions`() {
+    fun `remote selection cache is isolated between operation sessions and preflight probes`() {
         val repository = tmpDir.resolve("remote-cache").toFile().also { it.mkdirs() }
         runGit(repository, "init", "--quiet")
         runGit(repository, "config", "user.email", "tests@example.com")
@@ -270,6 +270,7 @@ class GitOpsTest {
         runGit(repository, "remote", "add", "origin", ".")
         runGit(repository, "update-ref", "refs/remotes/origin/dev", "HEAD")
 
+        assertTrue("dev" in git.inspectPreflight(repository, setOf("dev")).remoteBranches)
         git.openOperation().use { first ->
             assertTrue(first.remoteBranchExists(repository, "dev"))
         }
@@ -277,6 +278,7 @@ class GitOpsTest {
         runGit(repository, "remote", "add", "upstream", ".")
         runGit(repository, "update-ref", "refs/remotes/upstream/dev", "HEAD")
 
+        assertTrue("dev" in git.inspectPreflight(repository, setOf("dev")).remoteBranches)
         git.openOperation().use { second ->
             assertTrue(second.remoteBranchExists(repository, "dev"))
         }
