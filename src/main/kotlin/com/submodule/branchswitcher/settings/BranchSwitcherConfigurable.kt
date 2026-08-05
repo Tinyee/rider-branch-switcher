@@ -6,9 +6,9 @@ import com.intellij.openapi.project.Project
 import com.intellij.util.ui.JBUI
 import com.submodule.branchswitcher.Bundle
 import com.submodule.branchswitcher.service.BranchSwitcherService
-import com.submodule.branchswitcher.ui.withCompactHeight
 import java.awt.BorderLayout
 import java.awt.Component
+import java.awt.Dimension
 import javax.swing.BoxLayout
 import javax.swing.JCheckBox
 import javax.swing.JComboBox
@@ -185,4 +185,9 @@ class BranchSwitcherConfigurable(private val project: Project) : Configurable {
         const val CHECKBOX_DESCRIPTION_INDENT = 24
     }
 
+}
+
+private fun <T : JComponent> T.withCompactHeight(maxWidth: Int): T {
+    maximumSize = Dimension(maxWidth, preferredSize.height)
+    return this
 }

@@ -1,5 +1,6 @@
 package com.submodule.branchswitcher.switch
 
+import com.submodule.branchswitcher.git.GitQueryException
 import com.submodule.branchswitcher.model.DirtyAction
 import com.submodule.branchswitcher.model.RepoTarget
 import java.io.File
@@ -76,8 +77,39 @@ class DirtyHandlingStep : SwitchStep {
             )
             return state.withSkipped(target.path)
         }
-        context.log.info("stash: ok (${target.path})")
-        return state.withTrackedStash(target.path, "before -> ${target.branch}")
+        val stashOid = try {
+            context.git.stashTopOid(repositoryDirectory)
+        } catch (error: GitQueryException) {
+            return unidentifiedStash(context, target, state, issues, error.result.diagnostic())
+        }
+        if (stashOid == null) {
+            return unidentifiedStash(context, target, state, issues)
+        }
+        context.log.info("stash: ok (${target.path}, oid=$stashOid)")
+        return state.withTrackedStash(target.path, "before -> ${target.branch}", stashOid)
+    }
+
+    private fun unidentifiedStash(
+        context: SwitchContext,
+        target: RepoTarget,
+        state: SwitchState,
+        issues: MutableList<OperationIssue>,
+        diagnostic: String? = null,
+    ): SwitchState {
+        context.log.error(
+            "stash created but its object id could not be read (${target.path})" +
+                diagnostic?.let { ": $it" }.orEmpty(),
+        )
+        issues += OperationIssue(
+            stage,
+            OperationIssueCode.STASH_IDENTITY_UNAVAILABLE,
+            target.path,
+            severity = OperationIssueSeverity.ERROR,
+            diagnostic = diagnostic,
+        )
+        return state
+            .withTrackedStash(target.path, "before -> ${target.branch}", oid = null)
+            .withSkipped(target.path)
     }
 
     private fun updateProgress(context: SwitchContext, index: Int, total: Int, path: String) {

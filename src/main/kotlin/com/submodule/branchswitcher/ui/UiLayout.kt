@@ -8,11 +8,6 @@ import javax.swing.JComponent
 import javax.swing.JLabel
 import javax.swing.JPanel
 
-fun <T : JComponent> T.withCompactHeight(maxWidth: Int): T {
-    maximumSize = Dimension(maxWidth, preferredSize.height)
-    return this
-}
-
 class CompactHeightPanel(layout: LayoutManager? = null) : JPanel(layout) {
     override fun getMaximumSize(): Dimension =
         Dimension(Short.MAX_VALUE.toInt(), preferredSize.height)

@@ -26,7 +26,7 @@ class SwitchPresetAction : AnAction() {
     override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
 
     override fun update(e: AnActionEvent) {
-        e.presentation.isEnabledAndVisible = e.project != null
+        e.presentation.isEnabledAndVisible = e.project?.isDisposed == false
     }
 
     override fun actionPerformed(e: AnActionEvent) {

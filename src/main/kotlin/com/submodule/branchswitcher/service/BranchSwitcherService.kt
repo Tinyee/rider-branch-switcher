@@ -72,11 +72,12 @@ class BranchSwitcherService(
     )
 
     private var options = OptionsState()
+    private val stateLock = Any()
 
-    override fun getState(): OptionsState = options
+    override fun getState(): OptionsState = synchronized(stateLock) { options.snapshot() }
     override fun loadState(state: OptionsState) {
-        synchronized(gitClientLock) {
-            options = state
+        synchronized(stateLock) {
+            options = state.snapshot()
             _gitClient = null
         }
     }
@@ -86,25 +87,21 @@ class BranchSwitcherService(
     val presetRepo = PresetRepository(project)
 
     var dirtyAction: DirtyAction
-        get() = when (options.dirtyAction) {
-            "Skip" -> DirtyAction.Skip
-            "Force" -> DirtyAction.Force
-            else -> DirtyAction.Stash
-        }
-        set(value) { options.dirtyAction = value.name }
+        get() = synchronized(stateLock) { options.dirtyAction.toDirtyAction() }
+        set(value) { synchronized(stateLock) { options.dirtyAction = value.name } }
 
     var fetchFirst: Boolean
-        get() = options.fetchFirst
-        set(value) { options.fetchFirst = value }
+        get() = synchronized(stateLock) { options.fetchFirst }
+        set(value) { synchronized(stateLock) { options.fetchFirst = value } }
 
     var pullAfterSwitch: Boolean
-        get() = options.pullAfterSwitch
-        set(value) { options.pullAfterSwitch = value }
+        get() = synchronized(stateLock) { options.pullAfterSwitch }
+        set(value) { synchronized(stateLock) { options.pullAfterSwitch = value } }
 
     var timeoutSeconds: Int
-        get() = synchronized(gitClientLock) { options.timeoutSeconds }
+        get() = synchronized(stateLock) { options.timeoutSeconds }
         set(value) {
-            synchronized(gitClientLock) {
+            synchronized(stateLock) {
                 if (options.timeoutSeconds != value) {
                     options.timeoutSeconds = value
                     _gitClient = null
@@ -113,15 +110,14 @@ class BranchSwitcherService(
         }
 
     var confirmBeforeInit: Boolean
-        get() = options.confirmBeforeInit
-        set(value) { options.confirmBeforeInit = value }
+        get() = synchronized(stateLock) { options.confirmBeforeInit }
+        set(value) { synchronized(stateLock) { options.confirmBeforeInit = value } }
 
     /** Cached [GitOps] instance, recreated only when timeout changes. */
-    private val gitClientLock = Any()
     private var _gitClient: GitClient? = null
 
     val gitClient: GitClient
-        get() = synchronized(gitClientLock) {
+        get() = synchronized(stateLock) {
             _gitClient ?: GitOps(options.timeoutSeconds).also {
                 _gitClient = it
             }
@@ -145,26 +141,36 @@ class BranchSwitcherService(
         val timestamp: Long = 0,
     )
 
-    @Synchronized
     fun addHistory(name: String, id: String? = null) {
-        val list = options.history
-        list.add(0, SwitchHistoryEntry(name, id, System.currentTimeMillis()))
-        if (list.size > maxHistory) {
-            options.history = list.take(maxHistory).toMutableList()
+        synchronized(stateLock) {
+            val list = options.history
+            list.add(0, SwitchHistoryEntry(name, id, System.currentTimeMillis()))
+            if (list.size > maxHistory) {
+                options.history = list.take(maxHistory).toMutableList()
+            }
         }
     }
 
-    fun getHistory(): List<SwitchHistoryEntry> = options.history.toList()
+    fun getHistory(): List<SwitchHistoryEntry> = synchronized(stateLock) { options.history.toList() }
 
-    fun resolveSwitchRequest(preset: Preset): ResolvedSwitchRequest =
-        ResolvedSwitchRequest.resolve(
-            preset,
+    fun resolveSwitchRequest(preset: Preset): ResolvedSwitchRequest {
+        val switchOptions = synchronized(stateLock) {
             SwitchOptions(
-                dirty = dirtyAction,
-                pull = pullAfterSwitch,
-                fetchFirst = fetchFirst,
-                confirmBeforeInit = confirmBeforeInit,
-            ),
-        )
+                dirty = options.dirtyAction.toDirtyAction(),
+                pull = options.pullAfterSwitch,
+                fetchFirst = options.fetchFirst,
+                confirmBeforeInit = options.confirmBeforeInit,
+            )
+        }
+        return ResolvedSwitchRequest.resolve(preset, switchOptions)
+    }
+
+    private fun OptionsState.snapshot(): OptionsState = copy(history = history.toMutableList())
+
+    private fun String.toDirtyAction(): DirtyAction = when (this) {
+        "Skip" -> DirtyAction.Skip
+        "Force" -> DirtyAction.Force
+        else -> DirtyAction.Stash
+    }
 
 }

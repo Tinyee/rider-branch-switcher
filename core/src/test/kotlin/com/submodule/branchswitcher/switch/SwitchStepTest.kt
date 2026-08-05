@@ -25,7 +25,8 @@ class SwitchStepTest {
         override fun isDirty(workDir: File): Boolean = false
         override fun dirtyFileCount(workDir: File): Int = 0
         override fun stash(workDir: File, message: String): GitResult = GitResult("stash", 0, "", "")
-        override fun stashPop(workDir: File): GitResult = GitResult("pop", 0, "", "")
+        override fun stashTopOid(workDir: File): String = "stash-oid"
+        override fun stashPop(workDir: File, oid: String): GitResult = GitResult("pop", 0, "", "")
         override fun fetch(workDir: File): GitResult = GitResult("fetch", 0, "", "")
         override fun localBranchExists(workDir: File, branch: String): Boolean = branch in listOf("main", "dev")
         override fun remoteBranchExists(workDir: File, branch: String): Boolean = true
@@ -164,13 +165,13 @@ class SwitchStepTest {
         val missingGit = object : GitClient by fakeGit {
             override fun localBranchExists(workDir: File, branch: String): Boolean = false
             override fun remoteBranchExists(workDir: File, branch: String): Boolean = false
-            override fun stashPop(workDir: File): GitResult {
+            override fun stashPop(workDir: File, oid: String): GitResult {
                 popCalls++
                 return GitResult("pop", 0, "", "")
             }
         }
         val c = context().copy(git = missingGit)
-        val state = SwitchState().withTrackedStash(".", "before -> dev")
+        val state = SwitchState().withTrackedStash(".", "before -> dev", "stash-oid")
 
         val execution = CheckoutStep().run(c, state)
         assertTrue(execution.result is StepResult.Partial)
@@ -204,6 +205,23 @@ class SwitchStepTest {
         assertEquals(1, stashCalls)
         assertTrue(execution.state.hasStashes())
         assertTrue(log.any { it.contains("stash: ok") })
+    }
+
+    @Test
+    fun `dirty step retains an unidentified stash but blocks further writes`() {
+        val dirtyGit = object : GitClient by fakeGit {
+            override fun isDirty(workDir: File): Boolean = true
+            override fun stashTopOid(workDir: File): String? = null
+        }
+        val execution = DirtyHandlingStep().run(
+            context(SwitchOptions(DirtyAction.Stash)).copy(git = dirtyGit),
+        )
+
+        assertTrue(execution.result is StepResult.Partial)
+        assertTrue(execution.state.isSkipped("."))
+        assertNull(execution.state.trackedStash(".")?.oid)
+        val issue = (execution.result as StepResult.Partial).issues.single()
+        assertEquals(OperationIssueCode.STASH_IDENTITY_UNAVAILABLE, issue.code)
     }
 
     @Test
@@ -318,7 +336,7 @@ class SwitchStepTest {
             override fun pullFf(workDir: File, branch: String): GitResult =
                 GitResult("pull", 1, "", "not fast-forward")
 
-            override fun stashPop(workDir: File): GitResult {
+            override fun stashPop(workDir: File, oid: String): GitResult {
                 popCalls++
                 return GitResult("pop", 0, "", "")
             }
@@ -326,7 +344,7 @@ class SwitchStepTest {
         val c = context(SwitchOptions(DirtyAction.Stash, pull = true)).copy(git = failingGit)
         val state = SwitchState()
             .withSuccessfulCheckout(".")
-            .withTrackedStash(".", "main -> dev")
+            .withTrackedStash(".", "main -> dev", "stash-oid")
 
         val execution = PullStep().run(c, state)
 
@@ -359,13 +377,13 @@ class SwitchStepTest {
     fun `pull disabled still restores tracked stashes`() {
         var popCalls = 0
         val popGit = object : GitClient by fakeGit {
-            override fun stashPop(workDir: File): GitResult {
+            override fun stashPop(workDir: File, oid: String): GitResult {
                 popCalls++
                 return GitResult("pop", 0, "", "")
             }
         }
         val c = context(SwitchOptions(DirtyAction.Stash, pull = false)).copy(git = popGit)
-        val state = SwitchState().withTrackedStash(".", "before -> dev")
+        val state = SwitchState().withTrackedStash(".", "before -> dev", "stash-oid")
 
         val execution = PullStep().run(c, state)
         assertTrue(execution.result is StepResult.Success)
@@ -376,11 +394,11 @@ class SwitchStepTest {
     @Test
     fun `stash pop failure makes pull partial and keeps recovery state`() {
         val popGit = object : GitClient by fakeGit {
-            override fun stashPop(workDir: File): GitResult =
+            override fun stashPop(workDir: File, oid: String): GitResult =
                 GitResult("pop", 1, "", "conflict")
         }
         val c = context(SwitchOptions(DirtyAction.Stash, pull = false)).copy(git = popGit)
-        val state = SwitchState().withTrackedStash(".", "before -> dev")
+        val state = SwitchState().withTrackedStash(".", "before -> dev", "stash-oid")
 
         val execution = PullStep().run(c, state)
 
@@ -394,7 +412,7 @@ class SwitchStepTest {
         projectRoot.resolve("SubA").toFile().mkdirs()
         val popGit = object : GitClient by fakeGit {
             override fun isGitRepo(workDir: File): Boolean = true
-            override fun stashPop(workDir: File): GitResult {
+            override fun stashPop(workDir: File, oid: String): GitResult {
                 popped += if (workDir == projectRoot.toFile()) "." else workDir.name
                 return GitResult("pop", 0, "", "")
             }
@@ -404,8 +422,8 @@ class SwitchStepTest {
             preset = Preset("test", "dev", mapOf("SubA" to "dev")),
         )
         val initialState = SwitchState()
-            .withTrackedStash(".", "before -> dev")
-            .withTrackedStash("SubA", "before -> dev")
+            .withTrackedStash(".", "before -> dev", "stash-oid")
+            .withTrackedStash("SubA", "before -> dev", "stash-oid")
 
         val mainExecution = PullStep(SwitchTargetScope.MAIN).run(c, initialState)
         assertTrue(mainExecution.result is StepResult.Success)

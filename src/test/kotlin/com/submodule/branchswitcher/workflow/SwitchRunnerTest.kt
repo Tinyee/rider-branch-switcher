@@ -21,6 +21,33 @@ import java.util.concurrent.CancellationException
 
 class SwitchRunnerTest {
     @Test
+    fun `workflow establishes an io worker context independently of its caller`() = runBlocking {
+        val callerThread = Thread.currentThread()
+        var workflowThread: Thread? = null
+        val operations = object : com.submodule.branchswitcher.operation.GitOperationRunner {
+            override suspend fun <T> run(
+                title: String,
+                block: (com.submodule.branchswitcher.operation.OperationProgress, GitOperationSession) -> T,
+            ): com.submodule.branchswitcher.operation.GitOperationResult<T> {
+                workflowThread = Thread.currentThread()
+                return com.submodule.branchswitcher.operation.GitOperationResult.Cancelled()
+            }
+
+            override fun openOperation(): GitOperationSession = error("recovery should not start")
+        }
+        val runner = SwitchRunner(
+            Files.createTempDirectory("switch-runner-thread"),
+            operations,
+            confirmSubmoduleInitialization = { true },
+        )
+
+        runner.execute("Switching", request(), createStringAppender {})
+
+        assertNotNull(workflowThread)
+        assertNotSame(callerThread, workflowThread)
+    }
+
+    @Test
     fun `missing git repo returns structured execution result`() = runBlocking {
         val git = RecordingGit()
         val runner = runner(Files.createTempDirectory("switch-runner"), git)
@@ -258,6 +285,7 @@ class SwitchRunnerTest {
         override fun isDirty(workDir: File): Boolean = false
         override fun dirtyFileCount(workDir: File): Int = 0
         override fun stash(workDir: File, message: String): GitResult = ok("stash")
+        override fun stashTopOid(workDir: File): String = "stash-oid"
         override fun fetch(workDir: File): GitResult = ok("fetch")
         override fun localBranchExists(workDir: File, branch: String): Boolean = true
         override fun remoteBranchExists(workDir: File, branch: String): Boolean = false
@@ -276,7 +304,7 @@ class SwitchRunnerTest {
         override fun listSubmodulePaths(gitRoot: File): List<String> = emptyList()
         override fun listAllBranches(workDir: File): List<String> = listOf("main")
         override fun revParseHead(workDir: File): String? = "abc123"
-        override fun stashPop(workDir: File): GitResult {
+        override fun stashPop(workDir: File, oid: String): GitResult {
             stashPopCount++
             return ok("stash pop")
         }

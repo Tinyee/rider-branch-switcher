@@ -28,6 +28,7 @@ class SwitchExecutorTest {
         override fun isDirty(workDir: File): Boolean = false
         override fun dirtyFileCount(workDir: File): Int = 0
         override fun stash(workDir: File, message: String): GitResult = GitResult("stash", 0, "", "")
+        override fun stashTopOid(workDir: File): String = "stash-oid"
         override fun fetch(workDir: File): GitResult = GitResult("fetch", 0, "", "")
         override fun localBranchExists(workDir: File, branch: String): Boolean = branch == "main" || branch == "dev"
         override fun remoteBranchExists(workDir: File, branch: String): Boolean = true
@@ -39,7 +40,7 @@ class SwitchExecutorTest {
         override fun listSubmodulePaths(gitRoot: File): List<String> = emptyList()
         override fun listAllBranches(workDir: File): List<String> = listOf("main", "dev", "feature-x")
         override fun revParseHead(workDir: File): String? = "abc123"
-        override fun stashPop(workDir: File): GitResult = GitResult("pop", 0, "", "")
+        override fun stashPop(workDir: File, oid: String): GitResult = GitResult("pop", 0, "", "")
         override fun checkoutNewBranch(workDir: File, branch: String): GitResult = GitResult("checkout", 0, "", "")
         override fun deleteBranch(workDir: File, branch: String): GitResult = GitResult("branch", 0, "", "")
         override fun repositoryIdentity(workDir: File): RepositoryIdentity {
@@ -204,7 +205,7 @@ class SwitchExecutorTest {
                 "SubA" to CheckpointEntry("sub-sha", null, "sub-repository"),
             ),
             state = SwitchState()
-                .withTrackedStash("SubA", "before -> dev")
+                .withTrackedStash("SubA", "before -> dev", "stash-oid")
                 .withInitializedSubmodule("SubB"),
         )
 
@@ -375,7 +376,7 @@ class SwitchExecutorTest {
                     GitResult("checkout", 0, "", "")
                 }
 
-            override fun stashPop(workDir: File): GitResult {
+            override fun stashPop(workDir: File, oid: String): GitResult {
                 stashPopCalls += workDir.name
                 return GitResult("stash pop", 0, "", "")
             }
@@ -386,7 +387,7 @@ class SwitchExecutorTest {
                 "." to CheckpointEntry("main-sha", "main"),
                 "SubA" to CheckpointEntry("sub-sha", "main"),
             ),
-            state = SwitchState().withTrackedStash("SubA", "before -> dev"),
+            state = SwitchState().withTrackedStash("SubA", "before -> dev", "stash-oid"),
         )
 
         val outcome = recovery(recoveryGit).recover(execution)

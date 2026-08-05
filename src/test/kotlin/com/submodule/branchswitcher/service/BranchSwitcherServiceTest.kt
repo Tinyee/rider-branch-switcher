@@ -118,6 +118,20 @@ class BranchSwitcherServiceTest {
         assertEquals(2, service.getHistory().size)
     }
 
+    @Test
+    fun `persistent state is copied at the service boundary`() {
+        val externalState = BranchSwitcherService.OptionsState(
+            history = mutableListOf(BranchSwitcherService.SwitchHistoryEntry("main")),
+        )
+        service.loadState(externalState)
+
+        externalState.history.clear()
+        val exportedState = service.state
+        exportedState.history.clear()
+
+        assertEquals(listOf("main"), service.getHistory().map { it.presetName })
+    }
+
     // ── GitClient caching ────────────────────────────────────────────
 
     @Test

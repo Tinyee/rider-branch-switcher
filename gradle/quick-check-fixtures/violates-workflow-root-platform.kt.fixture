@@ -1,0 +1,5 @@
+package com.submodule.branchswitcher.workflow
+
+import com.submodule.branchswitcher.TaskBridge
+
+class BrokenWorkflowRootDependency(private val bridge: TaskBridge)

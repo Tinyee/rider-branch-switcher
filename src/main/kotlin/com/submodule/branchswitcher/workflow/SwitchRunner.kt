@@ -15,6 +15,8 @@ import com.submodule.branchswitcher.switch.OperationStage
 import com.submodule.branchswitcher.switch.SwitchExecutionResult
 import com.submodule.branchswitcher.switch.SwitchExecutor
 import com.submodule.branchswitcher.switch.SwitchRecoveryExecutor
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.nio.file.Path
 
 data class SwitchRunResult(
@@ -61,6 +63,15 @@ class SwitchRunner(
         request: ResolvedSwitchRequest,
         log: AppLogger,
         operationContext: OperationContext = newOperationContext("switch"),
+    ): SwitchRunResult = withContext(Dispatchers.IO) {
+        executeOnWorker(title, request, log, operationContext)
+    }
+
+    private suspend fun executeOnWorker(
+        title: String,
+        request: ResolvedSwitchRequest,
+        log: AppLogger,
+        operationContext: OperationContext,
     ): SwitchRunResult {
         val operationId = operationContext.id
         val operationLog = log.withContext(operationContext.inPhase("execute"))

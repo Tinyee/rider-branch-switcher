@@ -64,6 +64,24 @@ class PresetLoaderTest {
     }
 
     @Test
+    fun `resolveFile does not cross ide base when it is the git root`() {
+        val repository = Files.createDirectories(tmpDir.resolve("repository"))
+        Files.createDirectories(repository.resolve(".git"))
+        Files.writeString(tmpDir.resolve(".branch-presets.json"), """{"presets":[]}""")
+
+        val found = PresetLoader.resolveFile(repository)
+
+        assertNull(found)
+    }
+
+    @Test
+    fun `repository boundary accepts worktree git file`() {
+        Files.writeString(tmpDir.resolve(".git"), "gitdir: ../metadata")
+
+        assertTrue(isRepositoryBoundary(tmpDir))
+    }
+
+    @Test
     fun `resolveFile returns dot-idea over root when both exist`() {
         val ideaDir = Files.createDirectories(tmpDir.resolve(".idea"))
         val ideaFile = ideaDir.resolve("branch-presets.json")

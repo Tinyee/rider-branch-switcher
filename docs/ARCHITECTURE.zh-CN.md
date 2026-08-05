@@ -20,7 +20,8 @@ Kotlin 语法。
 ```text
 按钮或快捷键
   -> SwitchPreflightUi：预检和确认
-  -> SwitchFlowCoordinator：写锁、执行和 VCS 刷新
+  -> WriteOperationLauncher：统一获取和释放写操作 lease
+  -> SwitchFlowCoordinator：执行、结果展示和 VCS 刷新
   -> SwitchRunner：平台无关的应用层切换
   -> GitOperationRunner：后台操作契约
      GitBackgroundRunner：该契约的 IntelliJ 实现，管理任务和 Git 会话
@@ -103,6 +104,9 @@ Recovery 不使用当前注册状态，因为主仓回滚后某个 checkpoint �
 
 切换前会记录 checkpoint。每个步骤返回新的 `SwitchState`，而不是直接修改共享状态。
 这样即使中途抛异常或取消，恢复流程仍然知道哪些仓库已切换、哪些 stash 尚未恢复。
+stash 使用不可变的 Git object ID 跟踪，而不是容易变化的 `stash@{n}` 序号；恢复前会根据
+object ID 查找它当前的位置。stash 已创建但身份读取失败时，该仓库会停止后续写入，未知身份
+仍保留在结构化恢复状态中，只允许人工检查，不会退回弹出栈顶的危险行为。
 checkpoint 还会记录规范化后的 Git 目录身份；如果同一路径后来被另一个仓库占用，
 Recovery 会先生成可检查的 `SwitchRecoveryPlan`，再逐项执行。每次 checkout 或 reset 前都会
 重新确认路径和仓库身份；只有破坏性的 hard reset 要求工作区干净，普通 checkout 由 Git 自己
@@ -265,11 +269,15 @@ result.toSwitchResult()
 workflow 只依赖 `GitOperationRunner`，不认识 IntelliJ。`GitBackgroundRunner` 实现这个契约，
 把 Git 操作放入 IntelliJ 后台任务，并将取消信号传到当前 `GitOperationSession`。完成和取消
 通过同一个原子状态交接，因此两者同时发生时不会丢失恢复所需的执行结果。同步的 preset 文件
-访问、分支读取和仓库状态 Git 命令会显式调度到 I/O dispatcher；最终界面更新仍回到 UI
-线程。core 本身不依赖协程或 IntelliJ。
+访问、分支读取和仓库状态 Git 命令会显式调度到 I/O dispatcher；`SwitchRunner`、
+`DeriveBranchRunner` 和单仓写入会在入口内部建立 I/O 上下文，不依赖调用者选择线程。
+IntelliJ 完成回调即使发生在 EDT，协程也会通过自己的 dispatcher 恢复；最终界面更新仍显式
+回到 UI 线程。core 本身不依赖协程或 IntelliJ。
 
 `GitProcessRunner` 全局最多允许四个 Git 进程，并用八个专用线程读取 stdout/stderr。
 stdout 超过 8 MiB 会明确失败，stderr 只保留最后 128 KiB 诊断内容，不会无限占用内存。
+取消或超时时会尽力终止完整的子进程树，并始终关闭父进程流，SSH 等辅助进程不能在父 Git 结束后继续占住
+输出管道。remote 名称只在单个 `GitOperationSession` 内缓存，不会跨切换会话失效。
 仓库状态刷新把分支、HEAD 和 dirty 状态合并为每仓库一个进程；预检再读取目标 refs，首次还会
 查询 remote 名称，最多三个进程。真正的切换、checkpoint 和恢复仍在写操作附近重新读取状态，
 不会使用可能过期的界面快照。

@@ -23,7 +23,7 @@ class BranchNameRulesTest {
             "", " ", "-feature", "/feature", "feature/", "feature//test", ".hidden",
             "feature/.hidden", "feature.", "feature.lock/test", "feature/test.lock",
             "feature.lock", "feature..test", "feature@{test", "feature test",
-            "feature\u0001test", "feature\u007ftest",
+            "feature\u0001test", "feature\u007ftest", "HEAD",
         ).forEach {
             assertFalse("Expected invalid branch name: $it", isValidBranchName(it))
         }
