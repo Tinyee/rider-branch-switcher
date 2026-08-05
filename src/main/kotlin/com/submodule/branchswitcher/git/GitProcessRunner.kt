@@ -1,6 +1,7 @@
 package com.submodule.branchswitcher.git
 
 import java.io.File
+import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ExecutionException
 import java.util.concurrent.Future
 import java.util.concurrent.TimeUnit
@@ -133,27 +134,82 @@ internal class GitProcessRunner(
         interrupted = interrupted || stdout.interrupted || stderr.interrupted
         if (interrupted) {
             Thread.currentThread().interrupt()
-            return ProcessRunOutcome(GitResult(commandLabel, -1, "", "interrupted"), resourcesStopped)
+            return completedOutcome(
+                GitResult(commandLabel, -1, "", "interrupted"),
+                resourcesStopped,
+                process,
+                observedDescendants,
+            )
         }
         if (terminationReason != null) {
-            return ProcessRunOutcome(GitResult(commandLabel, -1, "", terminationReason), resourcesStopped)
+            return completedOutcome(
+                GitResult(commandLabel, -1, "", terminationReason),
+                resourcesStopped,
+                process,
+                observedDescendants,
+            )
         }
         val captureFailure = stdout.failure ?: stderr.failure
         if (captureFailure != null) {
-            return ProcessRunOutcome(GitResult(commandLabel, -1, "", captureFailure), resourcesStopped)
+            return completedOutcome(
+                GitResult(commandLabel, -1, "", captureFailure),
+                resourcesStopped,
+                process,
+                observedDescendants,
+            )
         }
         if (stdout.capture.truncated) {
-            return ProcessRunOutcome(GitResult(commandLabel, -1, "", stdoutLimitMessage()), resourcesStopped)
+            return completedOutcome(
+                GitResult(commandLabel, -1, "", stdoutLimitMessage()),
+                resourcesStopped,
+                process,
+                observedDescendants,
+            )
         }
         val stderrText = if (stderr.capture.truncated) {
             "[stderr truncated; showing last $GIT_STDERR_TAIL_BYTES bytes]\n${stderr.capture.text}"
         } else {
             stderr.capture.text
         }
-        return ProcessRunOutcome(
+        return completedOutcome(
             GitResult(commandLabel, exitCode, stdout.capture.text.trim(), stderrText.trim()),
             resourcesStopped,
+            process,
+            observedDescendants,
         )
+    }
+
+    /** Defers permit release until every still-live process is actually gone. */
+    @Suppress("SpreadOperator") // CompletableFuture.allOf exposes only a Java vararg API.
+    private fun completedOutcome(
+        result: GitResult,
+        resourcesStopped: Boolean,
+        process: Process,
+        observedDescendants: Map<Long, ProcessHandle>,
+    ): ProcessRunOutcome {
+        if (resourcesStopped) return ProcessRunOutcome(result, resourcesStopped = true)
+
+        val pendingExits = try {
+            observedDescendants.values.filter(::isAlive)
+                .mapTo(mutableListOf<CompletableFuture<*>>()) { it.onExit().toCompletableFuture() }
+                .also { exits -> if (process.isAlive) exits += process.onExit() }
+        } catch (_: UnsupportedOperationException) {
+            return ProcessRunOutcome(result, resourcesStopped = false)
+        } catch (_: SecurityException) {
+            return ProcessRunOutcome(result, resourcesStopped = false)
+        }
+        if (pendingExits.isEmpty()) return ProcessRunOutcome(result, resourcesStopped = true)
+
+        return try {
+            CompletableFuture.allOf(*pendingExits.toTypedArray()).whenComplete { _, _ ->
+                GitProcessResources.processPermits.release()
+            }
+            ProcessRunOutcome(result, resourcesStopped = false)
+        } catch (_: UnsupportedOperationException) {
+            ProcessRunOutcome(result, resourcesStopped = false)
+        } catch (_: SecurityException) {
+            ProcessRunOutcome(result, resourcesStopped = false)
+        }
     }
 
     private fun acquireProcessPermit(cancellation: AtomicBoolean): String? {
@@ -281,9 +337,9 @@ internal class GitProcessRunner(
     private fun isAlive(process: ProcessHandle): Boolean = try {
         process.isAlive
     } catch (_: UnsupportedOperationException) {
-        false
+        true
     } catch (_: SecurityException) {
-        false
+        true
     }
 
     private fun closeProcessStreams(process: Process) {

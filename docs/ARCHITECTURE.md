@@ -303,8 +303,8 @@ and stderr pipes to a dedicated eight-thread drain executor. Stdout is capped at
 for diagnostics. Cancellation, timeout, and blocked output capture terminate
 every descendant observed while the command was running and close the parent
 process streams. If forced termination does not finish within its budget, that
-process capacity remains reserved instead of being advertised to later Git
-commands.
+process capacity remains reserved until the observed processes actually exit,
+rather than being advertised early to later Git commands.
 
 `.gitmodules` values are read through `git config --null --file`, not a custom
 line parser, so Git owns quoting, comments, escaping, and malformed-file
