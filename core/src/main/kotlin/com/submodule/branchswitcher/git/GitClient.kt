@@ -108,7 +108,7 @@ interface SwitchGitClient : RepositoryStateGitClient, SubmoduleRegistrationQuery
     /** Stashes all changes including untracked files (-u). */
     fun stash(workDir: File, message: String): GitResult
     /** Returns the immutable object id currently referenced by refs/stash. */
-    fun stashTopOid(workDir: File): String? = null
+    fun stashTopOid(workDir: File): String?
     /** Applies the stash identified by [oid] without removing its recovery backup. */
     fun stashApply(workDir: File, oid: String): GitResult
     /** Runs `git fetch --prune`. */

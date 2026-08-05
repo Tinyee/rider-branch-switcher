@@ -141,8 +141,10 @@ whole user action.
 an exception or cancellation occurs, so recovery still knows which stashes and
 checkouts completed and which missing submodules were initialized by the switch.
 Tracked stashes store their immutable Git object IDs rather than stack positions;
-recovery resolves the current `stash@{n}` for that ID immediately before popping
-it. If identity cannot be read after stash creation, the repository is blocked
+recovery applies that object ID directly and retains the Git stash entry as a
+manual recovery backup. It never maps the ID back to a mutable `stash@{n}` or
+automatically drops an entry across a race window. If identity cannot be read
+after stash creation, the repository is blocked
 and the unresolved stash remains in structured recovery state for manual review.
 After the main repository is current, `SubmoduleTreeStep` processes submodules
 in parent-first order. Each parent is prepared, fetched, checked out, pulled,
@@ -202,8 +204,9 @@ UI adapters. Repository inspection, CLI Git, VFS refresh, checkpoint recovery,
 and stash restoration remain worker-thread operations. New workflow entry
 points must establish their worker context internally instead of relying only
 on callers to launch them from a particular dispatcher.
-`SwitchFlowCoordinator` owns write leases, switch and rollback execution, and
-post-execution VCS refresh. `SwitchResultPresenter` maps structured outcomes to
+`WriteOperationLauncher` owns the lease boundary for every repository mutation.
+It releases the lease before its `afterRelease` stage runs VCS refresh or UI
+presentation. `SwitchResultPresenter` maps structured outcomes to
 history and notifications. An idempotent UI completion guard resets Tool Window
 state after normal presentation and also when refresh or presentation fails.
 
@@ -297,10 +300,11 @@ so save failures and screen refresh behavior remain consistent.
 processes. It admits at most four active Git processes and assigns their stdout
 and stderr pipes to a dedicated eight-thread drain executor. Stdout is capped at
 8 MiB and fails explicitly when exceeded; stderr retains only its final 128 KiB
-for diagnostics. Cancellation and timeout make a best-effort termination of the
-complete descendant process tree and always close the parent process streams,
-so helper processes such as SSH cannot leave drain threads blocked after the
-parent Git process exits.
+for diagnostics. Cancellation, timeout, and blocked output capture terminate
+every descendant observed while the command was running and close the parent
+process streams. If forced termination does not finish within its budget, that
+process capacity remains reserved instead of being advertised to later Git
+commands.
 
 `.gitmodules` values are read through `git config --null --file`, not a custom
 line parser, so Git owns quoting, comments, escaping, and malformed-file
@@ -315,9 +319,10 @@ state combines completion and cancellation callbacks, so a completed execution
 result remains available for recovery when cancellation races with task
 completion.
 
-Remote-name selection is cached only inside one `GitOperationSession`. A later
-switch opens a fresh cache and observes remotes renamed or replaced since the
-previous operation.
+Remote-name selection is cached only inside one `GitOperationSession`.
+Preflight inspection uses a fresh short-lived session, and a later switch opens
+a new operation, so both observe remotes renamed or replaced since the previous
+request.
 
 The service write lease prevents overlapping switch, derive, rollback, and
 single-repository writes. Each branch-combo discovery also opens an isolated

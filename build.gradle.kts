@@ -139,6 +139,58 @@ pitest {
     threads.set(1)
 }
 
+/** Removes comments and string/character literals while preserving executable Kotlin tokens by line. */
+fun kotlinCodeLines(file: File): List<String> {
+    var blockCommentDepth = 0
+    var inTripleQuotedString = false
+    return file.readLines().map { line ->
+        val code = StringBuilder(line.length)
+        var index = 0
+        while (index < line.length) {
+            when {
+                inTripleQuotedString -> {
+                    val end = line.indexOf("\"\"\"", index)
+                    if (end < 0) break
+                    inTripleQuotedString = false
+                    index = end + 3
+                }
+                blockCommentDepth > 0 -> when {
+                    line.startsWith("/*", index) -> {
+                        blockCommentDepth++
+                        index += 2
+                    }
+                    line.startsWith("*/", index) -> {
+                        blockCommentDepth--
+                        index += 2
+                    }
+                    else -> index++
+                }
+                line.startsWith("//", index) -> break
+                line.startsWith("/*", index) -> {
+                    blockCommentDepth++
+                    index += 2
+                }
+                line.startsWith("\"\"\"", index) -> {
+                    inTripleQuotedString = true
+                    index += 3
+                }
+                line[index] == '"' || line[index] == '\'' -> {
+                    val quote = line[index++]
+                    while (index < line.length) {
+                        if (line[index] == '\\') {
+                            index += 2
+                        } else if (line[index++] == quote) {
+                            break
+                        }
+                    }
+                }
+                else -> code.append(line[index++])
+            }
+        }
+        code.toString()
+    }
+}
+
 // Extracted scan logic shared by quickCheck (production scan) and checkQuickCheck (fixture test).
 // Returns list of failure messages, empty = all clear.
 fun scanQuickChecks(
@@ -182,10 +234,9 @@ fun scanQuickChecks(
     // 3. Core must remain a pure JVM module.
     if (enforceCoreBoundary) {
         val sourceLines = fileTree(srcRoot).filter { it.extension == "kt" }
-            .flatMap { it.readLines() }
+            .flatMap(::kotlinCodeLines)
         val intellijReferences = sourceLines.filter { line ->
-            val code = line.substringBefore("//").trimStart()
-            code.contains("com.intellij.")
+            line.contains("com.intellij.")
         }
         if (intellijReferences.isNotEmpty()) {
             fail("Core references IntelliJ API: ${intellijReferences.take(3)}")
@@ -219,11 +270,10 @@ fun scanQuickChecks(
         if (!layerDir.exists()) continue
         val violations = fileTree(layerDir).filter { it.extension == "kt" }
             .flatMap { file ->
-                file.readLines()
+                kotlinCodeLines(file)
                     .filter { line ->
-                        val code = line.substringBefore("//")
                         forbidden.any { segment ->
-                            code.contains("com.submodule.branchswitcher$segment")
+                            line.contains("com.submodule.branchswitcher$segment")
                         }
                     }
                     .map { "${file.name}: $it" }
@@ -234,21 +284,19 @@ fun scanQuickChecks(
     val workflowDir = file("$srcRoot/com/submodule/branchswitcher/workflow")
     if (workflowDir.exists()) {
         val intellijReferences = fileTree(workflowDir).filter { it.extension == "kt" }
-            .flatMap { it.readLines() }
+            .flatMap(::kotlinCodeLines)
             .filter { line ->
-                val code = line.substringBefore("//").trimStart()
-                code.contains("com.intellij.")
+                line.contains("com.intellij.")
             }
         if (intellijReferences.isNotEmpty()) {
             fail("workflow references IntelliJ API: ${intellijReferences.take(3)}")
         }
         val pluginImplementationReferences = fileTree(workflowDir).filter { it.extension == "kt" }
-            .flatMap { it.readLines() }
+            .flatMap(::kotlinCodeLines)
             .filter { line ->
-                val code = line.substringBefore("//")
                 listOf("TaskBridge", "Bundle", "Notifier", "GitOps", "GitCommandClient", "GitProcessRunner")
-                    .any { type -> code.contains("com.submodule.branchswitcher.$type") ||
-                        code.contains("com.submodule.branchswitcher.git.$type") }
+                    .any { type -> line.contains("com.submodule.branchswitcher.$type") ||
+                        line.contains("com.submodule.branchswitcher.git.$type") }
             }
         if (pluginImplementationReferences.isNotEmpty()) {
             fail("workflow references plugin implementation: ${pluginImplementationReferences.take(3)}")

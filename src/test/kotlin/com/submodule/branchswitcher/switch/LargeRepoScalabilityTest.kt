@@ -72,6 +72,8 @@ class LargeRepoScalabilityTest {
             _calls.merge(method, 1, Int::plus)
         }
 
+        override fun stashTopOid(workDir: File): String = "stash-oid"
+
         override fun currentBranch(workDir: File): String? {
             count("currentBranch"); return if (workDir.name.startsWith("sub-")) "main" else "main"
         }
