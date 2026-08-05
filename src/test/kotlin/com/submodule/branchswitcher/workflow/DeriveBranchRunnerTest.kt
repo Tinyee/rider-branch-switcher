@@ -45,11 +45,40 @@ class DeriveBranchRunnerTest {
         assertTrue(logs.any { it.contains("[${result.operationId}] operation finished: cancelled=true") })
     }
 
-    private class RecordingDeriveGit : GitClient {
+    @Test
+    fun `late cancellation does not repeat rollback after partial failure`() = runBlocking {
+        val root = Files.createTempDirectory("derive-runner-late-cancel")
+        Files.createDirectory(root.resolve("submodule"))
+        val git = RecordingDeriveGit(failNewBranchDirectoryName = "submodule")
+        val runner = DeriveBranchRunner(
+            projectRoot = root,
+            operations = TestGitOperationRunner(git, TestOperationCompletion.CANCEL_AFTER),
+        )
+        val logs = mutableListOf<String>()
+
+        val result = runner.execute(
+            title = "Deriving",
+            preset = Preset("main", "main", mapOf("submodule" to "main")),
+            branchName = "feature",
+            log = createStringAppender(logs::add),
+        )
+
+        assertTrue(result.cancelled)
+        assertTrue(result.rollbackFailures.isEmpty())
+        assertEquals(1, git.deleteCount)
+        assertEquals(1, git.openCount)
+        assertEquals(1, git.closeCount)
+    }
+
+    private class RecordingDeriveGit(
+        private val failNewBranchDirectoryName: String? = null,
+    ) : GitClient {
         var currentBranch = "main"
+        private val branchesByPath = mutableMapOf<String, String>()
         var openCount = 0
         var closeCount = 0
         var cancelCount = 0
+        var deleteCount = 0
 
         override fun openOperation(): GitOperationSession {
             openCount++
@@ -66,32 +95,50 @@ class DeriveBranchRunnerTest {
         }
 
         override fun isGitRepo(workDir: File): Boolean = true
-        override fun currentBranch(workDir: File): String = currentBranch
+        override fun currentBranch(workDir: File): String = branchesByPath[workDir.canonicalPath] ?: "main"
         override fun revParseHead(workDir: File): String = "abc123"
         override fun repositoryIdentity(workDir: File): RepositoryIdentity =
-            RepositoryIdentity(File(workDir, ".git").absolutePath, null)
+            if (workDir.name == failNewBranchDirectoryName) {
+                RepositoryIdentity(
+                    File(workDir.parentFile, ".git/modules/${workDir.name}").canonicalPath,
+                    workDir.parentFile.canonicalPath,
+                )
+            } else {
+                RepositoryIdentity(File(workDir, ".git").canonicalPath, null)
+            }
         override fun remoteUrl(workDir: File): String? = null
-        override fun registeredSubmodules(gitRoot: File): List<SubmoduleRegistration> = emptyList()
+        override fun registeredSubmodules(gitRoot: File): List<SubmoduleRegistration> =
+            if (failNewBranchDirectoryName == null) {
+                emptyList()
+            } else {
+                listOf(SubmoduleRegistration(failNewBranchDirectoryName, failNewBranchDirectoryName, "."))
+            }
         override fun resetHard(workDir: File, revision: String): GitResult = ok("reset")
         override fun cancel() = Unit
         override fun dirtyProbe(workDir: File): Boolean = false
-        override fun localBranchProbe(workDir: File, branch: String): Boolean = branch == currentBranch
+        override fun localBranchProbe(workDir: File, branch: String): Boolean = branch == currentBranch(workDir)
 
         override fun checkoutNewBranch(workDir: File, branch: String): GitResult {
+            if (workDir.name == failNewBranchDirectoryName) return GitResult("checkout -b", 1, "", "failed")
             currentBranch = branch
+            branchesByPath[workDir.canonicalPath] = branch
             return ok("checkout -b")
         }
 
         override fun checkoutExisting(workDir: File, branch: String): GitResult {
             currentBranch = branch
+            branchesByPath[workDir.canonicalPath] = branch
             return ok("checkout")
         }
 
-        override fun deleteBranch(workDir: File, branch: String): GitResult = ok("branch -d")
+        override fun deleteBranch(workDir: File, branch: String): GitResult {
+            deleteCount++
+            return ok("branch -d")
+        }
 
         override fun isDirty(workDir: File): Boolean = false
         override fun dirtyFileCount(workDir: File): Int = 0
-        override fun localBranchExists(workDir: File, branch: String): Boolean = branch == currentBranch
+        override fun localBranchExists(workDir: File, branch: String): Boolean = branch == currentBranch(workDir)
         override fun remoteBranchExists(workDir: File, branch: String): Boolean = false
         override fun stash(workDir: File, message: String): GitResult = ok("stash")
         override fun stashApply(workDir: File, oid: String): GitResult = ok("stash pop")
