@@ -94,7 +94,7 @@ internal fun restoreTrackedStashes(
                 continue
             }
             if (!repositoryDirectory.exists() || !git.isGitRepo(repositoryDirectory)) {
-                log.warn("[fail] stash pop skipped - repository unavailable for $path (${stash.message})")
+                log.warn("[fail] stash apply skipped - repository unavailable for $path (${stash.message})")
                 issues += OperationIssue(
                     stage = OperationStage.STASH_RESTORE,
                     code = OperationIssueCode.STASH_REPOSITORY_UNAVAILABLE,
@@ -102,17 +102,17 @@ internal fun restoreTrackedStashes(
                 )
                 continue
             }
-            val popResult = git.stashPop(repositoryDirectory, stash.oid)
-            if (popResult.ok) {
-                log.info("stash pop ok (${stash.message}, oid=${stash.oid})")
+            val applyResult = git.stashApply(repositoryDirectory, stash.oid)
+            if (applyResult.ok) {
+                log.info("stash apply ok; recovery backup retained (${stash.message}, oid=${stash.oid})")
                 nextState = nextState.withoutStash(path)
             } else {
-                log.warn("[fail] stash pop failed for $path: ${popResult.diagnostic()}")
+                log.warn("[fail] stash apply failed for $path: ${applyResult.diagnostic()}")
                 issues += OperationIssue(
                     stage = OperationStage.STASH_RESTORE,
                     code = OperationIssueCode.STASH_RESTORE_FAILED,
                     repositoryPath = path,
-                    diagnostic = popResult.diagnostic(),
+                    diagnostic = applyResult.diagnostic(),
                 )
             }
         }

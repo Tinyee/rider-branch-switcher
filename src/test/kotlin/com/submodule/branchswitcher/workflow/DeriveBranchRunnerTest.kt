@@ -94,7 +94,7 @@ class DeriveBranchRunnerTest {
         override fun localBranchExists(workDir: File, branch: String): Boolean = branch == currentBranch
         override fun remoteBranchExists(workDir: File, branch: String): Boolean = false
         override fun stash(workDir: File, message: String): GitResult = ok("stash")
-        override fun stashPop(workDir: File, oid: String): GitResult = ok("stash pop")
+        override fun stashApply(workDir: File, oid: String): GitResult = ok("stash pop")
         override fun fetch(workDir: File): GitResult = ok("fetch")
         override fun checkoutFromRemote(workDir: File, branch: String): GitResult = ok("checkout remote")
         override fun pullFf(workDir: File, branch: String): GitResult = ok("pull")

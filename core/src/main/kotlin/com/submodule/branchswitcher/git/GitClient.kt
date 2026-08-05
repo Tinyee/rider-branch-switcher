@@ -109,8 +109,8 @@ interface SwitchGitClient : RepositoryStateGitClient, SubmoduleRegistrationQuery
     fun stash(workDir: File, message: String): GitResult
     /** Returns the immutable object id currently referenced by refs/stash. */
     fun stashTopOid(workDir: File): String? = null
-    /** Pops the stash identified by [oid], regardless of its current stack position. */
-    fun stashPop(workDir: File, oid: String): GitResult
+    /** Applies the stash identified by [oid] without removing its recovery backup. */
+    fun stashApply(workDir: File, oid: String): GitResult
     /** Runs `git fetch --prune`. */
     fun fetch(workDir: File): GitResult
     /** Checks out an existing local branch by name. */

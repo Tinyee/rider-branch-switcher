@@ -134,8 +134,8 @@ class LargeRepoScalabilityTest {
         override fun cancel() = Unit
         override fun localBranchProbe(workDir: File, branch: String): Boolean = true
         override fun dirtyProbe(workDir: File): Boolean = false
-        override fun stashPop(workDir: File, oid: String): GitResult {
-            count("stashPop"); return GitResult("pop", 0, "", "")
+        override fun stashApply(workDir: File, oid: String): GitResult {
+            count("stashApply"); return GitResult("pop", 0, "", "")
         }
         override fun checkoutNewBranch(workDir: File, branch: String): GitResult {
             count("checkoutNewBranch"); return GitResult("checkout", 0, "", "")

@@ -106,7 +106,7 @@ class GitBatchInspectionIntegrationTest {
     }
 
     @Test
-    fun `tracked stash pop restores the requested oid instead of the latest stash`() {
+    fun `tracked stash apply restores the requested oid and retains recovery backups`() {
         initializeRepository(root.toFile())
         val repository = root.toFile()
         val trackedFile = File(repository, "tracked.txt")
@@ -121,16 +121,16 @@ class GitBatchInspectionIntegrationTest {
         val secondOid = requireNotNull(git.stashTopOid(repository))
         assertNotEquals(firstOid, secondOid)
 
-        val firstPop = git.stashPop(repository, firstOid)
-        assertTrue(firstPop.diagnostic(), firstPop.ok)
+        val firstApply = git.stashApply(repository, firstOid)
+        assertTrue(firstApply.diagnostic(), firstApply.ok)
         assertEquals("first change\n", trackedFile.readText())
         assertEquals(secondOid, git.stashTopOid(repository))
 
         runGit(repository, "reset", "--hard", "HEAD")
-        val secondPop = git.stashPop(repository, secondOid)
-        assertTrue(secondPop.diagnostic(), secondPop.ok)
+        val secondApply = git.stashApply(repository, secondOid)
+        assertTrue(secondApply.diagnostic(), secondApply.ok)
         assertEquals("second change\n", trackedFile.readText())
-        assertNull(git.stashTopOid(repository))
+        assertEquals(secondOid, git.stashTopOid(repository))
     }
 
     private fun initializeRepository(directory: File) {
