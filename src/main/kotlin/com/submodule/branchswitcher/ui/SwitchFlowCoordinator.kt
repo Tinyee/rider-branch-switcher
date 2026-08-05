@@ -17,9 +17,8 @@ import com.submodule.branchswitcher.operation.GitOperationResult
 import com.submodule.branchswitcher.switch.SwitchRecoveryExecutor
 import com.submodule.branchswitcher.switch.SwitchExecutionResult
 import com.submodule.branchswitcher.workflow.SwitchRunner
-import kotlinx.coroutines.Dispatchers
+import com.submodule.branchswitcher.workflow.WriteOperationLauncher
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.launch
 import java.nio.file.Path
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -67,6 +66,7 @@ class SwitchFlowCoordinator(
 ) {
     private val preflightUi = SwitchPreflightUi(project, service)
     private val resultPresenter = SwitchResultPresenter(project, service)
+    private val writeOperations = WriteOperationLauncher(service.scope, service::tryAcquireWrite)
 
     private fun uiLater(block: () -> Unit) {
         project.invokeLaterIfAlive(block)
@@ -102,31 +102,26 @@ class SwitchFlowCoordinator(
     ) {
         val preset = request.preset
         val completion = SwitchUiCompletion(::uiLater, onFinished)
-        val writeLease = service.tryAcquireWrite()
-        if (writeLease == null) {
-            uiLater {
-                completion.completeAfter {
-                    resultPresenter.showWriteBusy()
+        val job = writeOperations.launch(
+            onBusy = {
+                uiLater {
+                    completion.completeAfter {
+                        resultPresenter.showWriteBusy()
+                    }
                 }
-            }
-            return
-        }
-        val job = service.scope.launch(Dispatchers.Default) {
-            val runResult = try {
-                SwitchRunner(
-                    projectRoot = root,
-                    operations = GitBackgroundRunner(project, service.gitClient),
-                    cancellationClassifier = platformCancellationClassifier,
-                    confirmSubmoduleInitialization = preflightUi::confirmSubmoduleInitialization,
-                ).execute(
-                    title = Bundle.msg("progress.switching"),
-                    request = request,
-                    log = log,
-                    operationContext = operationContext,
-                )
-            } finally {
-                writeLease.close()
-            }
+            },
+        ) {
+            val runResult = SwitchRunner(
+                projectRoot = root,
+                operations = GitBackgroundRunner(project, service.gitClient),
+                cancellationClassifier = platformCancellationClassifier,
+                confirmSubmoduleInitialization = preflightUi::confirmSubmoduleInitialization,
+            ).execute(
+                title = Bundle.msg("progress.switching"),
+                request = request,
+                log = log,
+                operationContext = operationContext,
+            )
             val operationLog = log.withContext(operationContext.inPhase("refresh"))
             val refreshResult = refreshVcsRepos(project, root, preset.submodules.keys, operationLog)
             uiLater {
@@ -141,6 +136,7 @@ class SwitchFlowCoordinator(
                 }
             }
         }
+        if (job == null) return
         completion.completeWhenFailed(job) { failure ->
             if (!platformCancellationClassifier.isCancellation(failure)) {
                 log.error("switch completion failed", failure)
@@ -154,15 +150,11 @@ class SwitchFlowCoordinator(
         log: AppLogger,
         operationContext: OperationContext,
     ) {
-        val writeLease = service.tryAcquireWrite()
-        if (writeLease == null) {
-            uiLater { resultPresenter.showWriteBusy() }
-            return
-        }
         val recoveryLog = log.withContext(operationContext.inPhase("recovery"))
-        service.scope.launch(Dispatchers.Default) {
-            val rollbackSucceeded = try {
-                val rollbackBackgroundResult = GitBackgroundRunner(project, service.gitClient).run(
+        writeOperations.launch(
+            onBusy = { uiLater { resultPresenter.showWriteBusy() } },
+        ) {
+            val rollbackBackgroundResult = GitBackgroundRunner(project, service.gitClient).run(
                     Bundle.msg("progress.rollback"),
                 ) { indicator, operation ->
                     indicator.isIndeterminate = true
@@ -170,7 +162,7 @@ class SwitchFlowCoordinator(
                     val recovery = SwitchRecoveryExecutor(root, recoveryLog, operation)
                     recovery.recover(execution).ok
                 }
-                when (rollbackBackgroundResult) {
+            val rollbackSucceeded = when (rollbackBackgroundResult) {
                     is GitOperationResult.Completed -> rollbackBackgroundResult.value
                     is GitOperationResult.Cancelled -> rollbackBackgroundResult.value ?: false
                     is GitOperationResult.Failed -> {
@@ -178,9 +170,6 @@ class SwitchFlowCoordinator(
                         recoveryLog.error("notification rollback failed", error)
                         false
                     }
-                }
-            } finally {
-                writeLease.close()
             }
             val checkpointPaths = execution.checkpoint.orEmpty().keys.filterTo(mutableSetOf()) { it != "." }
             val refreshLog = log.withContext(operationContext.inPhase("recovery-refresh"))

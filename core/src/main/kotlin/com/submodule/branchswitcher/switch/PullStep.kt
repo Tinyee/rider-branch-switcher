@@ -80,11 +80,21 @@ internal fun restoreTrackedStashes(
     val issues = mutableListOf<OperationIssue>()
     var nextState = state
     try {
-        for ((path, msg) in state.stashesSnapshot()) {
+        for ((path, stash) in state.stashesSnapshot()) {
             if (selectedPaths != null && path !in selectedPaths) continue
             val repositoryDirectory = resolveGitDir(projectRoot, path)
+            if (stash.oid == null) {
+                log.error("[fail] stash restore skipped - identity unavailable for $path (${stash.message})")
+                issues += OperationIssue(
+                    stage = OperationStage.STASH_RESTORE,
+                    code = OperationIssueCode.STASH_IDENTITY_UNAVAILABLE,
+                    repositoryPath = path,
+                    severity = OperationIssueSeverity.ERROR,
+                )
+                continue
+            }
             if (!repositoryDirectory.exists() || !git.isGitRepo(repositoryDirectory)) {
-                log.warn("[fail] stash pop skipped - repository unavailable for $path ($msg)")
+                log.warn("[fail] stash pop skipped - repository unavailable for $path (${stash.message})")
                 issues += OperationIssue(
                     stage = OperationStage.STASH_RESTORE,
                     code = OperationIssueCode.STASH_REPOSITORY_UNAVAILABLE,
@@ -92,9 +102,9 @@ internal fun restoreTrackedStashes(
                 )
                 continue
             }
-            val popResult = git.stashPop(repositoryDirectory)
+            val popResult = git.stashPop(repositoryDirectory, stash.oid)
             if (popResult.ok) {
-                log.info("stash pop ok ($msg)")
+                log.info("stash pop ok (${stash.message}, oid=${stash.oid})")
                 nextState = nextState.withoutStash(path)
             } else {
                 log.warn("[fail] stash pop failed for $path: ${popResult.diagnostic()}")

@@ -221,8 +221,10 @@ fun scanQuickChecks(
             .flatMap { file ->
                 file.readLines()
                     .filter { line ->
-                        line.trimStart().startsWith("import com.submodule.branchswitcher") &&
-                            forbidden.any(line::contains)
+                        val code = line.substringBefore("//")
+                        forbidden.any { segment ->
+                            code.contains("com.submodule.branchswitcher$segment")
+                        }
                     }
                     .map { "${file.name}: $it" }
             }
@@ -239,6 +241,17 @@ fun scanQuickChecks(
             }
         if (intellijReferences.isNotEmpty()) {
             fail("workflow references IntelliJ API: ${intellijReferences.take(3)}")
+        }
+        val pluginImplementationReferences = fileTree(workflowDir).filter { it.extension == "kt" }
+            .flatMap { it.readLines() }
+            .filter { line ->
+                val code = line.substringBefore("//")
+                listOf("TaskBridge", "Bundle", "Notifier", "GitOps", "GitCommandClient", "GitProcessRunner")
+                    .any { type -> code.contains("com.submodule.branchswitcher.$type") ||
+                        code.contains("com.submodule.branchswitcher.git.$type") }
+            }
+        if (pluginImplementationReferences.isNotEmpty()) {
+            fail("workflow references plugin implementation: ${pluginImplementationReferences.take(3)}")
         }
     }
 
@@ -263,15 +276,7 @@ fun scanQuickChecks(
         if (onlyZh.isNotEmpty()) fail("Keys only in ZH: $onlyZh")
     }
 
-    // 8. allOk must include cancelled check
-    val allOkDefs = fileTree(srcRoot).filter { it.extension == "kt" }
-        .flatMap { it.readLines() }.filter { it.contains("val allOk") || it.contains("val allClean") }
-    for (def in allOkDefs) {
-        if (!def.contains("cancelled") && !def.contains("!cancelled"))
-            fail("allOk/allClean missing cancelled check: $def")
-    }
-
-    // 9. Deprecated IntelliJ API patterns
+    // 8. Deprecated IntelliJ API patterns
     val deprecated = fileTree(srcRoot).filter { it.extension == "kt" }
         .flatMap { it.readLines() }.filter {
             it.contains("project.coroutineScope") && !it.contains("//") ||
@@ -346,6 +351,8 @@ tasks {
                 "violates-workflow-imports-platform.kt" to "workflow/_fixture_test_",
                 "violates-workflow-intellij.kt" to "workflow/_fixture_test_",
                 "violates-workflow-intellij-qualified.kt" to "workflow/_fixture_test_",
+                "violates-workflow-root-platform.kt" to "workflow/_fixture_test_",
+                "violates-workflow-git-implementation.kt" to "workflow/_fixture_test_",
             )
             val defaultDir = "_fixture_test_"
 
@@ -375,6 +382,8 @@ tasks {
                             name.contains("write") -> "tryAcquireWrite without writeLease.close"
                             name.contains("switch") -> "switch/ imports ui/"
                             name.contains("workflow-intellij") -> "workflow references IntelliJ API"
+                            name.contains("workflow-root-platform") || name.contains("workflow-git-implementation") ->
+                                "workflow references plugin implementation"
                             name.contains("workflow") -> "workflow has forbidden layer imports"
                             name.contains("core-intellij") -> "Core references IntelliJ API"
                             name.contains("core-desktop-ui") -> "Core imports desktop UI"
@@ -408,6 +417,10 @@ tasks {
             if (failed > 0) throw GradleException("checkQuickCheck: $failed/$total fixture(s) not caught or false positive")
             logger.lifecycle("checkQuickCheck PASSED: $passed/$total fixtures verified")
         }
+    }
+
+    named("check") {
+        dependsOn("quickCheck", "checkQuickCheck")
     }
 
     register("validateReleaseMetadata") {

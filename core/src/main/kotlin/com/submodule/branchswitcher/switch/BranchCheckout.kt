@@ -78,8 +78,23 @@ internal object BranchCheckout {
         if (trackedStash == null) {
             return Result(state, succeeded = false, issues = listOf(branchMissingIssue(target.path)))
         }
+        if (trackedStash.oid == null) {
+            return Result(
+                state,
+                succeeded = false,
+                issues = listOf(
+                    branchMissingIssue(target.path),
+                    OperationIssue(
+                        stage = OperationStage.STASH_RESTORE,
+                        code = OperationIssueCode.STASH_IDENTITY_UNAVAILABLE,
+                        repositoryPath = target.path,
+                        severity = OperationIssueSeverity.ERROR,
+                    ),
+                ),
+            )
+        }
 
-        val popResult = context.git.stashPop(directory)
+        val popResult = context.git.stashPop(directory, trackedStash.oid)
         if (!popResult.ok) {
             context.log.warn("[fail] stash pop also failed: ${popResult.diagnostic()}")
             return Result(
@@ -97,7 +112,7 @@ internal object BranchCheckout {
             )
         }
 
-        context.log.info("stash pop ok (recovered after branch-not-found: $trackedStash)")
+        context.log.info("stash pop ok (recovered after branch-not-found: ${trackedStash.message})")
         return Result(
             state = state.withoutStash(target.path),
             succeeded = false,

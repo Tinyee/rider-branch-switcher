@@ -107,8 +107,10 @@ interface SwitchGitClient : RepositoryStateGitClient, SubmoduleRegistrationQuery
     fun remoteBranchExists(workDir: File, branch: String): Boolean
     /** Stashes all changes including untracked files (-u). */
     fun stash(workDir: File, message: String): GitResult
-    /** Pops the latest stash. */
-    fun stashPop(workDir: File): GitResult
+    /** Returns the immutable object id currently referenced by refs/stash. */
+    fun stashTopOid(workDir: File): String? = null
+    /** Pops the stash identified by [oid], regardless of its current stack position. */
+    fun stashPop(workDir: File, oid: String): GitResult
     /** Runs `git fetch --prune`. */
     fun fetch(workDir: File): GitResult
     /** Checks out an existing local branch by name. */

@@ -41,17 +41,21 @@ run broader checks.
 
 | Area | Responsibility | Main entry points |
 | --- | --- | --- |
+| `core` root | Preset JSON lookup, parsing, and atomic persistence | `PresetLoader.kt` |
 | `core/model` | Presets, resolved requests, switch options | `PresetConfig.kt` |
 | `core/switch` | Preflight, ordered steps, structured issues, recovery plans, derive | `SwitchExecutor.kt`, `SwitchRecoveryExecutor.kt` |
 | `core/git` | Capability-oriented Git interfaces and results | `GitClient.kt` |
 | `core/operation` | Platform-independent background Git result and progress contracts | `GitOperationRunner.kt` |
 | `core/presentation` | Pure import, preset editing, shortcut, and preview decisions | `PresetEditRules.kt`, `SwitchPreviewRules.kt` |
+| `core/settings` | Pure settings normalization and descriptions | `SettingsRules.kt` |
+| `core/log` | Platform-independent logging contracts and diagnostic sanitization | `AppLogger.kt`, `DiagnosticSanitizer.kt` |
 | `service` | Project-scoped state, preset repository, write lease | `BranchSwitcherService.kt`, `PresetRepository.kt` |
 | `workflow` | Reusable use cases and cancellable read coordination independent of IntelliJ APIs | `SwitchRunner.kt`, `RepositoryStateRefreshCoordinator.kt` |
 | `platform` | IntelliJ progress/cancellation/background adapters | `GitBackgroundRunner.kt`, `SwitchAdapters.kt` |
 | `git` | CLI command construction, inspection, and process lifecycle | `GitOps.kt`, `GitCommandClient.kt`, `GitProcessRunner.kt`, `GitOutputDrainer.kt` |
 | `ui` | Tool Window, editors, dialogs, notifications, and screen commands | `BranchSwitcherPanel.kt`, `PresetEditor.kt`, `SwitchFlowCoordinator.kt` |
 | `action` | IDE actions such as `Ctrl+Alt+B` | `SwitchPresetAction.kt` |
+| `settings` | IntelliJ settings form and service binding | `BranchSwitcherConfigurable.kt` |
 
 ## Code Reading Guide
 
@@ -113,7 +117,8 @@ Both the Tool Window and keyboard action converge on the same execution path:
 flowchart TD
     Entry["Tool Window or Ctrl+Alt+B"] --> Preflight["Preflight and confirmation"]
     Preflight --> Lease["Acquire WriteLease"]
-    Lease --> Flow["SwitchFlowCoordinator"]
+    Lease --> Launcher["WriteOperationLauncher"]
+    Launcher --> Flow["SwitchFlowCoordinator"]
     Flow --> Runner["SwitchRunner"]
     Flow --> Background["GitBackgroundRunner"]
     Runner --> Boundary["GitOperationRunner contract"]
@@ -135,6 +140,10 @@ whole user action.
 `SwitchState` between steps. Stateful steps preserve the latest state even when
 an exception or cancellation occurs, so recovery still knows which stashes and
 checkouts completed and which missing submodules were initialized by the switch.
+Tracked stashes store their immutable Git object IDs rather than stack positions;
+recovery resolves the current `stash@{n}` for that ID immediately before popping
+it. If identity cannot be read after stash creation, the repository is blocked
+and the unresolved stash remains in structured recovery state for manual review.
 After the main repository is current, `SubmoduleTreeStep` processes submodules
 in parent-first order. Each parent is prepared, fetched, checked out, pulled,
 and synchronized before descendants are inspected, so nested `.gitmodules`
@@ -178,6 +187,21 @@ values. Human-readable Git details remain optional diagnostics rather than the
 authoritative control-flow result.
 
 `SwitchPreflightUi` owns modal probing and confirmation dialogs.
+
+## Thread Contract
+
+Workflow code never executes blocking work on the IntelliJ event dispatch
+thread. `SwitchRunner`, `DeriveBranchRunner`, and single-repository writes enter
+an I/O dispatcher before opening a Git operation and retain that worker context
+through result interpretation and recovery. IntelliJ background-task callbacks
+may complete on the EDT, but coroutine continuations resume through their
+dispatcher rather than inheriting the callback thread.
+
+UI rendering, dialogs, and notifications are scheduled explicitly through the
+UI adapters. Repository inspection, CLI Git, VFS refresh, checkpoint recovery,
+and stash restoration remain worker-thread operations. New workflow entry
+points must establish their worker context internally instead of relying only
+on callers to launch them from a particular dispatcher.
 `SwitchFlowCoordinator` owns write leases, switch and rollback execution, and
 post-execution VCS refresh. `SwitchResultPresenter` maps structured outcomes to
 history and notifications. An idempotent UI completion guard resets Tool Window
@@ -273,7 +297,10 @@ so save failures and screen refresh behavior remain consistent.
 processes. It admits at most four active Git processes and assigns their stdout
 and stderr pipes to a dedicated eight-thread drain executor. Stdout is capped at
 8 MiB and fails explicitly when exceeded; stderr retains only its final 128 KiB
-for diagnostics.
+for diagnostics. Cancellation and timeout make a best-effort termination of the
+complete descendant process tree and always close the parent process streams,
+so helper processes such as SSH cannot leave drain threads blocked after the
+parent Git process exits.
 
 `.gitmodules` values are read through `git config --null --file`, not a custom
 line parser, so Git owns quoting, comments, escaping, and malformed-file
@@ -287,6 +314,10 @@ process and prevents later commands in that operation. A single atomic outcome
 state combines completion and cancellation callbacks, so a completed execution
 result remains available for recovery when cancellation races with task
 completion.
+
+Remote-name selection is cached only inside one `GitOperationSession`. A later
+switch opens a fresh cache and observes remotes renamed or replaced since the
+previous operation.
 
 The service write lease prevents overlapping switch, derive, rollback, and
 single-repository writes. Each branch-combo discovery also opens an isolated

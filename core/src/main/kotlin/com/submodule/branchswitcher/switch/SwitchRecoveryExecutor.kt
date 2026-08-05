@@ -15,6 +15,7 @@ data class RepositoryRecoveryAction(
 data class StashRecoveryAction(
     val repositoryPath: String,
     val message: String,
+    val oid: String?,
 )
 
 /** Immutable description of every side effect a recovery attempt may perform. */
@@ -68,8 +69,8 @@ class SwitchRecoveryExecutor(
             repositories = checkpoint.orEmpty().map { (path, entry) ->
                 RepositoryRecoveryAction(path, entry.sha, entry.branch, entry.repositoryId)
             },
-            stashes = result.state.stashesSnapshot().map { (path, message) ->
-                StashRecoveryAction(path, message)
+            stashes = result.state.stashesSnapshot().map { (path, stash) ->
+                StashRecoveryAction(path, stash.message, stash.oid)
             },
             retainedInitializedSubmodules = result.state.initializedSubmodulesSnapshot(),
             issues = planIssues,

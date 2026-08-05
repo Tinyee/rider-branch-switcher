@@ -28,8 +28,13 @@ sealed class StepResult {
  * Recovery depends on this state after exceptions and cancellation, so a step
  * must return a new instance immediately after each successful side effect.
  */
+data class TrackedStash(
+    val message: String,
+    val oid: String?,
+)
+
 class SwitchState private constructor(
-    private val stashedPaths: Map<String, String>,
+    private val stashedPaths: Map<String, TrackedStash>,
     private val skippedPaths: Set<String>,
     private val successfulCheckouts: Set<String>,
     private val initializedSubmodules: Set<String>,
@@ -41,15 +46,20 @@ class SwitchState private constructor(
 
     fun isSkipped(path: String): Boolean = path in skippedPaths
 
-    fun withTrackedStash(path: String, message: String): SwitchState =
-        SwitchState(stashedPaths + (path to message), skippedPaths, successfulCheckouts, initializedSubmodules)
+    fun withTrackedStash(path: String, message: String, oid: String?): SwitchState =
+        SwitchState(
+            stashedPaths + (path to TrackedStash(message, oid)),
+            skippedPaths,
+            successfulCheckouts,
+            initializedSubmodules,
+        )
 
     fun withoutStash(path: String): SwitchState =
         SwitchState(stashedPaths - path, skippedPaths, successfulCheckouts, initializedSubmodules)
 
-    fun trackedStash(path: String): String? = stashedPaths[path]
+    fun trackedStash(path: String): TrackedStash? = stashedPaths[path]
 
-    fun stashesSnapshot(): Map<String, String> = stashedPaths.toMap()
+    fun stashesSnapshot(): Map<String, TrackedStash> = stashedPaths.toMap()
 
     fun withSuccessfulCheckout(path: String): SwitchState =
         SwitchState(stashedPaths, skippedPaths, successfulCheckouts + path, initializedSubmodules)

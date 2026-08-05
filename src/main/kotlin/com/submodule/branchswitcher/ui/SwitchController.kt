@@ -17,6 +17,7 @@ import com.submodule.branchswitcher.service.BranchSwitcherService
 import com.submodule.branchswitcher.switch.DeriveNotification
 import com.submodule.branchswitcher.switch.deriveNotification
 import com.submodule.branchswitcher.workflow.DeriveBranchRunner
+import com.submodule.branchswitcher.workflow.WriteOperationLauncher
 import com.submodule.branchswitcher.workflow.DeriveRunResult
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -36,6 +37,7 @@ internal class SwitchController(
 ) {
 
     private val coordinator = SwitchFlowCoordinator(project, service)
+    private val writeOperations = WriteOperationLauncher(service.scope, service::tryAcquireWrite)
 
     @Suppress("TooGenericExceptionCaught") // platform preflight adapters report unrelated failures through one UI boundary
     fun runSwitch(preset: Preset) {
@@ -68,14 +70,12 @@ internal class SwitchController(
     }
 
     fun derivePresetBranch(root: Path, preset: Preset, branchName: String) {
-        val writeLease = service.tryAcquireWrite()
-        if (writeLease == null) {
-            Notifier.warn(project, Bundle.msg("notify.write.busy"), Bundle.msg("notify.write.busy.msg"))
-            return
-        }
-        service.scope.launch(Dispatchers.Default) {
-            val runResult = try {
-                DeriveBranchRunner(
+        writeOperations.launch(
+            onBusy = {
+                Notifier.warn(project, Bundle.msg("notify.write.busy"), Bundle.msg("notify.write.busy.msg"))
+            },
+        ) {
+            val runResult = DeriveBranchRunner(
                     projectRoot = root,
                     operations = GitBackgroundRunner(project, service.gitClient),
                     cancellationClassifier = platformCancellationClassifier,
@@ -85,9 +85,6 @@ internal class SwitchController(
                     branchName = branchName,
                     log = log,
                 )
-            } finally {
-                writeLease.close()
-            }
             val operationLog = log.withContext(runResult.operationId)
             val refreshResult = refreshVcsRepos(project, root, preset.submodules.keys, operationLog)
 

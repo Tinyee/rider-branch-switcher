@@ -259,6 +259,30 @@ class GitOpsTest {
     }
 
     @Test
+    fun `remote selection cache is isolated between operation sessions`() {
+        val repository = tmpDir.resolve("remote-cache").toFile().also { it.mkdirs() }
+        runGit(repository, "init", "--quiet")
+        runGit(repository, "config", "user.email", "tests@example.com")
+        runGit(repository, "config", "user.name", "Branch Switcher Tests")
+        File(repository, "tracked.txt").writeText("initial\n")
+        runGit(repository, "add", "tracked.txt")
+        runGit(repository, "commit", "--quiet", "-m", "initial")
+        runGit(repository, "remote", "add", "origin", ".")
+        runGit(repository, "update-ref", "refs/remotes/origin/dev", "HEAD")
+
+        git.openOperation().use { first ->
+            assertTrue(first.remoteBranchExists(repository, "dev"))
+        }
+        runGit(repository, "remote", "remove", "origin")
+        runGit(repository, "remote", "add", "upstream", ".")
+        runGit(repository, "update-ref", "refs/remotes/upstream/dev", "HEAD")
+
+        git.openOperation().use { second ->
+            assertTrue(second.remoteBranchExists(repository, "dev"))
+        }
+    }
+
+    @Test
     fun `timeout seconds clamps unsafe values`() {
         assertEquals(1, safeTimeoutSeconds(Int.MIN_VALUE))
         assertEquals(60, safeTimeoutSeconds(60))
@@ -367,6 +391,34 @@ class GitOpsTest {
     }
 
     @Test
+    fun `cancellation terminates descendants before releasing process resources`() {
+        val descendantDestroyed = AtomicBoolean(false)
+        val descendant = java.lang.reflect.Proxy.newProxyInstance(
+            ProcessHandle::class.java.classLoader,
+            arrayOf(ProcessHandle::class.java),
+        ) { _, method, _ ->
+            when (method.name) {
+                "isAlive" -> !descendantDestroyed.get()
+                "destroyForcibly" -> descendantDestroyed.compareAndSet(false, true)
+                else -> null
+            }
+        } as ProcessHandle
+        val cancellation = AtomicBoolean(false)
+        val runningProcess = ControllableProcess(
+            finished = false,
+            descendant = descendant,
+            onWait = { cancellation.set(true) },
+        )
+        val runner = GitProcessRunner(timeoutSeconds = 10) { runningProcess }
+
+        val result = runner.run(tmpDir.toFile(), cancellation, "fetch")
+
+        assertEquals(GitFailureKind.CANCELLED, result.failureKind)
+        assertTrue(descendantDestroyed.get())
+        assertTrue(runningProcess.destroyed)
+    }
+
+    @Test
     fun `stdout above the capture limit fails instead of returning partial data`() {
         val oversized = ByteArray(GIT_STDOUT_LIMIT_BYTES + 1) { 'x'.code.toByte() }
         val process = ControllableProcess(finished = true, stdout = oversized)
@@ -421,6 +473,7 @@ class GitOpsTest {
         private val interruptOnWait: Boolean = false,
         private val interruptAfterDestroy: Boolean = false,
         private val onWait: (() -> Unit)? = null,
+        private val descendant: ProcessHandle? = null,
         private val exitCode: Int = 0,
         stdout: ByteArray = ByteArray(0),
         stderr: ByteArray = ByteArray(0),
@@ -449,6 +502,17 @@ class GitOpsTest {
             destroyed = true
             return this
         }
+        override fun descendants(): java.util.stream.Stream<ProcessHandle> =
+            if (descendant == null) java.util.stream.Stream.empty() else java.util.stream.Stream.of(descendant)
+    }
+
+    private fun runGit(directory: File, vararg args: String) {
+        val process = ProcessBuilder(listOf("git") + args)
+            .directory(directory)
+            .redirectErrorStream(true)
+            .start()
+        val output = process.inputStream.bufferedReader().readText()
+        assertEquals("git ${args.joinToString(" ")}: $output", 0, process.waitFor())
     }
 
     private class RecordingInputStream(

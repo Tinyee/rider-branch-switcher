@@ -115,6 +115,9 @@ internal class GitProcessRunner(
             Thread.currentThread().interrupt()
             return GitResult(commandLabel, -1, "", "interrupted")
         }
+        if (terminationReason != null) {
+            return GitResult(commandLabel, -1, "", terminationReason)
+        }
         val captureFailure = stdout.failure ?: stderr.failure
         if (captureFailure != null) {
             return GitResult(commandLabel, -1, "", captureFailure)
@@ -122,10 +125,6 @@ internal class GitProcessRunner(
         if (stdout.capture.truncated) {
             return GitResult(commandLabel, -1, "", stdoutLimitMessage())
         }
-        if (terminationReason != null) {
-            return GitResult(commandLabel, -1, "", terminationReason)
-        }
-
         val stderrText = if (stderr.capture.truncated) {
             "[stderr truncated; showing last $GIT_STDERR_TAIL_BYTES bytes]\n${stderr.capture.text}"
         } else {
@@ -184,12 +183,56 @@ internal class GitProcessRunner(
 
     /** Returns true when cleanup itself was interrupted. */
     private fun terminateProcess(process: Process): Boolean {
-        process.destroyForcibly()
+        val descendants = try {
+            process.descendants().use { stream -> stream.toList() }
+        } catch (_: UnsupportedOperationException) {
+            emptyList()
+        } catch (_: SecurityException) {
+            emptyList()
+        }
+        descendants.asReversed().forEach { descendant ->
+            try {
+                if (descendant.isAlive) descendant.destroyForcibly()
+            } catch (_: UnsupportedOperationException) {
+                try {
+                    descendant.destroy()
+                } catch (_: SecurityException) {
+                    // Continue with the parent and stream cleanup.
+                }
+            } catch (_: SecurityException) {
+                // Continue with the parent and stream cleanup even when one child is protected.
+            }
+        }
         return try {
-            process.waitFor(5, TimeUnit.SECONDS)
-            false
-        } catch (_: InterruptedException) {
-            true
+            try {
+                process.destroyForcibly()
+            } catch (_: UnsupportedOperationException) {
+                try {
+                    process.destroy()
+                } catch (_: SecurityException) {
+                    // Stream cleanup below still prevents drain-thread starvation.
+                }
+            } catch (_: SecurityException) {
+                // Stream cleanup below still prevents drain-thread starvation.
+            }
+            try {
+                process.waitFor(5, TimeUnit.SECONDS)
+                false
+            } catch (_: InterruptedException) {
+                true
+            }
+        } finally {
+            closeProcessStreams(process)
+        }
+    }
+
+    private fun closeProcessStreams(process: Process) {
+        listOf(process.inputStream, process.errorStream, process.outputStream).forEach { stream ->
+            try {
+                stream.close()
+            } catch (_: Exception) {
+                // Process termination is already authoritative; stream cleanup is best effort.
+            }
         }
     }
 }

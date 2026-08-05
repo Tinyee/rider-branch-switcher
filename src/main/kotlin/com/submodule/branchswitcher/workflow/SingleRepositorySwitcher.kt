@@ -14,11 +14,8 @@ import com.submodule.branchswitcher.switch.loadSubmoduleTopology
 import com.submodule.branchswitcher.switch.resolveGitDir
 import com.submodule.branchswitcher.switch.SubmoduleTopology
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
 import java.io.File
 import java.nio.file.Path
-import java.util.concurrent.atomic.AtomicBoolean
 
 enum class SingleRepositorySkipReason {
     NOT_REGISTERED,
@@ -61,22 +58,19 @@ class SingleRepositorySwitcher(
     ): Boolean {
         val operationId = newOperationId("single-switch")
         val operationLog = log.withContext(operationId)
-        val writeLease = tryAcquireWrite()
-        if (writeLease == null) {
-            operationLog.warn("operation rejected: another repository write is already running")
-            return false
-        }
-        val guardedLease = CloseOnce(writeLease)
-        val job = scope.launch(Dispatchers.Default) {
+        val job = WriteOperationLauncher(scope, tryAcquireWrite).launch(
+            onBusy = {
+                operationLog.warn("operation rejected: another repository write is already running")
+            },
+        ) {
             onResult(
                 SingleRepositorySwitchOutcome(
                     operationId = operationId,
-                    result = execute(root, path, target, title, guardedLease, operationLog),
+                    result = execute(root, path, target, title, operationLog),
                 ),
             )
         }
-        job.invokeOnCompletion { guardedLease.close() }
-        return true
+        return job != null
     }
 
     @Suppress("TooGenericExceptionCaught") // path, provider, and platform adapters share this result boundary
@@ -85,7 +79,6 @@ class SingleRepositorySwitcher(
         path: String,
         target: String,
         title: String,
-        writeLease: AutoCloseable,
         operationLog: AppLogger,
     ): SingleRepositorySwitchResult {
         operationLog.activity(
@@ -127,8 +120,6 @@ class SingleRepositorySwitcher(
             } else {
                 SingleRepositorySwitchResult.Unexpected(e)
             }
-        } finally {
-            writeLease.close()
         }
         when (result) {
             is SingleRepositorySwitchResult.Success ->
@@ -193,13 +184,4 @@ class SingleRepositorySwitcher(
             SingleRepositorySwitchResult.GitFailure(this)
         }
 
-    private class CloseOnce(
-        private val delegate: AutoCloseable,
-    ) : AutoCloseable {
-        private val closed = AtomicBoolean(false)
-
-        override fun close() {
-            if (closed.compareAndSet(false, true)) delegate.close()
-        }
-    }
 }

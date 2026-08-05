@@ -33,12 +33,13 @@ object PresetLoader {
             ideBase.resolve(FILE_NAME),
         )
         for (c in direct) if (Files.exists(c)) return c
+        if (isRepositoryBoundary(ideBase)) return null
 
         var currentDirectory: Path? = ideBase.parent
         while (currentDirectory != null) {
             val candidate = currentDirectory.resolve(FILE_NAME)
             if (Files.exists(candidate)) return candidate
-            if (Files.exists(currentDirectory.resolve(".git"))) return null
+            if (isRepositoryBoundary(currentDirectory)) return null
             currentDirectory = currentDirectory.parent
         }
         return null
@@ -122,3 +123,5 @@ object PresetLoader {
         }
     }
 }
+
+internal fun isRepositoryBoundary(directory: Path): Boolean = Files.exists(directory.resolve(".git"))

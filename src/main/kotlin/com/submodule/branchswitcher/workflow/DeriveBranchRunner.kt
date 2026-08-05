@@ -9,6 +9,8 @@ import com.submodule.branchswitcher.operation.GitOperationRunner
 import com.submodule.branchswitcher.switch.CancellationClassifier
 import com.submodule.branchswitcher.switch.DeriveBranchExecutor
 import com.submodule.branchswitcher.switch.DeriveResult
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.nio.file.Path
 
 /** Final derive workflow outcome consumed by UI presentation code. */
@@ -41,6 +43,15 @@ class DeriveBranchRunner(
         preset: Preset,
         branchName: String,
         log: AppLogger,
+    ): DeriveRunResult = withContext(Dispatchers.IO) {
+        executeOnWorker(title, preset, branchName, log)
+    }
+
+    private suspend fun executeOnWorker(
+        title: String,
+        preset: Preset,
+        branchName: String,
+        log: AppLogger,
     ): DeriveRunResult {
         val operationId = newOperationId("derive")
         val operationLog = log.withContext(operationId)
@@ -62,7 +73,9 @@ class DeriveBranchRunner(
                 classifier = cancellationClassifier,
             )
             val deriveResult = executor.execute(preset, branchName)
-            val rollbackFailures = if (!deriveResult.allOk && deriveResult.succeeded.isNotEmpty()) {
+            val operationCancelled = indicator.isCanceled || deriveResult.cancelled
+            val partialFailure = !deriveResult.allOk && deriveResult.succeeded.isNotEmpty()
+            val rollbackFailures = if (!operationCancelled && partialFailure) {
                 operationLog.activity("[derive] rolling back ${deriveResult.succeeded.size} succeeded repo(s)...")
                 executor.rollbackSucceeded(deriveResult, branchName)
             } else {

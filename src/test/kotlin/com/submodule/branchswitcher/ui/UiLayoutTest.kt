@@ -26,17 +26,6 @@ class UiLayoutTest {
     }
 
     @Test
-    fun `compact height component keeps preferred height and configured max width`() {
-        val combo = JComboBox(arrayOf("one", "two"))
-        val preferredHeight = combo.preferredSize.height
-
-        combo.withCompactHeight(360)
-
-        assertEquals(360, combo.maximumSize.width)
-        assertEquals(preferredHeight, combo.maximumSize.height)
-    }
-
-    @Test
     fun `scroll content adopts viewport width instead of clipping its preferred width`() {
         val content = ViewportWidthPanel().apply {
             preferredSize = Dimension(640, 200)

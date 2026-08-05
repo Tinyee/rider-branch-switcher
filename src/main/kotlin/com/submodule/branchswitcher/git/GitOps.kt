@@ -9,8 +9,7 @@ private class GitOpsComponents(
     processStarter: (ProcessBuilder) -> Process,
 ) {
     val processRunner = GitProcessRunner(timeoutSeconds, processStarter = processStarter)
-    val remoteCache = ConcurrentHashMap<String, String>()
-    val directClient = GitCommandClient(processRunner, remoteCache)
+    val directClient = GitCommandClient(processRunner, ConcurrentHashMap())
 }
 
 /**
@@ -42,7 +41,7 @@ class GitOps private constructor(
     ): GitRepositoryInspection = components.directClient.inspectPreflight(workDir, targetBranches)
 
     override fun openOperation(): GitOperationSession =
-        GitCommandClient(components.processRunner, components.remoteCache)
+        GitCommandClient(components.processRunner, ConcurrentHashMap())
 
     companion object {
         private val LOG = Logger.getInstance("SubmoduleBranchSwitcher")

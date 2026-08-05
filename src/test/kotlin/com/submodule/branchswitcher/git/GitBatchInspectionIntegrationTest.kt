@@ -9,6 +9,8 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -101,6 +103,34 @@ class GitBatchInspectionIntegrationTest {
         assertEquals(-1, row.dirtyCount)
         assertNotNull(row.probeError)
         assertTrue(row.probeError!!.contains("GitQueryException"))
+    }
+
+    @Test
+    fun `tracked stash pop restores the requested oid instead of the latest stash`() {
+        initializeRepository(root.toFile())
+        val repository = root.toFile()
+        val trackedFile = File(repository, "tracked.txt")
+        val git = GitOps(timeoutSeconds = 10)
+
+        trackedFile.writeText("first change\n")
+        assertTrue(git.stash(repository, "first").ok)
+        val firstOid = requireNotNull(git.stashTopOid(repository))
+
+        trackedFile.writeText("second change\n")
+        assertTrue(git.stash(repository, "second").ok)
+        val secondOid = requireNotNull(git.stashTopOid(repository))
+        assertNotEquals(firstOid, secondOid)
+
+        val firstPop = git.stashPop(repository, firstOid)
+        assertTrue(firstPop.diagnostic(), firstPop.ok)
+        assertEquals("first change\n", trackedFile.readText())
+        assertEquals(secondOid, git.stashTopOid(repository))
+
+        runGit(repository, "reset", "--hard", "HEAD")
+        val secondPop = git.stashPop(repository, secondOid)
+        assertTrue(secondPop.diagnostic(), secondPop.ok)
+        assertEquals("second change\n", trackedFile.readText())
+        assertNull(git.stashTopOid(repository))
     }
 
     private fun initializeRepository(directory: File) {
