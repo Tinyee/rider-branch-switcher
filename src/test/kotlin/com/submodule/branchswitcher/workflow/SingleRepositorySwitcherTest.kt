@@ -159,6 +159,25 @@ class SingleRepositorySwitcherTest {
         assertEquals(2, leaseCloseCount)
     }
 
+    @Test
+    fun `result callback runs after the write lease is released`() = runBlocking {
+        val root = temp.newFolder("root")
+        root.resolve("module").mkdirs()
+        val git = RecordingGit().apply { localBranchExists = true }
+        var leaseHeld = true
+        val callbackObservedReleasedLease = CompletableDeferred<Boolean>()
+        val switcher = switcher(
+            git,
+            tryAcquireWrite = { countingLease { leaseHeld = false } },
+        )
+
+        check(switcher.start(this, root.toPath(), "module", "dev", "Switching") {
+            callbackObservedReleasedLease.complete(!leaseHeld)
+        })
+
+        assertTrue(callbackObservedReleasedLease.await())
+    }
+
     private suspend fun CoroutineScope.runSwitch(
         switcher: SingleRepositorySwitcher,
         root: java.nio.file.Path,

@@ -110,8 +110,23 @@ class SwitchFlowCoordinator(
                     }
                 }
             },
+            afterRelease = { runResult ->
+                val operationLog = log.withContext(operationContext.inPhase("refresh"))
+                val refreshResult = refreshVcsRepos(project, root, preset.submodules.keys, operationLog)
+                uiLater {
+                    completion.completeAfter {
+                        logVcsRefresh(operationLog, refreshResult)
+                        resultPresenter.presentSwitchResult(
+                            preset = preset,
+                            runResult = runResult,
+                            onSuccess = onSuccess,
+                            onRollback = { execution -> rollbackSwitch(root, execution, log, operationContext) },
+                        )
+                    }
+                }
+            },
         ) {
-            val runResult = SwitchRunner(
+            SwitchRunner(
                 projectRoot = root,
                 operations = GitBackgroundRunner(project, service.gitClient),
                 cancellationClassifier = platformCancellationClassifier,
@@ -122,19 +137,6 @@ class SwitchFlowCoordinator(
                 log = log,
                 operationContext = operationContext,
             )
-            val operationLog = log.withContext(operationContext.inPhase("refresh"))
-            val refreshResult = refreshVcsRepos(project, root, preset.submodules.keys, operationLog)
-            uiLater {
-                completion.completeAfter {
-                    logVcsRefresh(operationLog, refreshResult)
-                    resultPresenter.presentSwitchResult(
-                        preset = preset,
-                        runResult = runResult,
-                        onSuccess = onSuccess,
-                        onRollback = { execution -> rollbackSwitch(root, execution, log, operationContext) },
-                    )
-                }
-            }
         }
         if (job == null) return
         completion.completeWhenFailed(job) { failure ->
@@ -153,6 +155,15 @@ class SwitchFlowCoordinator(
         val recoveryLog = log.withContext(operationContext.inPhase("recovery"))
         writeOperations.launch(
             onBusy = { uiLater { resultPresenter.showWriteBusy() } },
+            afterRelease = { rollbackSucceeded ->
+                val checkpointPaths = execution.checkpoint.orEmpty().keys.filterTo(mutableSetOf()) { it != "." }
+                val refreshLog = log.withContext(operationContext.inPhase("recovery-refresh"))
+                val refreshResult = refreshVcsRepos(project, root, checkpointPaths, refreshLog)
+                uiLater {
+                    logVcsRefresh(refreshLog, refreshResult)
+                    resultPresenter.presentRollbackResult(execution, rollbackSucceeded)
+                }
+            },
         ) {
             val rollbackBackgroundResult = GitBackgroundRunner(project, service.gitClient).run(
                     Bundle.msg("progress.rollback"),
@@ -162,7 +173,7 @@ class SwitchFlowCoordinator(
                     val recovery = SwitchRecoveryExecutor(root, recoveryLog, operation)
                     recovery.recover(execution).ok
                 }
-            val rollbackSucceeded = when (rollbackBackgroundResult) {
+            when (rollbackBackgroundResult) {
                     is GitOperationResult.Completed -> rollbackBackgroundResult.value
                     is GitOperationResult.Cancelled -> rollbackBackgroundResult.value ?: false
                     is GitOperationResult.Failed -> {
@@ -170,13 +181,6 @@ class SwitchFlowCoordinator(
                         recoveryLog.error("notification rollback failed", error)
                         false
                     }
-            }
-            val checkpointPaths = execution.checkpoint.orEmpty().keys.filterTo(mutableSetOf()) { it != "." }
-            val refreshLog = log.withContext(operationContext.inPhase("recovery-refresh"))
-            val refreshResult = refreshVcsRepos(project, root, checkpointPaths, refreshLog)
-            uiLater {
-                logVcsRefresh(refreshLog, refreshResult)
-                resultPresenter.presentRollbackResult(execution, rollbackSucceeded)
             }
         }
     }
