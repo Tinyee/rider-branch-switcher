@@ -398,6 +398,7 @@ class GitOpsTest {
             arrayOf(ProcessHandle::class.java),
         ) { _, method, _ ->
             when (method.name) {
+                "pid" -> 1234L
                 "isAlive" -> !descendantDestroyed.get()
                 "destroyForcibly" -> descendantDestroyed.compareAndSet(false, true)
                 else -> null

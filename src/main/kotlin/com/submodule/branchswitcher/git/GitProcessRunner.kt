@@ -41,12 +41,20 @@ internal class GitProcessRunner(
         if (permitFailure != null) {
             return GitResult(commandLabel, -1, "", permitFailure)
         }
+        var releasePermit = true
         return try {
-            runWithPermit(workDir, cancellation, commandLabel, args)
+            val outcome = runWithPermit(workDir, cancellation, commandLabel, args)
+            releasePermit = outcome.resourcesStopped
+            outcome.result
         } finally {
-            GitProcessResources.processPermits.release()
+            if (releasePermit) GitProcessResources.processPermits.release()
         }
     }
+
+    private data class ProcessRunOutcome(
+        val result: GitResult,
+        val resourcesStopped: Boolean,
+    )
 
     @Suppress("TooGenericExceptionCaught")
     private fun runWithPermit(
@@ -54,18 +62,16 @@ internal class GitProcessRunner(
         cancellation: AtomicBoolean,
         commandLabel: String,
         args: List<String>,
-    ): GitResult {
+    ): ProcessRunOutcome {
         val builder = ProcessBuilder(listOf("git") + args)
             .directory(workDir)
             .redirectErrorStream(false)
         val process = try {
             processStarter(builder)
         } catch (e: Exception) {
-            return GitResult(
-                commandLabel,
-                -1,
-                "",
-                "failed to start: ${e.javaClass.name}: ${e.message}",
+            return ProcessRunOutcome(
+                GitResult(commandLabel, -1, "", "failed to start: ${e.javaClass.name}: ${e.message}"),
+                resourcesStopped = true,
             )
         }
 
@@ -78,7 +84,9 @@ internal class GitProcessRunner(
         var exitCode = -1
         var terminationReason: String? = null
         var interrupted = false
+        val observedDescendants = linkedMapOf<Long, ProcessHandle>()
         while (true) {
+            observeDescendants(process, observedDescendants)
             val finished = try {
                 process.waitFor(100, TimeUnit.MILLISECONDS)
             } catch (_: InterruptedException) {
@@ -104,33 +112,48 @@ internal class GitProcessRunner(
             }
         }
 
+        var resourcesStopped = true
         if (terminationReason != null) {
-            interrupted = terminateProcess(process) || interrupted
+            val termination = terminateProcess(process, observedDescendants)
+            interrupted = termination.interrupted || interrupted
+            resourcesStopped = termination.resourcesStopped
         }
 
-        val stdout = awaitCapture(stdoutFuture)
-        val stderr = awaitCapture(stderrFuture)
+        var captureCleanupPerformed = false
+        val cleanupBlockedCapture = {
+            if (!captureCleanupPerformed) {
+                captureCleanupPerformed = true
+                val termination = terminateProcess(process, observedDescendants)
+                interrupted = termination.interrupted || interrupted
+                resourcesStopped = termination.resourcesStopped && resourcesStopped
+            }
+        }
+        val stdout = awaitCapture(stdoutFuture, cleanupBlockedCapture)
+        val stderr = awaitCapture(stderrFuture, cleanupBlockedCapture)
         interrupted = interrupted || stdout.interrupted || stderr.interrupted
         if (interrupted) {
             Thread.currentThread().interrupt()
-            return GitResult(commandLabel, -1, "", "interrupted")
+            return ProcessRunOutcome(GitResult(commandLabel, -1, "", "interrupted"), resourcesStopped)
         }
         if (terminationReason != null) {
-            return GitResult(commandLabel, -1, "", terminationReason)
+            return ProcessRunOutcome(GitResult(commandLabel, -1, "", terminationReason), resourcesStopped)
         }
         val captureFailure = stdout.failure ?: stderr.failure
         if (captureFailure != null) {
-            return GitResult(commandLabel, -1, "", captureFailure)
+            return ProcessRunOutcome(GitResult(commandLabel, -1, "", captureFailure), resourcesStopped)
         }
         if (stdout.capture.truncated) {
-            return GitResult(commandLabel, -1, "", stdoutLimitMessage())
+            return ProcessRunOutcome(GitResult(commandLabel, -1, "", stdoutLimitMessage()), resourcesStopped)
         }
         val stderrText = if (stderr.capture.truncated) {
             "[stderr truncated; showing last $GIT_STDERR_TAIL_BYTES bytes]\n${stderr.capture.text}"
         } else {
             stderr.capture.text
         }
-        return GitResult(commandLabel, exitCode, stdout.capture.text.trim(), stderrText.trim())
+        return ProcessRunOutcome(
+            GitResult(commandLabel, exitCode, stdout.capture.text.trim(), stderrText.trim()),
+            resourcesStopped,
+        )
     }
 
     private fun acquireProcessPermit(cancellation: AtomicBoolean): String? {
@@ -151,7 +174,10 @@ internal class GitProcessRunner(
         val failure: String? = null,
     )
 
-    private fun awaitCapture(future: Future<GitCapturedOutput>): AwaitedCapture {
+    private fun awaitCapture(
+        future: Future<GitCapturedOutput>,
+        cleanupBlockedCapture: () -> Unit,
+    ): AwaitedCapture {
         var interrupted = false
         repeat(2) {
             try {
@@ -166,6 +192,7 @@ internal class GitProcessRunner(
                     "output capture failed: ${cause.javaClass.name}: ${cause.message}",
                 )
             } catch (_: TimeoutException) {
+                cleanupBlockedCapture()
                 future.cancel(true)
                 return AwaitedCapture(
                     GitCapturedOutput("", truncated = false),
@@ -181,8 +208,12 @@ internal class GitProcessRunner(
     private fun stdoutLimitMessage(): String =
         "output limit exceeded: stdout exceeded $GIT_STDOUT_LIMIT_BYTES bytes"
 
-    /** Returns true when cleanup itself was interrupted. */
-    private fun terminateProcess(process: Process): Boolean {
+    private data class ProcessTermination(
+        val interrupted: Boolean,
+        val resourcesStopped: Boolean,
+    )
+
+    private fun observeDescendants(process: Process, observed: MutableMap<Long, ProcessHandle>) {
         val descendants = try {
             process.descendants().use { stream -> stream.toList() }
         } catch (_: UnsupportedOperationException) {
@@ -190,6 +221,24 @@ internal class GitProcessRunner(
         } catch (_: SecurityException) {
             emptyList()
         }
+        descendants.forEach { descendant ->
+            val pid = try {
+                descendant.pid()
+            } catch (_: UnsupportedOperationException) {
+                return@forEach
+            } catch (_: SecurityException) {
+                return@forEach
+            }
+            observed[pid] = descendant
+        }
+    }
+
+    private fun terminateProcess(
+        process: Process,
+        observedDescendants: MutableMap<Long, ProcessHandle>,
+    ): ProcessTermination {
+        observeDescendants(process, observedDescendants)
+        val descendants = observedDescendants.values.toList()
         descendants.asReversed().forEach { descendant ->
             try {
                 if (descendant.isAlive) descendant.destroyForcibly()
@@ -203,7 +252,9 @@ internal class GitProcessRunner(
                 // Continue with the parent and stream cleanup even when one child is protected.
             }
         }
-        return try {
+        var parentStopped = false
+        var interrupted = false
+        try {
             try {
                 process.destroyForcibly()
             } catch (_: UnsupportedOperationException) {
@@ -216,14 +267,23 @@ internal class GitProcessRunner(
                 // Stream cleanup below still prevents drain-thread starvation.
             }
             try {
-                process.waitFor(5, TimeUnit.SECONDS)
-                false
+                parentStopped = process.waitFor(5, TimeUnit.SECONDS)
             } catch (_: InterruptedException) {
-                true
+                interrupted = true
             }
         } finally {
             closeProcessStreams(process)
         }
+        val descendantsStopped = descendants.none(::isAlive)
+        return ProcessTermination(interrupted, parentStopped && descendantsStopped)
+    }
+
+    private fun isAlive(process: ProcessHandle): Boolean = try {
+        process.isAlive
+    } catch (_: UnsupportedOperationException) {
+        false
+    } catch (_: SecurityException) {
+        false
     }
 
     private fun closeProcessStreams(process: Process) {
