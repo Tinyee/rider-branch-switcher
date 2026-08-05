@@ -23,6 +23,7 @@ data class DeriveRunResult(
 
 private data class BackgroundDeriveOutcome(
     val deriveResult: DeriveResult,
+    val rollbackAttempted: Boolean,
     val rollbackFailures: List<String>,
 )
 
@@ -75,13 +76,14 @@ class DeriveBranchRunner(
             val deriveResult = executor.execute(preset, branchName)
             val operationCancelled = indicator.isCanceled || deriveResult.cancelled
             val partialFailure = !deriveResult.allOk && deriveResult.succeeded.isNotEmpty()
-            val rollbackFailures = if (!operationCancelled && partialFailure) {
+            val rollbackAttempted = !operationCancelled && partialFailure
+            val rollbackFailures = if (rollbackAttempted) {
                 operationLog.activity("[derive] rolling back ${deriveResult.succeeded.size} succeeded repo(s)...")
                 executor.rollbackSucceeded(deriveResult, branchName)
             } else {
                 emptyList()
             }
-            BackgroundDeriveOutcome(deriveResult, rollbackFailures)
+            BackgroundDeriveOutcome(deriveResult, rollbackAttempted, rollbackFailures)
         }
 
         val result = when (backgroundResult) {
@@ -93,12 +95,17 @@ class DeriveBranchRunner(
             )
             is GitOperationResult.Cancelled -> {
                 operationLog.info("[cancelled] derive cancelled by user")
-                val deriveResult = backgroundResult.value?.deriveResult
+                val backgroundOutcome = backgroundResult.value
+                val deriveResult = backgroundOutcome?.deriveResult
                 DeriveRunResult(
                     operationId = operationId,
                     cancelled = true,
                     execution = deriveResult,
-                    rollbackFailures = rollbackAfterCancellation(deriveResult, branchName, operationLog),
+                    rollbackFailures = if (backgroundOutcome?.rollbackAttempted == true) {
+                        backgroundOutcome.rollbackFailures
+                    } else {
+                        rollbackAfterCancellation(deriveResult, branchName, operationLog)
+                    },
                 )
             }
             is GitOperationResult.Failed -> {
