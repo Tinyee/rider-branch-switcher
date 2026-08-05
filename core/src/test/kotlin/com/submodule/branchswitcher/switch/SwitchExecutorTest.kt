@@ -40,7 +40,7 @@ class SwitchExecutorTest {
         override fun listSubmodulePaths(gitRoot: File): List<String> = emptyList()
         override fun listAllBranches(workDir: File): List<String> = listOf("main", "dev", "feature-x")
         override fun revParseHead(workDir: File): String? = "abc123"
-        override fun stashPop(workDir: File, oid: String): GitResult = GitResult("pop", 0, "", "")
+        override fun stashApply(workDir: File, oid: String): GitResult = GitResult("pop", 0, "", "")
         override fun checkoutNewBranch(workDir: File, branch: String): GitResult = GitResult("checkout", 0, "", "")
         override fun deleteBranch(workDir: File, branch: String): GitResult = GitResult("branch", 0, "", "")
         override fun repositoryIdentity(workDir: File): RepositoryIdentity {
@@ -364,7 +364,7 @@ class SwitchExecutorTest {
     @Test
     fun `recovery restores stashes even when one repository rollback fails`() {
         initGitRepo(File(projectRoot.toFile(), "SubA"))
-        val stashPopCalls = mutableListOf<String>()
+        val stashApplyCalls = mutableListOf<String>()
         val recoveryGit = object : GitClient by fakeGit {
             override fun currentBranch(workDir: File): String? =
                 if (workDir == projectRoot.toFile()) "dev" else "main"
@@ -376,8 +376,8 @@ class SwitchExecutorTest {
                     GitResult("checkout", 0, "", "")
                 }
 
-            override fun stashPop(workDir: File, oid: String): GitResult {
-                stashPopCalls += workDir.name
+            override fun stashApply(workDir: File, oid: String): GitResult {
+                stashApplyCalls += workDir.name
                 return GitResult("stash pop", 0, "", "")
             }
         }
@@ -394,7 +394,7 @@ class SwitchExecutorTest {
 
         assertFalse(outcome.rollbackOk)
         assertTrue(outcome.stashRestore.issues.isEmpty())
-        assertEquals(listOf("SubA"), stashPopCalls)
+        assertEquals(listOf("SubA"), stashApplyCalls)
         assertFalse(outcome.stashRestore.state.hasStashes())
     }
 

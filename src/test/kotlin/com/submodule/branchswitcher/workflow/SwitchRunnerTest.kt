@@ -138,7 +138,7 @@ class SwitchRunnerTest {
         assertTrue(result.cancelled)
         assertTrue(result.recovery?.ok == true)
         assertEquals("main", git.branch)
-        assertEquals(1, git.stashPopCount)
+        assertEquals(1, git.stashApplyCount)
         assertEquals(2, git.openCount)
         assertEquals(2, git.closeCount)
     }
@@ -258,7 +258,7 @@ class SwitchRunnerTest {
         var closeCount = 0
         var submoduleSyncCount = 0
         var checkoutCount = 0
-        var stashPopCount = 0
+        var stashApplyCount = 0
         var branch = "main"
 
         override fun cancel() { cancelCount++ }
@@ -304,8 +304,8 @@ class SwitchRunnerTest {
         override fun listSubmodulePaths(gitRoot: File): List<String> = emptyList()
         override fun listAllBranches(workDir: File): List<String> = listOf("main")
         override fun revParseHead(workDir: File): String? = "abc123"
-        override fun stashPop(workDir: File, oid: String): GitResult {
-            stashPopCount++
+        override fun stashApply(workDir: File, oid: String): GitResult {
+            stashApplyCount++
             return ok("stash pop")
         }
         override fun checkoutNewBranch(workDir: File, branch: String): GitResult = ok("checkout -b")

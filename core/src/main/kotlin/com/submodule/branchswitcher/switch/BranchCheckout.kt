@@ -94,9 +94,9 @@ internal object BranchCheckout {
             )
         }
 
-        val popResult = context.git.stashPop(directory, trackedStash.oid)
-        if (!popResult.ok) {
-            context.log.warn("[fail] stash pop also failed: ${popResult.diagnostic()}")
+        val applyResult = context.git.stashApply(directory, trackedStash.oid)
+        if (!applyResult.ok) {
+            context.log.warn("[fail] stash apply also failed: ${applyResult.diagnostic()}")
             return Result(
                 state,
                 succeeded = false,
@@ -106,13 +106,16 @@ internal object BranchCheckout {
                         stage = OperationStage.STASH_RESTORE,
                         code = OperationIssueCode.STASH_RESTORE_FAILED,
                         repositoryPath = target.path,
-                        diagnostic = popResult.diagnostic(),
+                        diagnostic = applyResult.diagnostic(),
                     ),
                 ),
             )
         }
 
-        context.log.info("stash pop ok (recovered after branch-not-found: ${trackedStash.message})")
+        context.log.info(
+            "stash apply ok; recovery backup retained " +
+                "(recovered after branch-not-found: ${trackedStash.message})",
+        )
         return Result(
             state = state.withoutStash(target.path),
             succeeded = false,

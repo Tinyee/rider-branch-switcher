@@ -312,16 +312,8 @@ internal class GitCommandClient(
         return if (result.ok) result.stdout.trim().ifEmpty { null } else null
     }
 
-    override fun stashPop(workDir: File, oid: String): GitResult {
-        val listResult = run(workDir, "stash", "list", "--format=%H%x09%gd")
-        if (!listResult.ok) return listResult
-        val stashRef = listResult.stdout.lineSequence().mapNotNull { line ->
-            val separator = line.indexOf('\t')
-            if (separator <= 0) null else line.substring(0, separator) to line.substring(separator + 1)
-        }.firstOrNull { (candidateOid, _) -> candidateOid == oid }?.second
-            ?: return GitResult("git stash pop <tracked>", 1, "", "tracked stash is no longer present: $oid")
-        return run(workDir, "stash", "pop", stashRef)
-    }
+    override fun stashApply(workDir: File, oid: String): GitResult =
+        run(workDir, "stash", "apply", oid)
 
     override fun checkoutNewBranch(workDir: File, branch: String): GitResult =
         run(workDir, "checkout", "-b", branch)

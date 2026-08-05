@@ -815,7 +815,7 @@ class SwitchIntegrationTest {
         assertTrue("SubA dirty file should be restored", File(subADir, "dirty-sub.txt").exists())
         for (dir in listOf(root, subADir)) {
             val (_, stashList) = runGit(dir, "stash", "list")
-            assertTrue("Stash should be empty in ${dir.name}: $stashList", stashList.isBlank())
+            assertTrue("Recovery stash should be retained in ${dir.name}: $stashList", stashList.isNotBlank())
         }
     }
 
@@ -858,10 +858,10 @@ class SwitchIntegrationTest {
         assertTrue("SubA work file should be restored", File(subADir, "suba-work.txt").exists())
         assertTrue("SubB work file should be restored", File(subBDir, "subb-work.txt").exists())
 
-        // All stash lists empty
+        // Immutable recovery backups remain available after applying the changes.
         for (dir in listOf(root, subADir, subBDir)) {
             val (_, list) = runGit(dir, "stash", "list")
-            assertTrue("Stash should be empty in ${dir.name}: $list", list.isBlank())
+            assertTrue("Recovery stash should be retained in ${dir.name}: $list", list.isNotBlank())
         }
     }
 }
