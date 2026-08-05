@@ -4,4 +4,11 @@ package com.submodule.branchswitcher
 // checkQuickCheck should verify it does NOT get flagged (tests against false positives).
 class CleanUtility {
     fun greet() = "hello"
+
+    /** Documentation may mention com.submodule.branchswitcher.ui.SomePanel. */
+    val example = "com.submodule.branchswitcher.platform.TaskBridge"
+    val multiline = """
+        com.intellij.openapi.project.Project
+        com.submodule.branchswitcher.service.BranchSwitcherService
+    """.trimIndent()
 }
