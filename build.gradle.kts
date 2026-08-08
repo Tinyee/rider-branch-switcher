@@ -139,56 +139,127 @@ pitest {
     threads.set(1)
 }
 
-/** Removes comments and string/character literals while preserving executable Kotlin tokens by line. */
+private enum class KotlinLexicalMode { CODE, STRING, TRIPLE_STRING, CHARACTER, LINE_COMMENT, BLOCK_COMMENT }
+
+/** Removes comments and literal text while preserving executable Kotlin tokens, including `${...}` expressions. */
 fun kotlinCodeLines(file: File): List<String> {
+    val source = file.readText()
+    val code = StringBuilder(source.length)
+    var mode = KotlinLexicalMode.CODE
     var blockCommentDepth = 0
-    var inTripleQuotedString = false
-    return file.readLines().map { line ->
-        val code = StringBuilder(line.length)
-        var index = 0
-        while (index < line.length) {
-            when {
-                inTripleQuotedString -> {
-                    val end = line.indexOf("\"\"\"", index)
-                    if (end < 0) break
-                    inTripleQuotedString = false
-                    index = end + 3
+    val templateStringModes = mutableListOf<KotlinLexicalMode>()
+    val templateBraceDepths = mutableListOf<Int>()
+    var index = 0
+
+    fun preserveNewline() {
+        if (source[index] == '\n') code.append('\n')
+    }
+
+    while (index < source.length) {
+        when (mode) {
+            KotlinLexicalMode.CODE -> when {
+                source.startsWith("//", index) -> {
+                    mode = KotlinLexicalMode.LINE_COMMENT
+                    index += 2
                 }
-                blockCommentDepth > 0 -> when {
-                    line.startsWith("/*", index) -> {
-                        blockCommentDepth++
-                        index += 2
-                    }
-                    line.startsWith("*/", index) -> {
-                        blockCommentDepth--
-                        index += 2
-                    }
-                    else -> index++
+                source.startsWith("/*", index) -> {
+                    mode = KotlinLexicalMode.BLOCK_COMMENT
+                    blockCommentDepth = 1
+                    index += 2
                 }
-                line.startsWith("//", index) -> break
-                line.startsWith("/*", index) -> {
+                source.startsWith("\"\"\"", index) -> {
+                    mode = KotlinLexicalMode.TRIPLE_STRING
+                    index += 3
+                }
+                source[index] == '"' -> {
+                    mode = KotlinLexicalMode.STRING
+                    index++
+                }
+                source[index] == '\'' -> {
+                    mode = KotlinLexicalMode.CHARACTER
+                    index++
+                }
+                source[index] == '{' && templateBraceDepths.isNotEmpty() -> {
+                    templateBraceDepths[templateBraceDepths.lastIndex]++
+                    code.append(source[index++])
+                }
+                source[index] == '}' && templateBraceDepths.isNotEmpty() -> {
+                    val lastIndex = templateBraceDepths.lastIndex
+                    val remainingDepth = templateBraceDepths[lastIndex] - 1
+                    if (remainingDepth == 0) {
+                        templateBraceDepths.removeAt(lastIndex)
+                        mode = templateStringModes.removeAt(templateStringModes.lastIndex)
+                        index++
+                    } else {
+                        templateBraceDepths[lastIndex] = remainingDepth
+                        code.append(source[index++])
+                    }
+                }
+                else -> code.append(source[index++])
+            }
+            KotlinLexicalMode.LINE_COMMENT -> {
+                preserveNewline()
+                if (source[index++] == '\n') mode = KotlinLexicalMode.CODE
+            }
+            KotlinLexicalMode.BLOCK_COMMENT -> when {
+                source.startsWith("/*", index) -> {
                     blockCommentDepth++
                     index += 2
                 }
-                line.startsWith("\"\"\"", index) -> {
-                    inTripleQuotedString = true
-                    index += 3
+                source.startsWith("*/", index) -> {
+                    blockCommentDepth--
+                    index += 2
+                    if (blockCommentDepth == 0) mode = KotlinLexicalMode.CODE
                 }
-                line[index] == '"' || line[index] == '\'' -> {
-                    val quote = line[index++]
-                    while (index < line.length) {
-                        if (line[index] == '\\') {
-                            index += 2
-                        } else if (line[index++] == quote) {
-                            break
-                        }
+                else -> {
+                    preserveNewline()
+                    index++
+                }
+            }
+            KotlinLexicalMode.STRING, KotlinLexicalMode.CHARACTER -> when {
+                source[index] == '\\' -> {
+                    preserveNewline()
+                    index++
+                    if (index < source.length) {
+                        preserveNewline()
+                        index++
                     }
                 }
-                else -> code.append(line[index++])
+                mode == KotlinLexicalMode.STRING && source.startsWith("${'$'}{", index) -> {
+                    templateStringModes += mode
+                    templateBraceDepths += 1
+                    mode = KotlinLexicalMode.CODE
+                    index += 2
+                }
+                mode == KotlinLexicalMode.STRING && source[index] == '"' ||
+                    mode == KotlinLexicalMode.CHARACTER && source[index] == '\'' -> {
+                    mode = KotlinLexicalMode.CODE
+                    index++
+                }
+                else -> {
+                    preserveNewline()
+                    index++
+                }
+            }
+            KotlinLexicalMode.TRIPLE_STRING -> when {
+                source.startsWith("\"\"\"", index) -> {
+                    mode = KotlinLexicalMode.CODE
+                    index += 3
+                }
+                source.startsWith("${'$'}{", index) -> {
+                    templateStringModes += mode
+                    templateBraceDepths += 1
+                    mode = KotlinLexicalMode.CODE
+                    index += 2
+                }
+                else -> {
+                    preserveNewline()
+                    index++
+                }
             }
         }
-        code.toString()
     }
+    return code.toString().lines()
 }
 
 // Extracted scan logic shared by quickCheck (production scan) and checkQuickCheck (fixture test).
@@ -399,6 +470,7 @@ tasks {
                 "violates-workflow-imports-platform.kt" to "workflow/_fixture_test_",
                 "violates-workflow-intellij.kt" to "workflow/_fixture_test_",
                 "violates-workflow-intellij-qualified.kt" to "workflow/_fixture_test_",
+                "violates-workflow-intellij-template.kt" to "workflow/_fixture_test_",
                 "violates-workflow-root-platform.kt" to "workflow/_fixture_test_",
                 "violates-workflow-git-implementation.kt" to "workflow/_fixture_test_",
             )
