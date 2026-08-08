@@ -138,6 +138,7 @@ class GitBatchInspectionIntegrationTest {
         runGit(directory, "init", "--quiet")
         runGit(directory, "config", "user.email", "tests@example.com")
         runGit(directory, "config", "user.name", "Branch Switcher Tests")
+        runGit(directory, "config", "core.autocrlf", "false")
         File(directory, "tracked.txt").writeText("initial\n")
         runGit(directory, "add", "tracked.txt")
         runGit(directory, "commit", "--quiet", "-m", "initial")

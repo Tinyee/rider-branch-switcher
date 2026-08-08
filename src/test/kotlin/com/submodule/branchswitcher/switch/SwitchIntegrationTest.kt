@@ -108,7 +108,14 @@ class SwitchIntegrationTest {
 
     private fun cloneRepo(source: File, name: String): File {
         val target = tmpDir.resolve(name).toFile()
-        gitOk(tmpDir.toFile(), "clone", source.absolutePath, target.absolutePath)
+        gitOk(
+            tmpDir.toFile(),
+            "-c",
+            "core.autocrlf=false",
+            "clone",
+            source.absolutePath,
+            target.absolutePath,
+        )
         gitOk(target, "config", "user.email", "test@test.com")
         gitOk(target, "config", "user.name", "Test")
         gitOk(target, "config", "core.autocrlf", "false")

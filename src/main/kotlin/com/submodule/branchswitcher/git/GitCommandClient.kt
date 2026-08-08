@@ -233,11 +233,7 @@ internal class GitCommandClient(
     private fun listSubmoduleRegistrations(gitRoot: File): List<SubmoduleRegistration> {
         val result = mutableListOf<SubmoduleRegistration>()
         val visited = HashSet<String>()
-        val rootCanonical = try {
-            gitRoot.canonicalFile.path
-        } catch (_: Exception) {
-            gitRoot.absolutePath
-        }
+        val rootCanonical = runCatching { resolvedPath(gitRoot) }.getOrElse { gitRoot.absolutePath }
         visited.add(rootCanonical)
         collectSubmoduleRegistrations(gitRoot, "", result, visited, rootCanonical)
         return result
@@ -261,7 +257,7 @@ internal class GitCommandClient(
             val fullPath = if (prefix.isEmpty()) path else "$prefix/$path"
             val subDir = File(baseDir, path)
             val resolved = try {
-                subDir.canonicalFile.path
+                resolvedPath(subDir)
             } catch (e: Exception) {
                 LOG.warn("Cannot resolve canonical path for submodule $fullPath", e)
                 continue
@@ -278,6 +274,9 @@ internal class GitCommandClient(
             collectSubmoduleRegistrations(subDir, fullPath, result, visited, rootCanonical, depth + 1)
         }
     }
+
+    private fun resolvedPath(file: File): String =
+        if (file.exists()) file.toPath().toRealPath().toString() else file.canonicalPath
 
     private fun readSubmoduleEntries(baseDir: File, file: File): List<Pair<String, String>> {
         val result = run(
