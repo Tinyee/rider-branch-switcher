@@ -20,8 +20,29 @@ class BundleTest {
     }
 
     @Test
+    fun `stash backup notice makes the count operation scoped`() {
+        val english = java.util.ResourceBundle.getBundle(
+            "messages.BranchSwitcherBundle",
+            java.util.Locale.ROOT,
+        ).getString("notify.switch.stash.backups.retained")
+        val chinese = java.util.ResourceBundle.getBundle(
+            "messages.BranchSwitcherBundle",
+            java.util.Locale.forLanguageTag("zh"),
+        ).getString("notify.switch.stash.backups.retained")
+
+        assertTrue(
+            "English notice must say the count belongs to this operation, got: $english",
+            english.contains("This operation"),
+        )
+        assertTrue(
+            "中文通知必须说明计数属于本次操作，实际值：$chinese",
+            chinese.contains("本次操作"),
+        )
+    }
+
+    @Test
     fun `all localized values are non-empty`() {
-        val locales = listOf("EN" to java.util.Locale.ENGLISH, "ZH" to java.util.Locale.forLanguageTag("zh"))
+        val locales = listOf("EN" to java.util.Locale.ROOT, "ZH" to java.util.Locale.forLanguageTag("zh"))
         for ((label, locale) in locales) {
             val bundle = java.util.ResourceBundle.getBundle("messages.BranchSwitcherBundle", locale)
             val keys = bundle.keys

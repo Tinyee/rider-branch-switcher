@@ -31,12 +31,12 @@ internal class SwitchResultPresenter(
     }
 
     fun presentRollbackResult(execution: SwitchExecutionResult, succeeded: Boolean) {
-        val retainedNotice = retainedInitializationNotice(execution)
+        val retainedNotice = retainedStateNotice(execution)
         if (succeeded) {
             Notifier.info(
                 project,
                 Bundle.msg("rollback.complete"),
-                Bundle.msg("notify.rollback.complete.msg") + retainedNotice + retainedStashBackupNotice(execution),
+                Bundle.msg("notify.rollback.complete.msg") + retainedNotice,
             )
         } else {
             Notifier.error(
@@ -63,13 +63,12 @@ internal class SwitchResultPresenter(
 
     private fun notifyCancellation(runResult: SwitchRunResult) {
         val recovery = runResult.recovery ?: return
-        val retainedNotice = retainedInitializationNotice(runResult.execution)
+        val retainedNotice = retainedStateNotice(runResult.execution)
         if (recovery.ok) {
             Notifier.info(
                 project,
                 Bundle.msg("switch.cancelled"),
-                Bundle.msg("notify.switch.cancelled.recovered") + retainedNotice +
-                    retainedStashBackupNotice(runResult.execution),
+                Bundle.msg("notify.switch.cancelled.recovered") + retainedNotice,
             )
         } else {
             Notifier.error(
@@ -86,7 +85,7 @@ internal class SwitchResultPresenter(
         onRollback: (SwitchExecutionResult) -> Unit,
     ) {
         val message = Bundle.msg("notify.switch.partial.msg", preset.name) +
-            retainedInitializationNotice(execution)
+            retainedStateNotice(execution)
         if (execution?.checkpoint == null) {
             Notifier.error(project, Bundle.msg("switch.failed"), message)
             return
@@ -111,4 +110,7 @@ internal class SwitchResultPresenter(
         if (count == 0) return ""
         return " " + Bundle.msg("notify.switch.stash.backups.retained", count)
     }
+
+    private fun retainedStateNotice(execution: SwitchExecutionResult?): String =
+        retainedInitializationNotice(execution) + retainedStashBackupNotice(execution)
 }

@@ -1,0 +1,4 @@
+package com.submodule.branchswitcher.workflow
+
+fun nestedTemplateLiteral(value: String): String =
+    "outer=${"inner ${value} literal com.intellij.notExecutable"}"
