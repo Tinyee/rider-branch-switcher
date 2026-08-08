@@ -17,6 +17,7 @@ data class GitResult(
             stderr == "cancelled" -> GitFailureKind.CANCELLED
             stderr == "interrupted" -> GitFailureKind.INTERRUPTED
             stderr.startsWith("timeout after ") -> GitFailureKind.TIMEOUT
+            stderr.startsWith("process capacity unavailable after ") -> GitFailureKind.PROCESS_CAPACITY
             stderr.startsWith("failed to start: ") -> GitFailureKind.START_FAILED
             stderr.startsWith("output limit exceeded: ") -> GitFailureKind.OUTPUT_LIMIT
             stderr.startsWith("output capture ") -> GitFailureKind.OUTPUT_CAPTURE
@@ -36,6 +37,7 @@ enum class GitFailureKind {
     CANCELLED,
     INTERRUPTED,
     TIMEOUT,
+    PROCESS_CAPACITY,
     START_FAILED,
     OUTPUT_LIMIT,
     OUTPUT_CAPTURE,

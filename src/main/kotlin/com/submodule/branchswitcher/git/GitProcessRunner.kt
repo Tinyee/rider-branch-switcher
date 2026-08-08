@@ -4,6 +4,7 @@ import java.io.File
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ExecutionException
 import java.util.concurrent.Future
+import java.util.concurrent.Semaphore
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.TimeoutException
 import java.util.concurrent.atomic.AtomicBoolean
@@ -17,6 +18,7 @@ internal fun safeTimeoutSeconds(timeoutSeconds: Int): Int =
 internal class GitProcessRunner(
     timeoutSeconds: Int,
     private val outputDrainer: GitOutputDrainer = GitOutputDrainer(),
+    private val processPermits: Semaphore = GitProcessResources.processPermits,
     private val processStarter: (ProcessBuilder) -> Process,
 ) {
     val effectiveTimeoutSeconds: Int = safeTimeoutSeconds(timeoutSeconds)
@@ -48,7 +50,7 @@ internal class GitProcessRunner(
             releasePermit = outcome.resourcesStopped
             outcome.result
         } finally {
-            if (releasePermit) GitProcessResources.processPermits.release()
+            if (releasePermit) processPermits.release()
         }
     }
 
@@ -202,7 +204,7 @@ internal class GitProcessRunner(
 
         return try {
             CompletableFuture.allOf(*pendingExits.toTypedArray()).whenComplete { _, _ ->
-                GitProcessResources.processPermits.release()
+                processPermits.release()
             }
             ProcessRunOutcome(result, resourcesStopped = false)
         } catch (_: UnsupportedOperationException) {
@@ -213,15 +215,20 @@ internal class GitProcessRunner(
     }
 
     private fun acquireProcessPermit(cancellation: AtomicBoolean): String? {
-        while (true) {
+        val deadline = System.nanoTime() +
+            TimeUnit.SECONDS.toNanos(effectiveTimeoutSeconds.toLong())
+        while (System.nanoTime() - deadline < 0) {
             if (cancellation.get()) return "cancelled"
             try {
-                if (GitProcessResources.processPermits.tryAcquire(100, TimeUnit.MILLISECONDS)) return null
+                val remainingNanos = deadline - System.nanoTime()
+                val waitNanos = minOf(TimeUnit.MILLISECONDS.toNanos(100), remainingNanos)
+                if (waitNanos > 0 && processPermits.tryAcquire(waitNanos, TimeUnit.NANOSECONDS)) return null
             } catch (_: InterruptedException) {
                 Thread.currentThread().interrupt()
                 return "interrupted"
             }
         }
+        return "process capacity unavailable after ${effectiveTimeoutSeconds}s"
     }
 
     private data class AwaitedCapture(

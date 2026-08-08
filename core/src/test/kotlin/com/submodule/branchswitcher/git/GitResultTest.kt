@@ -15,6 +15,13 @@ class GitResultTest {
     }
 
     @Test
+    fun `classifies process capacity failures separately from command timeouts`() {
+        val result = GitResult("git status", -1, "", "process capacity unavailable after 30s")
+
+        assertEquals(GitFailureKind.PROCESS_CAPACITY, result.failureKind)
+    }
+
+    @Test
     fun `diagnostic bounds multi-line stderr`() {
         val result = GitResult("git checkout dev", 1, "", "first\nsecond\nthird")
 

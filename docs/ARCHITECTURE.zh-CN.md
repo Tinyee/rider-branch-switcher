@@ -280,7 +280,8 @@ IntelliJ 完成回调即使发生在 EDT，协程也会通过自己的 dispatche
 `GitProcessRunner` 全局最多允许四个 Git 进程，并用八个专用线程读取 stdout/stderr。
 stdout 超过 8 MiB 会明确失败，stderr 只保留最后 128 KiB 诊断内容，不会无限占用内存。
 取消、超时或输出捕获卡住时，会终止运行期间观察到的子进程并关闭父进程流；如果强制终止在预算内仍未
-完成，对应的 Git 并发许可只会在进程实际退出后异步归还。remote 名称只在单个 `GitOperationSession` 内缓存，
+完成，对应的 Git 并发许可只会在进程实际退出后异步归还。后续命令等待许可的时间不超过配置的 Git 超时，
+超时后返回独立的 `PROCESS_CAPACITY` 错误，不会无限等待。remote 名称只在单个 `GitOperationSession` 内缓存，
 预检也使用独立短会话，不会跨请求沿用失效结果。
 仓库状态刷新把分支、HEAD 和 dirty 状态合并为每仓库一个进程；预检再读取目标 refs，首次还会
 查询 remote 名称，最多三个进程。真正的切换、checkpoint 和恢复仍在写操作附近重新读取状态，
