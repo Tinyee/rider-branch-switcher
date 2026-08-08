@@ -14,6 +14,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Semaphore
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -419,6 +420,24 @@ class GitOpsTest {
         assertEquals(GitFailureKind.CANCELLED, result.failureKind)
         assertTrue(descendantDestroyed.get())
         assertTrue(runningProcess.destroyed)
+    }
+
+    @Test
+    fun `process capacity wait is bounded and does not start a command`() {
+        var starts = 0
+        val runner = GitProcessRunner(
+            timeoutSeconds = 1,
+            processPermits = Semaphore(0),
+        ) {
+            starts++
+            ControllableProcess(finished = true)
+        }
+
+        val result = runner.run(tmpDir.toFile(), AtomicBoolean(false), "status")
+
+        assertEquals(GitFailureKind.PROCESS_CAPACITY, result.failureKind)
+        assertEquals("process capacity unavailable after 1s", result.stderr)
+        assertEquals(0, starts)
     }
 
     @Test
