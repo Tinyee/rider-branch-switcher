@@ -19,6 +19,7 @@ class SwitchPreflightTest {
         override fun isDirty(workDir: File): Boolean = false
         override fun dirtyFileCount(workDir: File): Int = 0
         override fun stash(workDir: File, message: String): GitResult = GitResult("stash", 0, "", "")
+        override fun stashTopOid(workDir: File): String = "stash-oid"
         override fun stashApply(workDir: File, oid: String): GitResult = GitResult("pop", 0, "", "")
         override fun fetch(workDir: File): GitResult = GitResult("fetch", 0, "", "")
         override fun localBranchExists(workDir: File, branch: String): Boolean = branch in listOf("main", "dev")

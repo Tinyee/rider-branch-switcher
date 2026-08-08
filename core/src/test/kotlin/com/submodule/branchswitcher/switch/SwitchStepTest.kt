@@ -393,19 +393,26 @@ class SwitchStepTest {
     }
 
     @Test
-    fun `stash apply failure makes pull partial and keeps recovery state`() {
+    fun `stash apply failure is retained but not automatically replayed`() {
+        var applyCalls = 0
         val popGit = object : GitClient by fakeGit {
-            override fun stashApply(workDir: File, oid: String): GitResult =
-                GitResult("pop", 1, "", "conflict")
+            override fun stashApply(workDir: File, oid: String): GitResult {
+                applyCalls++
+                return GitResult("pop", 1, "", "conflict")
+            }
         }
         val c = context(SwitchOptions(DirtyAction.Stash, pull = false)).copy(git = popGit)
         val state = SwitchState().withTrackedStash(".", "before -> dev", "stash-oid")
 
-        val execution = PullStep().run(c, state)
+        val firstExecution = PullStep().run(c, state)
+        val secondExecution = PullStep().run(c, firstExecution.state)
 
-        assertTrue(execution.result is StepResult.Partial)
-        assertTrue(execution.state.hasStashes())
-        assertTrue(execution.state.retainedStashBackupsSnapshot().isEmpty())
+        assertTrue(firstExecution.result is StepResult.Partial)
+        assertTrue(secondExecution.result is StepResult.Partial)
+        assertEquals(1, applyCalls)
+        assertTrue(secondExecution.state.hasStashes())
+        assertTrue(secondExecution.state.trackedStash(".")?.restoreAttempted == true)
+        assertTrue(secondExecution.state.retainedStashBackupsSnapshot().isEmpty())
     }
 
     @Test

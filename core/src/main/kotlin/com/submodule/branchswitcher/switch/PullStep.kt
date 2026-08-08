@@ -54,7 +54,7 @@ class PullStep(
         return StepExecution(result, restore.state)
     }
 
-    /** Pop stashes that were created during DirtyHandlingStep, now that checkout + pull are done. */
+    /** Restore stashes that were created during DirtyHandlingStep, now that checkout + pull are done. */
     private fun restoreTrackedStashes(context: SwitchContext, state: SwitchState): StashRestoreResult {
         val selectedPaths = context.preset.targetsFor(scope).mapTo(hashSetOf()) { it.path }
         return restoreTrackedStashes(
@@ -83,6 +83,17 @@ internal fun restoreTrackedStashes(
         for ((path, stash) in state.stashesSnapshot()) {
             if (selectedPaths != null && path !in selectedPaths) continue
             val repositoryDirectory = resolveGitDir(projectRoot, path)
+            if (stash.restoreAttempted) {
+                log.warn("[fail] stash restore not retried for $path; a previous apply may have changed the worktree")
+                issues += OperationIssue(
+                    stage = OperationStage.STASH_RESTORE,
+                    code = OperationIssueCode.STASH_RESTORE_FAILED,
+                    repositoryPath = path,
+                    severity = OperationIssueSeverity.ERROR,
+                    diagnostic = "restore already attempted; recovery backup retained for manual inspection",
+                )
+                continue
+            }
             if (stash.oid == null) {
                 log.error("[fail] stash restore skipped - identity unavailable for $path (${stash.message})")
                 issues += OperationIssue(
@@ -102,6 +113,7 @@ internal fun restoreTrackedStashes(
                 )
                 continue
             }
+            nextState = nextState.withStashRestoreAttempted(path)
             val applyResult = git.stashApply(repositoryDirectory, stash.oid)
             if (applyResult.ok) {
                 log.info("stash apply ok; recovery backup retained (${stash.message}, oid=${stash.oid})")
