@@ -11,4 +11,5 @@ class CleanUtility {
         com.intellij.openapi.project.Project
         com.submodule.branchswitcher.service.BranchSwitcherService
     """.trimIndent()
+    val nestedLiteral = "safe ${"com.intellij.openapi.project.Project"}"
 }
