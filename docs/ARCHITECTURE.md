@@ -225,8 +225,11 @@ SwitchController
 checkpoint every accepted target, then create branches. The first two phases are
 atomic gates, so no branch is created when any repository is unsafe or cannot be
 checkpointed. `DeriveBranchRunner` owns task cancellation and retries rollback
-in a fresh Git session after the cancelled session closes. The controller owns
-only the project write lease, VCS refresh, and notification presentation.
+in a fresh Git session after the cancelled session closes. Rollback reports
+completed and pending repository paths separately, so an interrupted rollback
+retries only the pending paths instead of skipping cleanup or repeating branch
+deletion for repositories already restored. The controller owns only the
+project write lease, VCS refresh, and notification presentation.
 
 ## Preset UI Responsibilities
 

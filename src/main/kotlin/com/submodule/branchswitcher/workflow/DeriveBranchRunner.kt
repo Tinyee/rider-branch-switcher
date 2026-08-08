@@ -9,6 +9,7 @@ import com.submodule.branchswitcher.operation.GitOperationRunner
 import com.submodule.branchswitcher.switch.CancellationClassifier
 import com.submodule.branchswitcher.switch.DeriveBranchExecutor
 import com.submodule.branchswitcher.switch.DeriveResult
+import com.submodule.branchswitcher.switch.DeriveRollbackResult
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.nio.file.Path
@@ -23,8 +24,7 @@ data class DeriveRunResult(
 
 private data class BackgroundDeriveOutcome(
     val deriveResult: DeriveResult,
-    val rollbackAttempted: Boolean,
-    val rollbackFailures: List<String>,
+    val rollback: DeriveRollbackResult?,
 )
 
 /**
@@ -77,13 +77,13 @@ class DeriveBranchRunner(
             val operationCancelled = indicator.isCanceled || deriveResult.cancelled
             val partialFailure = !deriveResult.allOk && deriveResult.succeeded.isNotEmpty()
             val rollbackAttempted = !operationCancelled && partialFailure
-            val rollbackFailures = if (rollbackAttempted) {
+            val rollback = if (rollbackAttempted) {
                 operationLog.activity("[derive] rolling back ${deriveResult.succeeded.size} succeeded repo(s)...")
                 executor.rollbackSucceeded(deriveResult, branchName)
             } else {
-                emptyList()
+                null
             }
-            BackgroundDeriveOutcome(deriveResult, rollbackAttempted, rollbackFailures)
+            BackgroundDeriveOutcome(deriveResult, rollback)
         }
 
         val result = when (backgroundResult) {
@@ -91,7 +91,7 @@ class DeriveBranchRunner(
                 operationId = operationId,
                 cancelled = false,
                 execution = backgroundResult.value.deriveResult,
-                rollbackFailures = backgroundResult.value.rollbackFailures,
+                rollbackFailures = backgroundResult.value.rollback?.pendingPaths.orEmpty(),
             )
             is GitOperationResult.Cancelled -> {
                 operationLog.info("[cancelled] derive cancelled by user")
@@ -101,11 +101,12 @@ class DeriveBranchRunner(
                     operationId = operationId,
                     cancelled = true,
                     execution = deriveResult,
-                    rollbackFailures = if (backgroundOutcome?.rollbackAttempted == true) {
-                        backgroundOutcome.rollbackFailures
-                    } else {
-                        rollbackAfterCancellation(deriveResult, branchName, operationLog)
-                    },
+                    rollbackFailures = rollbackAfterCancellation(
+                        deriveResult,
+                        branchName,
+                        operationLog,
+                        backgroundOutcome?.rollback?.pendingPaths,
+                    ),
                 )
             }
             is GitOperationResult.Failed -> {
@@ -128,8 +129,10 @@ class DeriveBranchRunner(
         execution: DeriveResult?,
         branchName: String,
         log: AppLogger,
+        pendingPaths: List<String>? = null,
     ): List<String> {
-        if (execution == null || execution.succeeded.isEmpty()) {
+        val pathsToRestore = pendingPaths ?: execution?.succeeded.orEmpty()
+        if (execution == null || pathsToRestore.isEmpty()) {
             return emptyList()
         }
 
@@ -143,14 +146,14 @@ class DeriveBranchRunner(
         }
         return try {
             log.activity(
-                "[derive] rolling back ${execution.succeeded.size} succeeded repo(s) after cancel...",
+                "[derive] rolling back ${pathsToRestore.size} pending repo(s) after cancel...",
             )
             DeriveBranchExecutor(
                 projectRoot = projectRoot,
                 log = log,
                 git = rollbackOperation,
                 classifier = cancellationClassifier,
-            ).rollbackSucceeded(execution, branchName)
+            ).rollbackSucceeded(execution, branchName, pathsToRestore).pendingPaths
         } catch (e: Exception) {
             log.error("derive rollback after cancel failed", e)
             listOf("(exception)")

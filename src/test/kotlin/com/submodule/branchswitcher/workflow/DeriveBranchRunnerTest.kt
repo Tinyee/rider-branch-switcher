@@ -70,8 +70,37 @@ class DeriveBranchRunnerTest {
         assertEquals(1, git.closeCount)
     }
 
+    @Test
+    fun `cancellation during rollback retries only pending paths in a fresh operation`() = runBlocking {
+        val root = Files.createTempDirectory("derive-runner-rollback-cancel")
+        Files.createDirectory(root.resolve("submodule"))
+        val git = RecordingDeriveGit(
+            failNewBranchDirectoryName = "submodule",
+            cancelFirstRollbackCheckout = true,
+        )
+        val runner = DeriveBranchRunner(
+            projectRoot = root,
+            operations = TestGitOperationRunner(git, TestOperationCompletion.CANCEL_AFTER),
+        )
+
+        val result = runner.execute(
+            title = "Deriving",
+            preset = Preset("main", "main", mapOf("submodule" to "main")),
+            branchName = "feature",
+            log = createStringAppender {},
+        )
+
+        assertTrue(result.cancelled)
+        assertTrue(result.rollbackFailures.isEmpty())
+        assertEquals(2, git.rollbackCheckoutCount)
+        assertEquals(1, git.deleteCount)
+        assertEquals(2, git.openCount)
+        assertEquals(2, git.closeCount)
+    }
+
     private class RecordingDeriveGit(
         private val failNewBranchDirectoryName: String? = null,
+        private val cancelFirstRollbackCheckout: Boolean = false,
     ) : GitClient {
         var currentBranch = "main"
         private val branchesByPath = mutableMapOf<String, String>()
@@ -79,6 +108,7 @@ class DeriveBranchRunnerTest {
         var closeCount = 0
         var cancelCount = 0
         var deleteCount = 0
+        var rollbackCheckoutCount = 0
 
         override fun openOperation(): GitOperationSession {
             openCount++
@@ -126,6 +156,10 @@ class DeriveBranchRunnerTest {
         }
 
         override fun checkoutExisting(workDir: File, branch: String): GitResult {
+            rollbackCheckoutCount++
+            if (cancelFirstRollbackCheckout && rollbackCheckoutCount == 1) {
+                return GitResult("checkout", -1, "", "cancelled")
+            }
             currentBranch = branch
             branchesByPath[workDir.canonicalPath] = branch
             return ok("checkout")
