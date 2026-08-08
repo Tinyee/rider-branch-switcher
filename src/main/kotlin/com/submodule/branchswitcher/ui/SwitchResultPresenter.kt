@@ -25,7 +25,7 @@ internal class SwitchResultPresenter(
     ) {
         when {
             runResult.cancelled -> notifyCancellation(runResult)
-            runResult.ok -> notifySuccessfulSwitch(preset, onSuccess)
+            runResult.ok -> notifySuccessfulSwitch(preset, runResult.execution, onSuccess)
             else -> notifySwitchFailure(preset, runResult.execution, onRollback)
         }
     }
@@ -36,7 +36,7 @@ internal class SwitchResultPresenter(
             Notifier.info(
                 project,
                 Bundle.msg("rollback.complete"),
-                Bundle.msg("notify.rollback.complete.msg") + retainedNotice,
+                Bundle.msg("notify.rollback.complete.msg") + retainedNotice + retainedStashBackupNotice(execution),
             )
         } else {
             Notifier.error(
@@ -47,13 +47,17 @@ internal class SwitchResultPresenter(
         }
     }
 
-    private fun notifySuccessfulSwitch(preset: Preset, onSuccess: (() -> Unit)?) {
+    private fun notifySuccessfulSwitch(
+        preset: Preset,
+        execution: SwitchExecutionResult?,
+        onSuccess: (() -> Unit)?,
+    ) {
         service.addHistory(preset.name, preset.id)
         onSuccess?.invoke()
         Notifier.info(
             project,
             Bundle.msg("switch.complete"),
-            Bundle.msg("notify.switch.complete.msg", preset.name),
+            Bundle.msg("notify.switch.complete.msg", preset.name) + retainedStashBackupNotice(execution),
         )
     }
 
@@ -64,7 +68,8 @@ internal class SwitchResultPresenter(
             Notifier.info(
                 project,
                 Bundle.msg("switch.cancelled"),
-                Bundle.msg("notify.switch.cancelled.recovered") + retainedNotice,
+                Bundle.msg("notify.switch.cancelled.recovered") + retainedNotice +
+                    retainedStashBackupNotice(runResult.execution),
             )
         } else {
             Notifier.error(
@@ -99,5 +104,11 @@ internal class SwitchResultPresenter(
         val paths = execution?.state?.initializedSubmodulesSnapshot().orEmpty()
         if (paths.isEmpty()) return ""
         return " " + Bundle.msg("notify.switch.init.retained", paths.sorted().joinToString(", "))
+    }
+
+    private fun retainedStashBackupNotice(execution: SwitchExecutionResult?): String {
+        val count = execution?.state?.retainedStashBackupsSnapshot()?.size ?: 0
+        if (count == 0) return ""
+        return " " + Bundle.msg("notify.switch.stash.backups.retained", count)
     }
 }

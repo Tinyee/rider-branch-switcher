@@ -389,6 +389,7 @@ class SwitchStepTest {
         assertTrue(execution.result is StepResult.Success)
         assertEquals(1, popCalls)
         assertFalse(execution.state.hasStashes())
+        assertEquals(setOf("."), execution.state.retainedStashBackupsSnapshot())
     }
 
     @Test
@@ -404,6 +405,7 @@ class SwitchStepTest {
 
         assertTrue(execution.result is StepResult.Partial)
         assertTrue(execution.state.hasStashes())
+        assertTrue(execution.state.retainedStashBackupsSnapshot().isEmpty())
     }
 
     @Test

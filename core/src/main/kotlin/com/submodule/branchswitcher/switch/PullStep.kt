@@ -105,7 +105,7 @@ internal fun restoreTrackedStashes(
             val applyResult = git.stashApply(repositoryDirectory, stash.oid)
             if (applyResult.ok) {
                 log.info("stash apply ok; recovery backup retained (${stash.message}, oid=${stash.oid})")
-                nextState = nextState.withoutStash(path)
+                nextState = nextState.withRestoredStashBackup(path)
             } else {
                 log.warn("[fail] stash apply failed for $path: ${applyResult.diagnostic()}")
                 issues += OperationIssue(
