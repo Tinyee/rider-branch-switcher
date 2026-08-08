@@ -155,13 +155,16 @@ class SwitchFlowCoordinator(
         val recoveryLog = log.withContext(operationContext.inPhase("recovery"))
         writeOperations.launch(
             onBusy = { uiLater { resultPresenter.showWriteBusy() } },
-            afterRelease = { rollbackSucceeded ->
+            afterRelease = { recoveryOutcome ->
                 val checkpointPaths = execution.checkpoint.orEmpty().keys.filterTo(mutableSetOf()) { it != "." }
                 val refreshLog = log.withContext(operationContext.inPhase("recovery-refresh"))
                 val refreshResult = refreshVcsRepos(project, root, checkpointPaths, refreshLog)
                 uiLater {
                     logVcsRefresh(refreshLog, refreshResult)
-                    resultPresenter.presentRollbackResult(execution, rollbackSucceeded)
+                    val recoveredExecution = recoveryOutcome?.let {
+                        execution.copy(state = it.stashRestore.state)
+                    } ?: execution
+                    resultPresenter.presentRollbackResult(recoveredExecution, recoveryOutcome?.ok == true)
                 }
             },
         ) {
@@ -171,15 +174,15 @@ class SwitchFlowCoordinator(
                     indicator.isIndeterminate = true
                     indicator.text = Bundle.msg("progress.rollback")
                     val recovery = SwitchRecoveryExecutor(root, recoveryLog, operation)
-                    recovery.recover(execution).ok
+                    recovery.recover(execution)
                 }
             when (rollbackBackgroundResult) {
                     is GitOperationResult.Completed -> rollbackBackgroundResult.value
-                    is GitOperationResult.Cancelled -> rollbackBackgroundResult.value ?: false
+                    is GitOperationResult.Cancelled -> rollbackBackgroundResult.value
                     is GitOperationResult.Failed -> {
                         val error = rollbackBackgroundResult.error
                         recoveryLog.error("notification rollback failed", error)
-                        false
+                        null
                     }
             }
         }

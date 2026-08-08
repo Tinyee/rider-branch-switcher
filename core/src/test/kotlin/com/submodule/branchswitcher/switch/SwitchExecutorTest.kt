@@ -396,6 +396,7 @@ class SwitchExecutorTest {
         assertTrue(outcome.stashRestore.issues.isEmpty())
         assertEquals(listOf("SubA"), stashApplyCalls)
         assertFalse(outcome.stashRestore.state.hasStashes())
+        assertEquals(setOf("SubA"), outcome.stashRestore.state.retainedStashBackupsSnapshot())
     }
 
     // ---- Cancel ----

@@ -117,7 +117,7 @@ internal object BranchCheckout {
                 "(recovered after branch-not-found: ${trackedStash.message})",
         )
         return Result(
-            state = state.withoutStash(target.path),
+            state = state.withRestoredStashBackup(target.path),
             succeeded = false,
             issues = listOf(branchMissingIssue(target.path)),
         )
