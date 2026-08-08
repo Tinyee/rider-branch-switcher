@@ -4,6 +4,7 @@ import com.intellij.notification.NotificationGroupManager
 import com.intellij.notification.NotificationType
 import com.intellij.openapi.project.Project
 import org.jetbrains.annotations.Nls
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Convenience wrapper around IntelliJ's [NotificationGroupManager].
@@ -31,13 +32,17 @@ object Notifier {
         @Nls content: String,
         onRollback: () -> Unit,
     ) {
-        NotificationGroupManager.getInstance()
+        val notification = NotificationGroupManager.getInstance()
             .getNotificationGroup(GROUP_ID)
             .createNotification(title, content, NotificationType.ERROR)
-            .addAction(com.intellij.notification.NotificationAction.createSimple(Bundle.msg("rollback.action")) {
+        val started = AtomicBoolean(false)
+        notification.addAction(com.intellij.notification.NotificationAction.createSimple(Bundle.msg("rollback.action")) {
+            if (started.compareAndSet(false, true)) {
+                notification.expire()
                 onRollback()
-            })
-            .notify(project)
+            }
+        })
+        notification.notify(project)
     }
 
     private fun notify(project: Project?, title: String, content: String, type: NotificationType) {

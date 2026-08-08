@@ -3,6 +3,8 @@ package com.submodule.branchswitcher
 // This file deliberately violates NO quickCheck rules.
 // checkQuickCheck should verify it does NOT get flagged (tests against false positives).
 class CleanUtility {
+    // tryAcquireWrite() appears only in commentary.
+    // ProcessBuilder("git") and ServiceLevel.PROJECT are comments too.
     fun greet() = "hello"
 
     /** Documentation may mention com.submodule.branchswitcher.ui.SomePanel. */

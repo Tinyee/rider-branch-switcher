@@ -31,6 +31,7 @@ sealed class StepResult {
 data class TrackedStash(
     val message: String,
     val oid: String?,
+    val restoreAttempted: Boolean = false,
 )
 
 class SwitchState private constructor(
@@ -43,45 +44,52 @@ class SwitchState private constructor(
     constructor() : this(emptyMap(), emptySet(), emptySet(), emptySet(), emptySet())
 
     fun withSkipped(path: String): SwitchState =
-        SwitchState(stashedPaths, skippedPaths + path, successfulCheckouts, initializedSubmodules, retainedStashBackups)
+        copy(skippedPaths = skippedPaths + path)
 
     fun isSkipped(path: String): Boolean = path in skippedPaths
 
     fun withTrackedStash(path: String, message: String, oid: String?): SwitchState =
-        SwitchState(
-            stashedPaths + (path to TrackedStash(message, oid)),
-            skippedPaths,
-            successfulCheckouts,
-            initializedSubmodules,
-            retainedStashBackups,
-        )
+        copy(stashedPaths = stashedPaths + (path to TrackedStash(message, oid)))
 
     fun withRestoredStashBackup(path: String): SwitchState =
-        SwitchState(
-            stashedPaths - path,
-            skippedPaths,
-            successfulCheckouts,
-            initializedSubmodules,
-            retainedStashBackups + path,
-        )
+        copy(stashedPaths = stashedPaths - path, retainedStashBackups = retainedStashBackups + path)
+
+    fun withStashRestoreAttempted(path: String): SwitchState {
+        val stash = stashedPaths[path] ?: return this
+        return copy(stashedPaths = stashedPaths + (path to stash.copy(restoreAttempted = true)))
+    }
 
     fun trackedStash(path: String): TrackedStash? = stashedPaths[path]
 
     fun stashesSnapshot(): Map<String, TrackedStash> = stashedPaths.toMap()
 
     fun withSuccessfulCheckout(path: String): SwitchState =
-        SwitchState(stashedPaths, skippedPaths, successfulCheckouts + path, initializedSubmodules, retainedStashBackups)
+        copy(successfulCheckouts = successfulCheckouts + path)
 
     fun checkoutSucceeded(path: String): Boolean = path in successfulCheckouts
 
     fun withInitializedSubmodule(path: String): SwitchState =
-        SwitchState(stashedPaths, skippedPaths, successfulCheckouts, initializedSubmodules + path, retainedStashBackups)
+        copy(initializedSubmodules = initializedSubmodules + path)
 
     fun initializedSubmodulesSnapshot(): Set<String> = initializedSubmodules.toSet()
 
     fun retainedStashBackupsSnapshot(): Set<String> = retainedStashBackups.toSet()
 
     fun hasStashes(): Boolean = stashedPaths.isNotEmpty()
+
+    private fun copy(
+        stashedPaths: Map<String, TrackedStash> = this.stashedPaths,
+        skippedPaths: Set<String> = this.skippedPaths,
+        successfulCheckouts: Set<String> = this.successfulCheckouts,
+        initializedSubmodules: Set<String> = this.initializedSubmodules,
+        retainedStashBackups: Set<String> = this.retainedStashBackups,
+    ): SwitchState = SwitchState(
+        stashedPaths,
+        skippedPaths,
+        successfulCheckouts,
+        initializedSubmodules,
+        retainedStashBackups,
+    )
 }
 
 /** The decision and updated state produced by one [SwitchStep]. */

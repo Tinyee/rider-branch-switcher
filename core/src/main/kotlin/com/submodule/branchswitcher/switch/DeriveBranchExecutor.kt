@@ -289,7 +289,8 @@ class DeriveBranchExecutor(
         selectedPaths: Collection<String> = deriveResult.succeeded,
     ): DeriveRollbackResult {
         val pendingPaths = mutableListOf<String>()
-        val paths = selectedPaths.filterTo(mutableListOf()) { it in deriveResult.succeeded }
+        val succeededPaths = deriveResult.succeeded.toHashSet()
+        val paths = selectedPaths.filterTo(mutableListOf()) { it in succeededPaths }
 
         for ((index, path) in paths.withIndex()) {
             try {

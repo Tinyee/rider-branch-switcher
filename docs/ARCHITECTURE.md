@@ -143,7 +143,11 @@ checkouts completed and which missing submodules were initialized by the switch.
 Tracked stashes store their immutable Git object IDs rather than stack positions;
 recovery applies that object ID directly and retains the Git stash entry as a
 manual recovery backup. It never maps the ID back to a mutable `stash@{n}` or
-automatically drops an entry across a race window. If identity cannot be read
+automatically drops an entry across a race window.
+Each stash is marked before apply because a failed or interrupted apply may
+already have changed the worktree. Later automatic stages do not replay it,
+and the notification rollback action expires when started. The retained stash
+object remains available for manual inspection and recovery. If identity cannot be read
 after stash creation, the repository is blocked
 and the unresolved stash remains in structured recovery state for manual review.
 After the main repository is current, `SubmoduleTreeStep` processes submodules
@@ -170,6 +174,11 @@ checkout lets Git reject conflicts so restored user changes can travel back to
 their original branch. Successful commands must satisfy the checkpoint HEAD
 postcondition. Repository rollback and stash restoration remain
 independent, so one failure does not prevent the other.
+Stash apply is at-most-once for each tracked switch state: the state is marked
+before invoking Git because a failed or interrupted apply may already have
+changed the worktree. Later automatic stages do not replay that stash, and the
+notification rollback action expires when started. The retained stash object
+remains available for manual inspection or recovery.
 Checkpoints also retain the canonical Git directory identity. Recovery and
 derive rollback skip a path if a different repository later occupies it.
 Before ordinary writes, an initialized submodule must report a superproject
@@ -226,9 +235,9 @@ checkpoint every accepted target, then create branches. The first two phases are
 atomic gates, so no branch is created when any repository is unsafe or cannot be
 checkpointed. `DeriveBranchRunner` owns task cancellation and retries rollback
 in a fresh Git session after the cancelled session closes. Rollback reports
-completed and pending repository paths separately, so an interrupted rollback
-retries only the pending paths instead of skipping cleanup or repeating branch
-deletion for repositories already restored. The controller owns only the
+the repository paths that remain pending, so an interrupted rollback retries
+only those paths instead of skipping cleanup or repeating branch deletion for
+repositories already restored. The controller owns only the
 project write lease, VCS refresh, and notification presentation.
 
 ## Preset UI Responsibilities

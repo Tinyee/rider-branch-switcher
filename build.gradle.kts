@@ -276,7 +276,7 @@ fun scanQuickChecks(
 
     // 1. Cancel symmetry - each background Git operation must own and close an isolated session.
     for (f in fileTree(srcRoot).filter { it.extension == "kt" && !it.name.contains("TaskBridge") }) {
-        val lines = f.readLines()
+        val lines = kotlinCodeLines(f)
         if (lines.any { "TaskBridge.runBackground" in it }) {
             if (f.name != "GitBackgroundRunner.kt")
                 fail("${f.name}: direct TaskBridge.runBackground outside GitBackgroundRunner")
@@ -295,7 +295,7 @@ fun scanQuickChecks(
     for (f in fileTree(srcRoot).filter {
         it.extension == "kt" && it.name != "BranchSwitcherService.kt"
     }) {
-        val lines = f.readLines()
+        val lines = kotlinCodeLines(f)
         val hasAcquire = lines.any { "tryAcquireWrite()" in it }
         val hasClose = lines.any { "writeLease.close()" in it }
         if (hasAcquire && !hasClose) fail("${f.name}: tryAcquireWrite without writeLease.close")
@@ -325,7 +325,7 @@ fun scanQuickChecks(
     val switchDir = file("$srcRoot/com/submodule/branchswitcher/switch")
     if (switchDir.exists()) {
         val violations = fileTree(switchDir).filter { it.extension == "kt" }
-            .flatMap { it.readLines() }.filter { it.contains("import") && it.contains(".ui.") }
+            .flatMap(::kotlinCodeLines).filter { it.contains("import") && it.contains(".ui.") }
         if (violations.isNotEmpty())
             fail("switch/ imports ui/: ${violations.take(3)}")
     }
@@ -377,7 +377,9 @@ fun scanQuickChecks(
     // 6. Git process execution belongs to GitProcessRunner; GitOps may only probe --version.
     val rawGit = fileTree(srcRoot).filter {
         it.extension == "kt" && it.name !in setOf("GitProcessRunner.kt", "GitOps.kt")
-    }.flatMap { it.readLines() }.filter { it.contains("ProcessBuilder") && it.contains("\"git") }
+    }.flatMap { file ->
+        file.readLines().zip(kotlinCodeLines(file))
+    }.filter { (rawLine, codeLine) -> codeLine.contains("ProcessBuilder") && rawLine.contains("\"git") }
     if (rawGit.isNotEmpty())
         fail("Raw git ProcessBuilder outside GitProcessRunner: ${rawGit.take(3)}")
 
@@ -397,12 +399,12 @@ fun scanQuickChecks(
 
     // 8. Deprecated IntelliJ API patterns
     val deprecated = fileTree(srcRoot).filter { it.extension == "kt" }
-        .flatMap { it.readLines() }.filter {
-            it.contains("project.coroutineScope") && !it.contains("//") ||
-            it.contains("SwingUtilities.invokeLater") && !it.contains("//") ||
-            it.contains("ServiceLevel.PROJECT") && !it.contains("//") ||
-            it.contains("beginOperation(") && !it.contains("//") ||
-            it.contains("endOperation(") && !it.contains("//")
+        .flatMap(::kotlinCodeLines).filter {
+            it.contains("project.coroutineScope") ||
+            it.contains("SwingUtilities.invokeLater") ||
+            it.contains("ServiceLevel.PROJECT") ||
+            it.contains("beginOperation(") ||
+            it.contains("endOperation(")
         }
     if (deprecated.isNotEmpty())
         fail("Deprecated API usage: ${deprecated.take(3)}")

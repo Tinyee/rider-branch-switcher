@@ -37,7 +37,7 @@ internal object BranchCheckout {
                 context.git.checkoutFromRemote(directory, target.branch)
             }
 
-            else -> return recoverStashAfterMissingBranch(context, target, directory, state)
+            else -> return recoverStashAfterMissingBranch(context, target, state)
         }
 
         if (!checkoutResult.ok) {
@@ -70,56 +70,23 @@ internal object BranchCheckout {
     private fun recoverStashAfterMissingBranch(
         context: SwitchContext,
         target: RepoTarget,
-        directory: File,
         state: SwitchState,
     ): Result {
         context.log.warn("[fail] branch '${target.branch}' not found locally or on origin")
-        val trackedStash = state.trackedStash(target.path)
-        if (trackedStash == null) {
+        if (state.trackedStash(target.path) == null) {
             return Result(state, succeeded = false, issues = listOf(branchMissingIssue(target.path)))
         }
-        if (trackedStash.oid == null) {
-            return Result(
-                state,
-                succeeded = false,
-                issues = listOf(
-                    branchMissingIssue(target.path),
-                    OperationIssue(
-                        stage = OperationStage.STASH_RESTORE,
-                        code = OperationIssueCode.STASH_IDENTITY_UNAVAILABLE,
-                        repositoryPath = target.path,
-                        severity = OperationIssueSeverity.ERROR,
-                    ),
-                ),
-            )
-        }
-
-        val applyResult = context.git.stashApply(directory, trackedStash.oid)
-        if (!applyResult.ok) {
-            context.log.warn("[fail] stash apply also failed: ${applyResult.diagnostic()}")
-            return Result(
-                state,
-                succeeded = false,
-                issues = listOf(
-                    branchMissingIssue(target.path),
-                    OperationIssue(
-                        stage = OperationStage.STASH_RESTORE,
-                        code = OperationIssueCode.STASH_RESTORE_FAILED,
-                        repositoryPath = target.path,
-                        diagnostic = applyResult.diagnostic(),
-                    ),
-                ),
-            )
-        }
-
-        context.log.info(
-            "stash apply ok; recovery backup retained " +
-                "(recovered after branch-not-found: ${trackedStash.message})",
+        val restore = restoreTrackedStashes(
+            context.projectRoot,
+            context.git,
+            context.log,
+            state,
+            selectedPaths = setOf(target.path),
         )
         return Result(
-            state = state.withRestoredStashBackup(target.path),
+            state = restore.state,
             succeeded = false,
-            issues = listOf(branchMissingIssue(target.path)),
+            issues = listOf(branchMissingIssue(target.path)) + restore.issues,
         )
     }
 
