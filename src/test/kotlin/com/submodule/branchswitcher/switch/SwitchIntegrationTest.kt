@@ -484,8 +484,8 @@ class SwitchIntegrationTest {
         assertEquals("derived", git.currentBranch(File(root, "SubA")))
 
         // Rollback
-        val failures = executor.rollbackSucceeded(result, "derived")
-        assertTrue("rollback should have no failures", failures.isEmpty())
+        val rollback = executor.rollbackSucceeded(result, "derived")
+        assertTrue("rollback should have no failures", rollback.allCompleted)
 
         // Verify restored
         assertEquals(rootBranch, git.currentBranch(root))
@@ -614,10 +614,10 @@ class SwitchIntegrationTest {
         gitOk(root, "branch", "-D", "derived")
 
         // Rollback — root has no "derived" branch to delete, SubA succeeds
-        val failures = executor.rollbackSucceeded(result, "derived")
+        val rollback = executor.rollbackSucceeded(result, "derived")
         // Root: checkout to main should work, but delete "derived" fails (already gone)
         // SubA: both checkout and delete should work
-        assertFalse("rollback should have some failures", failures.isEmpty())
+        assertFalse("rollback should have some failures", rollback.allCompleted)
 
         // SubA should still be restored
         assertEquals("main", git.currentBranch(subADir))
@@ -756,8 +756,8 @@ class SwitchIntegrationTest {
         assertFalse("allOk false when one failed", result.allOk)
 
         // Rollback: main should be restored, derived branch deleted
-        val failures = executor.rollbackSucceeded(result, "feature")
-        assertTrue("rollback should have no failures", failures.isEmpty())
+        val rollback = executor.rollbackSucceeded(result, "feature")
+        assertTrue("rollback should have no failures", rollback.allCompleted)
         assertEquals("main should be restored to original branch", "main", git.currentBranch(root))
         assertFalse("derived branch on main should be deleted", git.localBranchExists(root, "feature"))
     }

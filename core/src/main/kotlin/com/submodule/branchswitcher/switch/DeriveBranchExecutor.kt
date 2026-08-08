@@ -283,10 +283,16 @@ class DeriveBranchExecutor(
      * Must be called in a non-cancelled operation for Git commands to execute.
      */
     @Suppress("TooGenericExceptionCaught") // rollback must continue after one repository fails
-    fun rollbackSucceeded(deriveResult: DeriveResult, branchName: String): List<String> {
-        val rollbackFailures = mutableListOf<String>()
+    fun rollbackSucceeded(
+        deriveResult: DeriveResult,
+        branchName: String,
+        selectedPaths: Collection<String> = deriveResult.succeeded,
+    ): DeriveRollbackResult {
+        val completedPaths = mutableListOf<String>()
+        val pendingPaths = mutableListOf<String>()
+        val paths = selectedPaths.filterTo(mutableListOf()) { it in deriveResult.succeeded }
 
-        for (path in deriveResult.succeeded) {
+        for ((index, path) in paths.withIndex()) {
             try {
                 val repositoryDirectory = resolveGitDir(projectRoot, path)
                 val repositoryLabel = labelFor(path)
@@ -296,7 +302,7 @@ class DeriveBranchExecutor(
                     val currentRepositoryId = git.repositoryIdentity(repositoryDirectory)?.gitDirectory
                     if (checkpointEntry.repositoryId != null && currentRepositoryId != checkpointEntry.repositoryId) {
                         log.warn("[derive rollback] $repositoryLabel: repository identity changed - skipped")
-                        rollbackFailures.add(path)
+                        pendingPaths.add(path)
                         continue
                     }
                     val restoreTarget = checkpointEntry.branch ?: checkpointEntry.sha
@@ -306,7 +312,7 @@ class DeriveBranchExecutor(
                             "[derive] $repositoryLabel: checkout rollback FAILED - " +
                                 checkoutResult.diagnostic(),
                         )
-                        rollbackFailures.add(path)
+                        pendingPaths.add(path)
                         continue
                     }
                     log.activity("[derive] $repositoryLabel: rolled back to $restoreTarget")
@@ -314,25 +320,30 @@ class DeriveBranchExecutor(
                     val deleteResult = git.deleteBranch(repositoryDirectory, branchName)
                     if (deleteResult.ok) {
                         log.activity("[derive] $repositoryLabel: deleted branch $branchName")
+                        completedPaths.add(path)
                     } else {
                         log.warn(
                             "[derive] $repositoryLabel: could not delete branch $branchName - " +
                                 deleteResult.diagnostic(),
                         )
-                        rollbackFailures.add(path)
+                        pendingPaths.add(path)
                     }
                 } else {
                     log.warn("[derive] $repositoryLabel: no checkpoint entry, cannot rollback")
-                    rollbackFailures.add(path)
+                    pendingPaths.add(path)
                 }
             } catch (e: Exception) {
-                rethrowIfCancellation(e)
+                if (classifier.isCancellation(e)) {
+                    log.warn("[derive] rollback cancelled at $path; remaining paths deferred")
+                    pendingPaths += paths.drop(index)
+                    break
+                }
                 log.warn("[derive] $path: rollback exception", e)
-                rollbackFailures.add(path)
+                pendingPaths.add(path)
             }
         }
 
-        return rollbackFailures
+        return DeriveRollbackResult(completedPaths, pendingPaths.distinct())
     }
 
     private fun isCancelled(): Boolean = cancelled?.invoke() == true

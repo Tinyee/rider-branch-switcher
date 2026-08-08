@@ -155,7 +155,9 @@ SwitchController
 `DeriveBranchExecutor` 明确分成三个阶段：检查全部目标、记录全部 checkpoint、创建分支。
 前两个阶段是原子门禁，只要任意仓库不安全或无法记录 checkpoint，就不会修改任何仓库。
 `DeriveBranchRunner` 管理任务取消；取消发生后，它会在已取消的 Git 会话关闭后，打开新会话
-执行回滚。`SwitchController` 只保留写锁、VCS 刷新和通知展示。
+执行回滚。回滚结果会分别记录已完成和待处理的仓库路径；如果回滚中途被取消，新会话只重试
+待处理路径，既不会漏掉清理，也不会重复删除已经恢复的分支。`SwitchController` 只保留写锁、
+VCS 刷新和通知展示。
 
 ## Preset 界面职责
 
