@@ -196,9 +196,9 @@ internal class GitProcessRunner(
                 .mapTo(mutableListOf<CompletableFuture<*>>()) { it.onExit().toCompletableFuture() }
                 .also { exits -> if (process.isAlive) exits += process.onExit() }
         } catch (_: UnsupportedOperationException) {
-            return ProcessRunOutcome(result, resourcesStopped = false)
+            return deferPermitReleaseByPolling(result, process, observedDescendants)
         } catch (_: SecurityException) {
-            return ProcessRunOutcome(result, resourcesStopped = false)
+            return deferPermitReleaseByPolling(result, process, observedDescendants)
         }
         if (pendingExits.isEmpty()) return ProcessRunOutcome(result, resourcesStopped = true)
 
@@ -208,10 +208,30 @@ internal class GitProcessRunner(
             }
             ProcessRunOutcome(result, resourcesStopped = false)
         } catch (_: UnsupportedOperationException) {
-            ProcessRunOutcome(result, resourcesStopped = false)
+            deferPermitReleaseByPolling(result, process, observedDescendants)
         } catch (_: SecurityException) {
-            ProcessRunOutcome(result, resourcesStopped = false)
+            deferPermitReleaseByPolling(result, process, observedDescendants)
         }
+    }
+
+    private fun deferPermitReleaseByPolling(
+        result: GitResult,
+        process: Process,
+        observedDescendants: Map<Long, ProcessHandle>,
+    ): ProcessRunOutcome {
+        GitProcessResources.exitWatcherExecutor.execute {
+            var interrupted = false
+            while (isProcessAlive(process) || observedDescendants.values.any(::isAlive)) {
+                try {
+                    Thread.sleep(250)
+                } catch (_: InterruptedException) {
+                    interrupted = true
+                }
+            }
+            processPermits.release()
+            if (interrupted) Thread.currentThread().interrupt()
+        }
+        return ProcessRunOutcome(result, resourcesStopped = false)
     }
 
     private fun acquireProcessPermit(cancellation: AtomicBoolean): String? {
@@ -342,6 +362,14 @@ internal class GitProcessRunner(
     }
 
     private fun isAlive(process: ProcessHandle): Boolean = try {
+        process.isAlive
+    } catch (_: UnsupportedOperationException) {
+        true
+    } catch (_: SecurityException) {
+        true
+    }
+
+    private fun isProcessAlive(process: Process): Boolean = try {
         process.isAlive
     } catch (_: UnsupportedOperationException) {
         true

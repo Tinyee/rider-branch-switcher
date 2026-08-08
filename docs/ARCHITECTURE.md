@@ -309,7 +309,9 @@ process streams. If forced termination does not finish within its budget, that
 process capacity remains reserved until the observed processes actually exit,
 rather than being advertised early to later Git commands. A later command waits
 at most the configured Git timeout for capacity, then returns the distinct
-`PROCESS_CAPACITY` failure instead of waiting indefinitely.
+`PROCESS_CAPACITY` failure instead of waiting indefinitely. If the JVM cannot
+provide an `onExit` future, a bounded daemon watcher polls for actual exit before
+returning the reserved capacity.
 
 `.gitmodules` values are read through `git config --null --file`, not a custom
 line parser, so Git owns quoting, comments, escaping, and malformed-file

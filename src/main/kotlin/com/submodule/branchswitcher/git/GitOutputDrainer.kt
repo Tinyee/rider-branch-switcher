@@ -13,6 +13,7 @@ import java.util.concurrent.atomic.AtomicInteger
 internal const val GIT_STDOUT_LIMIT_BYTES = 8 * 1024 * 1024
 internal const val GIT_STDERR_TAIL_BYTES = 128 * 1024
 internal const val GIT_DRAIN_THREAD_PREFIX = "branch-switcher-git-drain-"
+internal const val GIT_EXIT_WATCHER_THREAD_PREFIX = "branch-switcher-git-exit-"
 
 private const val MAX_CONCURRENT_GIT_PROCESSES = 4
 private const val STREAM_BUFFER_BYTES = 8 * 1024
@@ -29,6 +30,11 @@ internal object GitProcessResources {
     private val threadNumber = AtomicInteger(0)
     val streamExecutor: ExecutorService = Executors.newFixedThreadPool(MAX_CONCURRENT_GIT_PROCESSES * 2) { task ->
         Thread(task, "$GIT_DRAIN_THREAD_PREFIX${threadNumber.incrementAndGet()}").apply {
+            isDaemon = true
+        }
+    }
+    val exitWatcherExecutor: ExecutorService = Executors.newFixedThreadPool(MAX_CONCURRENT_GIT_PROCESSES) { task ->
+        Thread(task, "$GIT_EXIT_WATCHER_THREAD_PREFIX${threadNumber.incrementAndGet()}").apply {
             isDaemon = true
         }
     }

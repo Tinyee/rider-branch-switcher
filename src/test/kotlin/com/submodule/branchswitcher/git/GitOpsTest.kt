@@ -441,6 +441,30 @@ class GitOpsTest {
     }
 
     @Test
+    fun `unsupported exit future releases capacity only after a stubborn process exits`() {
+        val permits = Semaphore(1)
+        val cancellation = AtomicBoolean(false)
+        val process = ControllableProcess(
+            finished = false,
+            stopAfterDestroy = false,
+            onExitUnsupported = true,
+            onWait = { cancellation.set(true) },
+        )
+        val runner = GitProcessRunner(timeoutSeconds = 1, processPermits = permits) { process }
+
+        val result = runner.run(tmpDir.toFile(), cancellation, "status")
+
+        assertEquals(GitFailureKind.CANCELLED, result.failureKind)
+        assertEquals(0, permits.availablePermits())
+        process.completeExit()
+        repeat(20) {
+            if (permits.availablePermits() == 1) return@repeat
+            Thread.sleep(50)
+        }
+        assertEquals(1, permits.availablePermits())
+    }
+
+    @Test
     fun `stdout above the capture limit fails instead of returning partial data`() {
         val oversized = ByteArray(GIT_STDOUT_LIMIT_BYTES + 1) { 'x'.code.toByte() }
         val process = ControllableProcess(finished = true, stdout = oversized)
@@ -492,6 +516,8 @@ class GitOpsTest {
 
     private class ControllableProcess(
         private val finished: Boolean,
+        private val stopAfterDestroy: Boolean = true,
+        private val onExitUnsupported: Boolean = false,
         private val interruptOnWait: Boolean = false,
         private val interruptAfterDestroy: Boolean = false,
         private val onWait: (() -> Unit)? = null,
@@ -504,6 +530,7 @@ class GitOpsTest {
     ) : Process() {
         val waitStarted = CountDownLatch(1)
         @Volatile var destroyed = false
+        @Volatile private var externallyFinished = false
 
         override fun getOutputStream(): OutputStream = ByteArrayOutputStream()
         override fun getInputStream(): InputStream = stdoutStream
@@ -514,9 +541,14 @@ class GitOpsTest {
             if (interruptOnWait) throw InterruptedException("test interrupt")
             if (destroyed && interruptAfterDestroy) throw InterruptedException("cleanup interrupt")
             onWait?.invoke()
-            return finished || destroyed
+            return finished || externallyFinished || destroyed && stopAfterDestroy
         }
         override fun exitValue(): Int = exitCode
+        override fun isAlive(): Boolean = !(finished || externallyFinished || destroyed && stopAfterDestroy)
+        override fun onExit(): CompletableFuture<Process> {
+            if (onExitUnsupported) throw UnsupportedOperationException("test process has no onExit")
+            return super.onExit()
+        }
         override fun destroy() {
             destroyed = true
         }
@@ -526,6 +558,10 @@ class GitOpsTest {
         }
         override fun descendants(): java.util.stream.Stream<ProcessHandle> =
             if (descendant == null) java.util.stream.Stream.empty() else java.util.stream.Stream.of(descendant)
+
+        fun completeExit() {
+            externallyFinished = true
+        }
     }
 
     private fun runGit(directory: File, vararg args: String) {
