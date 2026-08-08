@@ -288,7 +288,6 @@ class DeriveBranchExecutor(
         branchName: String,
         selectedPaths: Collection<String> = deriveResult.succeeded,
     ): DeriveRollbackResult {
-        val completedPaths = mutableListOf<String>()
         val pendingPaths = mutableListOf<String>()
         val paths = selectedPaths.filterTo(mutableListOf()) { it in deriveResult.succeeded }
 
@@ -320,7 +319,6 @@ class DeriveBranchExecutor(
                     val deleteResult = git.deleteBranch(repositoryDirectory, branchName)
                     if (deleteResult.ok) {
                         log.activity("[derive] $repositoryLabel: deleted branch $branchName")
-                        completedPaths.add(path)
                     } else {
                         log.warn(
                             "[derive] $repositoryLabel: could not delete branch $branchName - " +
@@ -343,7 +341,7 @@ class DeriveBranchExecutor(
             }
         }
 
-        return DeriveRollbackResult(completedPaths, pendingPaths.distinct())
+        return DeriveRollbackResult(pendingPaths.distinct())
     }
 
     private fun isCancelled(): Boolean = cancelled?.invoke() == true

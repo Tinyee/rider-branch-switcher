@@ -471,6 +471,7 @@ tasks {
                 "violates-workflow-intellij.kt" to "workflow/_fixture_test_",
                 "violates-workflow-intellij-qualified.kt" to "workflow/_fixture_test_",
                 "violates-workflow-intellij-template.kt" to "workflow/_fixture_test_",
+                "violates-workflow-intellij-nested-template.kt" to "workflow/_fixture_test_",
                 "violates-workflow-root-platform.kt" to "workflow/_fixture_test_",
                 "violates-workflow-git-implementation.kt" to "workflow/_fixture_test_",
             )

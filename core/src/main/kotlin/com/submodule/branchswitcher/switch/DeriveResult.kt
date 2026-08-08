@@ -25,9 +25,8 @@ data class DeriveRepositoryOutcome(
     val issue: OperationIssue? = null,
 )
 
-/** Per-path rollback progress, retained when cancellation interrupts a derive rollback. */
+/** Paths whose rollback still needs to be retried after a failure or cancellation. */
 data class DeriveRollbackResult(
-    val completedPaths: List<String>,
     val pendingPaths: List<String>,
 ) {
     val allCompleted: Boolean get() = pendingPaths.isEmpty()
