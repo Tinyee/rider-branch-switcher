@@ -10,6 +10,7 @@ import org.junit.Assume.assumeTrue
 import org.junit.Test
 import java.io.File
 import java.nio.file.Files
+import java.nio.file.Paths
 
 class PathIdentityTest {
 
@@ -48,7 +49,7 @@ class PathIdentityTest {
         val root = Files.createTempDirectory("test-path-missing").toFile()
         val missing = File(root, "does/not/exist")
         val identity = missing.pathIdentity()
-        assertTrue(identity.endsWith("does/not/exist"))
+        assertTrue(Paths.get(identity).endsWith(Paths.get("does", "not", "exist")))
     }
 
     @Test
@@ -62,6 +63,6 @@ class PathIdentityTest {
         }
         val registration = SubmoduleRegistration(path = "SubA", sectionName = "SubA", parentPath = ".")
         val expected = expectedSubmoduleGitDirectory(root, registration, git)
-        assertTrue(expected!!.endsWith("modules/SubA"))
+        assertTrue(Paths.get(expected!!).endsWith(Paths.get("modules", "SubA")))
     }
 }
