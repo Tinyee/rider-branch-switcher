@@ -96,9 +96,6 @@ interface RepositoryStateGitClient : GitRepositoryQuery {
 interface SubmoduleRegistrationQuery {
     /** Returns the complete checked-out `.gitmodules` graph with stable section identity. */
     fun registeredSubmodules(gitRoot: File): List<SubmoduleRegistration>
-
-    fun registeredSubmodulePaths(gitRoot: File): Set<String> =
-        registeredSubmodules(gitRoot).mapTo(linkedSetOf(), SubmoduleRegistration::path)
 }
 
 /** Git operations required by the branch-switch pipeline. */

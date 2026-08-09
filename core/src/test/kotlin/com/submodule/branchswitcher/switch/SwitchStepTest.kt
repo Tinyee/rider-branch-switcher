@@ -527,8 +527,6 @@ class SwitchStepTest {
     fun `obsolete preset path is skipped after main checkout`() {
         var checkoutCalls = 0
         val validatingGit = object : GitClient by fakeGit {
-            override fun registeredSubmodulePaths(gitRoot: File): Set<String> = setOf("NewSub")
-
             override fun checkoutExisting(workDir: File, branch: String): GitResult {
                 checkoutCalls++
                 return GitResult("checkout", 0, "", "")
@@ -559,7 +557,6 @@ class SwitchStepTest {
         var checkoutCalls = 0
         val validatingGit = object : GitClient by fakeGit {
             override fun isGitRepo(workDir: File): Boolean = true
-            override fun registeredSubmodulePaths(gitRoot: File): Set<String> = setOf("SubA")
             override fun remoteUrl(workDir: File): String = "replacement-url"
 
             override fun checkoutExisting(workDir: File, branch: String): GitResult {
