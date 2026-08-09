@@ -193,7 +193,7 @@ class SwitchExecutorTest {
             preset,
             SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false),
         ).copy(checkpoint = null)
-        assertFalse("Rollback without checkpoint should return false", recovery().rollback(result))
+        assertFalse("Rollback without checkpoint should return false", recovery().recover(result).rollbackOk)
     }
 
     @Test
@@ -254,7 +254,7 @@ class SwitchExecutorTest {
         checkoutCalls.clear()
         // Now branch = "dev", checkpoint has branch = "main" (recorded before switch)
         // Rollback should checkout "main"
-        assertTrue(recovery(trackGit).rollback(result))
+        assertTrue(recovery(trackGit).recover(result).rollbackOk)
         assertTrue("Should call checkout for main branch, got: $checkoutCalls", "main" in checkoutCalls)
     }
 
@@ -280,7 +280,7 @@ class SwitchExecutorTest {
             SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false),
         )
 
-        assertTrue(recovery(rollbackGit).rollback(result))
+        assertTrue(recovery(rollbackGit).recover(result).rollbackOk)
         assertEquals(listOf("main", "abc123"), rollbackCalls)
     }
 
@@ -328,7 +328,7 @@ class SwitchExecutorTest {
         )
         checkoutCalls.clear()
 
-        assertTrue(recovery(detachedGit).rollback(result))
+        assertTrue(recovery(detachedGit).recover(result).rollbackOk)
         assertEquals(listOf("abc123"), checkoutCalls)
     }
 
@@ -357,7 +357,7 @@ class SwitchExecutorTest {
             SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false),
         )
 
-        assertFalse(recovery(partialGit).rollback(result))
+        assertFalse(recovery(partialGit).recover(result).rollbackOk)
         assertTrue(rollbackCalls.contains("SubB" to "main"))
     }
 
@@ -395,7 +395,7 @@ class SwitchExecutorTest {
         assertFalse(outcome.rollbackOk)
         assertTrue(outcome.stashRestore.issues.isEmpty())
         assertEquals(listOf("SubA"), stashApplyCalls)
-        assertFalse(outcome.stashRestore.state.hasStashes())
+        assertFalse(outcome.stashRestore.state.stashesSnapshot().isNotEmpty())
         assertEquals(setOf("SubA"), outcome.stashRestore.state.retainedStashBackupsSnapshot())
     }
 
@@ -622,7 +622,7 @@ class SwitchExecutorTest {
         assertEquals(setOf("SubA"), result.state.initializedSubmodulesSnapshot())
         assertTrue(File(projectRoot.toFile(), "SubA").exists())
 
-        assertTrue(recovery(retainedGit).rollback(result))
+        assertTrue(recovery(retainedGit).recover(result).rollbackOk)
         assertTrue(File(projectRoot.toFile(), "SubA").exists())
         assertTrue(log.any { it.contains("[rollback] retained submodule initialized by this switch: SubA") })
     }
@@ -644,7 +644,7 @@ class SwitchExecutorTest {
         )
         // Delete the .git dir to simulate missing repo
         File(projectRoot.toFile(), ".git").deleteRecursively()
-        val result = recovery(skipGit).rollback(execution)
+        val result = recovery(skipGit).recover(execution).rollbackOk
         assertFalse("Rollback cannot report success when a repo was not restored", result)
     }
 
@@ -674,7 +674,7 @@ class SwitchExecutorTest {
             state = SwitchState(),
         )
 
-        assertFalse(recovery(replacedGit).rollback(result))
+        assertFalse(recovery(replacedGit).recover(result).rollbackOk)
         assertEquals(0, checkoutCalls)
         assertEquals(0, resetCalls)
     }
@@ -693,7 +693,7 @@ class SwitchExecutorTest {
             preset,
             SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false),
         )
-        val result = recovery(matchingGit).rollback(execution)
+        val result = recovery(matchingGit).recover(execution).rollbackOk
         assertTrue("Rollback should succeed when branch and HEAD match", result)
         assertEquals(0, resetCalls)
     }
@@ -718,7 +718,7 @@ class SwitchExecutorTest {
         )
         currentSha = "after"
 
-        assertTrue(recovery(advancedGit).rollback(execution))
+        assertTrue(recovery(advancedGit).recover(execution).rollbackOk)
         assertEquals(listOf("before"), resetCalls)
         assertEquals("before", currentSha)
     }
@@ -751,7 +751,7 @@ class SwitchExecutorTest {
     // -- confirmBeforeInit fail-closed ---------------------------------
 
     @Test
-    fun `confirmBeforeInit with null callback declines init`() {
+    fun `confirmBeforeInit with empty pre-approval declines init`() {
         val noInitGit = object : GitClient by fakeGit {
             override fun isGitRepo(workDir: File): Boolean = when {
                 workDir.name == "SubA" -> false // needs init
@@ -761,8 +761,8 @@ class SwitchExecutorTest {
         }
         val subPreset = Preset("sub", "main", mapOf("SubA" to "main"))
         val executor = SwitchExecutor(projectRoot, createStringAppender { log += it }, noInitGit,
-            onConfirmSubmoduleInit = null)
-        // SubA needs init but no callback - fail-closed: init declined
+            preApprovedSubmoduleInit = emptySet())
+        // SubA needs init but nothing was pre-approved - fail-closed: init declined
         val result = executor.executeTest(subPreset,
             SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false, confirmBeforeInit = true))
         assertFalse("Switch should have partial failure from declined init", result)
@@ -771,7 +771,7 @@ class SwitchExecutorTest {
     }
 
     @Test
-    fun `confirmBeforeInit with callback returning false declines init`() {
+    fun `confirmBeforeInit with unrelated pre-approval declines init`() {
         val noInitGit = object : GitClient by fakeGit {
             override fun isGitRepo(workDir: File): Boolean = when {
                 workDir.name == "SubA" -> false
@@ -781,7 +781,7 @@ class SwitchExecutorTest {
         }
         val subPreset = Preset("sub", "main", mapOf("SubA" to "main"))
         val executor = SwitchExecutor(projectRoot, createStringAppender { log += it }, noInitGit,
-            onConfirmSubmoduleInit = { false })
+            preApprovedSubmoduleInit = setOf("Other"))
         val result = executor.executeTest(subPreset,
             SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false, confirmBeforeInit = true))
         assertFalse("Switch should have partial failure from declined init", result)
@@ -789,7 +789,7 @@ class SwitchExecutorTest {
     }
 
     @Test
-    fun `confirmBeforeInit with callback returning true proceeds with init`() {
+    fun `confirmBeforeInit with matching pre-approval proceeds with init`() {
         val initLog = mutableListOf<String>()
         var subADirReady = false
         val noInitGit = object : GitClient by fakeGit {
@@ -807,7 +807,7 @@ class SwitchExecutorTest {
         }
         val subPreset = Preset("sub", "main", mapOf("SubA" to "main"))
         val executor = SwitchExecutor(projectRoot, createStringAppender { log += it }, noInitGit,
-            onConfirmSubmoduleInit = { true })
+            preApprovedSubmoduleInit = setOf("SubA"))
         val result = executor.executeTest(subPreset,
             SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false, confirmBeforeInit = true))
         assertTrue("Switch should succeed", result)

@@ -121,7 +121,7 @@ internal fun loadComboBranches(
     branchLoads: BranchLoadCoordinator,
     log: AppLogger,
     onLoadStart: () -> Unit,
-    onLoadEnd: () -> Unit,
+    onLoadEnd: (succeeded: Boolean, superseded: Boolean) -> Unit,
     discoverCurrent: Boolean = false,
     loadChoices: Boolean = true,
     scheduleUi: ((() -> Unit) -> Unit) = { action ->
@@ -139,8 +139,14 @@ internal fun loadComboBranches(
     val completionScheduled = AtomicBoolean(false)
     val loadEnded = AtomicBoolean(false)
 
-    fun endLoad() {
-        if (loadEnded.compareAndSet(false, true)) onLoadEnd()
+    fun endLoad(succeeded: Boolean) {
+        if (loadEnded.compareAndSet(false, true)) {
+            // Always signal the lifecycle end (balances onLoadStart for the caller's
+            // in-flight counter). The caller separately decides whether a superseded
+            // load (a newer load replaced this combo's token) may touch retry state.
+            val superseded = combo.getClientProperty(KEY_BRANCH_LOAD_TOKEN) !== loadToken
+            onLoadEnd(succeeded, superseded)
+        }
     }
 
     fun finish(loadResult: BranchComboLoadResult?) {
@@ -156,13 +162,13 @@ internal fun loadComboBranches(
                 combo.putClientProperty(KEY_ALL_BRANCHES, list)
                 combo.isEnabled = true
             } finally {
-                endLoad()
+                endLoad(loadResult?.succeeded ?: false)
             }
         }
         try {
             scheduleUi(updateUi)
         } catch (e: Exception) {
-            endLoad()
+            endLoad(false)
             log.warn("loadBranches UI update failed for ${dir.name}", e)
         }
     }
@@ -191,10 +197,10 @@ internal fun loadComboBranches(
                 throw CancellationException("branch discovery cancelled").apply { initCause(e) }
             }
             log.warn("loadBranches failed for ${dir.name}", e)
-            BranchComboLoadResult(current, emptyList())
+            BranchComboLoadResult(current, emptyList(), succeeded = false)
         } catch (e: Exception) {
             log.warn("loadBranches failed for ${dir.name}", e)
-            BranchComboLoadResult(current, emptyList())
+            BranchComboLoadResult(current, emptyList(), succeeded = false)
         }
         finish(loadResult)
     }
@@ -219,4 +225,6 @@ internal fun cancelComboBranchLoad(combo: JComboBox<String>): Boolean {
 private data class BranchComboLoadResult(
     val selectedBranch: String,
     val branches: List<String>,
+    /** False when discovery failed or was superseded; callers may reset retry state. */
+    val succeeded: Boolean = true,
 )

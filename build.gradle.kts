@@ -4,7 +4,6 @@ plugins {
     id("org.jetbrains.kotlin.jvm") version "2.3.0"
     id("org.jetbrains.intellij.platform") version "2.11.0"
     id("io.gitlab.arturbosch.detekt") version "1.23.7"
-    id("info.solidsoft.pitest") version "1.19.0"
 }
 
 val useChinaMirrors = providers.gradleProperty("useChinaMirrors")
@@ -99,44 +98,6 @@ intellijPlatform {
 detekt {
     buildUponDefaultConfig = true
     config.setFrom(file("detekt-config.yml"))
-}
-
-pitest {
-    // Manual diagnostic only. Keep mutation testing out of test/releaseCheck:
-    // it is CPU-heavy and should be run deliberately on scoped core logic.
-    // The scoped target tests are JUnit 4 tests. Avoid the JUnit 5 PIT plugin
-    // here: with the IntelliJ Platform classpath it can make discovery much
-    // heavier than the target scope.
-    targetClasses.set(
-        setOf(
-            "com.submodule.branchswitcher.ui.UiRulesKt",
-        )
-    )
-    excludedClasses.set(
-        setOf(
-            "com.submodule.branchswitcher.TaskBridge*",
-            "com.submodule.branchswitcher.git.GitOps",
-            "com.submodule.branchswitcher.service.*",
-            "com.submodule.branchswitcher.settings.BranchSwitcherConfigurable",
-            "com.submodule.branchswitcher.ui.BranchSwitcherPanel",
-            "com.submodule.branchswitcher.ui.BranchSwitcherToolWindowFactory",
-            "com.submodule.branchswitcher.ui.PresetEditor",
-            "com.submodule.branchswitcher.ui.PresetListManager",
-            "com.submodule.branchswitcher.ui.SubmoduleRowManager",
-            "com.submodule.branchswitcher.ui.SwitchController",
-            "com.submodule.branchswitcher.ui.SwitchPreviewDialog",
-        )
-    )
-    targetTests.set(
-        setOf(
-            "com.submodule.branchswitcher.ui.UiRulesTest",
-        )
-    )
-    avoidCallsTo.set(setOf("kotlin.jvm.internal"))
-    outputFormats.set(setOf("HTML", "XML"))
-    mutationThreshold.set(95)
-    timestampedReports.set(false)
-    threads.set(1)
 }
 
 private enum class KotlinLexicalMode { CODE, STRING, TRIPLE_STRING, CHARACTER, LINE_COMMENT, BLOCK_COMMENT }
@@ -624,6 +585,6 @@ tasks {
     register("pitestCore") {
         group = "verification"
         description = "Run scoped PIT mutation testing for core pure rules. Heavy; manual only, not part of releaseCheck."
-        dependsOn("pitest", ":core:pitest")
+        dependsOn(":core:pitest")
     }
 }

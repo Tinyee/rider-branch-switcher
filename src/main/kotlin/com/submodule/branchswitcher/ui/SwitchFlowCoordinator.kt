@@ -86,6 +86,26 @@ class SwitchFlowCoordinator(
         preflightUi.confirmPreflightWarnings(probeResult)
 
     /**
+     * Resolves which missing submodule directories the user has approved for
+     * initialization BEFORE the switch acquires the write lease.
+     *
+     * Returns `emptySet()` when no upfront confirmation is needed (confirmBeforeInit
+     * disabled, or nothing missing), the approved path set after the user confirms,
+     * or `null` when the user declines (the switch must be aborted).
+     */
+    fun resolvePreApprovedSubmoduleInit(
+        request: ResolvedSwitchRequest,
+        probeResult: List<PreflightRow>,
+    ): Set<String>? {
+        if (!request.options.confirmBeforeInit) return emptySet()
+        val missing = probeResult
+            .filter { !it.exists && !it.isMain }
+            .map { it.path }
+        if (missing.isEmpty()) return emptySet()
+        return if (preflightUi.confirmSubmoduleInitializations(missing)) missing.toSet() else null
+    }
+
+    /**
      * Acquires the project write lease, executes the shared switch workflow,
      * then maps its structured result to notifications and VCS refresh.
      *
@@ -97,6 +117,7 @@ class SwitchFlowCoordinator(
         request: ResolvedSwitchRequest,
         log: AppLogger,
         operationContext: OperationContext,
+        preApprovedSubmoduleInit: Set<String> = emptySet(),
         onSuccess: (() -> Unit)? = null,
         onFinished: (() -> Unit)? = null,
     ) {
@@ -130,7 +151,7 @@ class SwitchFlowCoordinator(
                 projectRoot = root,
                 operations = GitBackgroundRunner(project, service.gitClient),
                 cancellationClassifier = platformCancellationClassifier,
-                confirmSubmoduleInitialization = preflightUi::confirmSubmoduleInitialization,
+                preApprovedSubmoduleInit = preApprovedSubmoduleInit,
             ).execute(
                 title = Bundle.msg("progress.switching"),
                 request = request,

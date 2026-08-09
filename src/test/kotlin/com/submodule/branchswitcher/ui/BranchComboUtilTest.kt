@@ -84,7 +84,7 @@ class BranchComboUtilTest {
             combo, File("."), "dev",
             branchLoads { listOf("main", "dev") }, createStringAppender {},
             onLoadStart = { starts++ },
-            onLoadEnd = {
+            onLoadEnd = { _, _ ->
                 ends++
                 finished.countDown()
             },
@@ -103,14 +103,16 @@ class BranchComboUtilTest {
         val combo = displayableCombo()
         val logs = mutableListOf<String>()
         var ends = 0
+        var loadSucceeded: Boolean? = null
         val finished = CountDownLatch(1)
 
         loadComboBranches(
             combo, File("."), "dev",
             branchLoads { error("broken") }, createStringAppender { logs += it },
             onLoadStart = {},
-            onLoadEnd = {
+            onLoadEnd = { succeeded, _ ->
                 ends++
+                loadSucceeded = succeeded
                 finished.countDown()
             },
             scheduleUi = { it() },
@@ -118,6 +120,7 @@ class BranchComboUtilTest {
 
         assertTrue("failed branch load should finish", finished.await(5, TimeUnit.SECONDS))
         assertEquals(1, ends)
+        assertFalse("failed load must report success=false so callers can retry", loadSucceeded!!)
         assertTrue(combo.isEnabled)
         assertEquals(listOf("dev"), (0 until combo.itemCount).map(combo::getItemAt))
         assertTrue(logs.any { it.contains("loadBranches failed") })
@@ -133,7 +136,7 @@ class BranchComboUtilTest {
             combo, File("."), "dev",
             branchLoads { listOf("main") }, createStringAppender {},
             onLoadStart = {},
-            onLoadEnd = {
+            onLoadEnd = { _, _ ->
                 ends++
                 finished.countDown()
             },
@@ -153,6 +156,9 @@ class BranchComboUtilTest {
         val firstCancelled = AtomicBoolean(false)
         val openCount = AtomicInteger(0)
         val finished = CountDownLatch(2)
+        var startCount = 0
+        var endCount = 0
+        val supersededFlags = mutableListOf<Boolean>()
         val coordinator = BranchLoadCoordinator(CoroutineScope(Dispatchers.Unconfined)) {
             if (openCount.getAndIncrement() == 0) {
                 branchOperation(
@@ -170,20 +176,27 @@ class BranchComboUtilTest {
 
         loadComboBranches(
             combo, File("."), "old", coordinator, createStringAppender {},
-            onLoadStart = {},
-            onLoadEnd = { finished.countDown() },
+            onLoadStart = { startCount++ },
+            onLoadEnd = { _, superseded -> supersededFlags += superseded; endCount++; finished.countDown() },
             scheduleUi = { it() },
         )
         assertTrue("first discovery should start", firstStarted.await(5, TimeUnit.SECONDS))
 
         loadComboBranches(
             combo, File("."), "latest", coordinator, createStringAppender {},
-            onLoadStart = {},
-            onLoadEnd = { finished.countDown() },
+            onLoadStart = { startCount++ },
+            onLoadEnd = { _, superseded -> supersededFlags += superseded; endCount++; finished.countDown() },
             scheduleUi = { it() },
         )
 
-        assertTrue("both branch loads should finish", finished.await(5, TimeUnit.SECONDS))
+        // The superseded load still signals its lifecycle end so the caller's in-flight
+        // counter balances (start == end), but it is flagged superseded so callers skip
+        // the retry-state reset for it.
+        assertTrue("both branch loads should signal completion", finished.await(5, TimeUnit.SECONDS))
+        assertEquals("every start must have a matching end", 2, startCount)
+        assertEquals("every end must pair with a start", 2, endCount)
+        assertTrue("superseded load must be flagged so callers skip the retry reset", supersededFlags.any { it })
+        assertTrue("latest load must not be flagged as superseded", supersededFlags.any { !it })
         assertTrue("superseded Git session should be cancelled", firstCancelled.get())
         assertEquals(listOf("main", "latest"), (0 until combo.itemCount).map(combo::getItemAt))
         assertEquals("latest", combo.selectedItem)

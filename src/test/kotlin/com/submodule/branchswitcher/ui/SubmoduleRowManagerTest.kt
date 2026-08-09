@@ -7,6 +7,7 @@ import com.submodule.branchswitcher.model.Preset
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -92,6 +93,56 @@ class SubmoduleRowManagerTest {
         assertTrue("row branch load should finish", finished.await(5, TimeUnit.SECONDS))
         requireNotNull(manager.subRows["SubA"])
         assertEquals(0, manager.loadingCount)
+    }
+
+    @Test
+    fun `a failed submodule load is retried on the next loadAllBranches`() {
+        // Simulates collapse + re-expand after a submodule-only failure: PresetEditor
+        // resets branchesLoaded on collapse when the manager reports unloaded rows, so
+        // the next expand retries the failed row even though the main repo loaded.
+        val root = Files.createTempDirectory("submodule-row-retry")
+        Files.createDirectories(root.resolve("SubA"))
+        val body = JPanel().apply { add(JPanel()) }
+        var listCalls = 0
+        var uiCount = 0
+        val firstLoadDone = CountDownLatch(1)
+        val retryDone = CountDownLatch(1)
+        val manager = SubmoduleRowManager(
+            gitRoot = root,
+            gitClient = ::emptyGit,
+            branchLoads = BranchLoadCoordinator(CoroutineScope(Dispatchers.Unconfined)) {
+                gitOperation { methodName ->
+                    if (methodName == "listAllBranches") {
+                        listCalls++
+                        if (listCalls == 1) error("git temporarily unavailable")
+                        listOf("dev")
+                    }
+                    null
+                }
+            },
+            body = body,
+            log = createStringAppender {},
+            onDirty = {},
+            scheduleUi = {
+                it()
+                if (uiCount == 0) firstLoadDone.countDown()
+                uiCount++
+                if (uiCount == 2) retryDone.countDown()
+            },
+        )
+        manager.onFirstExpand()
+
+        manager.addSubmoduleFromMenu("SubA")
+        assertTrue("first load should finish", firstLoadDone.await(5, TimeUnit.SECONDS))
+        val row = requireNotNull(manager.subRows["SubA"])
+        assertFalse("failed load must reset row.loaded so a re-expand retries", row.loaded)
+        assertTrue("failed row must leave the manager with unloaded rows", manager.hasUnloadedRows())
+        assertEquals(0, manager.loadingCount)
+
+        manager.loadAllBranches(Preset("Work", "main", mapOf("SubA" to "dev")))
+        assertTrue("retry load should finish", retryDone.await(5, TimeUnit.SECONDS))
+        assertFalse("a successful retry clears the unloaded rows", manager.hasUnloadedRows())
+        assertEquals("failed load must be retried on the next loadAllBranches", 2, listCalls)
     }
 
     @Test

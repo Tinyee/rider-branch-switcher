@@ -76,11 +76,19 @@ class AppLoggerTest {
         log.info("hello")
         log.warn("warning")
         log.error("failure")
+        log.failure("business failure", IllegalStateException("broken"))
         log.debug("detail")
         log.activity("switching")
 
         assertEquals(
-            listOf("hello", "[warn] warning", "[error] failure", "[debug] detail", "switching"),
+            listOf(
+                "hello",
+                "[warn] warning",
+                "[error] failure",
+                "[warn] business failure: IllegalStateException: broken",
+                "[debug] detail",
+                "switching",
+            ),
             messages,
         )
     }

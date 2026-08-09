@@ -55,7 +55,7 @@ class SwitchRunner(
     private val projectRoot: Path,
     private val operations: GitOperationRunner,
     private val cancellationClassifier: CancellationClassifier = CancellationClassifier.DEFAULT,
-    private val confirmSubmoduleInitialization: (String) -> Boolean,
+    private val preApprovedSubmoduleInit: Set<String> = emptySet(),
 ) {
     /** Runs one request; cancellation after mutation uses a fresh session for recovery. */
     suspend fun execute(
@@ -98,7 +98,7 @@ class SwitchRunner(
                 indicator,
                 indicator,
                 cancellationClassifier = cancellationClassifier,
-                onConfirmSubmoduleInit = confirmSubmoduleInitialization,
+                preApprovedSubmoduleInit = preApprovedSubmoduleInit,
             ).execute(request)
         }
 

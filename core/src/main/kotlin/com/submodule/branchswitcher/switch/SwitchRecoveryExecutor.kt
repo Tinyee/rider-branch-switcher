@@ -113,9 +113,6 @@ class SwitchRecoveryExecutor(
         return SwitchRecoveryOutcome(recoveryPlan, rollback, stashRestore)
     }
 
-    /** Compatibility convenience for callers that only need the aggregate repository result. */
-    fun rollback(result: SwitchExecutionResult): Boolean = execute(plan(result)).ok
-
     /** Executes a previously inspected plan; each write is guarded by fresh repository checks. */
     fun execute(plan: SwitchRecoveryPlan): RecoveryExecutionResult {
         plan.retainedInitializedSubmodules.forEach { path ->

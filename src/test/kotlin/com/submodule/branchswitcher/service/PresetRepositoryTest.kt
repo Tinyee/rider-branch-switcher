@@ -1,5 +1,6 @@
 package com.submodule.branchswitcher.service
 
+import com.submodule.branchswitcher.PresetLoadResult
 import com.submodule.branchswitcher.model.Preset
 import com.submodule.branchswitcher.model.PresetFile
 import kotlinx.coroutines.CompletableDeferred
@@ -12,6 +13,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.IOException
 import java.nio.file.Files
+import java.nio.file.Path
 
 class PresetRepositoryTest {
 
@@ -23,8 +25,8 @@ class PresetRepositoryTest {
         var failSave = true
         val repository = PresetRepository(
             basePath = { root },
-            loader = { Result.success(file to PresetFile(listOf(original))) },
-            saver = { _, _ -> if (failSave) throw IOException("read only") },
+            loader = { Result.success(PresetLoadResult(file, PresetFile(listOf(original)), null)) },
+            saver = { _, _ -> if (failSave) throw IOException("read only") else byteArrayOf() },
         )
         repository.load().getOrThrow()
 
@@ -46,7 +48,7 @@ class PresetRepositoryTest {
         val repository = PresetRepository(
             basePath = { root },
             loader = { Result.failure(IOException("temporarily unreadable")) },
-            saver = { _, _ -> saveAttempts++ },
+            saver = { _, _ -> saveAttempts++; byteArrayOf() },
         )
 
         assertTrue(
@@ -72,12 +74,12 @@ class PresetRepositoryTest {
             basePath = { root },
             loader = {
                 if (loadSucceeds) {
-                    Result.success(file to PresetFile(listOf(original)))
+                    Result.success(PresetLoadResult(file, PresetFile(listOf(original)), null))
                 } else {
                     Result.failure(IOException("temporarily unreadable"))
                 }
             },
-            saver = { _, _ -> saveAttempts++ },
+            saver = { _, _ -> saveAttempts++; byteArrayOf() },
         )
         repository.load().getOrThrow()
         loadSucceeds = false
@@ -105,11 +107,12 @@ class PresetRepositoryTest {
             loader = {
                 loadCount++
                 if (loadCount == 2) secondLoadStarted.complete(Unit)
-                Result.success(file to PresetFile(listOf(Preset("main", "main"))))
+                Result.success(PresetLoadResult(file, PresetFile(listOf(Preset("main", "main"))), null))
             },
             saver = { _, _ ->
                 saveStarted.complete(Unit)
                 runBlocking { allowSaveToFinish.await() }
+                byteArrayOf()
             },
         )
         repository.load().getOrThrow()
@@ -126,5 +129,109 @@ class PresetRepositoryTest {
         save.await()
         reload.await().getOrThrow()
         assertTrue(secondLoadStarted.isCompleted)
+    }
+
+    @Test
+    fun `save refuses to overwrite when the file changed on disk since load`() = runBlocking {
+        val original = Preset("main", "main")
+        val harness = digestHarness(tempFile, listOf(original))
+        harness.repository.load().getOrThrow()
+
+        harness.digest = byteArrayOf(2) // external edit after load
+        val exception = runCatching { harness.repository.save(listOf(Preset("dev", "dev"))) }.exceptionOrNull()
+        assertTrue(exception is PresetFileChangedException)
+        assertEquals(0, harness.saveAttempts)
+        assertEquals(listOf(original), harness.repository.presets)
+    }
+
+    @Test
+    fun `save proceeds when the on-disk digest is unchanged`() = runBlocking {
+        val harness = digestHarness(tempFile, listOf(Preset("main", "main")))
+        harness.repository.load().getOrThrow()
+
+        val updated = Preset("dev", "dev")
+        harness.repository.save(listOf(updated))
+        assertEquals(1, harness.saveAttempts)
+        assertEquals(listOf(updated), harness.repository.presets)
+    }
+
+    @Test
+    fun `save detects a file created after load`() = runBlocking {
+        val harness = digestHarness(tempFile, listOf(Preset("main", "main")), initialDigest = null)
+        harness.repository.load().getOrThrow() // recordedDigest is null; file did not exist
+
+        harness.digest = byteArrayOf(1) // file created externally after load
+        val exception = runCatching { harness.repository.save(listOf(Preset("dev", "dev"))) }.exceptionOrNull()
+        assertTrue(exception is PresetFileChangedException)
+        assertEquals(0, harness.saveAttempts)
+    }
+
+    @Test
+    fun `recorded digest refreshes after a successful save`() = runBlocking {
+        val harness = digestHarness(tempFile, listOf(Preset("main", "main")))
+        harness.writtenDigest = byteArrayOf(99) // the saver reports the bytes it wrote
+        harness.repository.load().getOrThrow()
+
+        val updated = Preset("dev", "dev")
+        harness.repository.save(listOf(updated)) // current [1] == recorded [1]; recorded refreshes to [99]
+        assertEquals(listOf(updated), harness.repository.presets)
+
+        harness.digest = byteArrayOf(100) // external edit after our save
+        val exception = runCatching { harness.repository.save(listOf(Preset("release", "release"))) }.exceptionOrNull()
+        assertTrue(exception is PresetFileChangedException)
+    }
+
+    @Test
+    fun `load records the digest of the bytes the loader parsed, not a separate re-read`() = runBlocking {
+        val root = Files.createTempDirectory("preset-repository")
+        val file = root.resolve(".idea/branch-presets.json")
+        // The loader parses bytes with digest [1]; a separate re-read of the file would
+        // report [2]. Load must record the loader's digest, so a save after the file
+        // changed is detected as a conflict.
+        val loaderDigest = byteArrayOf(1)
+        val onDiskDigest = byteArrayOf(2)
+        var saveAttempts = 0
+        val repository = PresetRepository(
+            basePath = { root },
+            loader = { Result.success(PresetLoadResult(file, PresetFile(listOf(Preset("main", "main"))), loaderDigest)) },
+            saver = { _, _ -> saveAttempts++; byteArrayOf() },
+            digester = { onDiskDigest },
+        )
+        repository.load().getOrThrow()
+
+        val exception = runCatching { repository.save(listOf(Preset("dev", "dev"))) }.exceptionOrNull()
+        assertTrue(exception is PresetFileChangedException)
+        assertEquals(0, saveAttempts)
+    }
+
+    /** A fresh temp preset file path for one test. */
+    private val tempFile: Path
+        get() = Files.createTempDirectory("preset-repository").resolve(".idea/branch-presets.json")
+
+    /**
+     * Repository backed by a mutable digest shared by the loader and the digester, so a
+     * test can simulate an external edit by flipping [DigestHarness.digest] between load
+     * and save.
+     */
+    private fun digestHarness(
+        file: Path,
+        initialPresets: List<Preset>,
+        initialDigest: ByteArray? = byteArrayOf(1),
+    ) = DigestHarness(file, initialPresets, initialDigest)
+
+    private class DigestHarness(
+        file: Path,
+        initialPresets: List<Preset>,
+        initialDigest: ByteArray?,
+    ) {
+        var digest: ByteArray? = initialDigest
+        var saveAttempts = 0
+        var writtenDigest: ByteArray = byteArrayOf()
+        val repository = PresetRepository(
+            basePath = { file.parent?.parent },
+            loader = { Result.success(PresetLoadResult(file, PresetFile(initialPresets), digest)) },
+            saver = { _, _ -> saveAttempts++; writtenDigest },
+            digester = { digest },
+        )
     }
 }

@@ -9,6 +9,7 @@ import com.submodule.branchswitcher.PresetLoader
 import com.submodule.branchswitcher.model.Preset
 import com.submodule.branchswitcher.log.AppLogger
 import com.submodule.branchswitcher.service.BranchSwitcherService
+import com.submodule.branchswitcher.service.PresetFileChangedException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -78,7 +79,7 @@ internal class PresetCollectionActions(
                     host.refreshList()
                     host.notifyStateChanged()
                 }.onFailure { error ->
-                    log.error("preset load failed", error)
+                    log.failure("preset load failed", error)
                     Notifier.error(
                         project,
                         Bundle.msg("preset.load.failed"),
@@ -224,12 +225,23 @@ internal class PresetCollectionActions(
     }
 
     private fun reportSaveFailure(error: Exception) {
-        log.error("preset save failed", error)
-        Notifier.error(
-            project,
-            Bundle.msg("preset.save.failed"),
-            error.message ?: error.javaClass.simpleName,
-        )
+        if (error is PresetFileChangedException) {
+            log.warn("preset file changed on disk; save refused to avoid overwriting external edits", error)
+            Notifier.warnAction(
+                project,
+                Bundle.msg("preset.save.conflict"),
+                Bundle.msg("preset.save.conflict.msg"),
+                Bundle.msg("action.reload"),
+                ::reload,
+            )
+        } else {
+            log.failure("preset save failed", error)
+            Notifier.error(
+                project,
+                Bundle.msg("preset.save.failed"),
+                error.message ?: error.javaClass.simpleName,
+            )
+        }
     }
 
 }

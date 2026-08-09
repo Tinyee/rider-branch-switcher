@@ -61,8 +61,11 @@ internal class SwitchController(
             invokeLaterIfProjectAlive {
                 val request = service.resolveSwitchRequest(preset)
                 if (SwitchPreviewDialog.showAndConfirm(project, request, probeResult)) {
+                    val preApproved = coordinator.resolvePreApprovedSubmoduleInit(request, probeResult)
+                        ?: return@invokeLaterIfProjectAlive
                     setSwitchInProgress(true)
                     coordinator.executeAndNotify(root, request, log, operationContext,
+                        preApprovedSubmoduleInit = preApproved,
                         onFinished = { setSwitchInProgress(false) })
                 }
             }

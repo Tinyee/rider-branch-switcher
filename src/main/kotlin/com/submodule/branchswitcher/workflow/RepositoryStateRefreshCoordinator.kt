@@ -64,7 +64,7 @@ class RepositoryStateRefreshCoordinator(
                 }
             } catch (error: Exception) {
                 if (isCurrent(state) && !cancellationClassifier.isCancellation(error)) {
-                    operationLog.error("repository state refresh failed", error)
+                    operationLog.failure("repository state refresh failed", error)
                 }
             } finally {
                 operation?.let {

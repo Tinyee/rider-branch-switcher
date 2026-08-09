@@ -6,6 +6,7 @@ import com.submodule.branchswitcher.model.Preset
 import com.submodule.branchswitcher.model.SwitchOptions
 import com.submodule.branchswitcher.model.isValidSubmodulePath
 import java.nio.file.Path
+import java.nio.file.Paths
 
 /**
  * Control-flow result returned by one pipeline step.
@@ -75,8 +76,6 @@ class SwitchState private constructor(
 
     fun retainedStashBackupsSnapshot(): Set<String> = retainedStashBackups.toSet()
 
-    fun hasStashes(): Boolean = stashedPaths.isNotEmpty()
-
     private fun copy(
         stashedPaths: Map<String, TrackedStash> = this.stashedPaths,
         skippedPaths: Set<String> = this.skippedPaths,
@@ -125,11 +124,10 @@ data class SwitchContext(
     val progressHandle: ProgressHandle? = null,
     /** Mutable flag checked between/within steps for cancellation. */
     val cancelled: () -> Boolean = { false },
-    /** If true, show confirmation dialog before auto-init of missing submodules. */
+    /** If true, missing submodule directories must be pre-approved before the switch starts. */
     val confirmBeforeInit: Boolean = false,
-    /** Callback for submodule init confirmation. The main module provides an IntelliJ dialog;
-     *  core tests use a simple lambda. Returns false if init was declined. */
-    val onConfirmSubmoduleInit: ((path: String) -> Boolean)? = null,
+    /** Submodule paths the user approved for initialization before execution (no worker-time dialogs). */
+    val preApprovedSubmoduleInit: Set<String> = emptySet(),
     /** Pre-switch repository identities used by later topology safety gates. */
     val checkpoint: Map<String, CheckpointEntry> = emptyMap(),
 )
@@ -167,14 +165,26 @@ internal fun scopedStepName(action: String, scope: SwitchTargetScope): String = 
 }
 
 /** Resolve a target path to a [java.io.File] relative to the project root. */
+@Suppress("TooGenericExceptionCaught") // path resolution failures must fail closed regardless of the underlying cause
 fun resolveGitDir(root: java.nio.file.Path, path: String): java.io.File {
     val rootFile = root.toFile()
     if (path == ".") return rootFile
     require(isValidSubmodulePath(path)) { "invalid submodule path: '$path'" }
     val candidate = rootFile.resolve(path)
-    val canonicalRoot = rootFile.canonicalFile
-    val canonicalCandidate = candidate.canonicalFile
-    require(canonicalCandidate != canonicalRoot && canonicalCandidate.toPath().startsWith(canonicalRoot.toPath())) {
+    // The escape check must fail closed: an unresolvable path (permission error,
+    // damaged symlink) is refused rather than compared lexically, where a link
+    // escaping the project root could otherwise slip through.
+    val canonicalRoot = try {
+        Paths.get(rootFile.resolvedIdentity())
+    } catch (e: Exception) {
+        throw IllegalArgumentException("cannot resolve project root: $root", e)
+    }
+    val canonicalCandidate = try {
+        Paths.get(candidate.resolvedIdentity())
+    } catch (e: Exception) {
+        throw IllegalArgumentException("cannot resolve submodule path '$path'; refusing unsafe path", e)
+    }
+    require(canonicalCandidate != canonicalRoot && canonicalCandidate.startsWith(canonicalRoot)) {
         "submodule path escapes project root: '$path'"
     }
     return candidate

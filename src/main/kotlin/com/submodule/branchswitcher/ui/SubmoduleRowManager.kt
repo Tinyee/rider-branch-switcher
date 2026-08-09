@@ -134,7 +134,7 @@ internal class SubmoduleRowManager(
             if (loadedOnce && !existing.loaded) {
                 existing.loaded = true
                 loadComboBranches(existing.combo, gitRoot.resolve(path).toFile(),
-                    existing.combo.selectedItem as? String ?: "")
+                    existing.combo.selectedItem as? String ?: "", row = existing)
             }
             onDirty()
             body.revalidate()
@@ -152,6 +152,7 @@ internal class SubmoduleRowManager(
             current = "",
             discoverCurrent = dir.exists(),
             loadChoices = loadedOnce,
+            row = row,
         )
         body.revalidate()
         body.repaint()
@@ -198,25 +199,27 @@ internal class SubmoduleRowManager(
             row.loaded = true
             val dir = gitRoot.resolve(row.path).toFile()
             val branch = preset.submodules[row.path] ?: ""
-            loadComboBranches(row.combo, dir, branch)
+            loadComboBranches(row.combo, dir, branch, row = row)
         }
     }
 
     var loadingCount = 0
         internal set
 
-    /** Asynchronously loads branch names into [combo]. */
+    /** Asynchronously loads branch names into [combo]; a failed load resets [row]'s loaded state. */
     private fun loadComboBranches(
         combo: JComboBox<String>,
         dir: File,
         current: String,
         discoverCurrent: Boolean = false,
         loadChoices: Boolean = true,
+        row: SubRow? = null,
     ) {
         loadComboBranches(combo, dir, current, branchLoads, log,
             onLoadStart = { loadingCount++ },
-            onLoadEnd = {
+            onLoadEnd = { succeeded, superseded ->
                 loadingCount--
+                if (!succeeded && !superseded) row?.loaded = false
                 onDirty()
             },
             discoverCurrent = discoverCurrent,
@@ -224,6 +227,9 @@ internal class SubmoduleRowManager(
             scheduleUi = scheduleUi,
         )
     }
+
+    /** True when any visible row is missing its loaded branch list (e.g. a failed load). */
+    fun hasUnloadedRows(): Boolean = subRows.values.any { !it.deleted && !it.loaded }
 
     /** Cancels branch discovery for rows that are no longer visible. */
     fun cancelBranchLoads(): Boolean {

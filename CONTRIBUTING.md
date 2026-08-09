@@ -52,7 +52,10 @@ formal release metadata for each local build.
 
 ## Optional Diagnostics
 
-- `./gradlew pitestCore` runs scoped mutation testing for pure decision logic.
+- `./gradlew pitestCore` runs scoped mutation testing for pure decision logic in the
+  `core` module. The mutation threshold is set to the measured achievable score
+  (~88%) rather than an aspirational value, so the diagnostic stays green and
+  regression-catching.
 
 This task is intentionally outside normal tests and `releaseCheck`.
 

@@ -94,13 +94,19 @@ class SwitchPresetAction : AnAction() {
                     return@launch
                 }
                 val request = service.resolveSwitchRequest(preset)
-                coordinator.executeAndNotify(root, request, collector, operationContext) {
+                val preApproved = coordinator.resolvePreApprovedSubmoduleInit(request, probeResult)
+                    ?: run {
+                        collector.warn("switch cancelled by user - submodule init declined")
+                        return@launch
+                    }
+                coordinator.executeAndNotify(root, request, collector, operationContext,
+                    preApprovedSubmoduleInit = preApproved) {
                     project.messageBus.syncPublisher(BranchSwitchListener.TOPIC).onBranchSwitched()
                 }
             } catch (_: kotlinx.coroutines.CancellationException) {
                 // user cancelled
             } catch (e: Exception) {
-                collector.error("shortcut switch failed", e)
+                collector.failure("shortcut switch failed", e)
                 project.invokeLaterIfAlive {
                     Notifier.error(project, Bundle.msg("notify.preflight.failed"),
                         Bundle.msg("notify.preflight.failed.msg", e.javaClass.simpleName, e.message ?: ""))

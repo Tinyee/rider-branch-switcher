@@ -38,7 +38,6 @@ class SwitchRunnerTest {
         val runner = SwitchRunner(
             Files.createTempDirectory("switch-runner-thread"),
             operations,
-            confirmSubmoduleInitialization = { true },
         )
 
         runner.execute("Switching", request(), createStringAppender {})
@@ -153,7 +152,6 @@ class SwitchRunnerTest {
         val runner = SwitchRunner(
             projectRoot = Files.createTempDirectory("switch-runner-open-failure"),
             operations = TestGitOperationRunner(unavailableGit),
-            confirmSubmoduleInitialization = { true },
         )
 
         val result = runner.execute(
@@ -249,7 +247,6 @@ class SwitchRunnerTest {
     ) = SwitchRunner(
         projectRoot = root,
         operations = TestGitOperationRunner(git, completion, progress),
-        confirmSubmoduleInitialization = { true },
     )
 
     private open class RecordingGit : GitClient {

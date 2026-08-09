@@ -55,7 +55,10 @@ internal class SwitchPreflightUi(
             if (platformCancellationClassifier.isCancellation(error)) {
                 operationLog.info("operation finished: status=cancelled")
             } else {
-                operationLog.error("operation finished: status=failed", error)
+                // Recorded here with context, then rethrown for the single reporting
+                // boundary (SwitchController / SwitchPresetAction). Using failure keeps
+                // this from duplicating their fatal-error report.
+                operationLog.failure("operation finished: status=failed", error)
             }
             throw error
         }
@@ -111,9 +114,14 @@ internal class SwitchPreflightUi(
         }
     }
 
-    fun confirmSubmoduleInitialization(path: String): Boolean = confirm {
+    /**
+     * One upfront confirmation for every missing submodule directory before the
+     * switch starts. Called from the UI/launcher coroutine, never from the
+     * ProgressManager write worker, so the background switch never blocks on a dialog.
+     */
+    fun confirmSubmoduleInitializations(missingPaths: List<String>): Boolean = confirm {
         Messages.showYesNoDialog(
-            Bundle.msg("dialog.init.submodule", path),
+            Bundle.msg("dialog.init.submodules", missingPaths.joinToString(", ")),
             Bundle.msg("dialog.init.title"),
             Messages.getQuestionIcon(),
         ) == Messages.YES
