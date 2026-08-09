@@ -3,6 +3,7 @@ package com.submodule.branchswitcher.workflow
 import com.submodule.branchswitcher.git.GitOperationSession
 import com.submodule.branchswitcher.git.GitResult
 import com.submodule.branchswitcher.log.AppLogger
+import com.submodule.branchswitcher.log.logFailure
 import com.submodule.branchswitcher.log.newOperationId
 import com.submodule.branchswitcher.log.withContext
 import com.submodule.branchswitcher.operation.GitOperationResult
@@ -130,7 +131,7 @@ class SingleRepositorySwitcher(
             SingleRepositorySwitchResult.Cancelled ->
                 operationLog.info("operation finished: status=cancelled")
             is SingleRepositorySwitchResult.Unexpected ->
-                operationLog.error("operation finished: status=unexpected-failure", result.error)
+                operationLog.logFailure("operation finished: status=unexpected-failure", result.error)
         }
         return result
     }

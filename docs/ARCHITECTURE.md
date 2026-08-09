@@ -106,6 +106,18 @@ I/O dispatcher. UI state changes only after a successful repository operation.
 Presets are project files, not global plugin state. Deleting an untracked
 `.idea` directory also deletes presets stored there.
 
+Loads record a SHA-256 digest of the exact bytes that were parsed
+(`PresetLoader.loadWithDigest`), so the recorded digest can never describe
+different content than the in-memory presets. Saves are optimistic conflict
+checks: the file is re-read and its digest compared against the load-time digest;
+a mismatch means the file changed outside the IDE since loading, so the save is
+refused with `PresetFileChangedException` and the UI offers a reload action
+instead of silently overwriting. The saver returns the digest of the bytes it
+wrote, so no post-write re-read is needed and memory and disk stay consistent.
+The check-and-write window is intentionally optimistic (microseconds); full
+protection would require file locking, which is disproportionate for a
+project-local JSON file.
+
 Global switch settings and recent history are stored through
 `PersistentStateComponent` in `branch-switcher.xml`.
 

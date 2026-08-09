@@ -4,6 +4,7 @@ import com.intellij.openapi.project.Project
 import com.submodule.branchswitcher.Bundle
 import com.submodule.branchswitcher.log.AppLogger
 import com.submodule.branchswitcher.log.OperationContext
+import com.submodule.branchswitcher.log.logFailure
 import com.submodule.branchswitcher.log.withContext
 import com.submodule.branchswitcher.model.PreflightRow
 import com.submodule.branchswitcher.model.Preset
@@ -162,7 +163,7 @@ class SwitchFlowCoordinator(
         if (job == null) return
         completion.completeWhenFailed(job) { failure ->
             if (!platformCancellationClassifier.isCancellation(failure)) {
-                log.error("switch completion failed", failure)
+                log.logFailure("switch completion failed", failure)
             }
         }
     }
@@ -202,7 +203,7 @@ class SwitchFlowCoordinator(
                     is GitOperationResult.Cancelled -> rollbackBackgroundResult.value
                     is GitOperationResult.Failed -> {
                         val error = rollbackBackgroundResult.error
-                        recoveryLog.error("notification rollback failed", error)
+                        recoveryLog.logFailure("notification rollback failed", error)
                         null
                     }
             }

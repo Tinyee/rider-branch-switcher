@@ -2,8 +2,10 @@ package com.submodule.branchswitcher.log
 
 import com.submodule.branchswitcher.executeTest
 import com.submodule.branchswitcher.git.GitClient
+import com.submodule.branchswitcher.git.GitQueryException
 import com.submodule.branchswitcher.git.GitResult
 import com.submodule.branchswitcher.git.RepositoryIdentity
+import com.submodule.branchswitcher.git.SubmoduleDiscoveryException
 import com.submodule.branchswitcher.git.SubmoduleRegistration
 import com.submodule.branchswitcher.model.DirtyAction
 import com.submodule.branchswitcher.model.Preset
@@ -23,6 +25,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import java.io.File
+import java.io.IOException
 import java.nio.file.Files
 
 class AppLoggerTest {
@@ -91,6 +94,34 @@ class AppLoggerTest {
             ),
             messages,
         )
+    }
+
+    @Test
+    fun `logFailure routes environment failures to warn and defects to error`() {
+        val messages = mutableListOf<String>()
+        val log = createStringAppender(messages::add)
+
+        log.logFailure("env", GitQueryException(GitResult("git", 1, "", "boom")))
+        log.logFailure("topology", SubmoduleDiscoveryException("cannot resolve", IOException("permission denied")))
+        log.logFailure("defect", IllegalStateException("programming bug"))
+
+        assertTrue(messages.any { it.startsWith("[warn]") && it.contains("env") && it.contains("GitQueryException") })
+        assertTrue(messages.any { it.startsWith("[warn]") && it.contains("topology") && it.contains("SubmoduleDiscoveryException") })
+        assertTrue(messages.any { it.startsWith("[error]") && it.contains("defect") && it.contains("IllegalStateException") })
+    }
+
+    @Test
+    fun `logFailure recognizes environment failures wrapped in the cause chain`() {
+        val messages = mutableListOf<String>()
+        val log = createStringAppender(messages::add)
+
+        log.logFailure("wrapped git", RuntimeException("operation failed", GitQueryException(GitResult("git", 1, "", "boom"))))
+        log.logFailure("wrapped io", RuntimeException("operation failed", IOException("permission denied")))
+        log.logFailure("wrapped defect", RuntimeException("operation failed", IllegalStateException("bug")))
+
+        assertTrue(messages.any { it.startsWith("[warn]") && it.contains("wrapped git") && it.contains("RuntimeException") })
+        assertTrue(messages.any { it.startsWith("[warn]") && it.contains("wrapped io") && it.contains("RuntimeException") })
+        assertTrue(messages.any { it.startsWith("[error]") && it.contains("wrapped defect") && it.contains("RuntimeException") })
     }
 
     @Test

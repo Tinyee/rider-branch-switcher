@@ -1,6 +1,7 @@
 package com.submodule.branchswitcher.workflow
 
 import com.submodule.branchswitcher.log.AppLogger
+import com.submodule.branchswitcher.log.logFailure
 import com.submodule.branchswitcher.log.newOperationId
 import com.submodule.branchswitcher.log.withContext
 import com.submodule.branchswitcher.model.Preset
@@ -111,7 +112,7 @@ class DeriveBranchRunner(
             }
             is GitOperationResult.Failed -> {
                 val error = backgroundResult.error
-                operationLog.error("derive workflow failed", error)
+                operationLog.logFailure("derive workflow failed", error)
                 DeriveRunResult(operationId = operationId, cancelled = false, execution = null)
             }
         }
@@ -141,7 +142,7 @@ class DeriveBranchRunner(
         val rollbackOperation = try {
             operations.openOperation()
         } catch (e: RuntimeException) {
-            log.error("derive rollback session could not be opened", e)
+            log.logFailure("derive rollback session could not be opened", e)
             return listOf("(session)")
         }
         return try {
@@ -155,7 +156,7 @@ class DeriveBranchRunner(
                 classifier = cancellationClassifier,
             ).rollbackSucceeded(execution, branchName, pathsToRestore).pendingPaths
         } catch (e: Exception) {
-            log.error("derive rollback after cancel failed", e)
+            log.logFailure("derive rollback after cancel failed", e)
             listOf("(exception)")
         } finally {
             rollbackOperation.close()

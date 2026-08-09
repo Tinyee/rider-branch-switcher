@@ -3,6 +3,7 @@ package com.submodule.branchswitcher.ui
 import com.intellij.ui.JBColor
 import com.submodule.branchswitcher.Bundle
 import com.submodule.branchswitcher.log.AppLogger
+import com.submodule.branchswitcher.log.logFailure
 import com.submodule.branchswitcher.git.PresetDiscoveryGitClient
 import com.submodule.branchswitcher.model.Preset
 import com.submodule.branchswitcher.switch.shortLabel
@@ -107,8 +108,17 @@ internal class SubmoduleRowManager(
     }
 
     /** Shows a popup to add a new submodule from .gitmodules paths not yet in the preset. */
+    @Suppress("TooGenericExceptionCaught") // discovery failures converge at this UI boundary
     fun showAddSubmoduleMenu(anchor: JButton, currentPreset: Preset) {
-        val all = gitClient().listSubmodulePaths(gitRoot.toFile())
+        val all = try {
+            gitClient().listSubmodulePaths(gitRoot.toFile())
+        } catch (e: Exception) {
+            // A topology discovery failure (e.g. unresolvable project root) must not crash
+            // the popup action; route through logFailure so environment failures stay WARN
+            // while programming defects still surface as errors.
+            log.logFailure("cannot discover submodule paths", e)
+            return
+        }
         val current = subRows.values.filter { !it.deleted }.map { it.path }.toSet()
         val available = all.filter { it !in current }
         if (available.isEmpty()) {

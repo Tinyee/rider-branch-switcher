@@ -10,6 +10,7 @@ import com.submodule.branchswitcher.BranchSwitchListener
 import com.submodule.branchswitcher.Bundle
 import com.submodule.branchswitcher.Notifier
 import com.submodule.branchswitcher.log.AppLogger
+import com.submodule.branchswitcher.log.logFailure
 import com.submodule.branchswitcher.log.newOperationContext
 import com.submodule.branchswitcher.log.ToolWindowLogger
 import com.submodule.branchswitcher.model.Preset
@@ -106,7 +107,7 @@ class SwitchPresetAction : AnAction() {
             } catch (_: kotlinx.coroutines.CancellationException) {
                 // user cancelled
             } catch (e: Exception) {
-                collector.failure("shortcut switch failed", e)
+                collector.logFailure("shortcut switch failed", e)
                 project.invokeLaterIfAlive {
                     Notifier.error(project, Bundle.msg("notify.preflight.failed"),
                         Bundle.msg("notify.preflight.failed.msg", e.javaClass.simpleName, e.message ?: ""))

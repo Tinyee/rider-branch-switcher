@@ -2,6 +2,7 @@ package com.submodule.branchswitcher.switch
 
 import com.submodule.branchswitcher.git.SwitchGitClient
 import com.submodule.branchswitcher.log.AppLogger
+import com.submodule.branchswitcher.log.logFailure
 import java.io.File
 import java.nio.file.Path
 
@@ -98,13 +99,13 @@ class SwitchRecoveryExecutor(
             restoreTrackedStashes(recoveryPlan, result.state)
         } catch (error: SwitchStepException) {
             val cause = error.cause
-            log.error("[stash restore] exception", cause)
+            log.logFailure("[stash restore] exception", cause)
             StashRestoreResult(
                 error.latestState,
                 listOf(recoveryIssue(".", OperationIssueCode.RECOVERY_FAILED, cause.diagnosticText())),
             )
         } catch (error: RuntimeException) {
-            log.error("[stash restore] exception", error)
+            log.logFailure("[stash restore] exception", error)
             StashRestoreResult(
                 result.state,
                 listOf(recoveryIssue(".", OperationIssueCode.RECOVERY_FAILED, error.diagnosticText())),
@@ -135,7 +136,7 @@ class SwitchRecoveryExecutor(
         try {
             recoverRepository(action)
         } catch (error: RuntimeException) {
-            log.error("[rollback] ${labelFor(action.repositoryPath)} failed", error)
+            log.logFailure("[rollback] ${labelFor(action.repositoryPath)} failed", error)
             failed(action, OperationIssueCode.RECOVERY_FAILED, error.diagnosticText())
         }
 

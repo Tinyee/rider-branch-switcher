@@ -5,6 +5,7 @@ import com.submodule.branchswitcher.Bundle
 import com.submodule.branchswitcher.git.GitFailureKind
 import com.submodule.branchswitcher.git.GitQueryException
 import com.submodule.branchswitcher.log.AppLogger
+import com.submodule.branchswitcher.log.logFailure
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -169,7 +170,7 @@ internal fun loadComboBranches(
             scheduleUi(updateUi)
         } catch (e: Exception) {
             endLoad(false)
-            log.warn("loadBranches UI update failed for ${dir.name}", e)
+            log.logFailure("loadBranches UI update failed for ${dir.name}", e)
         }
     }
 
@@ -199,14 +200,14 @@ internal fun loadComboBranches(
             log.warn("loadBranches failed for ${dir.name}", e)
             BranchComboLoadResult(current, emptyList(), succeeded = false)
         } catch (e: Exception) {
-            log.warn("loadBranches failed for ${dir.name}", e)
+            log.logFailure("loadBranches failed for ${dir.name}", e)
             BranchComboLoadResult(current, emptyList(), succeeded = false)
         }
         finish(loadResult)
     }
     handle.invokeOnCompletion { failure ->
         if (failure != null && failure !is CancellationException) {
-            log.warn("loadBranches failed for ${dir.name}", failure)
+            log.logFailure("loadBranches failed for ${dir.name}", failure)
         }
         finish(null)
     }

@@ -6,6 +6,7 @@ import com.intellij.util.ui.JBUI
 import com.submodule.branchswitcher.Bundle
 import com.submodule.branchswitcher.git.PresetDiscoveryGitClient
 import com.submodule.branchswitcher.log.AppLogger
+import com.submodule.branchswitcher.log.logFailure
 import com.submodule.branchswitcher.model.Preset
 import com.submodule.branchswitcher.model.isValidBranchName
 import com.submodule.branchswitcher.presentation.PresetDraftSelection
@@ -223,7 +224,7 @@ internal class PresetEditor(
             }
         } catch (e: Exception) {
             persistenceInProgress = false
-            log.failure("save failed", e)
+            log.logFailure("save failed", e)
             updateUnsavedState()
         }
     }
@@ -445,7 +446,7 @@ internal class PresetEditor(
             }
         } catch (e: Exception) {
             persistenceInProgress = false
-            log.failure("rename failed", e)
+            log.logFailure("rename failed", e)
             updateUnsavedState()
         }
     }

@@ -25,20 +25,21 @@ internal object SubmoduleInitializer {
         registrationRoot: File,
         registrationPath: String,
     ): Result {
+        // Cancellation aborts at the entry, before any Git query or side effect, and
+        // cannot bypass the pre-approval check below.
+        context.cancellationHandle?.checkCanceled()
         if (context.git.isGitRepo(directory)) {
             return verifyReady(context, target, directory, initializedBySwitch = false)
         }
-
-        if (context.confirmBeforeInit && context.cancellationHandle?.isCanceled != true) {
-            // The user pre-approved the missing directories before the switch acquired the
-            // write lease; a path outside that set is declined (fail closed).
-            if (target.path !in context.preApprovedSubmoduleInit) {
-                context.log.info("[skip] init declined for ${target.path}")
-                return Result(
-                    ready = false,
-                    issue = initIssue(target.path, OperationIssueCode.SUBMODULE_INIT_DECLINED),
-                )
-            }
+        // The user pre-approved the missing directories before the switch acquired the
+        // write lease; a path outside that set is declined (fail closed) regardless of
+        // whether a cancellation request is in flight.
+        if (context.confirmBeforeInit && target.path !in context.preApprovedSubmoduleInit) {
+            context.log.info("[skip] init declined for ${target.path}")
+            return Result(
+                ready = false,
+                issue = initIssue(target.path, OperationIssueCode.SUBMODULE_INIT_DECLINED),
+            )
         }
 
         context.log.info(

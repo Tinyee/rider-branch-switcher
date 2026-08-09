@@ -2,6 +2,7 @@ package com.submodule.branchswitcher.platform
 
 import com.intellij.openapi.progress.ProgressIndicator
 import com.submodule.branchswitcher.log.AppLogger
+import com.submodule.branchswitcher.log.logFailure
 import com.submodule.branchswitcher.operation.OperationProgress
 import com.submodule.branchswitcher.switch.CancellationClassifier
 import com.submodule.branchswitcher.switch.CancellationHandle
@@ -64,7 +65,7 @@ fun refreshVcsRepos(
         } catch (e: Exception) {
             if (platformCancellationClassifier.isCancellation(e)) throw e
             failures[path] = "${e.javaClass.simpleName}: ${e.message}"
-            log.warn("[vcs] $path refresh failed", e)
+            log.logFailure("[vcs] $path refresh failed", e)
         }
     }
     return VcsRefreshResult(refreshedRepositories, failures)

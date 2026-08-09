@@ -3,6 +3,7 @@ package com.submodule.branchswitcher.workflow
 import com.submodule.branchswitcher.git.RepositoryStateGitClient
 import com.submodule.branchswitcher.git.RepositoryStateBatchGitClient
 import com.submodule.branchswitcher.log.AppLogger
+import com.submodule.branchswitcher.log.logFailure
 import com.submodule.branchswitcher.switch.CancellationClassifier
 import com.submodule.branchswitcher.switch.rethrowIfCancellation
 import java.nio.file.Path
@@ -70,7 +71,7 @@ class RepositoryStateDetector(
                 cancellationClassifier.rethrowIfCancellation(e)
                 branches[path] = null
                 dirty[path] = false
-                log.failure("[detect] $path failed", e)
+                log.logFailure("[detect] $path failed", e)
             }
         }
         return RepositoryStateSnapshot(request.id, branches, dirty)

@@ -1,8 +1,9 @@
 package com.submodule.branchswitcher.git
 
 import com.intellij.openapi.diagnostic.Logger as IdeaLogger
-import com.submodule.branchswitcher.switch.pathIdentity
+import com.submodule.branchswitcher.switch.resolvedIdentity
 import java.io.File
+import java.io.IOException
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -234,13 +235,29 @@ internal class GitCommandClient(
     private fun listSubmoduleRegistrations(gitRoot: File): List<SubmoduleRegistration> {
         val result = mutableListOf<SubmoduleRegistration>()
         val visited = HashSet<String>()
-        val rootCanonical = runCatching { gitRoot.pathIdentity() }.getOrElse { gitRoot.absolutePath }
+        // Strict resolution: an unresolvable project root is a structured discovery
+        // failure (never "no submodules"), so the caller can surface the real cause
+        // instead of misreporting every target as unregistered. Only path-resolution
+        // failures are wrapped; an unexpected runtime error propagates as-is so it is
+        // not silently downgraded.
+        val rootCanonical = try {
+            gitRoot.resolvedIdentity()
+        } catch (e: IOException) {
+            throw SubmoduleDiscoveryException(
+                "cannot resolve project root ${gitRoot.path}; submodule discovery failed",
+                e,
+            )
+        } catch (e: SecurityException) {
+            throw SubmoduleDiscoveryException(
+                "cannot resolve project root ${gitRoot.path}; submodule discovery failed",
+                e,
+            )
+        }
         visited.add(rootCanonical)
         collectSubmoduleRegistrations(gitRoot, "", result, visited, rootCanonical)
         return result
     }
 
-    @Suppress("TooGenericExceptionCaught") // canonical-path failures must skip unsafe submodule entries
     private fun collectSubmoduleRegistrations(
         baseDir: File,
         prefix: String,
@@ -258,8 +275,11 @@ internal class GitCommandClient(
             val fullPath = if (prefix.isEmpty()) path else "$prefix/$path"
             val subDir = File(baseDir, path)
             val resolved = try {
-                subDir.pathIdentity()
-            } catch (e: Exception) {
+                subDir.resolvedIdentity()
+            } catch (e: IOException) {
+                LOG.warn("Cannot resolve canonical path for submodule $fullPath", e)
+                continue
+            } catch (e: SecurityException) {
                 LOG.warn("Cannot resolve canonical path for submodule $fullPath", e)
                 continue
             }

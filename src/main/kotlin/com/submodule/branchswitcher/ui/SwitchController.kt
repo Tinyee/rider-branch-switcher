@@ -4,6 +4,7 @@ import com.intellij.icons.AllIcons
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.Messages
 import com.submodule.branchswitcher.log.AppLogger
+import com.submodule.branchswitcher.log.logFailure
 import com.submodule.branchswitcher.log.newOperationContext
 import com.submodule.branchswitcher.log.withContext
 import com.submodule.branchswitcher.Notifier
@@ -51,7 +52,7 @@ internal class SwitchController(
             } catch (_: com.intellij.openapi.progress.ProcessCanceledException) {
                 return@launch
             } catch (e: Exception) {
-                log.error("preflight probe failed", e)
+                log.logFailure("preflight probe failed", e)
                 invokeLaterIfProjectAlive {
                     Notifier.error(project, Bundle.msg("notify.preflight.failed"),
                         Bundle.msg("notify.preflight.failed.msg", e.javaClass.simpleName, e.message ?: ""))
