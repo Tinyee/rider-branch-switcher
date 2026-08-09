@@ -6,7 +6,8 @@ import com.submodule.branchswitcher.model.RepoTarget
 import java.io.File
 
 /**
- * For each target with a dirty working tree, apply the configured strategy (stash / skip / force).
+ * For each target with a dirty working tree, apply the configured strategy
+ * (stash, skip, or attempt checkout without stashing).
  */
 class DirtyHandlingStep : SwitchStep {
     override val name = "dirty handling"
@@ -47,7 +48,7 @@ class DirtyHandlingStep : SwitchStep {
         }
         DirtyAction.Stash -> stashTarget(context, target, repositoryDirectory, state, issues)
         DirtyAction.Force -> {
-            context.log.info("[force] proceeding with dirty tree - ${target.path}")
+            context.log.info("[no stash] proceeding with dirty tree - ${target.path}")
             state
         }
     }

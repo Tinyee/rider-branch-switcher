@@ -6,19 +6,19 @@
 
 它适合这类项目：一个主仓库下挂着多个 Git 子模块，日常需要在 `main`、`develop`、发布分支、功能分支之间整组切换。你可以把每组分支保存成 preset，然后在 Tool Window 里直接切换。
 
-preset 是项目内的 JSON 文件。首选位置是 `.idea/branch-presets.json`，也支持项目根目录的
-`.branch-presets.json`。如果需要避免本地 IDE 配置清理造成丢失，并让团队共享，请把选定的
-preset 文件提交到 Git。
+preset 是项目内的 JSON 文件。个人 preset 默认保存在
+`.idea/branch-presets.json`。需要共享时，团队可以在项目根目录创建并提交
+`.branch-presets.json`；如果两个文件同时存在，个人 `.idea` 文件优先。
 
 ## 主要功能
 
 - **一键切换分支组合**：主仓库和每个子模块都可以配置目标分支。
 - **切换前预览**：显示当前分支、目标分支、dirty 文件数量和分支来源。
-- **脏工作区策略**：支持 stash、跳过、强制切换。
+- **脏工作区策略**：支持 stash 改动、跳过仓库，或不暂存而直接尝试切换。
 - **失败回滚**：切换失败时保留 checkpoint，可从通知或历史里回滚。
 - **子模块处理**：主仓切换后自动 sync，缺失或迁移后的新路径可自动 init；旧 preset 路径会被跳过，本地遗留工作树不会自动删除。
 - **派生功能分支**：基于 preset，在主仓库和所有子模块同时创建新分支。
-- **preset 管理**：从当前状态创建、重命名、排序、导入/导出、撤销最近切换。
+- **preset 管理**：从当前状态创建、重命名、排序、导入/导出、切回上一个 preset。
 - **IDE 集成**：Tool Window、`Ctrl+Alt+B` 快速切换、通知、Settings 页面、中英文 i18n。
 
 ## 截图
@@ -35,6 +35,9 @@ preset 文件提交到 Git。
 2025.1 API 为最低基线，目前对 Rider 2025.1 及以上版本进行兼容验证。其他 IDE 系列的
 支持声明及所需证据见
 [兼容性矩阵](docs/SETUP.md#support-matrix-policy)。
+
+当前明确支持的仓库结构是一个主 Git 仓库及其通过 `.gitmodules` 递归注册的子模块。
+同一 IDE 项目中的多个独立 VCS Root 或同级仓库不在当前产品范围内。
 
 ## 安装
 
@@ -83,9 +86,11 @@ build/distributions/submodule-branch-switcher-*.zip
 ```
 
 preset 加载时会先检查 `.idea/branch-presets.json`，再检查
-`.branch-presets.json`，最后向父目录查找，直到 Git 仓库边界。打开 Tool Window
-不会创建或改写 preset 文件；第一次成功保存时才会创建首选文件。插件不会把 preset
-额外保存到全局配置；如果 `.idea` 没有被 Git 跟踪，删除该目录也会删除其中的 preset。
+`.branch-presets.json`，最后向父目录查找，直到 Git 仓库边界。第一个匹配的文件就是当前
+实际生效的文件，**打开 Preset 文件**会定位到该路径。因此，个人 `.idea` 文件可以覆盖团队共享的
+根目录文件。打开 Tool Window 不会创建或改写 preset 文件；当不存在任何 preset 文件时，
+第一次成功保存才会创建个人 `.idea` 文件。插件不会把 preset 额外保存到全局配置；
+如果 `.idea` 没有被 Git 跟踪，删除该目录也会删除其中的 preset。
 
 ## 配置项
 
@@ -109,6 +114,7 @@ preset 加载时会先检查 `.idea/branch-presets.json`，再检查
 通过 `Help | Show Log in ...` 找到 `idea.log`，按同一个操作 ID 收集全部行即可还原
 项目根目录、请求目标、实际选项、checkpoint、Git 失败详情、恢复动作和最终结果。
 Git 诊断中的 URI/SCP remote 和疑似凭据会替换成不可逆占位符，不会暴露私有地址或密钥。
+插件不发送任何遥测数据；除非用户主动分享，诊断信息始终保留在本地 IDE 日志中。
 
 ## 参与开发
 

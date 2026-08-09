@@ -173,10 +173,14 @@ internal class SwitchController(
         }
     }
 
-    fun undoLastSwitch(allPresets: List<Preset>) {
+    fun switchToPreviousPreset(allPresets: List<Preset>) {
         val history = service.getHistory()
         if (history.size < 2) {
-            Messages.showInfoMessage(project, Bundle.msg("no.undo.history"), Bundle.msg("dialog.undo"))
+            Messages.showInfoMessage(
+                project,
+                Bundle.msg("previous.preset.history.empty"),
+                Bundle.msg("dialog.previous.preset"),
+            )
             return
         }
         val entry = history[1]
@@ -187,7 +191,11 @@ internal class SwitchController(
             allPresets.find { it.name == entry.presetName }
         }
         if (preset == null) {
-            Messages.showInfoMessage(project, Bundle.msg("undo.not.found.preset", entry.presetName), Bundle.msg("dialog.undo"))
+            Messages.showInfoMessage(
+                project,
+                Bundle.msg("previous.preset.not.found", entry.presetName),
+                Bundle.msg("dialog.previous.preset"),
+            )
             return
         }
         runSwitch(preset)

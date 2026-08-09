@@ -142,7 +142,7 @@ class BranchSwitcherService(
 
     suspend fun savePresets(presets: List<Preset>) = presetRepo.save(presets)
 
-    // -- Switch history for undo support (max 5 entries, persisted across restarts) --
+    // -- Switch history for returning to a previous preset (max 5 entries, persisted across restarts) --
 
     private val maxHistory = 5
     /** Records a completed switch: preset name, stable id (for rename survival), and timestamp. */

@@ -37,6 +37,11 @@ package boundaries; the
 [contributor validation guide](../CONTRIBUTING.md#validation) defines when to
 run broader checks.
 
+The product models one main Git repository and the recursive submodule graph
+registered through `.gitmodules`. Multiple independent VCS roots and arbitrary
+sibling repositories are outside this architecture; supporting them would
+require a different preset, checkpoint, and recovery model.
+
 ## Package Ownership
 
 | Area | Responsibility | Main entry points |
@@ -96,7 +101,11 @@ Preset lookup order is:
 3. A parent `.branch-presets.json`, stopping at a Git repository boundary
 
 The upward lookup has no arbitrary depth limit; the repository boundary is the
-limit. `PresetLoader` owns JSON parsing, validation, in-memory ID normalization,
+limit. The first match wins, so `.idea/branch-presets.json` is a personal
+override when a shared root file also exists. **Open Preset File** reveals the
+active path. When no file exists, the first successful save creates the
+personal `.idea` file; teams opt into sharing by creating and committing the
+root file. `PresetLoader` owns JSON parsing, validation, in-memory ID normalization,
 and atomic writes. Loading never creates or rewrites a file. The first explicit
 save creates the preferred file and persists any normalized IDs.
 

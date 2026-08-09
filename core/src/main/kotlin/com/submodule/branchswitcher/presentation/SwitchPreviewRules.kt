@@ -4,7 +4,7 @@ import com.submodule.branchswitcher.model.DirtyAction
 import com.submodule.branchswitcher.model.PreflightRow
 import com.submodule.branchswitcher.model.ResolvedSwitchRequest
 
-/** Force dirty strategy warning condition — pure rule, no UI dependency. */
+/** Warning condition for switching without stashing — pure rule, no UI dependency. */
 fun shouldShowForceWarning(
     request: ResolvedSwitchRequest,
     rows: List<PreflightRow>,

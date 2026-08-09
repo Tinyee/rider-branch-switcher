@@ -59,7 +59,7 @@ internal class SwitchUiCompletion(
  * Shared switch orchestration for ToolWindow and keyboard shortcut entries.
  *
  * Each entry point owns its own preflight UI (preview dialog vs simple confirm),
- * but preflight logic, force warnings, and post-execution tail are shared here.
+ * but preflight logic, dirty-worktree warnings, and post-execution tail are shared here.
  */
 class SwitchFlowCoordinator(
     private val project: Project,

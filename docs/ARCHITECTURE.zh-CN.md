@@ -34,6 +34,10 @@ Kotlin 语法。
 IntelliJ、platform、service 或 UI；core 不能引用 IntelliJ 或桌面 UI。UI 通过 core 中的
 操作契约注入平台实现，`quickCheck` 会检查这些关键边界。
 
+产品模型只包含一个主 Git 仓库和通过 `.gitmodules` 注册的递归子模块图。
+多个独立 VCS Root 和任意同级仓库不在当前架构范围内；支持它们需要另一套
+preset、checkpoint 和恢复模型。
+
 ## 推荐阅读顺序
 
 1. [`PresetConfig.kt`](../core/src/main/kotlin/com/submodule/branchswitcher/model/PresetConfig.kt)
@@ -131,8 +135,11 @@ superproject，并使用父仓吸收后的外部 Git 元数据，而不是 workt
 ## Preset 持久化
 
 preset 会按 `.idea/branch-presets.json`、项目根目录 `.branch-presets.json`、父目录
-`.branch-presets.json` 的顺序查找，直到 Git 仓库边界，没有固定层数限制。加载只读取和校验，
-不会创建文件，也不会因为旧 ID 迁移而改写文件；第一次显式保存才创建首选文件并写入规范化结果。
+`.branch-presets.json` 的顺序查找，直到 Git 仓库边界，没有固定层数限制。第一个匹配项生效，
+因此 `.idea/branch-presets.json` 在共享的根目录文件同时存在时是个人覆盖。
+**打开 Preset 文件**会定位到当前生效的路径。加载只读取和校验，不会创建文件，也不会因为旧 ID
+迁移而改写文件；没有文件时，第一次显式保存会创建个人 `.idea` 文件。团队通过主动创建并提交
+根目录文件来选择共享。
 
 `PresetRepository` 使用同一把互斥锁串行化 load/save，并在 I/O dispatcher 上访问磁盘。
 编辑器和列表只在保存成功后更新内存与界面状态，因此旧的异步结果不会覆盖较新的操作。

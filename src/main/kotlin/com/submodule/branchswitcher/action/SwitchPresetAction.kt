@@ -87,7 +87,7 @@ class SwitchPresetAction : AnAction() {
             try {
                 val probeResult = coordinator.preflight(root, preset, collector, operationContext)
                 if (!coordinator.showForceWarning(preset, probeResult)) {
-                    collector.warn("switch cancelled by user - Force dirty strategy declined")
+                    collector.warn("switch cancelled by user - switching without stashing declined")
                     return@launch
                 }
                 if (!coordinator.showPreflightWarnings(probeResult)) {

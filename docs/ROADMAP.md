@@ -46,3 +46,12 @@ evidence identifies a compatibility, performance, or credential-handling
 limitation that the CLI implementation cannot reasonably address.
 
 This item does not currently block maintenance or the first release.
+
+### P3-09: Automate Marketplace Publishing After The First Release
+
+Publish 0.8.0 manually after the release checklist passes. Once that process is
+proven, add a release-only workflow that validates the tagged source version,
+runs `releaseCheck`, publishes with the protected Marketplace token, and keeps
+ordinary pushes unable to publish.
+
+This item starts only after the first successful manual Marketplace release.

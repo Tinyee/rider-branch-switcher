@@ -90,6 +90,12 @@
   stacked-indent placement when a Tool Window is narrower than its padding.
 - Explain each global switch setting in context and clarify the actual behavior
   of dirty-worktree strategies, Git timeouts, fetch, pull, and submodule init.
+- Rename the history action to "Switch to previous preset" and the former
+  "Force" UI strategy to "Switch without stashing", matching their real
+  non-destructive behavior.
+- Clarify personal preset overrides, team-shared root presets, the single main
+  repository topology, and the plugin's no-telemetry policy before Marketplace
+  publication.
 - Persist all Tool Window log levels to `idea.log`, correlate write workflows
   with operation IDs, retain exception stack traces, and record bounded runtime,
   request, checkpoint, recovery, VCS refresh, and final-result diagnostics.

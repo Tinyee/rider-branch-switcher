@@ -189,8 +189,8 @@ class BranchSwitcherPanel(
                     },
                 ),
                 listOf(
-                    PopupAction(Bundle.msg("action.undo"), AllIcons.Actions.Undo) {
-                        switchController.undoLastSwitch(presetManager.editors.map { it.currentPreset() })
+                    PopupAction(Bundle.msg("action.previous.preset"), AllIcons.Actions.Back) {
+                        switchController.switchToPreviousPreset(presetManager.editors.map { it.currentPreset() })
                     },
                     PopupAction(
                         Bundle.msg("action.settings"),
