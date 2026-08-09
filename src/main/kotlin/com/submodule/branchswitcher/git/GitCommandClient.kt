@@ -1,6 +1,7 @@
 package com.submodule.branchswitcher.git
 
 import com.intellij.openapi.diagnostic.Logger as IdeaLogger
+import com.submodule.branchswitcher.switch.pathIdentity
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
@@ -233,7 +234,7 @@ internal class GitCommandClient(
     private fun listSubmoduleRegistrations(gitRoot: File): List<SubmoduleRegistration> {
         val result = mutableListOf<SubmoduleRegistration>()
         val visited = HashSet<String>()
-        val rootCanonical = runCatching { resolvedPath(gitRoot) }.getOrElse { gitRoot.absolutePath }
+        val rootCanonical = runCatching { gitRoot.pathIdentity() }.getOrElse { gitRoot.absolutePath }
         visited.add(rootCanonical)
         collectSubmoduleRegistrations(gitRoot, "", result, visited, rootCanonical)
         return result
@@ -257,7 +258,7 @@ internal class GitCommandClient(
             val fullPath = if (prefix.isEmpty()) path else "$prefix/$path"
             val subDir = File(baseDir, path)
             val resolved = try {
-                resolvedPath(subDir)
+                subDir.pathIdentity()
             } catch (e: Exception) {
                 LOG.warn("Cannot resolve canonical path for submodule $fullPath", e)
                 continue
@@ -274,9 +275,6 @@ internal class GitCommandClient(
             collectSubmoduleRegistrations(subDir, fullPath, result, visited, rootCanonical, depth + 1)
         }
     }
-
-    private fun resolvedPath(file: File): String =
-        if (file.exists()) file.toPath().toRealPath().toString() else file.canonicalPath
 
     private fun readSubmoduleEntries(baseDir: File, file: File): List<Pair<String, String>> {
         val result = run(

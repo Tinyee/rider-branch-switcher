@@ -223,7 +223,7 @@ internal class PresetEditor(
             }
         } catch (e: Exception) {
             persistenceInProgress = false
-            log.error("save failed", e)
+            log.failure("save failed", e)
             updateUnsavedState()
         }
     }
@@ -290,7 +290,9 @@ internal class PresetEditor(
         } else if (!body.isVisible) {
             val cancelledMain = cancelComboBranchLoad(mainCombo)
             val cancelledSubmodules = submoduleManager.cancelBranchLoads()
-            if (cancelledMain || cancelledSubmodules) branchesLoaded = false
+            // Also reset when a submodule row still lacks its branch list (a completed
+            // but failed load), so re-expanding retries it even though the main loaded.
+            if (cancelledMain || cancelledSubmodules || submoduleManager.hasUnloadedRows()) branchesLoaded = false
         }
         body.revalidate()
         revalidate()
@@ -307,8 +309,9 @@ internal class PresetEditor(
     private fun loadComboBranches(combo: JComboBox<String>, dir: File, current: String) {
         loadComboBranches(combo, dir, current, branchLoads, log,
             onLoadStart = { submoduleManager.loadingCount++ },
-            onLoadEnd = {
+            onLoadEnd = { succeeded, superseded ->
                 submoduleManager.loadingCount--
+                if (!succeeded && !superseded) branchesLoaded = false
                 updateUnsavedState()
             },
         )
@@ -442,7 +445,7 @@ internal class PresetEditor(
             }
         } catch (e: Exception) {
             persistenceInProgress = false
-            log.error("rename failed", e)
+            log.failure("rename failed", e)
             updateUnsavedState()
         }
     }

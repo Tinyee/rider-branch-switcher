@@ -20,6 +20,14 @@ interface AppLogger {
     fun error(msg: String, error: Throwable) {
         error("$msg: ${error.javaClass.simpleName}: ${error.message}")
     }
+    /**
+     * Expected business failure (branch not found, dirty workspace, pull failed, git command
+     * failed) that carries an exception for context. Rendered as WARN and never routed to the
+     * IDE fatal-error reporter, unlike [error].
+     */
+    fun failure(msg: String, error: Throwable) {
+        warn("$msg: ${error.javaClass.simpleName}: ${error.message}")
+    }
     fun debug(msg: String)
     /** User-initiated actions / operations (derive, rollback, switch start/end). Rendered in blue. */
     fun activity(msg: String)
@@ -52,6 +60,7 @@ fun AppLogger.withContext(context: String): AppLogger {
         override fun warn(msg: String, error: Throwable) = delegate.warn(prefix(msg), error)
         override fun error(msg: String) = delegate.error(prefix(msg))
         override fun error(msg: String, error: Throwable) = delegate.error(prefix(msg), error)
+        override fun failure(msg: String, error: Throwable) = delegate.failure(prefix(msg), error)
         override fun debug(msg: String) = delegate.debug(prefix(msg))
         override fun activity(msg: String) = delegate.activity(prefix(msg))
     }

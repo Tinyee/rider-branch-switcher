@@ -38,6 +38,22 @@ internal object GitProcessResources {
             isDaemon = true
         }
     }
+
+    /**
+     * Gracefully stops both shared pools when the plugin is unloaded.
+     *
+     * Daemon threads are allowed to finish their current drain; the defer-permit
+     * polling loop in [GitProcessRunner.deferPermitReleaseByPolling] tolerates
+     * interrupts and keeps polling until the process exits. No production code may
+     * start a Git process after this is called (a submit would throw
+     * `RejectedExecutionException`); the application service is disposed at plugin
+     * unload / IDE exit, after the project service owning [GitOps] is closed.
+     */
+    @Synchronized
+    fun shutdown() {
+        streamExecutor.shutdown()
+        exitWatcherExecutor.shutdown()
+    }
 }
 
 /** Reads process streams without allowing diagnostic output to grow without bound. */

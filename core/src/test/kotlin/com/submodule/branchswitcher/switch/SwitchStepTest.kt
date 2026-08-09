@@ -203,7 +203,7 @@ class SwitchStepTest {
         val execution = step.run(c)
         assertTrue(execution.result is StepResult.Success)
         assertEquals(1, stashCalls)
-        assertTrue(execution.state.hasStashes())
+        assertTrue(execution.state.stashesSnapshot().isNotEmpty())
         assertTrue(log.any { it.contains("stash: ok") })
     }
 
@@ -250,7 +250,7 @@ class SwitchStepTest {
         val execution = DirtyHandlingStep().run(c)
         assertTrue(execution.result is StepResult.Partial)
         assertTrue(execution.state.isSkipped("."))
-        assertFalse(execution.state.hasStashes())
+        assertFalse(execution.state.stashesSnapshot().isNotEmpty())
     }
 
     // ---- FetchStep ----
@@ -353,7 +353,7 @@ class SwitchStepTest {
             (execution.result as StepResult.Partial).issues.map { it.repositoryPath to it.code },
         )
         assertEquals(1, popCalls)
-        assertFalse(execution.state.hasStashes())
+        assertFalse(execution.state.stashesSnapshot().isNotEmpty())
     }
 
     @Test
@@ -388,7 +388,7 @@ class SwitchStepTest {
         val execution = PullStep().run(c, state)
         assertTrue(execution.result is StepResult.Success)
         assertEquals(1, popCalls)
-        assertFalse(execution.state.hasStashes())
+        assertFalse(execution.state.stashesSnapshot().isNotEmpty())
         assertEquals(setOf("."), execution.state.retainedStashBackupsSnapshot())
     }
 
@@ -410,7 +410,7 @@ class SwitchStepTest {
         assertTrue(firstExecution.result is StepResult.Partial)
         assertTrue(secondExecution.result is StepResult.Partial)
         assertEquals(1, applyCalls)
-        assertTrue(secondExecution.state.hasStashes())
+        assertTrue(secondExecution.state.stashesSnapshot().isNotEmpty())
         assertTrue(secondExecution.state.trackedStash(".")?.restoreAttempted == true)
         assertTrue(secondExecution.state.retainedStashBackupsSnapshot().isEmpty())
     }
@@ -442,7 +442,7 @@ class SwitchStepTest {
         val submoduleExecution = PullStep(SwitchTargetScope.SUBMODULES).run(c, mainExecution.state)
         assertTrue(submoduleExecution.result is StepResult.Success)
         assertEquals(listOf(".", "SubA"), popped)
-        assertFalse(submoduleExecution.state.hasStashes())
+        assertFalse(submoduleExecution.state.stashesSnapshot().isNotEmpty())
     }
 
     @Test

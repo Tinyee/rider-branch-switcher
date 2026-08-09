@@ -428,7 +428,7 @@ class SwitchIntegrationTest {
         gitOk(root, "commit", "-m", "advance main")
         assertNotEquals(checkpointSha, git.revParseHead(root))
 
-        assertTrue(recovery(root).rollback(result))
+        assertTrue(recovery(root).recover(result).rollbackOk)
         assertEquals("main", git.currentBranch(root))
         assertEquals(checkpointSha, git.revParseHead(root))
         assertFalse(File(root, "later.txt").exists())
@@ -811,7 +811,7 @@ class SwitchIntegrationTest {
         assertFalse("Switch should fail due to missing branch on SubA", result.ok)
 
         // Rollback
-        val rollbackOk = recovery(root).rollback(result)
+        val rollbackOk = recovery(root).recover(result).rollbackOk
         assertTrue("Rollback should succeed", rollbackOk)
 
         // Both repos back on original branch

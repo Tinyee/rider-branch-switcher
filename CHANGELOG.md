@@ -18,6 +18,14 @@
 
 ### Changed
 
+- Missing-submodule initialization is confirmed once, upfront, before the switch
+  starts (instead of prompting on the background thread mid-run). When the
+  confirmation setting is enabled, a nested submodule that is only discovered as
+  missing during execution is now declined rather than prompted.
+- Preset saves refuse to overwrite a preset file that was modified outside the
+  IDE since it was loaded, and offer a reload action instead.
+- Branch lists retry loading after a transient Git failure when the preset
+  editor is collapsed and re-expanded.
 - Split pure domain and switch logic into the `core` JVM module; IntelliJ,
   process, service, workflow, and UI concerns remain in the plugin module.
 - Return structured switch status, checkpoint, issue codes, and immutable state

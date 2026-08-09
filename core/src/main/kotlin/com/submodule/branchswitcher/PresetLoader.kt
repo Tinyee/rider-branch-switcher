@@ -5,6 +5,7 @@ import com.google.gson.JsonSyntaxException
 import com.submodule.branchswitcher.model.PresetFile
 import com.submodule.branchswitcher.model.PresetFileDto
 import com.submodule.branchswitcher.model.requireValidPreset
+import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
 
@@ -56,16 +57,22 @@ object PresetLoader {
      * [defaultFile]. Legacy IDs are normalized in memory and persist on the
      * next explicit save.
      */
-    fun load(
-        ideBase: Path,
-    ): Result<Pair<Path, PresetFile>> {
+    fun load(ideBase: Path): Result<Pair<Path, PresetFile>> =
+        loadWithDigest(ideBase).map { it.file to it.presetFile }
+
+    /**
+     * Like [load], but also returns the digest of the exact bytes that were parsed,
+     * so conflict detection compares against the same content the caller saw.
+     */
+    fun loadWithDigest(ideBase: Path): Result<PresetLoadResult> {
         return runCatching {
             val file = resolveFile(ideBase) ?: defaultFile(ideBase)
-            if (!Files.exists(file)) return@runCatching file to PresetFile()
-            val text = Files.readString(file)
+            if (!Files.exists(file)) return@runCatching PresetLoadResult(file, PresetFile(), null)
+            val bytes = Files.readAllBytes(file)
+            val text = String(bytes, StandardCharsets.UTF_8)
             val dto = Gson().fromJson(text, PresetFileDto::class.java) ?: PresetFileDto()
             val (parsed, _) = normalizePresetIds(dto)
-            file to parsed
+            PresetLoadResult(file, parsed, java.security.MessageDigest.getInstance("SHA-256").digest(bytes))
         }.recoverCatching { e ->
             when (e) {
                 is JsonSyntaxException -> throw IllegalStateException("preset file parse error: ${e.message}", e)
@@ -97,16 +104,41 @@ object PresetLoader {
         }
     }
 
-    /** Writes [presetFile] to [file] atomically (temp file + rename). */
-    fun save(file: Path, presetFile: PresetFile) {
+    /**
+     * SHA-256 digest of [file]'s raw bytes, or null when the file does not exist.
+     *
+     * Content-based rather than mtime/inode-based because [save] replaces the file
+     * via an atomic rename, which changes the inode on every write.
+     */
+    fun digest(file: Path): ByteArray? =
+        if (!Files.exists(file)) null
+        else {
+            val md = java.security.MessageDigest.getInstance("SHA-256")
+            Files.newInputStream(file).use { input ->
+                val buffer = ByteArray(8192)
+                while (true) {
+                    val read = input.read(buffer)
+                    if (read < 0) break
+                    md.update(buffer, 0, read)
+                }
+            }
+            md.digest()
+        }
+
+    /**
+     * Writes [presetFile] to [file] atomically (temp file + rename) and returns the
+     * SHA-256 of the exact bytes written, so the caller can record the new on-disk
+     * digest without a second read (which could race an external edit).
+     */
+    fun save(file: Path, presetFile: PresetFile): ByteArray {
         presetFile.presets.forEach(::requireValidPreset)
         val gson = com.google.gson.GsonBuilder().setPrettyPrinting().create()
-        val payload = gson.toJson(presetFile) + "\n"
+        val payload = (gson.toJson(presetFile) + "\n").toByteArray(StandardCharsets.UTF_8)
         val parent = file.parent ?: throw IllegalStateException("preset file has no parent: $file")
         Files.createDirectories(parent)
         val tmp = Files.createTempFile(parent, file.fileName.toString() + ".", ".tmp")
         try {
-            Files.writeString(tmp, payload)
+            Files.write(tmp, payload)
             try {
                 Files.move(tmp, file,
                     java.nio.file.StandardCopyOption.ATOMIC_MOVE,
@@ -121,7 +153,15 @@ object PresetLoader {
                 // The replacement already completed; a leftover temp file is harmless.
             }
         }
+        return java.security.MessageDigest.getInstance("SHA-256").digest(payload)
     }
 }
 
 internal fun isRepositoryBoundary(directory: Path): Boolean = Files.exists(directory.resolve(".git"))
+
+/** A successfully loaded preset file plus the digest of the exact bytes that were parsed. */
+data class PresetLoadResult(
+    val file: Path,
+    val presetFile: PresetFile,
+    val digest: ByteArray?,
+)

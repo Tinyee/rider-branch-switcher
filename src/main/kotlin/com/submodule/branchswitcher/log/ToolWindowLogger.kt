@@ -28,17 +28,24 @@ class ToolWindowLogger(
     }
 
     override fun error(msg: String) {
-        // Use warn() instead of error() — most error() call sites report expected
-        // business failures (branch not found, dirty workspace, pull failed, etc.)
-        // that should show red in the tool window but must NOT trigger Rider's
-        // Fatal Errors / error-reporting system.
+        // Single-arg error() reports expected business failures (branch not found, dirty
+        // workspace, pull failed, etc.) that should show red in the tool window but must
+        // NOT trigger Rider's Fatal Errors / error-reporting system. Business failures that
+        // carry an exception use failure(msg, error) instead.
         ideaLogger.warn(msg)
         onAppend(LogEntry(LogEntry.Level.ERROR, msg))
     }
 
     override fun error(msg: String, error: Throwable) {
-        ideaLogger.warn(msg, error)
+        // Throwable-carrying error() is reserved for genuine internal defects and reaches
+        // the IDE's error-reporting path; expected business failures must use failure().
+        ideaLogger.error(msg, error)
         onAppend(LogEntry(LogEntry.Level.ERROR, "$msg: ${error.javaClass.simpleName}: ${error.message}"))
+    }
+
+    override fun failure(msg: String, error: Throwable) {
+        ideaLogger.warn(msg, error)
+        onAppend(LogEntry(LogEntry.Level.WARN, "$msg: ${error.javaClass.simpleName}: ${error.message}"))
     }
 
     override fun debug(msg: String) {

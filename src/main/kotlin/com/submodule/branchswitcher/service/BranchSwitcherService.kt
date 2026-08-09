@@ -4,9 +4,11 @@ import com.intellij.openapi.components.PersistentStateComponent
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.State
 import com.intellij.openapi.components.Storage
+import com.intellij.openapi.components.service
 import com.intellij.openapi.project.Project
 import com.submodule.branchswitcher.git.GitClient
 import com.submodule.branchswitcher.git.GitOps
+import com.submodule.branchswitcher.git.GitProcessShutdown
 import com.submodule.branchswitcher.model.DirtyAction
 import com.submodule.branchswitcher.model.ResolvedSwitchRequest
 import com.submodule.branchswitcher.model.SwitchOptions
@@ -119,6 +121,15 @@ class BranchSwitcherService(
     val gitClient: GitClient
         get() = synchronized(stateLock) {
             _gitClient ?: GitOps(options.timeoutSeconds).also {
+                // Eagerly instantiate the application-level shutdown service so the git
+                // thread pools are disposed on plugin unload whenever git work runs (the
+                // pools are created lazily on first Git process). Only the test
+                // environment (no application) degrades gracefully; inside the IDE a
+                // failure to instantiate the service must surface rather than silently
+                // dropping the unload cleanup.
+                if (com.intellij.openapi.application.ApplicationManager.getApplication() != null) {
+                    service<GitProcessShutdown>()
+                }
                 _gitClient = it
             }
         }

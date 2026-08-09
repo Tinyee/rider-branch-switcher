@@ -30,8 +30,9 @@ internal object SubmoduleInitializer {
         }
 
         if (context.confirmBeforeInit && context.cancellationHandle?.isCanceled != true) {
-            val confirmed = context.onConfirmSubmoduleInit?.invoke(target.path) ?: false
-            if (!confirmed) {
+            // The user pre-approved the missing directories before the switch acquired the
+            // write lease; a path outside that set is declined (fail closed).
+            if (target.path !in context.preApprovedSubmoduleInit) {
                 context.log.info("[skip] init declined for ${target.path}")
                 return Result(
                     ready = false,

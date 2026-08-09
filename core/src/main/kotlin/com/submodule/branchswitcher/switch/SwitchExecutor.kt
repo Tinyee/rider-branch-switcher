@@ -54,7 +54,7 @@ class SwitchExecutor @JvmOverloads constructor(
     private val progressHandle: ProgressHandle? = null,
     private val cancelled: (() -> Boolean)? = null,
     private val cancellationClassifier: CancellationClassifier = CancellationClassifier.DEFAULT,
-    private val onConfirmSubmoduleInit: ((String) -> Boolean)? = null,
+    private val preApprovedSubmoduleInit: Set<String> = emptySet(),
     private val steps: List<SwitchStep> = listOf(
         DirtyHandlingStep(),
         FetchStep(SwitchTargetScope.MAIN),
@@ -103,7 +103,7 @@ class SwitchExecutor @JvmOverloads constructor(
             progressHandle = progressHandle,
             cancelled = { cancelled?.invoke() == true || cancellationHandle?.isCanceled == true },
             confirmBeforeInit = options.confirmBeforeInit,
-            onConfirmSubmoduleInit = onConfirmSubmoduleInit,
+            preApprovedSubmoduleInit = preApprovedSubmoduleInit,
             checkpoint = switchCheckpoint,
         )
 
