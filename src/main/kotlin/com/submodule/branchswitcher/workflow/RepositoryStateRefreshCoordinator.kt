@@ -2,6 +2,7 @@ package com.submodule.branchswitcher.workflow
 
 import com.submodule.branchswitcher.git.GitOperationSession
 import com.submodule.branchswitcher.log.AppLogger
+import com.submodule.branchswitcher.log.logFailure
 import com.submodule.branchswitcher.log.newOperationContext
 import com.submodule.branchswitcher.log.withContext
 import com.submodule.branchswitcher.switch.CancellationClassifier
@@ -64,7 +65,7 @@ class RepositoryStateRefreshCoordinator(
                 }
             } catch (error: Exception) {
                 if (isCurrent(state) && !cancellationClassifier.isCancellation(error)) {
-                    operationLog.failure("repository state refresh failed", error)
+                    operationLog.logFailure("repository state refresh failed", error)
                 }
             } finally {
                 operation?.let {

@@ -2,6 +2,7 @@ package com.submodule.branchswitcher.workflow
 
 import com.submodule.branchswitcher.log.AppLogger
 import com.submodule.branchswitcher.log.OperationContext
+import com.submodule.branchswitcher.log.logFailure
 import com.submodule.branchswitcher.log.newOperationContext
 import com.submodule.branchswitcher.log.withContext
 import com.submodule.branchswitcher.model.ResolvedSwitchRequest
@@ -147,7 +148,7 @@ class SwitchRunner(
             }
             is GitOperationResult.Failed -> {
                 val error = result.error
-                log.error("switch workflow failed", error)
+                log.logFailure("switch workflow failed", error)
                 BackgroundSwitchOutcome(cancelled = false, execution = null)
             }
         }
@@ -164,7 +165,7 @@ class SwitchRunner(
         val recoveryOperation = try {
             operations.openOperation()
         } catch (e: RuntimeException) {
-            log.error("cancel recovery session could not be opened", e)
+            log.logFailure("cancel recovery session could not be opened", e)
             return CancelledSwitchRecovery(
                 execution = execution,
                 recovery = SwitchRecoveryResult(
@@ -184,7 +185,7 @@ class SwitchRunner(
                 ),
             )
         } catch (e: RuntimeException) {
-            log.error("cancel recovery failed", e)
+            log.logFailure("cancel recovery failed", e)
             CancelledSwitchRecovery(
                 execution = execution,
                 recovery = SwitchRecoveryResult(

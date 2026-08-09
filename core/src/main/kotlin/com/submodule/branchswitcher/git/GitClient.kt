@@ -1,5 +1,6 @@
 package com.submodule.branchswitcher.git
 
+import com.submodule.branchswitcher.EnvironmentFailure
 import com.submodule.branchswitcher.log.sanitizeDiagnosticText
 import java.io.File
 
@@ -45,7 +46,10 @@ enum class GitFailureKind {
 }
 
 /** A Git read/query failed and cannot be safely interpreted as a normal negative result. */
-class GitQueryException(val result: GitResult) : RuntimeException(result.diagnostic())
+class GitQueryException(val result: GitResult) : RuntimeException(result.diagnostic()), EnvironmentFailure
+
+/** The submodule topology cannot be read because the project root path cannot be resolved. */
+class SubmoduleDiscoveryException(message: String, cause: Throwable) : RuntimeException(message, cause), EnvironmentFailure
 
 /** Stable repository metadata used to reject replaced worktrees during writes and recovery. */
 data class RepositoryIdentity(

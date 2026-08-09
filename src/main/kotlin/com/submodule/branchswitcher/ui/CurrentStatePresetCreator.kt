@@ -7,6 +7,7 @@ import com.submodule.branchswitcher.Bundle
 import com.submodule.branchswitcher.Notifier
 import com.submodule.branchswitcher.TaskBridge
 import com.submodule.branchswitcher.log.AppLogger
+import com.submodule.branchswitcher.log.logFailure
 import com.submodule.branchswitcher.model.Preset
 import com.submodule.branchswitcher.service.BranchSwitcherService
 import kotlinx.coroutines.Dispatchers
@@ -137,7 +138,7 @@ internal class CurrentStatePresetCreator(
         } catch (_: com.intellij.openapi.progress.ProcessCanceledException) {
             null
         } catch (e: Exception) {
-            log.failure("probe current state failed", e)
+            log.logFailure("probe current state failed", e)
             Notifier.warn(project, Bundle.msg("plugin.title"), "${e.javaClass.simpleName}: ${e.message}")
             null
         }

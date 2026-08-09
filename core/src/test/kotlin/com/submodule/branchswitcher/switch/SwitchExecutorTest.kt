@@ -10,6 +10,7 @@ import com.submodule.branchswitcher.git.SubmoduleRegistration
 import com.submodule.branchswitcher.log.createStringAppender
 import com.submodule.branchswitcher.model.DirtyAction
 import com.submodule.branchswitcher.model.Preset
+import com.submodule.branchswitcher.model.RepoTarget
 import com.submodule.branchswitcher.model.SwitchOptions
 import org.junit.Assert.*
 import org.junit.Before
@@ -812,6 +813,47 @@ class SwitchExecutorTest {
             SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false, confirmBeforeInit = true))
         assertTrue("Switch should succeed", result)
         assertEquals(listOf("init:SubA"), initLog)
+    }
+
+    @Test
+    fun `cancellation aborts submodule init before an unapproved path can be initialized`() {
+        var initCalls = 0
+        var isGitRepoCalls = 0
+        val cancelled = object : CancellationHandle {
+            override fun checkCanceled() = throw CancellationException("cancelled")
+            override val isCanceled = true
+        }
+        val git = object : GitClient by fakeGit {
+            override fun isGitRepo(workDir: File): Boolean {
+                isGitRepoCalls++
+                return false // SubA needs init
+            }
+            override fun submoduleInitPath(gitRoot: File, path: String): GitResult {
+                initCalls++
+                return GitResult("init", 0, "", "")
+            }
+        }
+        val context = SwitchContext(
+            projectRoot = projectRoot,
+            preset = Preset("sub", "main", mapOf("SubA" to "main")),
+            options = SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false, confirmBeforeInit = true),
+            git = git,
+            log = createStringAppender { },
+            cancellationHandle = cancelled,
+            preApprovedSubmoduleInit = emptySet(),
+        )
+        val target = RepoTarget("SubA", "main")
+        assertThrows(CancellationException::class.java) {
+            SubmoduleInitializer.prepare(
+                context,
+                target,
+                File(projectRoot.toFile(), "SubA"),
+                projectRoot.toFile(),
+                "SubA",
+            )
+        }
+        assertEquals("cancellation must abort before any Git query", 0, isGitRepoCalls)
+        assertEquals("unapproved submodule must not be initialized under cancellation", 0, initCalls)
     }
 
     // ---- Shared utilities ----

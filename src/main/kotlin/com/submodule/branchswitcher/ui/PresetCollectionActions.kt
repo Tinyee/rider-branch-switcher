@@ -8,6 +8,7 @@ import com.submodule.branchswitcher.Notifier
 import com.submodule.branchswitcher.PresetLoader
 import com.submodule.branchswitcher.model.Preset
 import com.submodule.branchswitcher.log.AppLogger
+import com.submodule.branchswitcher.log.logFailure
 import com.submodule.branchswitcher.service.BranchSwitcherService
 import com.submodule.branchswitcher.service.PresetFileChangedException
 import kotlinx.coroutines.Dispatchers
@@ -79,7 +80,7 @@ internal class PresetCollectionActions(
                     host.refreshList()
                     host.notifyStateChanged()
                 }.onFailure { error ->
-                    log.failure("preset load failed", error)
+                    log.logFailure("preset load failed", error)
                     Notifier.error(
                         project,
                         Bundle.msg("preset.load.failed"),
@@ -235,7 +236,7 @@ internal class PresetCollectionActions(
                 ::reload,
             )
         } else {
-            log.failure("preset save failed", error)
+            log.logFailure("preset save failed", error)
             Notifier.error(
                 project,
                 Bundle.msg("preset.save.failed"),

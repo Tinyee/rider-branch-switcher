@@ -2,6 +2,7 @@ package com.submodule.branchswitcher.switch
 
 import com.submodule.branchswitcher.git.SwitchGitClient
 import com.submodule.branchswitcher.log.AppLogger
+import com.submodule.branchswitcher.log.logFailure
 import com.submodule.branchswitcher.model.ResolvedSwitchRequest
 import java.nio.file.Path
 
@@ -140,7 +141,7 @@ class SwitchExecutor @JvmOverloads constructor(
                     log.info("[cancelled] during step: ${step.name}")
                     executionStatus = SwitchExecutionStatus.CANCELLED
                 } else {
-                    log.error("[failed] ${step.name}", error)
+                    log.logFailure("[failed] ${step.name}", error)
                     issues += OperationIssue(
                         stage = step.stage,
                         code = OperationIssueCode.STEP_FAILED,

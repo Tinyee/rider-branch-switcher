@@ -2,6 +2,7 @@ package com.submodule.branchswitcher.switch
 
 import com.submodule.branchswitcher.git.DeriveGitClient
 import com.submodule.branchswitcher.log.AppLogger
+import com.submodule.branchswitcher.log.logFailure
 import com.submodule.branchswitcher.model.Preset
 import com.submodule.branchswitcher.model.RepoTarget
 import java.nio.file.Path
@@ -170,7 +171,7 @@ class DeriveBranchExecutor(
         ProbeResult(query())
     } catch (error: Exception) {
         rethrowIfCancellation(error)
-        log.warn("[derive] $label: $description probe failed", error)
+        log.logFailure("[derive] $label: $description probe failed", error)
         ProbeResult(null, error)
     }
 
@@ -211,7 +212,7 @@ class DeriveBranchExecutor(
                 }
             } catch (e: Exception) {
                 rethrowIfCancellation(e)
-                log.warn("[derive] $repositoryLabel: checkpoint failed", e)
+                log.logFailure("[derive] $repositoryLabel: checkpoint failed", e)
                 checkpointFailures += target.outcome(
                     DeriveRepositoryStatus.CHECKPOINT_FAILED,
                     OperationIssueCode.DERIVE_CHECKPOINT_FAILED,
@@ -261,7 +262,7 @@ class DeriveBranchExecutor(
                 }
             } catch (e: Exception) {
                 rethrowIfCancellation(e)
-                log.warn("[derive] $repositoryLabel: branch creation exception", e)
+                log.logFailure("[derive] $repositoryLabel: branch creation exception", e)
                 outcomes += target.outcome(
                     DeriveRepositoryStatus.FAILED,
                     OperationIssueCode.BRANCH_CREATE_FAILED,
@@ -337,7 +338,7 @@ class DeriveBranchExecutor(
                     pendingPaths += paths.drop(index)
                     break
                 }
-                log.warn("[derive] $path: rollback exception", e)
+                log.logFailure("[derive] $path: rollback exception", e)
                 pendingPaths.add(path)
             }
         }

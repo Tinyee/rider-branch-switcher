@@ -5,6 +5,7 @@ import com.intellij.openapi.ui.Messages
 import com.submodule.branchswitcher.Bundle
 import com.submodule.branchswitcher.Notifier
 import com.submodule.branchswitcher.log.AppLogger
+import com.submodule.branchswitcher.log.logFailure
 import com.submodule.branchswitcher.model.Preset
 import com.submodule.branchswitcher.model.PresetFile
 import com.submodule.branchswitcher.presentation.parsePresetImport
@@ -36,7 +37,7 @@ internal class PresetTransferActions(
                 Bundle.msg("notify.exported", host.editors.size),
             )
         } catch (e: Exception) {
-            log.failure("[export] failed", e)
+            log.logFailure("[export] failed", e)
             Notifier.error(
                 project,
                 Bundle.msg("notify.export.complete"),
@@ -95,7 +96,7 @@ internal class PresetTransferActions(
                 )
             }
         } catch (e: Exception) {
-            log.failure("[import] failed", e)
+            log.logFailure("[import] failed", e)
             Messages.showWarningDialog(
                 project,
                 "${Bundle.msg("dialog.import.failed")}: ${e.message}",
