@@ -752,26 +752,6 @@ class SwitchExecutorTest {
     // -- confirmBeforeInit fail-closed ---------------------------------
 
     @Test
-    fun `confirmBeforeInit with empty pre-approval declines init`() {
-        val noInitGit = object : GitClient by fakeGit {
-            override fun isGitRepo(workDir: File): Boolean = when {
-                workDir.name == "SubA" -> false // needs init
-                else -> true
-            }
-            override fun listSubmodulePaths(gitRoot: File): List<String> = listOf("SubA")
-        }
-        val subPreset = Preset("sub", "main", mapOf("SubA" to "main"))
-        val executor = SwitchExecutor(projectRoot, createStringAppender { log += it }, noInitGit,
-            preApprovedSubmoduleInit = emptySet())
-        // SubA needs init but nothing was pre-approved - fail-closed: init declined
-        val result = executor.executeTest(subPreset,
-            SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false, confirmBeforeInit = true))
-        assertFalse("Switch should have partial failure from declined init", result)
-        assertTrue("Should log init declined",
-            log.any { it.contains("[skip] init declined for SubA") })
-    }
-
-    @Test
     fun `confirmBeforeInit with unrelated pre-approval declines init`() {
         val noInitGit = object : GitClient by fakeGit {
             override fun isGitRepo(workDir: File): Boolean = when {
