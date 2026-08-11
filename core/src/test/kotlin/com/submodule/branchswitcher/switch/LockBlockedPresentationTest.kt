@@ -5,7 +5,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /** Unit tests for the locale-neutral notification mapping of stale-index.lock issues. */
-class IndexLockPresentationTest {
+class LockBlockedPresentationTest {
 
     private fun lockIssue(repositoryPath: String?, lockPath: String?) = OperationIssue(
         stage = OperationStage.CHECKPOINT,
