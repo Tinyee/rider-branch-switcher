@@ -36,6 +36,11 @@
 - A switch pre-flights every target repository for a pre-existing git
   `index.lock` and fails up front with an explicit message naming the blocked
   repository instead of surfacing a checkout mystery failure.
+- The tool window no longer probes git on every file-status change; it refreshes
+  only on switch, panel show, manual reload, and detected external git
+  operations (a cheap main-reflog file-stamp watch, no git process), so plain
+  file edits no longer trigger git probes. Dirty status stays accurate because
+  the pre-switch preview dialog queries it live.
 
 - Missing-submodule initialization is confirmed once, upfront, before the switch
   starts (instead of prompting on the background thread mid-run). When the
