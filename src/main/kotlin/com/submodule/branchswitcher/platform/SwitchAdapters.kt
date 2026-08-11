@@ -1,6 +1,8 @@
 package com.submodule.branchswitcher.platform
 
 import com.intellij.openapi.progress.ProgressIndicator
+import com.submodule.branchswitcher.git.GitFailureKind
+import com.submodule.branchswitcher.git.GitQueryException
 import com.submodule.branchswitcher.log.AppLogger
 import com.submodule.branchswitcher.log.logFailure
 import com.submodule.branchswitcher.operation.OperationProgress
@@ -77,8 +79,14 @@ fun logVcsRefresh(log: AppLogger, result: VcsRefreshResult) {
     )
 }
 
-/** Platform classifier: recognizes both JDK CancellationException and IntelliJ ProcessCanceledException. */
+/**
+ * Platform classifier: recognizes JDK CancellationException, IntelliJ ProcessCanceledException,
+ * and git queries cancelled mid-run (failureKind CANCELLED/INTERRUPTED), so a superseded probe
+ * is treated as cancellation instead of a noisy failure.
+ */
 val platformCancellationClassifier = CancellationClassifier { e ->
     e is java.util.concurrent.CancellationException ||
-        e is com.intellij.openapi.progress.ProcessCanceledException
+        e is com.intellij.openapi.progress.ProcessCanceledException ||
+        (e is GitQueryException && e.result.failureKind in
+            setOf(GitFailureKind.CANCELLED, GitFailureKind.INTERRUPTED))
 }

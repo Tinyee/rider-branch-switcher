@@ -18,6 +18,13 @@
 
 ### Changed
 
+- Cancelled repository-state probes are classified as cancellation instead of
+  failures, removing noisy `[detect] ... failed` log lines when a refresh is
+  superseded.
+- Log-header icon buttons now show hover and pressed feedback, the filter
+  toggle shows its selected state, and copying the operation log briefly
+  flashes a confirmation checkmark.
+
 - Missing-submodule initialization is confirmed once, upfront, before the switch
   starts (instead of prompting on the background thread mid-run). When the
   confirmation setting is enabled, a nested submodule that is only discovered as

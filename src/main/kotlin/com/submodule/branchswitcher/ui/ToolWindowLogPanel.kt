@@ -22,11 +22,9 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import javax.swing.BorderFactory
 import javax.swing.Icon
-import javax.swing.JButton
 import javax.swing.JLabel
 import javax.swing.JPanel
 import javax.swing.JTextPane
-import javax.swing.JToggleButton
 import javax.swing.SwingConstants
 import javax.swing.text.SimpleAttributeSet
 import javax.swing.text.StyleConstants
@@ -59,13 +57,15 @@ internal class ToolWindowLogPanel : JPanel(BorderLayout()) {
             override fun mouseClicked(event: MouseEvent) = toggleExpanded()
         })
     }
-    private val currentOperationFilter = JToggleButton(AllIcons.General.Filter).apply {
+    private val currentOperationFilter = FeedbackIconToggleButton(AllIcons.General.Filter).apply {
         toolTipText = Bundle.msg("log.filter.current")
-        isFocusable = false
-        margin = JBUI.emptyInsets()
-        preferredSize = Dimension(JBUI.scale(26), JBUI.scale(24))
         addActionListener { renderAll() }
     }
+    private val copyButton = iconButton(
+        AllIcons.General.Copy,
+        Bundle.msg("log.copy.current"),
+        ::copyCurrentOperation,
+    )
     private val toolbar = createToolbar().apply { isVisible = false }
     private val header = JPanel(BorderLayout()).apply {
         border = BorderFactory.createMatteBorder(1, 0, 0, 0, JBColor.border())
@@ -105,16 +105,13 @@ internal class ToolWindowLogPanel : JPanel(BorderLayout()) {
     private fun createToolbar(): JPanel = JPanel(FlowLayout(FlowLayout.RIGHT, 0, 0)).apply {
         isOpaque = false
         add(currentOperationFilter)
-        add(iconButton(AllIcons.General.Copy, Bundle.msg("log.copy.current"), ::copyCurrentOperation))
+        add(copyButton)
         add(iconButton(AllIcons.General.OpenDisk, Bundle.msg("log.open.full"), ::openFullLog))
         add(iconButton(AllIcons.General.Delete, Bundle.msg("log.clear"), ::clear))
     }
 
-    private fun iconButton(icon: Icon, tooltip: String, action: () -> Unit) = JButton(icon).apply {
+    private fun iconButton(icon: Icon, tooltip: String, action: () -> Unit) = FeedbackIconButton(icon).apply {
         toolTipText = tooltip
-        isFocusable = false
-        margin = JBUI.emptyInsets()
-        preferredSize = Dimension(JBUI.scale(26), JBUI.scale(24))
         addActionListener { action() }
     }
 
@@ -129,7 +126,10 @@ internal class ToolWindowLogPanel : JPanel(BorderLayout()) {
 
     private fun copyCurrentOperation() {
         val text = entriesForCurrentOperation().joinToString("\n", transform = ::formatEntry)
-        if (text.isNotEmpty()) CopyPasteManager.getInstance().setContents(StringSelection(text))
+        if (text.isNotEmpty()) {
+            CopyPasteManager.getInstance().setContents(StringSelection(text))
+            copyButton.flashIcon(AllIcons.General.InspectionsOK, replacementToolTip = Bundle.msg("log.copied"))
+        }
     }
 
     private fun openFullLog() {
