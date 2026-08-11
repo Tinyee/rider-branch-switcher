@@ -122,6 +122,18 @@ class SwitchIntegrationTest {
         return target
     }
 
+    /**
+     * Publishes [mainAuthor] to a bare clone and returns a local clone of it with
+     * submodules initialized — the standard "downstream" topology shared by the
+     * submodule-path and clone-based tests.
+     */
+    private fun publish(mainAuthor: File): File {
+        val remote = createBareClone(mainAuthor, "main-remote.git")
+        val local = cloneRepo(remote, "project")
+        gitOk(local, "-c", "protocol.file.allow=always", "submodule", "update", "--init", "--recursive")
+        return local
+    }
+
     /** Execute a switch and return (success, log lines). */
     private fun runSwitch(root: File, preset: Preset, opts: SwitchOptions): Pair<Boolean, List<String>> {
         log.clear()
@@ -235,9 +247,7 @@ class SwitchIntegrationTest {
 
         val mainAuthor = createRepo(tmpDir, "main-author")
         addSubmodule(mainAuthor, parentRemote, "Parent")
-        val mainRemote = createBareClone(mainAuthor, "main-remote.git")
-        val local = cloneRepo(mainRemote, "project")
-        gitOk(local, "-c", "protocol.file.allow=always", "submodule", "update", "--init", "--recursive")
+        val local = publish(mainAuthor)
 
         addSubmodule(parentAuthor, childRemote, "Nested")
         gitOk(parentAuthor, "push", "origin", "main")
@@ -277,9 +287,7 @@ class SwitchIntegrationTest {
         gitOk(mainAuthor, "commit", "-m", "move submodule path")
         gitOk(mainAuthor, "checkout", "main")
 
-        val mainRemote = createBareClone(mainAuthor, "main-remote.git")
-        val local = cloneRepo(mainRemote, "project")
-        gitOk(local, "-c", "protocol.file.allow=always", "submodule", "update", "--init", "--recursive")
+        val local = publish(mainAuthor)
 
         val oldPath = File(local, "modules/old-path")
         val newPath = File(local, "modules/new-path")
@@ -320,9 +328,7 @@ class SwitchIntegrationTest {
         gitOk(mainAuthor, "commit", "-m", "swap submodule paths")
         gitOk(mainAuthor, "checkout", "main")
 
-        val mainRemote = createBareClone(mainAuthor, "main-remote.git")
-        val local = cloneRepo(mainRemote, "project")
-        gitOk(local, "-c", "protocol.file.allow=always", "submodule", "update", "--init", "--recursive")
+        val local = publish(mainAuthor)
         val oldAWorktree = File(local, "SubA")
         val oldBWorktree = File(local, "SubB")
 
@@ -367,9 +373,7 @@ class SwitchIntegrationTest {
         gitOk(mainAuthor, "commit", "-m", "replace submodule repository")
         gitOk(mainAuthor, "checkout", "main")
 
-        val mainRemote = createBareClone(mainAuthor, "main-remote.git")
-        val local = cloneRepo(mainRemote, "project")
-        gitOk(local, "-c", "protocol.file.allow=always", "submodule", "update", "--init", "--recursive")
+        val local = publish(mainAuthor)
         val oldWorktree = File(local, "SubA")
 
         val (ok, logs) = runSwitch(
@@ -455,23 +459,6 @@ class SwitchIntegrationTest {
     private fun deriveLog(): AppLogger = createStringAppender { log += it }
 
     @Test
-    fun `derive on all clean repos succeeds`() {
-        val root = createRepo(tmpDir, "project")
-        val subA = createRepo(tmpDir, "subA-src")
-        addSubmodule(root, subA, "SubA")
-        gitOk(root, "submodule", "update", "--init", "--recursive")
-
-        val executor = DeriveBranchExecutor(root.toPath(), deriveLog(), git)
-        val preset = Preset("test", "main", mapOf("SubA" to "main"))
-        val result = executor.execute(preset, "feature")
-
-        assertTrue("derive should be allOk", result.allOk)
-        assertEquals(2, result.actualCreated)
-        assertEquals("feature", git.currentBranch(root))
-        assertEquals("feature", git.currentBranch(File(root, "SubA")))
-    }
-
-    @Test
     fun `derive rollback restores original branch and deletes derived branch`() {
         val root = createRepo(tmpDir, "project")
         val subA = createRepo(tmpDir, "subA-src")
@@ -487,6 +474,7 @@ class SwitchIntegrationTest {
         val result = executor.execute(preset, "derived")
 
         assertTrue("derive should succeed", result.allOk)
+        assertEquals("derive must create a branch in both repos", 2, result.actualCreated)
         assertEquals("derived", git.currentBranch(root))
         assertEquals("derived", git.currentBranch(File(root, "SubA")))
 
@@ -540,49 +528,42 @@ class SwitchIntegrationTest {
     @Test
     @Suppress("TooGenericExceptionThrown")
     fun `derive blocks when current branch probe throws`() {
-        val root = createRepo(tmpDir, "project")
-        val throwingGit = object : GitClient by git {
-            override fun currentBranch(workDir: java.io.File): String? =
-                throw RuntimeException("current branch probe failed")
-        }
-
-        val result = DeriveBranchExecutor(root.toPath(), deriveLog(), throwingGit)
-            .execute(Preset("test", "main"), "derived")
-
-        assertTrue(result.preflightBlocked)
-        assertEquals(listOf("."), result.preflightError)
-        assertFalse(git.localBranchExists(root, "derived"))
+        assertProbeFailureBlocks(
+            object : GitClient by git {
+                override fun currentBranch(workDir: java.io.File): String? =
+                    throw RuntimeException("current branch probe failed")
+            },
+        )
     }
 
     @Test
     @Suppress("TooGenericExceptionThrown")
     fun `derive blocks when branch existence probe throws`() {
-        val root = createRepo(tmpDir, "project")
-        val throwingGit = object : GitClient by git {
-            override fun localBranchProbe(workDir: java.io.File, branch: String): Boolean =
-                throw RuntimeException("branch probe failed")
-        }
-
-        val result = DeriveBranchExecutor(root.toPath(), deriveLog(), throwingGit)
-            .execute(Preset("test", "main"), "derived")
-
-        assertTrue(result.preflightBlocked)
-        assertEquals(listOf("."), result.preflightError)
-        assertFalse(git.localBranchExists(root, "derived"))
+        assertProbeFailureBlocks(
+            object : GitClient by git {
+                override fun localBranchProbe(workDir: java.io.File, branch: String): Boolean =
+                    throw RuntimeException("branch probe failed")
+            },
+        )
     }
 
     @Test
     @Suppress("TooGenericExceptionThrown")
     fun `derive blocks when dirty probe throws`() {
-        val root = createRepo(tmpDir, "project")
-        val throwingGit = object : GitClient by git {
-            override fun dirtyProbe(workDir: java.io.File): Boolean =
-                throw RuntimeException("dirty probe failed")
-        }
+        assertProbeFailureBlocks(
+            object : GitClient by git {
+                override fun dirtyProbe(workDir: java.io.File): Boolean =
+                    throw RuntimeException("dirty probe failed")
+            },
+        )
+    }
 
+    /** Creates a fresh repo so each probe-failure scenario runs on an isolated topology. */
+    @Suppress("TooGenericExceptionThrown")
+    private fun assertProbeFailureBlocks(throwingGit: GitClient) {
+        val root = createRepo(tmpDir, "project")
         val result = DeriveBranchExecutor(root.toPath(), deriveLog(), throwingGit)
             .execute(Preset("test", "main"), "derived")
-
         assertTrue(result.preflightBlocked)
         assertEquals(listOf("."), result.preflightError)
         assertFalse(git.localBranchExists(root, "derived"))
@@ -671,31 +652,24 @@ class SwitchIntegrationTest {
     }
 
     @Test
-    fun `derive blocks on dirty repo when requireClean is true`() {
+    fun `derive honors requireClean for a dirty repo`() {
         val root = createRepo(tmpDir, "project")
         File(root, "dirty.txt").writeText("uncommitted")
-
-        val executor = DeriveBranchExecutor(root.toPath(), deriveLog(), git, requireClean = true)
         val preset = Preset("test", "main")
-        val result = executor.execute(preset, "feature")
 
-        assertTrue("preflight should block on dirty", result.preflightBlocked)
-        assertEquals(1, result.dirty.size)
-        assertEquals(0, result.actualCreated)
+        // requireClean = true blocks before any mutation on the same dirty tree.
+        val strict = DeriveBranchExecutor(root.toPath(), deriveLog(), git, requireClean = true)
+            .execute(preset, "feature")
+        assertTrue("preflight should block on dirty", strict.preflightBlocked)
+        assertEquals(1, strict.dirty.size)
+        assertEquals(0, strict.actualCreated)
         assertEquals("main", git.currentBranch(root))
-    }
 
-    @Test
-    fun `derive allows dirty repo when requireClean is false`() {
-        val root = createRepo(tmpDir, "project")
-        File(root, "dirty.txt").writeText("uncommitted")
-
-        val executor = DeriveBranchExecutor(root.toPath(), deriveLog(), git, requireClean = false)
-        val preset = Preset("test", "main")
-        val result = executor.execute(preset, "feature")
-
-        assertTrue("derive should succeed with requireClean=false", result.allOk)
-        assertEquals(1, result.actualCreated)
+        // requireClean = false proceeds on the same dirty tree.
+        val lenient = DeriveBranchExecutor(root.toPath(), deriveLog(), git, requireClean = false)
+            .execute(preset, "feature")
+        assertTrue("derive should succeed with requireClean=false", lenient.allOk)
+        assertEquals(1, lenient.actualCreated)
         assertEquals("feature", git.currentBranch(root))
     }
 
