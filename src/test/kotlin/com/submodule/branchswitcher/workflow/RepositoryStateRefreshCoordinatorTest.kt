@@ -10,6 +10,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
+import java.io.File
 import java.lang.reflect.Proxy
 import java.util.concurrent.CancellationException
 import java.util.concurrent.CountDownLatch
@@ -63,6 +64,38 @@ class RepositoryStateRefreshCoordinatorTest {
         assertTrue(latestDelivered.await(5, TimeUnit.SECONDS))
         assertTrue(firstCancelled.get())
         assertEquals(listOf("latest"), deliveredBranches)
+        coordinator.close()
+    }
+
+    @Test
+    fun `repositories are probed concurrently`() {
+        val root = temp.newFolder("root")
+        File(root, "a").mkdirs()
+        File(root, "b").mkdirs()
+        val started = AtomicInteger()
+        val bothStarted = CountDownLatch(1)
+        val delivered = CountDownLatch(1)
+        val coordinator = RepositoryStateRefreshCoordinator(
+            scope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
+            openOperation = {
+                stateOperation(branch = {
+                    if (started.incrementAndGet() == 2) bothStarted.countDown()
+                    // Each probe blocks until every path has started; sequential probing
+                    // would deadlock here, so this fails (rather than passes silently)
+                    // if a refactor ever reverts the coordinator to per-path serial work.
+                    assertTrue("probes must overlap", bothStarted.await(5, TimeUnit.SECONDS))
+                    "main"
+                })
+            },
+            detector = RepositoryStateDetector(createStringAppender {}),
+            log = createStringAppender {},
+            deliver = { it() },
+        )
+
+        coordinator.refresh(root.toPath(), listOf("a", "b")) { delivered.countDown() }
+
+        assertTrue(delivered.await(5, TimeUnit.SECONDS))
+        assertEquals("both repositories must be probed", 2, started.get())
         coordinator.close()
     }
 

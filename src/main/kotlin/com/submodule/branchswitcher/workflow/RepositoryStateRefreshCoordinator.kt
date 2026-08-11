@@ -1,6 +1,7 @@
 package com.submodule.branchswitcher.workflow
 
 import com.submodule.branchswitcher.git.GitOperationSession
+import com.submodule.branchswitcher.git.MAX_CONCURRENT_GIT_PROCESSES
 import com.submodule.branchswitcher.log.AppLogger
 import com.submodule.branchswitcher.log.logFailure
 import com.submodule.branchswitcher.log.newOperationContext
@@ -10,8 +11,12 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import java.nio.file.Path
 import java.util.concurrent.atomic.AtomicBoolean
@@ -53,7 +58,18 @@ class RepositoryStateRefreshCoordinator(
                 operation = openedOperation
                 state.attach(openedOperation)
                 ensureActive()
-                val snapshot = withContext(worker) { detector.detect(request, openedOperation) }
+                val snapshot = withContext(worker) {
+                    // Probe repositories concurrently, bounded to the shared git-process
+                    // capacity, so a multi-submodule project does not pay one process-spawn
+                    // latency per repository in sequence.
+                    val probePermits = Semaphore(MAX_CONCURRENT_GIT_PROCESSES)
+                    coroutineScope {
+                        val probes = request.paths.map { path ->
+                            async { probePermits.withPermit { detector.probe(request, path, openedOperation) } }
+                        }.map { it.await() }
+                        detector.assembleSnapshot(request, probes)
+                    }
+                }
                 ensureActive()
                 deliveryScheduled = true
                 deliver {

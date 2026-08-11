@@ -25,7 +25,8 @@ class RepositoryStateRequest internal constructor(
  * Reads branch and dirty state without owning coroutine or Swing lifecycle.
  *
  * Requests carry a generation so callers can discard results superseded while
- * Git probes were running.
+ * Git probes were running. [detect] probes repositories in sequence; callers that
+ * want concurrency probe per path via [probe] and assemble with [assembleSnapshot].
  */
 class RepositoryStateDetector(
     private val log: AppLogger,
@@ -40,38 +41,38 @@ class RepositoryStateDetector(
             paths = paths.distinct(),
         )
 
-    @Suppress("TooGenericExceptionCaught")
+    /** Probes every requested path in order, stopping as soon as [request] is superseded. */
     fun detect(
         request: RepositoryStateRequest,
         git: RepositoryStateGitClient,
     ): RepositoryStateSnapshot {
-        val branches = LinkedHashMap<String, String?>(request.paths.size)
-        val dirty = LinkedHashMap<String, Boolean>(request.paths.size)
+        val batch = git as? RepositoryStateBatchGitClient
+        val probes = ArrayList<PathProbe?>(request.paths.size)
         for (path in request.paths) {
             if (!isLatest(request)) break
-            val dir = if (path == ".") request.root.toFile() else request.root.resolve(path).toFile()
-            try {
-                val inspection = when {
-                    !dir.exists() -> null
-                    git is RepositoryStateBatchGitClient -> git.inspectRepositoryState(dir)
-                    else -> null
-                }
-                branches[path] = when {
-                    inspection?.isGitRepository == true -> inspection.currentBranch
-                    inspection != null -> null
-                    dir.exists() -> git.currentBranch(dir)
-                    else -> null
-                }
-                dirty[path] = when {
-                    inspection != null -> inspection.isGitRepository && inspection.dirtyFileCount > 0
-                    dir.exists() -> git.isDirty(dir)
-                    else -> false
-                }
-            } catch (e: Exception) {
-                cancellationClassifier.rethrowIfCancellation(e)
-                branches[path] = null
-                dirty[path] = false
-                log.logFailure("[detect] $path failed", e)
+            probes += probePath(request, path, git, batch)
+        }
+        return assembleSnapshot(request, probes)
+    }
+
+    /** Probes a single path; returns null when [request] was superseded before the probe started. */
+    internal fun probe(
+        request: RepositoryStateRequest,
+        path: String,
+        git: RepositoryStateGitClient,
+    ): PathProbe? = probePath(request, path, git, git as? RepositoryStateBatchGitClient)
+
+    /** Builds a snapshot from per-path probes, in probe order. */
+    internal fun assembleSnapshot(
+        request: RepositoryStateRequest,
+        probes: List<PathProbe?>,
+    ): RepositoryStateSnapshot {
+        val branches = LinkedHashMap<String, String?>(request.paths.size)
+        val dirty = LinkedHashMap<String, Boolean>(request.paths.size)
+        probes.forEach { probe ->
+            if (probe != null) {
+                branches[probe.path] = probe.branch
+                dirty[probe.path] = probe.dirty
             }
         }
         return RepositoryStateSnapshot(request.id, branches, dirty)
@@ -86,4 +87,46 @@ class RepositoryStateDetector(
 
     private fun isLatest(request: RepositoryStateRequest): Boolean =
         request.id == latestRequestId.get()
+
+    /** One path's branch + dirty outcome. */
+    internal data class PathProbe(
+        val path: String,
+        val branch: String?,
+        val dirty: Boolean,
+    )
+
+    /** Probes one path; returns null when [request] was superseded before the probe started. */
+    @Suppress("TooGenericExceptionCaught")
+    private fun probePath(
+        request: RepositoryStateRequest,
+        path: String,
+        git: RepositoryStateGitClient,
+        batch: RepositoryStateBatchGitClient?,
+    ): PathProbe? {
+        if (!isLatest(request)) return null
+        val dir = if (path == ".") request.root.toFile() else request.root.resolve(path).toFile()
+        return try {
+            val inspection = when {
+                !dir.exists() -> null
+                batch != null -> batch.inspectRepositoryState(dir)
+                else -> null
+            }
+            val branch = when {
+                inspection?.isGitRepository == true -> inspection.currentBranch
+                inspection != null -> null
+                dir.exists() -> git.currentBranch(dir)
+                else -> null
+            }
+            val dirty = when {
+                inspection != null -> inspection.isGitRepository && inspection.dirtyFileCount > 0
+                dir.exists() -> git.isDirty(dir)
+                else -> false
+            }
+            PathProbe(path, branch, dirty)
+        } catch (e: Exception) {
+            cancellationClassifier.rethrowIfCancellation(e)
+            log.logFailure("[detect] $path failed", e)
+            PathProbe(path, null, false)
+        }
+    }
 }

@@ -15,7 +15,8 @@ internal const val GIT_STDERR_TAIL_BYTES = 128 * 1024
 internal const val GIT_DRAIN_THREAD_PREFIX = "branch-switcher-git-drain-"
 internal const val GIT_EXIT_WATCHER_THREAD_PREFIX = "branch-switcher-git-exit-"
 
-private const val MAX_CONCURRENT_GIT_PROCESSES = 4
+/** Bound on simultaneously running git processes; also bounds concurrent state probes. */
+internal const val MAX_CONCURRENT_GIT_PROCESSES = 4
 private const val STREAM_BUFFER_BYTES = 8 * 1024
 
 internal data class GitCapturedOutput(
