@@ -91,7 +91,8 @@ class DeriveBranchExecutor(
             return target.outcome(
                 DeriveRepositoryStatus.SKIPPED,
                 OperationIssueCode.INDEX_LOCK_BLOCKING,
-                "stale git index.lock at $lock; if no other git process is running, delete it and retry",
+                indexLockBlockedDiagnostic(lock),
+                lockPath = lock,
             )
         }
 
@@ -365,6 +366,7 @@ class DeriveBranchExecutor(
         code: OperationIssueCode,
         diagnostic: String? = null,
         stage: OperationStage = OperationStage.PREFLIGHT,
+        lockPath: String? = null,
     ) = DeriveRepositoryOutcome(
         repositoryPath = path,
         status = status,
@@ -373,6 +375,7 @@ class DeriveBranchExecutor(
             code = code,
             repositoryPath = path,
             diagnostic = diagnostic,
+            lockPath = lockPath,
         ),
     )
 

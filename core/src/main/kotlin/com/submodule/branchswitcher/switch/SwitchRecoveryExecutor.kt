@@ -161,8 +161,8 @@ class SwitchRecoveryExecutor(
             return failed(
                 action,
                 OperationIssueCode.INDEX_LOCK_BLOCKING,
-                "stale git index.lock at $lock; if no other git process is running, " +
-                    "delete it and retry",
+                indexLockBlockedDiagnostic(lock),
+                lockPath = lock,
             )
         }
 
@@ -274,22 +274,25 @@ class SwitchRecoveryExecutor(
         action: RepositoryRecoveryAction,
         code: OperationIssueCode,
         diagnostic: String? = null,
+        lockPath: String? = null,
     ) = RepositoryRecoveryOutcome(
         action,
         RecoveryActionStatus.FAILED,
-        recoveryIssue(action.repositoryPath, code, diagnostic),
+        recoveryIssue(action.repositoryPath, code, diagnostic, lockPath),
     )
 
     private fun recoveryIssue(
         path: String,
         code: OperationIssueCode,
         diagnostic: String? = null,
+        lockPath: String? = null,
     ) = OperationIssue(
         stage = OperationStage.RECOVERY,
         code = code,
         repositoryPath = path,
         severity = OperationIssueSeverity.ERROR,
         diagnostic = diagnostic,
+        lockPath = lockPath,
     )
 
     private fun labelFor(path: String): String =

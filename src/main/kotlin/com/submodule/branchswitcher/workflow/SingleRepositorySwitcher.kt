@@ -10,6 +10,7 @@ import com.submodule.branchswitcher.operation.GitOperationResult
 import com.submodule.branchswitcher.operation.GitOperationRunner
 import com.submodule.branchswitcher.switch.CancellationClassifier
 import com.submodule.branchswitcher.switch.expectedSubmoduleGitDirectory
+import com.submodule.branchswitcher.switch.indexLockBlockedDiagnostic
 import com.submodule.branchswitcher.switch.isUnassociatedSubmoduleWorktree
 import com.submodule.branchswitcher.switch.loadSubmoduleTopology
 import com.submodule.branchswitcher.switch.resolveGitDir
@@ -29,6 +30,7 @@ sealed class SingleRepositorySwitchResult {
     data class Skipped(val reason: SingleRepositorySkipReason) : SingleRepositorySwitchResult()
     data class Success(val result: GitResult) : SingleRepositorySwitchResult()
     data class GitFailure(val result: GitResult) : SingleRepositorySwitchResult()
+    data class LockBlocked(val lockPath: String) : SingleRepositorySwitchResult()
     data object Cancelled : SingleRepositorySwitchResult()
     data class Unexpected(val error: Exception) : SingleRepositorySwitchResult()
 }
@@ -126,6 +128,10 @@ class SingleRepositorySwitcher(
                 operationLog.activity("operation finished: status=success, path=$path, branch=$target")
             is SingleRepositorySwitchResult.GitFailure ->
                 operationLog.warn("operation finished: status=git-failure, ${result.result.diagnostic()}")
+            is SingleRepositorySwitchResult.LockBlocked ->
+                operationLog.warn(
+                    "operation finished: status=lock-blocked, ${indexLockBlockedDiagnostic(result.lockPath)}",
+                )
             is SingleRepositorySwitchResult.Skipped ->
                 operationLog.warn("operation finished: status=skipped, reason=${result.reason}")
             SingleRepositorySwitchResult.Cancelled ->
@@ -172,15 +178,7 @@ class SingleRepositorySwitcher(
             operationLog.error(
                 "stale index.lock blocks checkout of $path - delete it and retry: $lock",
             )
-            return SingleRepositorySwitchResult.GitFailure(
-                GitResult(
-                    "checkout",
-                    1,
-                    "",
-                    "stale git index.lock at $lock; if no other git process is running, " +
-                        "delete it and retry",
-                ),
-            )
+            return SingleRepositorySwitchResult.LockBlocked(lock)
         }
         return when {
             operation.localBranchExists(directory, target) ->

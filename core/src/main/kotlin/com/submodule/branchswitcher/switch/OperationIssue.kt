@@ -59,4 +59,6 @@ data class OperationIssue(
     val repositoryPath: String? = null,
     val severity: OperationIssueSeverity = OperationIssueSeverity.WARNING,
     val diagnostic: String? = null,
+    /** Structured path of a blocking git `index.lock`, so the UI can localize it. */
+    val lockPath: String? = null,
 )

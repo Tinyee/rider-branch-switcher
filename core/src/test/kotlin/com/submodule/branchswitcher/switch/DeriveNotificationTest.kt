@@ -94,6 +94,39 @@ class DeriveNotificationTest {
     }
 
     @Test
+    fun `preflight blocked counts index lock separately from skipped`() {
+        val lockBlocked = DeriveRepositoryOutcome(
+            repositoryPath = "locked",
+            status = DeriveRepositoryStatus.SKIPPED,
+            issue = OperationIssue(
+                stage = OperationStage.PREFLIGHT,
+                code = OperationIssueCode.INDEX_LOCK_BLOCKING,
+                repositoryPath = "locked",
+                lockPath = "/repo/.git/index.lock",
+            ),
+        )
+        val d = deriveNotification(
+            cancelled = false,
+            DeriveResult(
+                listOf(
+                    lockBlocked,
+                    DeriveRepositoryOutcome("plain", DeriveRepositoryStatus.SKIPPED),
+                    DeriveRepositoryOutcome("dirty", DeriveRepositoryStatus.DIRTY),
+                ),
+                emptyMap(),
+                cancelled = false,
+            ),
+            rollbackFailureCount = 0,
+            "feat",
+        )
+        assertTrue(d is DeriveNotification.Blocked)
+        val b = d as DeriveNotification.Blocked
+        assertEquals(1, b.skippedCount)
+        assertEquals(1, b.indexLockBlockedCount)
+        assertEquals(1, b.dirtyCount)
+    }
+
+    @Test
     fun `all ok returns Success`() {
         val r = result(succeeded = listOf("a", "b", "c"))
         val d = deriveNotification(cancelled = false, r, rollbackFailureCount = 0, "feat")

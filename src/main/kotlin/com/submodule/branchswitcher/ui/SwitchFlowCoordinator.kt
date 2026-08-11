@@ -186,7 +186,11 @@ class SwitchFlowCoordinator(
                     val recoveredExecution = recoveryOutcome?.let {
                         execution.copy(state = it.stashRestore.state)
                     } ?: execution
-                    resultPresenter.presentRollbackResult(recoveredExecution, recoveryOutcome?.ok == true)
+                    resultPresenter.presentRollbackResult(
+                        recoveredExecution,
+                        recoveryOutcome?.ok == true,
+                        recoveryIssues = recoveryOutcome?.issues.orEmpty(),
+                    )
                 }
             },
         ) {

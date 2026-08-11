@@ -123,8 +123,8 @@ internal fun restoreTrackedStashes(
                     stage = OperationStage.STASH_RESTORE,
                     code = OperationIssueCode.STASH_RESTORE_FAILED,
                     repositoryPath = path,
-                    diagnostic = "stale git index.lock at $existingLock; if no other git process is running, " +
-                        "delete it and retry",
+                    diagnostic = indexLockBlockedDiagnostic(existingLock),
+                    lockPath = existingLock,
                 )
                 continue
             }

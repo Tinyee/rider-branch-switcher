@@ -151,10 +151,7 @@ class SingleRepositorySwitcherTest {
 
         val result = runSwitch(switcher, root.toPath(), "module", "dev")
 
-        assertTrue(result is SingleRepositorySwitchResult.GitFailure)
-        val failure = result as SingleRepositorySwitchResult.GitFailure
-        assertTrue("should name the lock, got: ${failure.result.stderr}", failure.result.stderr.contains("/repo/.git/index.lock"))
-        assertTrue(failure.result.stderr.contains("delete it and retry"))
+        assertEquals(SingleRepositorySwitchResult.LockBlocked("/repo/.git/index.lock"), result)
         assertEquals(0, git.checkoutExistingCount)
         assertEquals(0, git.checkoutRemoteCount)
         assertTrue(logs.any { it.contains("stale index.lock blocks checkout") })

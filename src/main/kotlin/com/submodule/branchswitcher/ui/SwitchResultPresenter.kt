@@ -5,6 +5,8 @@ import com.submodule.branchswitcher.Bundle
 import com.submodule.branchswitcher.Notifier
 import com.submodule.branchswitcher.model.Preset
 import com.submodule.branchswitcher.service.BranchSwitcherService
+import com.submodule.branchswitcher.switch.OperationIssue
+import com.submodule.branchswitcher.switch.OperationIssueCode
 import com.submodule.branchswitcher.switch.SwitchExecutionResult
 import com.submodule.branchswitcher.workflow.SwitchRunResult
 
@@ -30,19 +32,29 @@ internal class SwitchResultPresenter(
         }
     }
 
-    fun presentRollbackResult(execution: SwitchExecutionResult, succeeded: Boolean) {
+    fun presentRollbackResult(
+        execution: SwitchExecutionResult,
+        succeeded: Boolean,
+        recoveryIssues: List<OperationIssue> = emptyList(),
+    ) {
         val retainedNotice = retainedStateNotice(execution)
+        val lockLines = lockBlockedLines(execution.issues + recoveryIssues)
+        val detail = if (lockLines.isNotEmpty()) {
+            lockLines.joinToString("\n") + retainedNotice
+        } else {
+            retainedNotice
+        }
         if (succeeded) {
             Notifier.info(
                 project,
                 Bundle.msg("rollback.complete"),
-                Bundle.msg("notify.rollback.complete.msg") + retainedNotice,
+                Bundle.msg("notify.rollback.complete.msg") + detail,
             )
         } else {
             Notifier.error(
                 project,
                 Bundle.msg("rollback.failed"),
-                Bundle.msg("notify.rollback.partial.msg") + retainedNotice,
+                Bundle.msg("notify.rollback.partial.msg") + detail,
             )
         }
     }
@@ -84,6 +96,13 @@ internal class SwitchResultPresenter(
         execution: SwitchExecutionResult?,
         onRollback: (SwitchExecutionResult) -> Unit,
     ) {
+        val lockLines = lockBlockedLines(execution?.issues.orEmpty())
+        if (lockLines.isNotEmpty()) {
+            // A stale index.lock blocked the switch before any mutation, so there is
+            // nothing to roll back — surface the actionable message instead.
+            Notifier.error(project, Bundle.msg("switch.failed"), lockLines.joinToString("\n"))
+            return
+        }
         val message = Bundle.msg("notify.switch.partial.msg", preset.name) +
             retainedStateNotice(execution)
         if (execution?.checkpoint == null) {
@@ -98,6 +117,24 @@ internal class SwitchResultPresenter(
             onRollback(execution)
         }
     }
+
+    /** Localized, actionable lines for every stale-index.lock issue in [issues]. */
+    private fun lockBlockedLines(issues: List<OperationIssue>): List<String> =
+        issues.filter { it.code == OperationIssueCode.INDEX_LOCK_BLOCKING }
+            .map { issue ->
+                Bundle.msg(
+                    "index.lock.blocking",
+                    repositoryLabel(issue.repositoryPath),
+                    issue.lockPath.orEmpty(),
+                )
+            }
+
+    private fun repositoryLabel(repositoryPath: String?): String =
+        if (repositoryPath.isNullOrBlank() || repositoryPath == ".") {
+            Bundle.msg("label.main.repo")
+        } else {
+            repositoryPath
+        }
 
     private fun retainedInitializationNotice(execution: SwitchExecutionResult?): String {
         val paths = execution?.state?.initializedSubmodulesSnapshot().orEmpty()

@@ -163,6 +163,11 @@ internal class SwitchController(
                         Bundle.msg("notify.derive.blocked.checkpoint", notification.checkpointFailedCount),
                     )
                 }
+                if (notification.indexLockBlockedCount > 0) {
+                    blockedReasons.add(
+                        Bundle.msg("notify.derive.blocked.indexLock", notification.indexLockBlockedCount),
+                    )
+                }
                 Notifier.warn(
                     project,
                     Bundle.msg("notify.derive.blocked"),

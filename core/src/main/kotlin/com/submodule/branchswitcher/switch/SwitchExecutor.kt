@@ -115,28 +115,35 @@ class SwitchExecutor @JvmOverloads constructor(
         // A stale git index.lock makes every write fail (checkout, pull, stash) and
         // `git stash` fails on it silently. Surface any existing lock before the first
         // mutation so the user sees exactly which repository is blocked.
-        val blockedPaths = findBlockingIndexLocks(
+        val blockedLocks = findBlockingIndexLocks(
             context.projectRoot,
             context.git,
             preset.targets().map(RepoTarget::path),
         )
-        if (blockedPaths.isNotEmpty()) {
-            val detail = blockedPaths.joinToString("; ")
-            log.error("[index.lock] blocks git writes: $detail")
+        if (blockedLocks.isNotEmpty()) {
+            blockedLocks.forEach { block ->
+                val display = if (block.repositoryPath == ".") {
+                    block.lockPath
+                } else {
+                    "${block.repositoryPath} -> ${block.lockPath}"
+                }
+                log.error("[index.lock] blocks git writes: $display")
+            }
             log.activity("=== done with errors ===")
             return SwitchExecutionResult(
                 status = SwitchExecutionStatus.FAILED,
                 checkpoint = switchCheckpoint,
                 state = switchState,
-                issues = listOf(
+                issues = blockedLocks.map { block ->
                     OperationIssue(
                         stage = OperationStage.CHECKPOINT,
                         code = OperationIssueCode.INDEX_LOCK_BLOCKING,
+                        repositoryPath = block.repositoryPath,
                         severity = OperationIssueSeverity.ERROR,
-                        diagnostic = "stale git index.lock blocks all writes; if no other " +
-                            "git process is running, delete it and retry: $detail",
-                    ),
-                ),
+                        diagnostic = indexLockBlockedDiagnostic(block.lockPath),
+                        lockPath = block.lockPath,
+                    )
+                },
             )
         }
 

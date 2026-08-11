@@ -44,6 +44,8 @@
   first with a short cooperative window, SIGKILL only as a fallback), letting a
   killed write remove its own `index.lock` instead of leaking a stale lock that
   silently blocks later writes.
+- Localize the stale-`index.lock` guidance shown in the notification balloons
+  (English and Chinese); the Tool Window log diagnostics remain English.
 - The tool window no longer probes git on every file-status change; it refreshes
   only on switch, panel show, manual reload, and detected external git
   operations (a cheap main-reflog file-stamp watch, no git process), so plain

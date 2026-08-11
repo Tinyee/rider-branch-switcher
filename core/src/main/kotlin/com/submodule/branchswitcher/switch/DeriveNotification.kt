@@ -14,6 +14,7 @@ sealed class DeriveNotification {
         val branchMismatchCount: Int,
         val preflightErrorCount: Int,
         val checkpointFailedCount: Int,
+        val indexLockBlockedCount: Int = 0,
     ) : DeriveNotification()
     /** No notification (cancelled with clean rollback). */
     data object Silent : DeriveNotification()
@@ -47,9 +48,18 @@ fun deriveNotification(
     if (result == null)
         return DeriveNotification.Failure(DeriveNotification.Reason.UNEXPECTED, branchName, 0)
 
-    if (result.preflightBlocked)
-        return DeriveNotification.Blocked(result.branchExists.size, result.skipped.size, result.dirty.size,
-            result.branchMismatch.size, result.preflightError.size, result.checkpointFailed.size)
+    if (result.preflightBlocked) {
+        val indexLockBlocked = result.outcomes.count { it.issue?.code == OperationIssueCode.INDEX_LOCK_BLOCKING }
+        return DeriveNotification.Blocked(
+            result.branchExists.size,
+            result.skipped.size - indexLockBlocked,
+            result.dirty.size,
+            result.branchMismatch.size,
+            result.preflightError.size,
+            result.checkpointFailed.size,
+            indexLockBlockedCount = indexLockBlocked,
+        )
+    }
 
     if (result.checkpointBlocked)
         return DeriveNotification.Blocked(0, 0, 0, 0, 0, result.checkpointFailed.size)

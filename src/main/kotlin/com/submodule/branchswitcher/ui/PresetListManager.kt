@@ -142,7 +142,7 @@ internal class PresetListManager(
             val operationLog = log.withContext(outcome.operationId)
             val refreshResult = refreshVcsRepos(project, root, setOf(path), operationLog)
             project.invokeLaterIfAlive {
-                when (outcome.result) {
+                when (val switchResult = outcome.result) {
                     is SingleRepositorySwitchResult.Success -> {
                         Notifier.info(
                             project,
@@ -155,6 +155,14 @@ internal class PresetListManager(
                             project,
                             Bundle.msg("switch.failed"),
                             Bundle.msg("notify.switch.only.failed", path, target),
+                        )
+                    }
+                    is SingleRepositorySwitchResult.LockBlocked -> {
+                        val label = if (path == ".") Bundle.msg("label.main.repo") else path
+                        Notifier.warn(
+                            project,
+                            Bundle.msg("switch.failed"),
+                            Bundle.msg("index.lock.blocking", label, switchResult.lockPath),
                         )
                     }
                     is SingleRepositorySwitchResult.Skipped -> Unit
