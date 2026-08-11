@@ -162,11 +162,27 @@ class SingleRepositorySwitcher(
             )
             return SingleRepositorySwitchResult.Skipped(SingleRepositorySkipReason.NOT_REGISTERED)
         }
+        if (operation.isDirty(directory)) {
+            return SingleRepositorySwitchResult.Skipped(SingleRepositorySkipReason.DIRTY)
+        }
+        if (operation.currentBranch(directory) == target) {
+            return SingleRepositorySwitchResult.Skipped(SingleRepositorySkipReason.ALREADY_ON_TARGET)
+        }
+        operation.indexLockFile(directory)?.let { lock ->
+            operationLog.error(
+                "stale index.lock blocks checkout of $path - delete it and retry: $lock",
+            )
+            return SingleRepositorySwitchResult.GitFailure(
+                GitResult(
+                    "checkout",
+                    1,
+                    "",
+                    "stale git index.lock at $lock; if no other git process is running, " +
+                        "delete it and retry",
+                ),
+            )
+        }
         return when {
-            operation.isDirty(directory) ->
-                SingleRepositorySwitchResult.Skipped(SingleRepositorySkipReason.DIRTY)
-            operation.currentBranch(directory) == target ->
-                SingleRepositorySwitchResult.Skipped(SingleRepositorySkipReason.ALREADY_ON_TARGET)
             operation.localBranchExists(directory, target) ->
                 operation.checkoutExisting(directory, target).toSwitchResult()
             operation.remoteBranchExists(directory, target) ->

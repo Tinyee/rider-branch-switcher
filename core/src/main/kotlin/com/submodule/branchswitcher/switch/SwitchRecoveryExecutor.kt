@@ -154,6 +154,18 @@ class SwitchRecoveryExecutor(
             return RepositoryRecoveryOutcome(action, RecoveryActionStatus.ALREADY_RESTORED)
         }
 
+        // Recovery writes (checkout / reset) fail on a stale index.lock, so block
+        // with an actionable message instead of a checkout/reset "File exists" mystery.
+        git.indexLockFile(directory)?.let { lock ->
+            log.warn("[rollback] $label blocked: stale index.lock at $lock; delete it and retry")
+            return failed(
+                action,
+                OperationIssueCode.INDEX_LOCK_BLOCKING,
+                "stale git index.lock at $lock; if no other git process is running, " +
+                    "delete it and retry",
+            )
+        }
+
         if (action.targetBranch == null) {
             return checkoutRevision(action, directory, action.targetSha, "checkpoint SHA")
         }

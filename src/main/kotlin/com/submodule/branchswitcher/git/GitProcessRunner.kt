@@ -322,43 +322,61 @@ internal class GitProcessRunner(
     ): ProcessTermination {
         observeDescendants(process, observedDescendants)
         val descendants = observedDescendants.values.toList()
-        descendants.asReversed().forEach { descendant ->
-            try {
-                if (descendant.isAlive) descendant.destroyForcibly()
-            } catch (_: UnsupportedOperationException) {
-                try {
-                    descendant.destroy()
-                } catch (_: SecurityException) {
-                    // Continue with the parent and stream cleanup.
-                }
-            } catch (_: SecurityException) {
-                // Continue with the parent and stream cleanup even when one child is protected.
-            }
-        }
-        var parentStopped = false
         var interrupted = false
         try {
-            try {
-                process.destroyForcibly()
-            } catch (_: UnsupportedOperationException) {
-                try {
-                    process.destroy()
-                } catch (_: SecurityException) {
-                    // Stream cleanup below still prevents drain-thread starvation.
-                }
-            } catch (_: SecurityException) {
-                // Stream cleanup below still prevents drain-thread starvation.
-            }
-            try {
-                parentStopped = process.waitFor(5, TimeUnit.SECONDS)
+            // Graceful first: SIGTERM lets a git write process remove its own index.lock
+            // before exiting. A write killed with SIGKILL between creating index.lock and
+            // writing the index leaves a stale 0-byte lock that blocks every later git
+            // write. Escalate to SIGKILL only for processes still alive after the window.
+            descendants.asReversed().forEach { descendant -> signalDescendant(descendant, graceful = true) }
+            val gracefulExit = try {
+                signalProcess(process, graceful = true)
+                process.waitFor(TERMINATION_GRACE_MILLIS, TimeUnit.MILLISECONDS)
             } catch (_: InterruptedException) {
                 interrupted = true
+                false
+            }
+            if (!gracefulExit || descendants.any(::isAlive)) {
+                descendants.asReversed().forEach { descendant -> signalDescendant(descendant, graceful = false) }
+                signalProcess(process, graceful = false)
+                try {
+                    process.waitFor(TERMINATION_HARD_WAIT_MILLIS, TimeUnit.MILLISECONDS)
+                } catch (_: InterruptedException) {
+                    interrupted = true
+                }
             }
         } finally {
             closeProcessStreams(process)
         }
+        val parentStopped = !isProcessAlive(process)
         val descendantsStopped = descendants.none(::isAlive)
         return ProcessTermination(interrupted, parentStopped && descendantsStopped)
+    }
+
+    /** Best-effort SIGTERM/SIGKILL for one git process, tolerating unsupported/protected processes. */
+    private fun signalProcess(process: Process, graceful: Boolean) {
+        try {
+            if (graceful) process.destroy() else process.destroyForcibly()
+        } catch (_: UnsupportedOperationException) {
+            try {
+                if (graceful) process.destroyForcibly() else process.destroy()
+            } catch (_: SecurityException) {
+                // Stream cleanup below still prevents drain-thread starvation.
+            }
+        } catch (_: SecurityException) {
+            // Stream cleanup below still prevents drain-thread starvation.
+        }
+    }
+
+    /** Best-effort SIGTERM/SIGKILL for one descendant process handle. */
+    private fun signalDescendant(descendant: ProcessHandle, graceful: Boolean) {
+        try {
+            if (!descendant.isAlive) return
+            if (graceful) descendant.destroy() else descendant.destroyForcibly()
+        } catch (_: RuntimeException) {
+            // A process handle may reject signaling (unsupported / protected / a
+            // primitive-return proxy); the caller's aliveness pass still escalates it.
+        }
     }
 
     private fun isAlive(process: ProcessHandle): Boolean = try {
@@ -385,5 +403,13 @@ internal class GitProcessRunner(
                 // Process termination is already authoritative; stream cleanup is best effort.
             }
         }
+    }
+
+    private companion object {
+        /** Cooperative-exit window after SIGTERM before escalating to SIGKILL. */
+        const val TERMINATION_GRACE_MILLIS = 1500L
+
+        /** Bounded wait for a SIGKILLed process to actually exit. */
+        const val TERMINATION_HARD_WAIT_MILLIS = 5000L
     }
 }

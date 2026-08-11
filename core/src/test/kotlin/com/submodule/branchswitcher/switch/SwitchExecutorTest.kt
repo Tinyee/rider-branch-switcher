@@ -335,6 +335,40 @@ class SwitchExecutorTest {
     }
 
     @Test
+    fun `rollback reports a stale index lock with an actionable message instead of writing`() {
+        var currentBranch = "main"
+        val switchGit = object : GitClient by fakeGit {
+            override fun currentBranch(workDir: File): String? = currentBranch
+            override fun checkoutExisting(workDir: File, branch: String): GitResult {
+                if (branch == "dev") {
+                    currentBranch = "dev"
+                }
+                return GitResult("checkout", 0, "", "")
+            }
+        }
+        val executor = SwitchExecutor(projectRoot, createStringAppender { log += it }, switchGit)
+        val result = executor.executeResultTest(
+            preset,
+            SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false),
+        )
+        assertTrue(result.ok)
+        assertEquals("dev", currentBranch)
+
+        // A lock appears after the switch (e.g. left behind by a killed git write);
+        // recovery must surface it instead of failing on a checkout mystery.
+        val lockedGit = object : GitClient by fakeGit {
+            override fun currentBranch(workDir: File): String? = currentBranch
+            override fun indexLockFile(workDir: File): String? = "/repo/.git/index.lock"
+        }
+        val outcome = recovery(lockedGit).recover(result)
+        assertFalse(outcome.rollbackOk)
+        assertEquals(OperationIssueCode.INDEX_LOCK_BLOCKING, outcome.rollback.issues.single().code)
+        assertTrue(
+            outcome.rollback.issues.single().diagnostic.orEmpty().contains("/repo/.git/index.lock"),
+        )
+    }
+
+    @Test
     fun `rollback restores checkpoint sha when original head was detached`() {
         var currentBranch: String? = null
         val checkoutCalls = mutableListOf<String>()

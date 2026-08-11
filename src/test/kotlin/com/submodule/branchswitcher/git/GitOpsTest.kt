@@ -423,6 +423,43 @@ class GitOpsTest {
     }
 
     @Test
+    fun `cooperative exit on SIGTERM avoids a SIGKILL fallback`() {
+        val cancellation = AtomicBoolean(false)
+        val runningProcess = ControllableProcess(
+            finished = false,
+            stopAfterDestroy = true,
+            onWait = { cancellation.set(true) },
+        )
+        val runner = GitProcessRunner(timeoutSeconds = 10) { runningProcess }
+
+        val result = runner.run(tmpDir.toFile(), cancellation, "fetch")
+
+        assertEquals(GitFailureKind.CANCELLED, result.failureKind)
+        assertTrue("SIGTERM must be attempted first", runningProcess.gracefulDestroyRequested)
+        assertFalse(
+            "a cooperative exit must not be force-killed (git removes its own index.lock)",
+            runningProcess.forceDestroyRequested,
+        )
+    }
+
+    @Test
+    fun `stubborn process is escalated to SIGKILL after a SIGTERM grace window`() {
+        val cancellation = AtomicBoolean(false)
+        val runningProcess = ControllableProcess(
+            finished = false,
+            stopAfterDestroy = false,
+            onWait = { cancellation.set(true) },
+        )
+        val runner = GitProcessRunner(timeoutSeconds = 10) { runningProcess }
+
+        val result = runner.run(tmpDir.toFile(), cancellation, "fetch")
+
+        assertEquals(GitFailureKind.CANCELLED, result.failureKind)
+        assertTrue("SIGTERM must be attempted first", runningProcess.gracefulDestroyRequested)
+        assertTrue("a stubborn process must be force-killed", runningProcess.forceDestroyRequested)
+    }
+
+    @Test
     fun `process capacity wait is bounded and does not start a command`() {
         var starts = 0
         val runner = GitProcessRunner(
@@ -530,6 +567,8 @@ class GitOpsTest {
     ) : Process() {
         val waitStarted = CountDownLatch(1)
         @Volatile var destroyed = false
+        @Volatile var gracefulDestroyRequested = false
+        @Volatile var forceDestroyRequested = false
         @Volatile private var externallyFinished = false
 
         override fun getOutputStream(): OutputStream = ByteArrayOutputStream()
@@ -551,9 +590,11 @@ class GitOpsTest {
         }
         override fun destroy() {
             destroyed = true
+            gracefulDestroyRequested = true
         }
         override fun destroyForcibly(): Process {
             destroyed = true
+            forceDestroyRequested = true
             return this
         }
         override fun descendants(): java.util.stream.Stream<ProcessHandle> =

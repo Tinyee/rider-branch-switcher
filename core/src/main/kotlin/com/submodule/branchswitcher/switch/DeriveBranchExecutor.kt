@@ -86,6 +86,15 @@ class DeriveBranchExecutor(
             return target.outcome(DeriveRepositoryStatus.SKIPPED, OperationIssueCode.REPOSITORY_MISSING)
         }
 
+        git.indexLockFile(directory)?.let { lock ->
+            log.warn("[derive] $label: stale index.lock blocks branch creation - delete it and retry: $lock")
+            return target.outcome(
+                DeriveRepositoryStatus.SKIPPED,
+                OperationIssueCode.INDEX_LOCK_BLOCKING,
+                "stale git index.lock at $lock; if no other git process is running, delete it and retry",
+            )
+        }
+
         val identity = git.repositoryIdentity(directory)
         val expectedGitDirectory = expectedSubmoduleGitDirectory(
             projectRoot.toFile(),

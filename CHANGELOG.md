@@ -36,6 +36,14 @@
 - A switch pre-flights every target repository for a pre-existing git
   `index.lock` and fails up front with an explicit message naming the blocked
   repository instead of surfacing a checkout mystery failure.
+- The same stale-`index.lock` preflight now guards the derive preflight, the
+  single-repository switch, recovery rollback, and stash restore, so every
+  write workflow names the exact blocked repository instead of a checkout,
+  reset, or stash-apply "File exists" failure.
+- Cancelled or timed-out git processes are now terminated gracefully (SIGTERM
+  first with a short cooperative window, SIGKILL only as a fallback), letting a
+  killed write remove its own `index.lock` instead of leaking a stale lock that
+  silently blocks later writes.
 - The tool window no longer probes git on every file-status change; it refreshes
   only on switch, panel show, manual reload, and detected external git
   operations (a cheap main-reflog file-stamp watch, no git process), so plain

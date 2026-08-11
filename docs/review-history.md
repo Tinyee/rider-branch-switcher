@@ -5,6 +5,25 @@ It records durable project decisions and historical outcomes, not active work.
 Current behavior is defined by the code, tests, [architecture](ARCHITECTURE.md),
 [roadmap](ROADMAP.md), and [changelog](../CHANGELOG.md).
 
+## 2026-08-11 - Index Lock And Termination Hardening
+
+Completed P3-10 and extended the stale-index.lock defense in depth:
+
+- `GitProcessRunner.terminateProcess` now signals git process trees gracefully:
+  SIGTERM first, a bounded 1.5 s cooperative-exit window, then SIGKILL only for
+  processes still alive. A git write process can remove its own `index.lock`
+  before dying, closing the remaining leak source (a write force-killed between
+  creating `index.lock` and writing the index previously left a stale 0-byte
+  lock that silently blocked later writes). Descendant shutdown paths were
+  validated and are covered by focused tests.
+- `findBlockingIndexLocks` is extracted into a shared core check, and the
+  actionable `INDEX_LOCK_BLOCKING` preflight now also guards the derive-branch
+  preflight, the single-repository checkout, and recovery's first write
+  (checkout/reset and stash apply), instead of surfacing checkout/reset
+  "File exists" mysteries.
+- The plugin still never auto-deletes a lock it might not own; it reports the
+  exact path and asks the user to remove it when no other git process is running.
+
 ## 2026-08-04 - Safety, Recovery, And Diagnostics Review
 
 Ten prioritized findings were resolved in one maintenance pass:

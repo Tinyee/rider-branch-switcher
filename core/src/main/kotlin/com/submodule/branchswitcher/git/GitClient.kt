@@ -84,6 +84,15 @@ interface GitRepositoryQuery {
     fun remoteUrl(workDir: File): String? = null
     /** Returns the Git executable version and effective per-command timeout when supported. */
     fun runtimeInfo(workDir: File): GitRuntimeInfo? = null
+
+    /**
+     * Returns the path of an existing git index lock (`index.lock`) for [workDir],
+     * or null when no lock is present or it cannot be resolved. A stale lock
+     * makes every git write fail, and `git stash` fails on it silently; surface
+     * it as an actionable hint. Defaults to null so callers treat an unknown
+     * implementation as "no lock" rather than spuriously blocking.
+     */
+    fun indexLockFile(workDir: File): String? = null
 }
 
 /** Read-only Git operations used to detect the current repository state. */
@@ -100,14 +109,6 @@ interface RepositoryStateGitClient : GitRepositoryQuery {
      * the stash path.
      */
     fun isSubmoduleOnlyDirty(workDir: File): Boolean = false
-
-    /**
-     * Returns the path of an existing git index lock (`index.lock`) for [workDir],
-     * or null when no lock is present or it cannot be resolved. A stale lock
-     * makes every git write fail, and `git stash` fails on it silently; surface
-     * it as an actionable hint. Defaults to null so callers fail closed.
-     */
-    fun indexLockFile(workDir: File): String? = null
 }
 
 /** Read-only access to the submodule paths registered by the current worktree graph. */

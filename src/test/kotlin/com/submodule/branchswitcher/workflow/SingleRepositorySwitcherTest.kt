@@ -139,6 +139,28 @@ class SingleRepositorySwitcherTest {
     }
 
     @Test
+    fun `stale index lock blocks checkout with an actionable failure`() = runBlocking {
+        val root = temp.newFolder("root")
+        root.resolve("module").mkdirs()
+        val git = RecordingGit().apply {
+            localBranchExists = true
+            indexLockPath = "/repo/.git/index.lock"
+        }
+        val logs = mutableListOf<String>()
+        val switcher = switcher(git, logs = logs)
+
+        val result = runSwitch(switcher, root.toPath(), "module", "dev")
+
+        assertTrue(result is SingleRepositorySwitchResult.GitFailure)
+        val failure = result as SingleRepositorySwitchResult.GitFailure
+        assertTrue("should name the lock, got: ${failure.result.stderr}", failure.result.stderr.contains("/repo/.git/index.lock"))
+        assertTrue(failure.result.stderr.contains("delete it and retry"))
+        assertEquals(0, git.checkoutExistingCount)
+        assertEquals(0, git.checkoutRemoteCount)
+        assertTrue(logs.any { it.contains("stale index.lock blocks checkout") })
+    }
+
+    @Test
     fun `cancellation and invalid path close their write leases`() = runBlocking {
         val root = temp.newFolder("root")
         root.resolve("module").mkdirs()
@@ -210,6 +232,7 @@ class SingleRepositorySwitcherTest {
         var checkoutResult = GitResult("checkout", 0, "", "")
         var registeredPaths: Set<String>? = null
         var identity: RepositoryIdentity? = null
+        var indexLockPath: String? = null
         var openCount = 0
         var checkoutExistingCount = 0
         var checkoutRemoteCount = 0
@@ -235,6 +258,7 @@ class SingleRepositorySwitcherTest {
                     "isGitRepo" -> true
                     "isDirty" -> dirty
                     "currentBranch" -> branch
+                    "indexLockFile" -> indexLockPath
                     "localBranchExists" -> localBranchExists
                     "remoteBranchExists" -> remoteBranchExists
                     "checkoutExisting" -> {

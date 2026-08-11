@@ -113,6 +113,21 @@ internal fun restoreTrackedStashes(
                 )
                 continue
             }
+            val existingLock = git.indexLockFile(repositoryDirectory)
+            if (existingLock != null) {
+                log.warn(
+                    "[fail] stash apply skipped - stale index.lock at $existingLock; " +
+                        "delete it and retry (${stash.message})",
+                )
+                issues += OperationIssue(
+                    stage = OperationStage.STASH_RESTORE,
+                    code = OperationIssueCode.STASH_RESTORE_FAILED,
+                    repositoryPath = path,
+                    diagnostic = "stale git index.lock at $existingLock; if no other git process is running, " +
+                        "delete it and retry",
+                )
+                continue
+            }
             nextState = nextState.withStashRestoreAttempted(path)
             val applyResult = git.stashApply(repositoryDirectory, stash.oid)
             if (applyResult.ok) {
