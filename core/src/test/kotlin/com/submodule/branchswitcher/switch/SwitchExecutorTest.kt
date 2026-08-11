@@ -109,6 +109,30 @@ class SwitchExecutorTest {
     }
 
     @Test
+    fun `stale index lock fails the switch before any mutation`() {
+        var checkoutCalls = 0
+        val lockedGit = object : GitClient by fakeGit {
+            override fun indexLockFile(workDir: File): String? = "/repo/.git/index.lock"
+            override fun checkoutExisting(workDir: File, branch: String): GitResult {
+                checkoutCalls++
+                return GitResult("checkout", 0, "", "")
+            }
+        }
+        val executor = SwitchExecutor(projectRoot, createStringAppender { log += it }, lockedGit)
+
+        val result = executor.executeResultTest(
+            preset,
+            SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false),
+        )
+        assertEquals(SwitchExecutionStatus.FAILED, result.status)
+        val issue = result.issues.single()
+        assertEquals(OperationIssueCode.INDEX_LOCK_BLOCKING, issue.code)
+        assertTrue(issue.diagnostic.orEmpty().contains("/repo/.git/index.lock"))
+        assertEquals("Index lock must block the switch before checkout", 0, checkoutCalls)
+        assertTrue(log.any { it.contains("index.lock") })
+    }
+
+    @Test
     fun `failed main checkout prevents every downstream repository mutation`() {
         val submodule = projectRoot.resolve("SubA").toFile()
         initGitRepo(submodule)

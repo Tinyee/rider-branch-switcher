@@ -3,6 +3,7 @@ package com.submodule.branchswitcher.switch
 import com.submodule.branchswitcher.git.SwitchGitClient
 import com.submodule.branchswitcher.log.AppLogger
 import com.submodule.branchswitcher.log.logFailure
+import com.submodule.branchswitcher.model.Preset
 import com.submodule.branchswitcher.model.ResolvedSwitchRequest
 import java.nio.file.Path
 
@@ -110,6 +111,30 @@ class SwitchExecutor @JvmOverloads constructor(
 
         context.progressHandle?.isIndeterminate = false
 
+        // A stale git index.lock makes every write fail (checkout, pull, stash) and
+        // `git stash` fails on it silently. Surface any existing lock before the first
+        // mutation so the user sees exactly which repository is blocked.
+        val blockedPaths = findBlockingIndexLocks(preset, context)
+        if (blockedPaths.isNotEmpty()) {
+            val detail = blockedPaths.joinToString("; ")
+            log.error("[index.lock] blocks git writes: $detail")
+            log.activity("=== done with errors ===")
+            return SwitchExecutionResult(
+                status = SwitchExecutionStatus.FAILED,
+                checkpoint = switchCheckpoint,
+                state = switchState,
+                issues = listOf(
+                    OperationIssue(
+                        stage = OperationStage.CHECKPOINT,
+                        code = OperationIssueCode.INDEX_LOCK_BLOCKING,
+                        severity = OperationIssueSeverity.ERROR,
+                        diagnostic = "stale git index.lock blocks all writes; if no other " +
+                            "git process is running, delete it and retry: $detail",
+                    ),
+                ),
+            )
+        }
+
         var executionStatus = SwitchExecutionStatus.SUCCESS
         val issues = mutableListOf<OperationIssue>()
         for (step in steps) {
@@ -177,6 +202,17 @@ class SwitchExecutor @JvmOverloads constructor(
             if (executionStatus == SwitchExecutionStatus.SUCCESS) "=== done ===" else "=== done with errors ===",
         )
         return SwitchExecutionResult(executionStatus, switchCheckpoint, switchState, issues)
+    }
+
+    private fun findBlockingIndexLocks(
+        preset: Preset,
+        context: SwitchContext,
+    ): List<String> = preset.targets().mapNotNull { target ->
+        val dir = resolveGitDir(context.projectRoot, target.path)
+        if (!dir.exists() || !context.git.isGitRepo(dir)) return@mapNotNull null
+        context.git.indexLockFile(dir)?.let { lock ->
+            if (target.path == ".") lock else "${target.path} -> $lock"
+        }
     }
 
 }

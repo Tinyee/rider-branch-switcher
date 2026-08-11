@@ -89,19 +89,19 @@ internal class GitCommandClient(
     }
 
     override fun isDirty(workDir: File): Boolean {
-        val result = run(workDir, "status", "--porcelain")
+        val result = run(workDir, "--no-optional-locks", "status", "--porcelain")
         if (!result.ok) throw GitQueryException(result)
         return result.stdout.isNotBlank()
     }
 
     override fun dirtyFileCount(workDir: File): Int {
-        val result = run(workDir, "status", "--porcelain")
+        val result = run(workDir, "--no-optional-locks", "status", "--porcelain")
         if (!result.ok) throw GitQueryException(result)
         return result.stdout.lines().count { it.isNotBlank() }
     }
 
     override fun isSubmoduleOnlyDirty(workDir: File): Boolean {
-        val result = run(workDir, "status", "--porcelain=v2", "--untracked-files=all")
+        val result = run(workDir, "--no-optional-locks", "status", "--porcelain=v2", "--untracked-files=all")
         if (!result.ok) throw GitQueryException(result)
         return isSubmoduleOnlyPorcelainStatus(result.stdout)
     }
@@ -145,7 +145,7 @@ internal class GitCommandClient(
     }
 
     private fun inspectStatus(workDir: File): GitRepositoryInspection {
-        val result = run(workDir, "status", "--porcelain=v2", "--branch", "--untracked-files=normal")
+        val result = run(workDir, "--no-optional-locks", "status", "--porcelain=v2", "--branch", "--untracked-files=normal")
         if (!result.ok) throw GitQueryException(result)
         return parsePorcelainV2Status(result.stdout)
     }
@@ -185,7 +185,7 @@ internal class GitCommandClient(
     }
 
     override fun dirtyProbe(workDir: File): Boolean {
-        val result = run(workDir, "status", "--porcelain")
+        val result = run(workDir, "--no-optional-locks", "status", "--porcelain")
         if (!result.ok) throw GitQueryException(result)
         return result.stdout.isNotBlank()
     }

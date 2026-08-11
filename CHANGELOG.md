@@ -30,6 +30,12 @@
   whole operation.
 - A failed stash now reports a pre-existing `.git/index.lock` as an actionable
   hint instead of failing silently with `exit 1` and no stderr.
+- Repository status probes run with `git --no-optional-locks` so a refresh never
+  writes the index, removing a source of stale `index.lock` files left behind by
+  cancelled git processes.
+- A switch pre-flights every target repository for a pre-existing git
+  `index.lock` and fails up front with an explicit message naming the blocked
+  repository instead of surfacing a checkout mystery failure.
 
 - Missing-submodule initialization is confirmed once, upfront, before the switch
   starts (instead of prompting on the background thread mid-run). When the
