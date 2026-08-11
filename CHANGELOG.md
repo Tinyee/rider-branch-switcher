@@ -24,6 +24,12 @@
 - Log-header icon buttons now show hover and pressed feedback, the filter
   toggle shows its selected state, and copying the operation log briefly
   flashes a confirmation checkmark.
+- A switch now proceeds when the only dirty changes are submodule-related
+  (`git stash` ignores submodules, so there is nothing a superproject stash can
+  protect); a submodule checked out at a different commit no longer aborts the
+  whole operation.
+- A failed stash now reports a pre-existing `.git/index.lock` as an actionable
+  hint instead of failing silently with `exit 1` and no stderr.
 
 - Missing-submodule initialization is confirmed once, upfront, before the switch
   starts (instead of prompting on the background thread mid-run). When the

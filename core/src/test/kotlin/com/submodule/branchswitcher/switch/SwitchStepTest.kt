@@ -23,6 +23,8 @@ class SwitchStepTest {
     private val fakeGit = object : GitClient {
         override fun currentBranch(workDir: File): String? = "main"
         override fun isDirty(workDir: File): Boolean = false
+        override fun isSubmoduleOnlyDirty(workDir: File): Boolean = false
+        override fun indexLockFile(workDir: File): String? = null
         override fun dirtyFileCount(workDir: File): Int = 0
         override fun stash(workDir: File, message: String): GitResult = GitResult("stash", 0, "", "")
         override fun stashTopOid(workDir: File): String = "stash-oid"
@@ -251,6 +253,46 @@ class SwitchStepTest {
         assertTrue(execution.result is StepResult.Partial)
         assertTrue(execution.state.isSkipped("."))
         assertFalse(execution.state.stashesSnapshot().isNotEmpty())
+    }
+
+    @Test
+    fun `submodule-only dirt proceeds without stashing`() {
+        var stashCalls = 0
+        val subOnlyGit = object : GitClient by fakeGit {
+            override fun isDirty(workDir: File): Boolean = true
+            override fun isSubmoduleOnlyDirty(workDir: File): Boolean = true
+            override fun stash(workDir: File, message: String): GitResult {
+                stashCalls++
+                return GitResult("stash", 0, "", "")
+            }
+        }
+        val c = context(SwitchOptions(DirtyAction.Stash)).copy(git = subOnlyGit)
+
+        val execution = DirtyHandlingStep().run(c)
+        assertTrue(execution.result is StepResult.Success)
+        assertEquals(0, stashCalls)
+        assertFalse(execution.state.isSkipped("."))
+        assertTrue(log.any { it.contains("submodule") })
+    }
+
+    @Test
+    fun `stash failure surfaces a stale index lock as an actionable hint`() {
+        val lockGit = object : GitClient by fakeGit {
+            override fun isDirty(workDir: File): Boolean = true
+            override fun indexLockFile(workDir: File): String? = "/repo/.git/index.lock"
+            override fun stash(workDir: File, message: String): GitResult =
+                GitResult("stash", 1, "", "")
+        }
+        val c = context(SwitchOptions(DirtyAction.Stash)).copy(git = lockGit)
+
+        val execution = DirtyHandlingStep().run(c)
+        assertTrue(execution.result is StepResult.Partial)
+        assertTrue(execution.state.isSkipped("."))
+        val issue = (execution.result as StepResult.Partial).issues.single()
+        assertEquals(OperationIssueCode.STASH_FAILED, issue.code)
+        val diagnostic = issue.diagnostic.orEmpty()
+        assertTrue(diagnostic.contains("index.lock"))
+        assertTrue(diagnostic.contains("/repo/.git/index.lock"))
     }
 
     // ---- FetchStep ----

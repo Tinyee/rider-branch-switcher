@@ -100,6 +100,22 @@ internal class GitCommandClient(
         return result.stdout.lines().count { it.isNotBlank() }
     }
 
+    override fun isSubmoduleOnlyDirty(workDir: File): Boolean {
+        val result = run(workDir, "status", "--porcelain=v2", "--untracked-files=all")
+        if (!result.ok) throw GitQueryException(result)
+        return isSubmoduleOnlyPorcelainStatus(result.stdout)
+    }
+
+    override fun indexLockFile(workDir: File): String? {
+        val result = run(workDir, "rev-parse", "--git-path", "index.lock")
+        if (!result.ok) return null
+        val path = result.stdout.trim()
+        if (path.isEmpty()) return null
+        val lock = runCatching { File(workDir, path).canonicalFile }.getOrNull()
+            ?: File(workDir, path)
+        return lock.path.takeIf { it.isNotEmpty() && lock.exists() }
+    }
+
     override fun inspectRepositoryState(workDir: File): GitRepositoryInspection {
         if (!hasRepositoryMarker(workDir)) return missingRepositoryInspection()
         return inspectStatus(workDir)

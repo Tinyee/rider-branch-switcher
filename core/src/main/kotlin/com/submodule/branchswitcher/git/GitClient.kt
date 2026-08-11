@@ -90,6 +90,24 @@ interface GitRepositoryQuery {
 interface RepositoryStateGitClient : GitRepositoryQuery {
     /** True if the working tree has uncommitted changes. Throws when status cannot be inspected. */
     fun isDirty(workDir: File): Boolean
+
+    /**
+     * True when the working tree is dirty and every dirty entry is a submodule
+     * change. `git stash` ignores submodules entirely, so this dirt cannot be
+     * protected by a superproject stash; callers may proceed without stashing.
+     * Untracked and unmerged entries always count as protectable. Throws when
+     * status cannot be inspected. Defaults to false so callers fail closed to
+     * the stash path.
+     */
+    fun isSubmoduleOnlyDirty(workDir: File): Boolean = false
+
+    /**
+     * Returns the path of an existing git index lock (`index.lock`) for [workDir],
+     * or null when no lock is present or it cannot be resolved. A stale lock
+     * makes every git write fail, and `git stash` fails on it silently; surface
+     * it as an actionable hint. Defaults to null so callers fail closed.
+     */
+    fun indexLockFile(workDir: File): String? = null
 }
 
 /** Read-only access to the submodule paths registered by the current worktree graph. */

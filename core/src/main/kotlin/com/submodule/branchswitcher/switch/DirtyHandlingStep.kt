@@ -64,17 +64,32 @@ class DirtyHandlingStep : SwitchStep {
             context.log.info("already on '${target.branch}', no stash needed")
             return state
         }
+        if (context.git.isSubmoduleOnlyDirty(repositoryDirectory)) {
+            // git stash ignores submodules, so this dirt cannot be stashed (git
+            // reports "no local changes to save" and creates nothing). There is
+            // no work here to protect: the checkout rewrites only gitlinks and
+            // the submodule switch steps realign the submodule worktrees.
+            context.log.info(
+                "[stash skip] ${target.path} - only submodule changes, not stashable by git; " +
+                    "proceeding without stash",
+            )
+            return state
+        }
         val stashResult = context.git.stash(
             repositoryDirectory,
             "branch-switcher: before -> ${target.branch}",
         )
         if (!stashResult.ok) {
-            context.log.warn("stash: FAIL (${target.path}): ${stashResult.diagnostic()}")
+            val lockHint = context.git.indexLockFile(repositoryDirectory)?.let { lock ->
+                " [index.lock exists at $lock; if no other git process is running, delete it and retry]"
+            }.orEmpty()
+            val diagnostic = "${stashResult.diagnostic()}$lockHint"
+            context.log.warn("stash: FAIL (${target.path}): $diagnostic")
             issues += OperationIssue(
                 stage,
                 OperationIssueCode.STASH_FAILED,
                 target.path,
-                diagnostic = stashResult.diagnostic(),
+                diagnostic = diagnostic,
             )
             return state.withSkipped(target.path)
         }

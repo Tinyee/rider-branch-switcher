@@ -55,3 +55,14 @@ runs `releaseCheck`, publishes with the protected Marketplace token, and keeps
 ordinary pushes unable to publish.
 
 This item starts only after the first successful manual Marketplace release.
+
+### P3-10: Graceful Git Process Termination
+
+`GitProcessRunner.terminateProcess` force-kills git processes (`destroyForcibly`)
+on cancellation and timeout. A write process killed between creating `index.lock`
+and writing the index leaves a stale 0-byte `index.lock` that silently blocks
+every later git write — `git stash` in particular fails on it with exit 1 and no
+stderr. Consider sending SIGTERM first, waiting briefly for cooperative exit (so
+git can remove its own lock), then falling back to SIGKILL only if the process
+is still alive. Validate the descendant-process shutdown paths in
+`GitProcessRunner` before changing the termination order.
