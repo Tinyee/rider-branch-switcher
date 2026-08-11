@@ -6,8 +6,8 @@ import com.submodule.branchswitcher.Notifier
 import com.submodule.branchswitcher.model.Preset
 import com.submodule.branchswitcher.service.BranchSwitcherService
 import com.submodule.branchswitcher.switch.OperationIssue
-import com.submodule.branchswitcher.switch.OperationIssueCode
 import com.submodule.branchswitcher.switch.SwitchExecutionResult
+import com.submodule.branchswitcher.switch.lockBlockedPresentations
 import com.submodule.branchswitcher.workflow.SwitchRunResult
 
 /** Maps structured switch and rollback outcomes to history and IDE notifications. */
@@ -120,21 +120,8 @@ internal class SwitchResultPresenter(
 
     /** Localized, actionable lines for every stale-index.lock issue in [issues]. */
     private fun lockBlockedLines(issues: List<OperationIssue>): List<String> =
-        issues.filter { it.code == OperationIssueCode.INDEX_LOCK_BLOCKING }
-            .map { issue ->
-                Bundle.msg(
-                    "index.lock.blocking",
-                    repositoryLabel(issue.repositoryPath),
-                    issue.lockPath.orEmpty(),
-                )
-            }
-
-    private fun repositoryLabel(repositoryPath: String?): String =
-        if (repositoryPath.isNullOrBlank() || repositoryPath == ".") {
-            Bundle.msg("label.main.repo")
-        } else {
-            repositoryPath
-        }
+        lockBlockedPresentations(issues, Bundle.msg("label.main.repo"))
+            .map { Bundle.msg("index.lock.blocking", it.repositoryLabel, it.lockPath) }
 
     private fun retainedInitializationNotice(execution: SwitchExecutionResult?): String {
         val paths = execution?.state?.initializedSubmodulesSnapshot().orEmpty()

@@ -399,6 +399,34 @@ class SwitchStepTest {
     }
 
     @Test
+    fun `stash restore skips a stale index lock with an actionable issue`() {
+        var popCalls = 0
+        val lockedGit = object : GitClient by fakeGit {
+            override fun currentBranch(workDir: File): String? = "dev"
+            override fun pullFf(workDir: File, branch: String): GitResult = GitResult("pull", 0, "", "")
+            override fun indexLockFile(workDir: File): String? = "/repo/.git/index.lock"
+            override fun stashApply(workDir: File, oid: String): GitResult {
+                popCalls++
+                return GitResult("pop", 0, "", "")
+            }
+        }
+        val c = context(SwitchOptions(DirtyAction.Stash, pull = true)).copy(git = lockedGit)
+        val state = SwitchState()
+            .withSuccessfulCheckout(".")
+            .withTrackedStash(".", "main -> dev", "stash-oid")
+
+        val execution = PullStep().run(c, state)
+
+        val issue = (execution.result as StepResult.Partial).issues.single()
+        assertEquals("." to OperationIssueCode.STASH_RESTORE_FAILED, issue.repositoryPath to issue.code)
+        assertEquals("/repo/.git/index.lock", issue.lockPath)
+        assertTrue(issue.diagnostic.orEmpty().contains("delete it and retry"))
+        assertEquals("apply must not run on a locked repository", 0, popCalls)
+        // Not marked restore-attempted, so a later recovery retries the apply.
+        assertFalse(execution.state.stashesSnapshot()["."]?.restoreAttempted ?: true)
+    }
+
+    @Test
     fun `pull step skips repos whose checkout did not succeed`() {
         var pullCalls = 0
         val pullGit = object : GitClient by fakeGit {
