@@ -59,9 +59,10 @@ class RepositoryStateRefreshCoordinator(
                 state.attach(openedOperation)
                 ensureActive()
                 val snapshot = withContext(worker) {
-                    // Probe repositories concurrently, bounded to the shared git-process
-                    // capacity, so a multi-submodule project does not pay one process-spawn
-                    // latency per repository in sequence.
+                    // Probe repositories concurrently so a multi-submodule project does not
+                    // pay one process-spawn latency per repository in sequence. The git-process
+                    // pool's shared semaphore is the real cap; this local throttle reuses the
+                    // same bound so we never even start coroutines beyond it.
                     val probePermits = Semaphore(MAX_CONCURRENT_GIT_PROCESSES)
                     coroutineScope {
                         val probes = request.paths.map { path ->

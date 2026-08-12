@@ -42,7 +42,7 @@ class RepositoryStateDetector(
         )
 
     /** Probes every requested path in order, stopping as soon as [request] is superseded. */
-    fun detect(
+    internal fun detect(
         request: RepositoryStateRequest,
         git: RepositoryStateGitClient,
     ): RepositoryStateSnapshot {
