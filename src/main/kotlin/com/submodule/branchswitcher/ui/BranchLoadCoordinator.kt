@@ -1,6 +1,7 @@
 package com.submodule.branchswitcher.ui
 
 import com.submodule.branchswitcher.git.GitOperationSession
+import com.submodule.branchswitcher.git.MAX_CONCURRENT_GIT_PROCESSES
 import com.submodule.branchswitcher.git.PresetDiscoveryGitClient
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -81,6 +82,11 @@ internal class BranchLoadCoordinator(
     }
 
     companion object {
-        private const val DEFAULT_MAX_CONCURRENT_LOADS = 4
+        // Leave one global Git-process permit free for a foreground switch or
+        // recovery. The shared process pool is capped at MAX_CONCURRENT_GIT_PROCESSES;
+        // if branch discovery claimed every slot, a concurrent switch would have to
+        // wait for a permit until a discovery command finishes or times out.
+        // RepositoryStateRefreshCoordinator makes the same reservation.
+        private const val DEFAULT_MAX_CONCURRENT_LOADS = MAX_CONCURRENT_GIT_PROCESSES - 1
     }
 }

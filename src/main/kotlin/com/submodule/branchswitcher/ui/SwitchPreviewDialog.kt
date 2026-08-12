@@ -72,7 +72,9 @@ class SwitchPreviewDialog(
 
     private fun buildSummary(): JComponent {
         val total = rows.size
-        val toSwitch = rows.count { it.exists && it.needsSwitch && !it.branchMissing }
+        // Probe errors are unknown state: neither a repo we know needs switching nor a
+        // missing branch. Exclude them from both counts so the summary stays truthful.
+        val toSwitch = rows.count { it.exists && it.needsSwitch && !it.branchMissing && it.probeError == null }
         val noChange = rows.count { it.exists && !it.needsSwitch }
         val missingBranch = rows.count { it.branchMissing }
         val missingDir = rows.count { !it.exists }

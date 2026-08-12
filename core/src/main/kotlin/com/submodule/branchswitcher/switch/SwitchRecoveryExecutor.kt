@@ -156,15 +156,7 @@ class SwitchRecoveryExecutor(
 
         // Recovery writes (checkout / reset) fail on a stale index.lock, so block
         // with an actionable message instead of a checkout/reset "File exists" mystery.
-        git.indexLockFile(directory)?.let { lock ->
-            log.warn("[rollback] $label blocked: stale index.lock at $lock; delete it and retry")
-            return failed(
-                action,
-                OperationIssueCode.INDEX_LOCK_BLOCKING,
-                indexLockBlockedDiagnostic(lock),
-                lockPath = lock,
-            )
-        }
+        blockingLock(action, directory)?.let { return it }
 
         if (action.targetBranch == null) {
             return checkoutRevision(action, directory, action.targetSha, "checkpoint SHA")
@@ -177,6 +169,7 @@ class SwitchRecoveryExecutor(
                 return RepositoryRecoveryOutcome(action, RecoveryActionStatus.FAILED, issue)
             }
             log.activity("$label: checking out branch ${action.targetBranch} (was ${currentBranch ?: "(detached)"})")
+            blockingLock(action, directory)?.let { return it }
             val branchResult = git.checkoutExisting(directory, action.targetBranch)
             if (!branchResult.ok) {
                 log.warn(
@@ -200,6 +193,7 @@ class SwitchRecoveryExecutor(
             return RepositoryRecoveryOutcome(action, RecoveryActionStatus.FAILED, issue)
         }
         val label = labelFor(action.repositoryPath)
+        blockingLock(action, directory)?.let { return it }
         log.activity("$label: checking out $description $revision")
         val checkout = git.checkoutExisting(directory, revision)
         if (!checkout.ok) {
@@ -220,6 +214,7 @@ class SwitchRecoveryExecutor(
             return RepositoryRecoveryOutcome(action, RecoveryActionStatus.FAILED, issue)
         }
         val label = labelFor(action.repositoryPath)
+        blockingLock(action, directory)?.let { return it }
         log.activity("$label: resetting HEAD to ${action.targetSha}")
         val reset = git.resetHard(directory, action.targetSha)
         if (!reset.ok) {
@@ -280,6 +275,23 @@ class SwitchRecoveryExecutor(
         RecoveryActionStatus.FAILED,
         recoveryIssue(action.repositoryPath, code, diagnostic, lockPath),
     )
+
+    /** Returns an INDEX_LOCK_BLOCKING outcome when a stale lock would block the next recovery write. */
+    private fun blockingLock(
+        action: RepositoryRecoveryAction,
+        directory: File,
+    ): RepositoryRecoveryOutcome? = git.indexLockFile(directory)?.let { lock ->
+        log.warn(
+            "[rollback] ${labelFor(action.repositoryPath)} blocked: stale index.lock at $lock; " +
+                "delete it and retry",
+        )
+        failed(
+            action,
+            OperationIssueCode.INDEX_LOCK_BLOCKING,
+            indexLockBlockedDiagnostic(lock),
+            lockPath = lock,
+        )
+    }
 
     private fun recoveryIssue(
         path: String,

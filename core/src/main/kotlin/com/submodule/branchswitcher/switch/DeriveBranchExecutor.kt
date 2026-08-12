@@ -86,7 +86,17 @@ class DeriveBranchExecutor(
             return target.outcome(DeriveRepositoryStatus.SKIPPED, OperationIssueCode.REPOSITORY_MISSING)
         }
 
-        git.indexLockFile(directory)?.let { lock ->
+        // The probe wrapper keeps a lock-query failure (process capacity, start failure)
+        // distinct from an actual detected lock: probe failure -> PREFLIGHT_FAILED.
+        val lockProbe = probe(label, "index lock") { git.indexLockFile(directory) }
+        if (lockProbe.failed) {
+            return target.outcome(
+                DeriveRepositoryStatus.PREFLIGHT_FAILED,
+                OperationIssueCode.PREFLIGHT_FAILED,
+                lockProbe.diagnostic,
+            )
+        }
+        lockProbe.value?.let { lock ->
             log.warn("[derive] $label: stale index.lock blocks branch creation - delete it and retry: $lock")
             return target.outcome(
                 DeriveRepositoryStatus.SKIPPED,
@@ -256,6 +266,36 @@ class DeriveBranchExecutor(
             val repositoryLabel = labelFor(target.path)
 
             try {
+                // The preflight lock check happens a phase earlier; re-check immediately
+                // before the write so a lock created in the gap surfaces as a structured
+                // INDEX_LOCK_BLOCKING block instead of a generic branch-creation failure.
+                // A lock-query failure is classified separately (GIT_QUERY_FAILED), not as
+                // a branch-creation failure.
+                val lockProbe = probe(repositoryLabel, "index lock") { git.indexLockFile(repositoryDirectory) }
+                if (lockProbe.failed) {
+                    outcomes += target.outcome(
+                        DeriveRepositoryStatus.FAILED,
+                        OperationIssueCode.GIT_QUERY_FAILED,
+                        lockProbe.diagnostic,
+                        OperationStage.DERIVE,
+                    )
+                    continue
+                }
+                val branchCreationLock = lockProbe.value
+                if (branchCreationLock != null) {
+                    log.warn(
+                        "[derive] $repositoryLabel: stale index.lock blocks branch creation - " +
+                            "delete it and retry: $branchCreationLock",
+                    )
+                    outcomes += target.outcome(
+                        DeriveRepositoryStatus.FAILED,
+                        OperationIssueCode.INDEX_LOCK_BLOCKING,
+                        indexLockBlockedDiagnostic(branchCreationLock),
+                        OperationStage.DERIVE,
+                        lockPath = branchCreationLock,
+                    )
+                    continue
+                }
                 val checkoutResult = git.checkoutNewBranch(repositoryDirectory, branchName)
                 if (checkoutResult.ok) {
                     outcomes += DeriveRepositoryOutcome(target.path, DeriveRepositoryStatus.SUCCEEDED)
@@ -316,6 +356,15 @@ class DeriveBranchExecutor(
                         pendingPaths.add(path)
                         continue
                     }
+                    val rollbackLock = git.indexLockFile(repositoryDirectory)
+                    if (rollbackLock != null) {
+                        log.warn(
+                            "[derive rollback] $repositoryLabel blocked: stale index.lock at " +
+                                "$rollbackLock; delete it and retry",
+                        )
+                        pendingPaths.add(path)
+                        continue
+                    }
                     val restoreTarget = checkpointEntry.branch ?: checkpointEntry.sha
                     val checkoutResult = git.checkoutExisting(repositoryDirectory, restoreTarget)
                     if (!checkoutResult.ok) {
@@ -328,6 +377,15 @@ class DeriveBranchExecutor(
                     }
                     log.activity("[derive] $repositoryLabel: rolled back to $restoreTarget")
 
+                    val deleteLock = git.indexLockFile(repositoryDirectory)
+                    if (deleteLock != null) {
+                        log.warn(
+                            "[derive rollback] $repositoryLabel: cannot delete branch $branchName - " +
+                                "stale index.lock at $deleteLock; delete it and retry",
+                        )
+                        pendingPaths.add(path)
+                        continue
+                    }
                     val deleteResult = git.deleteBranch(repositoryDirectory, branchName)
                     if (deleteResult.ok) {
                         log.activity("[derive] $repositoryLabel: deleted branch $branchName")

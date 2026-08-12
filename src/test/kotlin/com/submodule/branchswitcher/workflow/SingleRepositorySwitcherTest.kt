@@ -158,6 +158,26 @@ class SingleRepositorySwitcherTest {
     }
 
     @Test
+    fun `lock appearing after the gate check still blocks the checkout`() = runBlocking {
+        val root = temp.newFolder("root")
+        root.resolve("module").mkdirs()
+        val git = RecordingGit().apply {
+            localBranchExists = true
+            indexLockPath = "/repo/.git/index.lock"
+            lockAppearsAfterGate = true
+        }
+        val logs = mutableListOf<String>()
+        val switcher = switcher(git, logs = logs)
+
+        val result = runSwitch(switcher, root.toPath(), "module", "dev")
+
+        assertEquals(SingleRepositorySwitchResult.LockBlocked("/repo/.git/index.lock"), result)
+        assertEquals(0, git.checkoutExistingCount)
+        assertEquals(0, git.checkoutRemoteCount)
+        assertTrue(logs.any { it.contains("stale index.lock blocks checkout") })
+    }
+
+    @Test
     fun `cancellation and invalid path close their write leases`() = runBlocking {
         val root = temp.newFolder("root")
         root.resolve("module").mkdirs()
@@ -230,6 +250,8 @@ class SingleRepositorySwitcherTest {
         var registeredPaths: Set<String>? = null
         var identity: RepositoryIdentity? = null
         var indexLockPath: String? = null
+        var lockAppearsAfterGate = false
+        private var lockQueries = 0
         var openCount = 0
         var checkoutExistingCount = 0
         var checkoutRemoteCount = 0
@@ -255,7 +277,14 @@ class SingleRepositorySwitcherTest {
                     "isGitRepo" -> true
                     "isDirty" -> dirty
                     "currentBranch" -> branch
-                    "indexLockFile" -> indexLockPath
+                    "indexLockFile" -> {
+                        lockQueries++
+                        when {
+                            !lockAppearsAfterGate -> indexLockPath
+                            lockQueries == 1 -> null // first gate check passes
+                            else -> indexLockPath // re-check before the write sees the lock
+                        }
+                    }
                     "localBranchExists" -> localBranchExists
                     "remoteBranchExists" -> remoteBranchExists
                     "checkoutExisting" -> {

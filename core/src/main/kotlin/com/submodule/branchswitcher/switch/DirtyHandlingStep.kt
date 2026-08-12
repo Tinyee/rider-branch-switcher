@@ -23,12 +23,20 @@ class DirtyHandlingStep : SwitchStep {
                 updateProgress(context, index, targets.size, target.path)
                 context.cancellationHandle?.checkCanceled()
                 val repositoryDirectory = resolveGitDir(context.projectRoot, target.path)
-                if (!repositoryDirectory.exists() || !context.git.isGitRepo(repositoryDirectory)) continue
+                if (!repositoryDirectory.exists()) continue
+                // Use the batch inspection's own repository fact to skip non-repos and
+                // avoid a second process per target (isGitRepo runs `rev-parse`). Only
+                // clients without a batch inspection fall back to the standalone check.
                 val inspection = when (val client = context.git) {
                     is com.submodule.branchswitcher.git.RepositoryStateBatchGitClient ->
                         client.inspectRepositoryState(repositoryDirectory)
                     is WriteGuardGitClient -> client.inspectRepositoryStateIfAvailable(repositoryDirectory)
                     else -> null
+                }
+                if (inspection?.isGitRepository == false ||
+                    (inspection == null && !context.git.isGitRepo(repositoryDirectory))
+                ) {
+                    continue
                 }
                 val dirty = inspection?.dirtyFileCount?.let { it > 0 } ?: context.git.isDirty(repositoryDirectory)
                 if (!dirty) continue
@@ -78,10 +86,11 @@ class DirtyHandlingStep : SwitchStep {
         state: SwitchState,
         issues: MutableList<OperationIssue>,
     ): SwitchState {
-        if (context.git.currentBranch(repositoryDirectory) == target.branch) {
-            context.log.info("already on '${target.branch}', no stash needed")
-            return state
-        }
+        // Stash regardless of whether the repo is already on the target branch:
+        // submodule switches still pull after checkout (SubmoduleTreeStep.pullIfEnabled
+        // has no branch guard), so an unprotected dirty tree would be pulled anyway.
+        // Treating on-target dirt the same as any other dirt keeps the chosen Stash
+        // policy consistent. Skip and Force already apply uniformly.
         if (submoduleOnlyDirty) {
             // git stash ignores submodules, so this dirt cannot be stashed (git
             // reports "no local changes to save" and creates nothing). There is

@@ -44,13 +44,13 @@ internal class SwitchResultPresenter(
             Notifier.info(
                 project,
                 Bundle.msg("rollback.complete"),
-                Bundle.msg("notify.rollback.complete.msg") + detail,
+                appendNotificationDetail(Bundle.msg("notify.rollback.complete.msg"), detail),
             )
         } else {
             Notifier.error(
                 project,
                 Bundle.msg("rollback.failed"),
-                Bundle.msg("notify.rollback.partial.msg") + detail,
+                appendNotificationDetail(Bundle.msg("notify.rollback.partial.msg"), detail),
             )
         }
     }
@@ -137,3 +137,11 @@ internal class SwitchResultPresenter(
 
 internal fun joinNotificationDetails(vararg details: String): String =
     details.filter(String::isNotEmpty).joinToString("\n")
+
+/**
+ * Appends an optional detail block to a localized base message. The base texts
+ * (e.g. the Chinese rollback messages) carry no trailing punctuation and a detail
+ * block can start with a repository label, so a space is inserted to avoid glue.
+ */
+internal fun appendNotificationDetail(base: String, detail: String): String =
+    if (detail.isEmpty()) base else "$base $detail"

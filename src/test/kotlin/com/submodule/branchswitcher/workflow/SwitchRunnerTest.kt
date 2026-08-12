@@ -11,6 +11,8 @@ import com.submodule.branchswitcher.log.createStringAppender
 import com.submodule.branchswitcher.model.Preset
 import com.submodule.branchswitcher.model.ResolvedSwitchRequest
 import com.submodule.branchswitcher.model.SwitchOptions
+import com.submodule.branchswitcher.switch.OperationIssueCode
+import com.submodule.branchswitcher.switch.SwitchExecutionStatus
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
 import org.junit.Test
@@ -167,7 +169,7 @@ class SwitchRunnerTest {
     }
 
     @Test
-    fun `execution failure becomes structured result`() = runBlocking {
+    fun `checkpoint failure becomes a structured switch failure`() = runBlocking {
         val logs = mutableListOf<String>()
         val root = Files.createTempDirectory("switch-runner-execution-failure")
         initGitRepo(root.toFile())
@@ -183,9 +185,17 @@ class SwitchRunnerTest {
             log = createStringAppender(logs::add),
         )
 
+        // A checkpoint query failure must not escape the workflow as an unhandled
+        // exception that loses the execution result; it is contained as a structured
+        // FAILED result with no checkpoint (nothing mutated yet, so no rollback).
         assertFalse(result.ok)
         assertFalse(result.cancelled)
-        assertNull(result.execution)
+        assertNotNull(result.execution)
+        assertEquals(SwitchExecutionStatus.FAILED, result.execution?.status)
+        assertEquals(
+            OperationIssueCode.CHECKPOINT_UNAVAILABLE,
+            result.execution?.issues?.single()?.code,
+        )
         assertTrue(logs.any { it.contains("IllegalStateException: cannot read HEAD") })
     }
 

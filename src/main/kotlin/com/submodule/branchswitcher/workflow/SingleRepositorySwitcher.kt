@@ -182,13 +182,38 @@ class SingleRepositorySwitcher(
         }
         return when {
             operation.localBranchExists(directory, target) ->
-                operation.checkoutExisting(directory, target).toSwitchResult()
+                checkoutWithLockGuard(operation, directory, path, operationLog) {
+                    operation.checkoutExisting(directory, target)
+                }
             operation.remoteBranchExists(directory, target) ->
-                operation.checkoutFromRemote(directory, target).toSwitchResult()
+                checkoutWithLockGuard(operation, directory, path, operationLog) {
+                    operation.checkoutFromRemote(directory, target)
+                }
             else -> SingleRepositorySwitchResult.GitFailure(
                 GitResult("checkout", 1, "", "branch $target not found"),
             )
         }
+    }
+
+    /**
+     * Re-checks the index lock immediately before the checkout write, closing the
+     * gap between the earlier gate and this command (local/remote existence probes
+     * run in between and may take milliseconds).
+     */
+    private fun checkoutWithLockGuard(
+        operation: GitOperationSession,
+        directory: File,
+        path: String,
+        operationLog: AppLogger,
+        action: () -> GitResult,
+    ): SingleRepositorySwitchResult {
+        operation.indexLockFile(directory)?.let { lock ->
+            operationLog.error(
+                "stale index.lock blocks checkout of $path - delete it and retry: $lock",
+            )
+            return SingleRepositorySwitchResult.LockBlocked(lock)
+        }
+        return action().toSwitchResult()
     }
 
     private fun GitResult.toSwitchResult(): SingleRepositorySwitchResult =

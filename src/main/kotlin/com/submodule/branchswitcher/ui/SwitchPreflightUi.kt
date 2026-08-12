@@ -1,6 +1,7 @@
 package com.submodule.branchswitcher.ui
 
 import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.progress.ProgressIndicator
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.Messages
 import com.submodule.branchswitcher.Bundle
@@ -30,7 +31,10 @@ internal class SwitchPreflightUi(
         log: AppLogger,
         operationContext: OperationContext,
     ): List<PreflightRow> {
-        val git = service.gitClient
+        // Isolated cancellation scope: the direct client shares one global flag and
+        // is never cancelled, so an in-flight `git status` would keep running until its
+        // timeout. A dedicated session lets the modal cancel signal reach it promptly.
+        val operation = service.gitClient.openOperation()
         val operationLog = log.withContext(operationContext.inPhase("preflight"))
         operationLog.activity(
             "operation started: root=${root.toAbsolutePath().normalize()}, " +
@@ -39,17 +43,22 @@ internal class SwitchPreflightUi(
         val rows = try {
             TaskBridge.runModal(project, Bundle.msg("progress.preflight"), true) { indicator ->
                 indicator.isIndeterminate = false
-                SwitchPreflight(
-                    git,
-                    Bundle.msg("preflight.probe.error.suffix"),
-                    platformCancellationClassifier,
-                ) { path, error ->
-                    operationLog.warn("repository probe failed: path=$path", error)
-                }
-                    .probe(root, preset, ProgressCancellationHandle(indicator)) { index, total, label ->
-                        indicator.text2 = label
-                        indicator.fraction = index.toDouble() / total
+                val cancelWatcher = ModalCancelWatcher(indicator) { operation.cancel() }
+                try {
+                    SwitchPreflight(
+                        operation,
+                        Bundle.msg("preflight.probe.error.suffix"),
+                        platformCancellationClassifier,
+                    ) { path, error ->
+                        operationLog.warn("repository probe failed: path=$path", error)
                     }
+                        .probe(root, preset, ProgressCancellationHandle(indicator)) { index, total, label ->
+                            indicator.text2 = label
+                            indicator.fraction = index.toDouble() / total
+                        }
+                } finally {
+                    cancelWatcher.stop()
+                }
             }
         } catch (error: Exception) {
             if (platformCancellationClassifier.isCancellation(error)) {
@@ -61,11 +70,50 @@ internal class SwitchPreflightUi(
                 operationLog.failure("operation finished: status=failed", error)
             }
             throw error
+        } finally {
+            operation.close()
         }
         operationLog.activity(
             "operation finished: rows=${rows.size}, probeFailures=${rows.count { it.probeError != null }}",
         )
         return rows
+    }
+
+    /**
+     * Watches a modal task indicator and cancels the Git session the moment the user
+     * cancels. The modal's own [ProgressIndicator.checkCanceled] only fires between
+     * probe targets; without this watcher an in-flight `git status` would not receive
+     * the session cancel and would run until its timeout. The Git process runner polls
+     * the session's cancellation flag every 100ms, so this stops the command promptly.
+     */
+    private class ModalCancelWatcher(
+        private val indicator: ProgressIndicator,
+        private val onCancel: () -> Unit,
+    ) {
+        private val stopped = AtomicBoolean(false)
+        private val thread = Thread {
+            try {
+                while (!stopped.get() && !indicator.isCanceled) {
+                    Thread.sleep(POLL_INTERVAL_MS)
+                }
+            } catch (_: InterruptedException) {
+                // stop() interrupts the sleep to end the watch promptly.
+            }
+            if (!stopped.get()) onCancel()
+        }.apply {
+            isDaemon = true
+            name = "branch-switcher-preflight-cancel-watcher"
+            start()
+        }
+
+        fun stop() {
+            stopped.set(true)
+            thread.interrupt()
+        }
+
+        private companion object {
+            const val POLL_INTERVAL_MS = 100L
+        }
     }
 
     fun confirmForceSwitch(preset: Preset, probeResult: List<PreflightRow>): Boolean {
@@ -84,7 +132,8 @@ internal class SwitchPreflightUi(
     fun confirmPreflightWarnings(probeResult: List<PreflightRow>): Boolean {
         val missingDirectories = probeResult.filter { !it.exists }
         val missingBranches = probeResult.filter { it.branchMissing }
-        if (missingDirectories.isEmpty() && missingBranches.isEmpty()) return true
+        val probeFailures = probeResult.filter { it.probeError != null }
+        if (missingDirectories.isEmpty() && missingBranches.isEmpty() && probeFailures.isEmpty()) return true
 
         val warnings = buildList {
             if (missingDirectories.isNotEmpty()) {
@@ -100,6 +149,14 @@ internal class SwitchPreflightUi(
                     Bundle.msg(
                         "preflight.warn.branch.not.found",
                         missingBranches.joinToString(", ") { it.label },
+                    ),
+                )
+            }
+            if (probeFailures.isNotEmpty()) {
+                add(
+                    Bundle.msg(
+                        "preflight.warn.probe.failed",
+                        probeFailures.joinToString(", ") { it.label },
                     ),
                 )
             }

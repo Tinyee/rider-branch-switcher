@@ -78,7 +78,26 @@ class SwitchExecutor @JvmOverloads constructor(
         var switchState = SwitchState()
         // Fail closed: every existing repository needs a known branch and SHA
         // before the first mutation, otherwise rollback could only be partial.
-        val switchCheckpoint = checkpointRecorder.record(preset)
+        // Checkpoint queries can fail (Git process capacity, start failure, permission),
+        // so they must not escape as an unhandled exception that loses the repository
+        // path and structured diagnostic the caller relies on.
+        val switchCheckpoint = try {
+            checkpointRecorder.record(preset)
+        } catch (error: GitQueryException) {
+            // The platform classifier recognizes a cancelled/interrupted Git query as
+            // cancellation; it must not be downgraded to a FAILED/GIT_QUERY_FAILED result.
+            if (cancellationClassifier.isCancellation(error)) throw error
+            log.error("[checkpoint] switch aborted: git query failed: ${error.result.diagnostic()}")
+            return checkpointFailure(switchState, OperationIssueCode.GIT_QUERY_FAILED, error.result.diagnostic())
+        } catch (error: RuntimeException) {
+            if (cancellationClassifier.isCancellation(error)) throw error
+            log.logFailure("[checkpoint] switch aborted: unable to record every existing repository", error)
+            return checkpointFailure(
+                switchState,
+                OperationIssueCode.CHECKPOINT_UNAVAILABLE,
+                "${error.javaClass.simpleName}: ${error.message}",
+            )
+        }
         if (switchCheckpoint == null) {
             log.error("[checkpoint] switch aborted: unable to record every existing repository")
             log.activity("=== done with errors ===")
@@ -115,7 +134,18 @@ class SwitchExecutor @JvmOverloads constructor(
             )
         }
 
+        return runSteps(context, switchCheckpoint, switchState)
+    }
+
+    /** Executes the pipeline steps and folds their outcomes into one structured result. */
+    @Suppress("TooGenericExceptionCaught") // platform cancellation type is recognized through the injected classifier
+    private fun runSteps(
+        context: SwitchContext,
+        switchCheckpoint: Map<String, CheckpointEntry>,
+        initialState: SwitchState,
+    ): SwitchExecutionResult {
         var executionStatus = SwitchExecutionStatus.SUCCESS
+        var switchState = initialState
         val issues = mutableListOf<OperationIssue>()
         for (step in steps) {
             context.progressHandle?.text = step.name
@@ -224,6 +254,29 @@ class SwitchExecutor @JvmOverloads constructor(
     }
 
     /**
+     * Structured pre-mutation failure: checkpoint recording failed, so no rollback can be
+     * attempted and no checkpoint is retained.
+     */
+    private fun checkpointFailure(
+        switchState: SwitchState,
+        code: OperationIssueCode,
+        diagnostic: String,
+    ): SwitchExecutionResult = SwitchExecutionResult(
+        status = SwitchExecutionStatus.FAILED,
+        checkpoint = null,
+        state = switchState,
+        issues = listOf(
+            OperationIssue(
+                stage = OperationStage.CHECKPOINT,
+                code = code,
+                repositoryPath = ".",
+                severity = OperationIssueSeverity.ERROR,
+                diagnostic = diagnostic,
+            ),
+        ),
+    )
+
+    /**
      * Issues for every repository whose git `index.lock` already blocks writes, or null if none.
      * Read-only commands are unaffected by a lock, so this is checked once before any mutation.
      */
@@ -259,6 +312,8 @@ class SwitchExecutor @JvmOverloads constructor(
         try {
             blockingLockIssues(context, preset)
         } catch (e: GitQueryException) {
+            // A cancelled/interrupted lock probe is a user cancel, not a query failure.
+            if (cancellationClassifier.isCancellation(e)) throw e
             val issue = OperationIssue(
                 stage = OperationStage.CHECKPOINT,
                 code = OperationIssueCode.GIT_QUERY_FAILED,

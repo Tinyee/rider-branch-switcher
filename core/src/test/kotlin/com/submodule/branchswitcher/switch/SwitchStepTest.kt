@@ -210,6 +210,25 @@ class SwitchStepTest {
     }
 
     @Test
+    fun `dirty step stashes even when already on target branch`() {
+        var stashCalls = 0
+        val onTargetDirtyGit = object : GitClient by fakeGit {
+            override fun currentBranch(workDir: File): String? = "dev"
+            override fun isDirty(workDir: File): Boolean = true
+            override fun stash(workDir: File, message: String): GitResult {
+                stashCalls++
+                return GitResult("stash", 0, "", "")
+            }
+        }
+        val c = context(SwitchOptions(DirtyAction.Stash)).copy(git = onTargetDirtyGit)
+
+        val execution = DirtyHandlingStep().run(c)
+        assertTrue(execution.result is StepResult.Success)
+        assertEquals(1, stashCalls)
+        assertTrue(execution.state.stashesSnapshot().isNotEmpty())
+    }
+
+    @Test
     fun `dirty step retains an unidentified stash but blocks further writes`() {
         val dirtyGit = object : GitClient by fakeGit {
             override fun isDirty(workDir: File): Boolean = true
@@ -444,6 +463,28 @@ class SwitchStepTest {
         assertEquals("apply must not run on a locked repository", 0, popCalls)
         // Not marked restore-attempted, so a later recovery retries the apply.
         assertFalse(execution.state.stashesSnapshot()["."]?.restoreAttempted ?: true)
+    }
+
+    @Test
+    fun `stash apply blocked by a lock appearing mid-restore reports the lock`() {
+        var lockChecks = 0
+        val racedLockGit = object : GitClient by fakeGit {
+            override fun indexLockFile(workDir: File): String? {
+                lockChecks++
+                return if (lockChecks == 1) null else "/repo/.git/index.lock"
+            }
+            override fun stashApply(workDir: File, oid: String): GitResult =
+                GitResult("pop", 1, "", "failed")
+        }
+        val c = context(SwitchOptions(DirtyAction.Stash, pull = false)).copy(git = racedLockGit)
+        val state = SwitchState().withTrackedStash(".", "before -> dev", "stash-oid")
+
+        val execution = PullStep().run(c, state)
+
+        val issue = (execution.result as StepResult.Partial).issues.single()
+        assertEquals(OperationIssueCode.INDEX_LOCK_BLOCKING, issue.code)
+        assertEquals("/repo/.git/index.lock", issue.lockPath)
+        assertTrue(issue.diagnostic.orEmpty().contains("delete it and retry"))
     }
 
     @Test

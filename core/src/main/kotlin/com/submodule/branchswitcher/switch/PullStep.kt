@@ -134,13 +134,30 @@ internal fun restoreTrackedStashes(
                 log.info("stash apply ok; recovery backup retained (${stash.message}, oid=${stash.oid})")
                 nextState = nextState.withRestoredStashBackup(path)
             } else {
-                log.warn("[fail] stash apply failed for $path: ${applyResult.diagnostic()}")
-                issues += OperationIssue(
-                    stage = OperationStage.STASH_RESTORE,
-                    code = OperationIssueCode.STASH_RESTORE_FAILED,
-                    repositoryPath = path,
-                    diagnostic = applyResult.diagnostic(),
-                )
+                // A lock created between the earlier check and the apply must surface as
+                // the structured lock block, not a generic stash-apply failure.
+                val racedLock = git.indexLockFile(repositoryDirectory)
+                if (racedLock != null) {
+                    log.warn(
+                        "[fail] stash apply blocked by stale index.lock at $racedLock; " +
+                            "delete it and retry (${stash.message})",
+                    )
+                    issues += OperationIssue(
+                        stage = OperationStage.STASH_RESTORE,
+                        code = OperationIssueCode.INDEX_LOCK_BLOCKING,
+                        repositoryPath = path,
+                        diagnostic = indexLockBlockedDiagnostic(racedLock),
+                        lockPath = racedLock,
+                    )
+                } else {
+                    log.warn("[fail] stash apply failed for $path: ${applyResult.diagnostic()}")
+                    issues += OperationIssue(
+                        stage = OperationStage.STASH_RESTORE,
+                        code = OperationIssueCode.STASH_RESTORE_FAILED,
+                        repositoryPath = path,
+                        diagnostic = applyResult.diagnostic(),
+                    )
+                }
             }
         }
     } catch (e: RuntimeException) {

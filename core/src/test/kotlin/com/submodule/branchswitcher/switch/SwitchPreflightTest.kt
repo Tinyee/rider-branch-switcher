@@ -149,7 +149,7 @@ class SwitchPreflightTest {
         assertTrue("row should exist", rows[0].exists)
         assertEquals(-1, rows[0].dirtyCount)
         assertFalse(rows[0].hasLocal)
-        assertTrue("should be branchMissing", rows[0].branchMissing)
+        assertFalse("probe error is unknown state, not a missing branch", rows[0].branchMissing)
         assertEquals("IOException: git failed", rows[0].probeError)
         assertEquals(listOf("."), failures.map { it.first })
         assertTrue(failures.single().second is java.io.IOException)

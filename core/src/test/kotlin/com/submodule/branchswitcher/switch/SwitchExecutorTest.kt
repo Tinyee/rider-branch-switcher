@@ -231,6 +231,113 @@ class SwitchExecutorTest {
     }
 
     @Test
+    fun `lock preflight cancellation is rethrown not converted to a failure`() {
+        val cancelledGit = object : GitClient by fakeGit {
+            // Null repositoryId forces findBlockingIndexLocks to the git.indexLockFile
+            // query (a real .git directory would take the File-stat fast path instead).
+            override fun repositoryIdentity(workDir: File): RepositoryIdentity? = null
+            override fun indexLockFile(workDir: File): String? {
+                throw GitQueryException(
+                    GitResult("git rev-parse --git-path index.lock", -1, "", "cancelled"),
+                )
+            }
+        }
+        val classifier = CancellationClassifier { e ->
+            e is GitQueryException &&
+                e.result.failureKind in setOf(GitFailureKind.CANCELLED, GitFailureKind.INTERRUPTED)
+        }
+        val executor = SwitchExecutor(
+            projectRoot,
+            createStringAppender { log += it },
+            cancelledGit,
+            cancellationClassifier = classifier,
+            steps = emptyList(),
+        )
+
+        var thrown: Throwable? = null
+        try {
+            executor.executeResultTest(
+                preset,
+                SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false),
+            )
+        } catch (e: Throwable) {
+            thrown = e
+        }
+
+        assertTrue("a cancelled lock preflight must propagate as cancellation", thrown is GitQueryException)
+        assertEquals(GitFailureKind.CANCELLED, (thrown as GitQueryException).result.failureKind)
+    }
+
+    @Test
+    fun `checkpoint query failure returns a structured failed result`() {
+        val failingGit = object : GitClient by fakeGit {
+            override fun revParseHead(workDir: File): String? {
+                throw GitQueryException(
+                    GitResult(
+                        "git rev-parse HEAD",
+                        -1,
+                        "",
+                        "process capacity unavailable after 60s",
+                    ),
+                )
+            }
+        }
+        val executor = SwitchExecutor(
+            projectRoot,
+            createStringAppender { log += it },
+            failingGit,
+            steps = emptyList(),
+        )
+
+        val result = executor.executeResultTest(
+            preset,
+            SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false),
+        )
+
+        assertEquals(SwitchExecutionStatus.FAILED, result.status)
+        val issue = result.issues.single()
+        assertEquals(OperationStage.CHECKPOINT, issue.stage)
+        assertEquals(OperationIssueCode.GIT_QUERY_FAILED, issue.code)
+        assertTrue(issue.diagnostic.orEmpty().contains(GitFailureKind.PROCESS_CAPACITY.name))
+        assertNull("No checkpoint must be retained after a query failure", result.checkpoint)
+    }
+
+    @Test
+    fun `checkpoint query cancellation is rethrown not downgraded to a failure`() {
+        val cancelledGit = object : GitClient by fakeGit {
+            override fun revParseHead(workDir: File): String? {
+                throw GitQueryException(
+                    GitResult("git rev-parse HEAD", -1, "", "cancelled"),
+                )
+            }
+        }
+        val classifier = CancellationClassifier { e ->
+            e is GitQueryException &&
+                e.result.failureKind in setOf(GitFailureKind.CANCELLED, GitFailureKind.INTERRUPTED)
+        }
+        val executor = SwitchExecutor(
+            projectRoot,
+            createStringAppender { log += it },
+            cancelledGit,
+            cancellationClassifier = classifier,
+            steps = emptyList(),
+        )
+
+        var thrown: Throwable? = null
+        try {
+            executor.executeResultTest(
+                preset,
+                SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false),
+            )
+        } catch (e: Throwable) {
+            thrown = e
+        }
+
+        assertTrue("a cancelled checkpoint query must propagate as cancellation", thrown is GitQueryException)
+        assertEquals(GitFailureKind.CANCELLED, (thrown as GitQueryException).result.failureKind)
+    }
+
+    @Test
     fun `failed main checkout prevents every downstream repository mutation`() {
         val submodule = projectRoot.resolve("SubA").toFile()
         initGitRepo(submodule)

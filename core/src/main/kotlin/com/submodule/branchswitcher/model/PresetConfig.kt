@@ -108,6 +108,11 @@ data class PreflightRow(
 ) {
     val isMain: Boolean get() = path == "."
     val needsSwitch: Boolean get() = exists && current != target
-    /** True when the directory exists but the target branch doesn't exist locally or on origin. */
-    val branchMissing: Boolean get() = exists && !hasLocal && !hasRemote
+    /**
+     * True when the directory exists but the target branch doesn't exist locally or
+     * on origin. A probe failure is unknown state, not a missing branch: its
+     * fail-closed row has no local/remote refs, so it must be excluded here or the
+     * UI would report a probe error as "branch not found".
+     */
+    val branchMissing: Boolean get() = probeError == null && exists && !hasLocal && !hasRemote
 }

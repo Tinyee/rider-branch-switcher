@@ -300,7 +300,14 @@ class BranchSwitcherPanel(
             reflogWatchAlarm.cancelAllRequests()
             return
         }
-        val reflog = mainReflogPath() ?: return
+        val reflog = mainReflogPath()
+        if (reflog == null) {
+            // `.git` is not resolvable yet (root temporarily unavailable, worktree
+            // gitdir file transiently unreadable). Re-queue the watch instead of
+            // returning, which would stop it permanently until a hide/show cycle.
+            startReflogWatch()
+            return
+        }
         val stamp = runCatching { reflog.lastModified() }.getOrElse { -1L }
         if (lastReflogStamp >= 0 && stamp != lastReflogStamp) {
             scheduleStateRefresh()
