@@ -18,6 +18,30 @@
 
 ### Changed
 
+- A staged submodule gitlink update is treated as stashable dirt, not
+  submodule-only: if `git stash` cannot save it, the switch fails closed and
+  skips the target rather than aborting a checkout midway.
+- Every mutating git write (stash, fetch, checkout, pull, submodule) rechecks for
+  a pre-existing `index.lock` immediately before starting, closing the
+  check-then-act gap between the initial preflight and the first mutation.
+- The `index.lock` probe resolves the git directory directly on disk (zero
+  process spawns on the common no-lock path), and a probe failure is reported as
+  a structured `GIT_QUERY_FAILED` instead of silently passing the preflight.
+- Dirty and submodule-only classification share one
+  `git status --porcelain=v2 --untracked-files=normal` query, bounding untracked
+  enumeration so very large untracked trees cannot blow past the output cap.
+- Git process termination waits for the whole descendant tree to exit after
+  SIGTERM (a nested git writer keeps its full grace window to remove its own
+  `index.lock`), and on Windows skips the fake cooperative-exit phase because
+  `Process.destroy()` is `TerminateProcess`, not a signal.
+- A stash-restore blocked by `index.lock` reports `INDEX_LOCK_BLOCKING`, so the
+  notification balloon localizes the actionable lock path.
+- State-refresh probes reserve one git-process slot for a foreground switch
+  (refresh concurrency capped at 3 instead of 4).
+- Notification details separate lock lines from the retained-stash notice with a
+  newline instead of gluing them together.
+- A repeated log-copy feedback flash restores the icon and tooltip from before
+  the first flash rather than from the previous flash.
 - Cancelled repository-state probes are classified as cancellation instead of
   failures, removing noisy `[detect] ... failed` log lines when a refresh is
   superseded.
@@ -48,9 +72,10 @@
   (English and Chinese); the Tool Window log diagnostics remain English.
 - The tool window no longer probes git on every file-status change; it refreshes
   only on switch, panel show, manual reload, and detected external git
-  operations (a cheap main-reflog file-stamp watch, no git process), so plain
-  file edits no longer trigger git probes. Dirty status stays accurate because
-  the pre-switch preview dialog queries it live.
+  operations (a cheap main-reflog file-stamp watch, no git process). A debounced
+  `FileStatusManager` listener restores refresh for in-IDE edits and staging,
+  which the reflog stamp cannot see, and the watch pauses while the panel is
+  hidden and re-arms on re-show.
 
 - Missing-submodule initialization is confirmed once, upfront, before the switch
   starts (instead of prompting on the background thread mid-run). When the

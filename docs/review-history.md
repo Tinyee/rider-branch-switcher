@@ -5,6 +5,43 @@ It records durable project decisions and historical outcomes, not active work.
 Current behavior is defined by the code, tests, [architecture](ARCHITECTURE.md),
 [roadmap](ROADMAP.md), and [changelog](../CHANGELOG.md).
 
+## 2026-08-12 - Audit Regressions Review
+
+A multi-angle review of the index-lock defense, state-refresh, and UI feedback
+work found 14 verified findings (several reproduced empirically against real
+git). All were fixed with regression tests:
+
+- A staged submodule gitlink (`1 M. S...`) is no longer misclassified as
+  submodule-only dirt: it enters the stash flow, and when `git stash` reports
+  "no local changes to save" (verified: git cannot stash gitlink-only changes),
+  the switch fails closed and skips the target, preserving the staged pointer
+  instead of aborting a checkout midway.
+- `WriteGuardGitClient` rechecks for `index.lock` immediately before every
+  mutating git write, closing the check-then-act gap between the executor
+  preflight and the first mutation.
+- The lock probe resolves the git directory directly on disk — zero process
+  spawns on the common no-lock path, reusing the checkpoint's repository
+  identity — and a probe failure is surfaced as a structured `GIT_QUERY_FAILED`
+  rather than silently passing or escaping `execute()`.
+- Dirty and submodule-only classification share one porcelain-v2
+  `--untracked-files=normal` query, so very large untracked trees cannot blow
+  past the output cap.
+- Process termination waits for the whole descendant tree (a nested git writer
+  keeps its full grace window to remove its own `index.lock`), and Windows skips
+  the SIGTERM phase since `Process.destroy()` is `TerminateProcess`.
+- The reflog watch pauses while the panel is hidden and re-arms on re-show; a
+  debounced `FileStatusManager` listener restores refresh for in-IDE edits and
+  staging, which the reflog stamp cannot see.
+- A repeated feedback flash restores the pre-first-flash icon and tooltip;
+  stash-restore locks report `INDEX_LOCK_BLOCKING` so the balloon localizes the
+  lock path; notification details separate lock lines from the retained notice;
+  refresh probes reserve one git-process slot for foreground switches.
+
+Durable decisions: the preflight trusts a checkpoint-resolved repository
+identity unless the git directory is gone, trading a tiny stale-identity risk
+for zero process spawns; a failed lock probe never fabricates an
+`INDEX_LOCK_BLOCKING` path it did not observe.
+
 ## 2026-08-11 - Index Lock And Termination Hardening
 
 Completed P3-10 and extended the stale-index.lock defense in depth:
