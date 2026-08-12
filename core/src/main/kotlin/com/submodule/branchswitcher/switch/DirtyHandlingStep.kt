@@ -24,8 +24,24 @@ class DirtyHandlingStep : SwitchStep {
                 context.cancellationHandle?.checkCanceled()
                 val repositoryDirectory = resolveGitDir(context.projectRoot, target.path)
                 if (!repositoryDirectory.exists() || !context.git.isGitRepo(repositoryDirectory)) continue
-                if (!context.git.isDirty(repositoryDirectory)) continue
-                nextState = handleDirtyTarget(context, target, repositoryDirectory, nextState, issues)
+                val inspection = when (val client = context.git) {
+                    is com.submodule.branchswitcher.git.RepositoryStateBatchGitClient ->
+                        client.inspectRepositoryState(repositoryDirectory)
+                    is WriteGuardGitClient -> client.inspectRepositoryStateIfAvailable(repositoryDirectory)
+                    else -> null
+                }
+                val dirty = inspection?.dirtyFileCount?.let { it > 0 } ?: context.git.isDirty(repositoryDirectory)
+                if (!dirty) continue
+                val submoduleOnlyDirty = inspection?.submoduleOnlyDirty
+                    ?: context.git.isSubmoduleOnlyDirty(repositoryDirectory)
+                nextState = handleDirtyTarget(
+                    context,
+                    target,
+                    repositoryDirectory,
+                    submoduleOnlyDirty,
+                    nextState,
+                    issues,
+                )
             }
         } catch (e: RuntimeException) {
             throw SwitchStepException(nextState, e)
@@ -38,6 +54,7 @@ class DirtyHandlingStep : SwitchStep {
         context: SwitchContext,
         target: RepoTarget,
         repositoryDirectory: File,
+        submoduleOnlyDirty: Boolean,
         state: SwitchState,
         issues: MutableList<OperationIssue>,
     ): SwitchState = when (context.options.dirty) {
@@ -46,7 +63,7 @@ class DirtyHandlingStep : SwitchStep {
             issues += OperationIssue(stage, OperationIssueCode.WORKTREE_DIRTY, target.path)
             state.withSkipped(target.path)
         }
-        DirtyAction.Stash -> stashTarget(context, target, repositoryDirectory, state, issues)
+        DirtyAction.Stash -> stashTarget(context, target, repositoryDirectory, submoduleOnlyDirty, state, issues)
         DirtyAction.Force -> {
             context.log.info("[no stash] proceeding with dirty tree - ${target.path}")
             state
@@ -57,6 +74,7 @@ class DirtyHandlingStep : SwitchStep {
         context: SwitchContext,
         target: RepoTarget,
         repositoryDirectory: File,
+        submoduleOnlyDirty: Boolean,
         state: SwitchState,
         issues: MutableList<OperationIssue>,
     ): SwitchState {
@@ -64,7 +82,7 @@ class DirtyHandlingStep : SwitchStep {
             context.log.info("already on '${target.branch}', no stash needed")
             return state
         }
-        if (context.git.isSubmoduleOnlyDirty(repositoryDirectory)) {
+        if (submoduleOnlyDirty) {
             // git stash ignores submodules, so this dirt cannot be stashed (git
             // reports "no local changes to save" and creates nothing). There is
             // no work here to protect: the checkout rewrites only gitlinks and

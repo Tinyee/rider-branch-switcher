@@ -121,7 +121,7 @@ internal fun restoreTrackedStashes(
                 )
                 issues += OperationIssue(
                     stage = OperationStage.STASH_RESTORE,
-                    code = OperationIssueCode.STASH_RESTORE_FAILED,
+                    code = OperationIssueCode.INDEX_LOCK_BLOCKING,
                     repositoryPath = path,
                     diagnostic = indexLockBlockedDiagnostic(existingLock),
                     lockPath = existingLock,

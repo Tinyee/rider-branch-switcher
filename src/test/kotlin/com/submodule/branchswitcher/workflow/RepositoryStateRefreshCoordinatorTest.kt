@@ -6,6 +6,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -96,6 +97,44 @@ class RepositoryStateRefreshCoordinatorTest {
 
         assertTrue(delivered.await(5, TimeUnit.SECONDS))
         assertEquals("both repositories must be probed", 2, started.get())
+        coordinator.close()
+    }
+
+    @Test
+    fun `refresh leaves one global git process permit for foreground writes`() {
+        val root = temp.newFolder("root")
+        listOf("a", "b", "c", "d").forEach { File(root, it).mkdirs() }
+        val started = AtomicInteger()
+        val firstThreeStarted = CountDownLatch(1)
+        val firstThreeRelease = CountDownLatch(1)
+        val fourthStarted = CountDownLatch(1)
+        val delivered = CountDownLatch(1)
+        val coordinator = RepositoryStateRefreshCoordinator(
+            scope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
+            openOperation = {
+                stateOperation(branch = {
+                    when (started.incrementAndGet()) {
+                        3 -> {
+                            firstThreeStarted.countDown()
+                            firstThreeRelease.await(5, TimeUnit.SECONDS)
+                        }
+                        1, 2 -> firstThreeRelease.await(5, TimeUnit.SECONDS)
+                        4 -> fourthStarted.countDown()
+                    }
+                    "main"
+                })
+            },
+            detector = RepositoryStateDetector(createStringAppender {}),
+            log = createStringAppender {},
+            deliver = { it() },
+        )
+
+        coordinator.refresh(root.toPath(), listOf("a", "b", "c", "d")) { delivered.countDown() }
+
+        assertTrue(firstThreeStarted.await(5, TimeUnit.SECONDS))
+        assertFalse("refresh must not occupy the fourth global process slot", fourthStarted.await(1, TimeUnit.SECONDS))
+        firstThreeRelease.countDown()
+        assertTrue(delivered.await(5, TimeUnit.SECONDS))
         coordinator.close()
     }
 

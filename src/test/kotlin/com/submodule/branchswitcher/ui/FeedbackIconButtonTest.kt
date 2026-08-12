@@ -61,6 +61,20 @@ class FeedbackIconButtonTest {
         assertEquals("original tooltip", button.toolTipText)
     }
 
+    @Test
+    fun `repeated flash restores the icon and tooltip from before the first flash`() {
+        val button = FeedbackIconButton(stubIcon("copy"))
+        button.toolTipText = "copy"
+
+        button.flashIcon(stubIcon("check"), replacementToolTip = "copied")
+        button.flashIcon(stubIcon("second"), replacementToolTip = "second")
+
+        button.restoreFlash()
+
+        assertEquals("copy", (button.icon as StubIcon).label)
+        assertEquals("copy", button.toolTipText)
+    }
+
     private fun stubIcon(label: String = "icon"): Icon = StubIcon(label)
 
     private class StubIcon(val label: String) : Icon {

@@ -13,6 +13,13 @@ import java.awt.datatransfer.StringSelection
 import java.awt.datatransfer.Transferable
 
 class UiRulesTest {
+    @Test
+    fun `reflog watch only runs while the panel is visible and project is alive`() {
+        assertTrue(shouldRunReflogWatch(isShowing = true, projectDisposed = false))
+        assertFalse(shouldRunReflogWatch(isShowing = false, projectDisposed = false))
+        assertFalse(shouldRunReflogWatch(isShowing = true, projectDisposed = true))
+    }
+
 
     @Test
     fun `repo status presentation covers initialized matched mismatched and dirty states`() {

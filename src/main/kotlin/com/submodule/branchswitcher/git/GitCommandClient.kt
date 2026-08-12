@@ -101,19 +101,42 @@ internal class GitCommandClient(
     }
 
     override fun isSubmoduleOnlyDirty(workDir: File): Boolean {
-        val result = run(workDir, "--no-optional-locks", "status", "--porcelain=v2", "--untracked-files=all")
+        val result = run(workDir, "--no-optional-locks", "status", "--porcelain=v2", "--untracked-files=normal")
         if (!result.ok) throw GitQueryException(result)
         return isSubmoduleOnlyPorcelainStatus(result.stdout)
     }
 
     override fun indexLockFile(workDir: File): String? {
+        directGitDirectory(workDir)?.let { gitDirectory ->
+            val lock = File(gitDirectory, "index.lock")
+            return runCatching { lock.canonicalPath }.getOrElse { lock.path }
+                .takeIf { lock.exists() }
+        }
         val result = run(workDir, "rev-parse", "--git-path", "index.lock")
-        if (!result.ok) return null
+        if (!result.ok) {
+            if (result.failureKind != GitFailureKind.GIT_FAILED) throw GitQueryException(result)
+            return null
+        }
         val path = result.stdout.trim()
         if (path.isEmpty()) return null
         val lock = runCatching { File(workDir, path).canonicalFile }.getOrNull()
             ?: File(workDir, path)
         return lock.path.takeIf { it.isNotEmpty() && lock.exists() }
+    }
+
+    private fun directGitDirectory(workDir: File): File? {
+        val dotGit = File(workDir, ".git")
+        if (dotGit.isDirectory) return dotGit
+        if (!dotGit.isFile) return null
+        val rawPath = runCatching {
+            dotGit.useLines { lines ->
+                lines.firstOrNull()?.trim()?.removePrefix("gitdir:")?.trim()
+            }
+        }.getOrNull()?.takeIf { it.isNotEmpty() } ?: return null
+        return runCatching {
+            val path = File(rawPath)
+            (if (path.isAbsolute) path else File(workDir, rawPath)).canonicalFile
+        }.getOrNull()
     }
 
     override fun inspectRepositoryState(workDir: File): GitRepositoryInspection {

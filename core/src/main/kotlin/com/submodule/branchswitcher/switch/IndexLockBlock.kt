@@ -1,6 +1,7 @@
 package com.submodule.branchswitcher.switch
 
 import com.submodule.branchswitcher.git.GitRepositoryQuery
+import java.io.File
 import java.nio.file.Path
 
 /** One repository blocked by an existing `index.lock`, with structured paths for localized UI. */
@@ -21,8 +22,20 @@ internal fun findBlockingIndexLocks(
     projectRoot: Path,
     git: GitRepositoryQuery,
     paths: Collection<String>,
+    checkpoint: Map<String, CheckpointEntry> = emptyMap(),
 ): List<IndexLockBlock> = paths.mapNotNull { path ->
     val dir = resolveGitDir(projectRoot, path)
+    val entry = checkpoint[path]
+    if (entry != null) {
+        val lock = if (entry.repositoryId != null && File(entry.repositoryId).isDirectory) {
+            val candidate = File(entry.repositoryId, "index.lock")
+            runCatching { candidate.canonicalPath }.getOrElse { candidate.path }
+                .takeIf { candidate.exists() }
+        } else {
+            git.indexLockFile(dir)
+        }
+        return@mapNotNull lock?.let { IndexLockBlock(path, it) }
+    }
     if (!dir.exists() || !git.isGitRepo(dir)) return@mapNotNull null
     git.indexLockFile(dir)?.let { lock -> IndexLockBlock(path, lock) }
 }

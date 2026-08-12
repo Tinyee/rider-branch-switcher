@@ -39,11 +39,7 @@ internal class SwitchResultPresenter(
     ) {
         val retainedNotice = retainedStateNotice(execution)
         val lockLines = lockBlockedLines(execution.issues + recoveryIssues)
-        val detail = if (lockLines.isNotEmpty()) {
-            lockLines.joinToString("\n") + retainedNotice
-        } else {
-            retainedNotice
-        }
+        val detail = joinNotificationDetails(lockLines.joinToString("\n"), retainedNotice)
         if (succeeded) {
             Notifier.info(
                 project,
@@ -138,3 +134,6 @@ internal class SwitchResultPresenter(
     private fun retainedStateNotice(execution: SwitchExecutionResult?): String =
         retainedInitializationNotice(execution) + retainedStashBackupNotice(execution)
 }
+
+internal fun joinNotificationDetails(vararg details: String): String =
+    details.filter(String::isNotEmpty).joinToString("\n")

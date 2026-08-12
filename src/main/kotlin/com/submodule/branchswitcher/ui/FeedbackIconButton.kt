@@ -49,9 +49,12 @@ internal class FeedbackIconButton(icon: Icon) : JButton(icon) {
         durationMs: Long = FLASH_DURATION_MS,
         replacementToolTip: String? = null,
     ) {
-        flashTimer?.stop()
-        flashOriginalIcon = icon
-        flashOriginalToolTip = toolTipText
+        if (flashTimer == null) {
+            flashOriginalIcon = icon
+            flashOriginalToolTip = toolTipText
+        } else {
+            flashTimer?.stop()
+        }
         icon = replacement
         if (replacementToolTip != null) toolTipText = replacementToolTip
         val timer = Timer(durationMs.toInt()) { restoreFlash() }

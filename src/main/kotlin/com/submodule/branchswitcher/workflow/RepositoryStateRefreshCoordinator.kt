@@ -63,7 +63,8 @@ class RepositoryStateRefreshCoordinator(
                     // pay one process-spawn latency per repository in sequence. The git-process
                     // pool's shared semaphore is the real cap; this local throttle reuses the
                     // same bound so we never even start coroutines beyond it.
-                    val probePermits = Semaphore(MAX_CONCURRENT_GIT_PROCESSES)
+                    // Keep one process slot available for a foreground switch or recovery.
+                    val probePermits = Semaphore((MAX_CONCURRENT_GIT_PROCESSES - 1).coerceAtLeast(1))
                     coroutineScope {
                         val probes = request.paths.map { path ->
                             async { probePermits.withPermit { detector.probe(request, path, openedOperation) } }

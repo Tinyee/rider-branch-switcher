@@ -19,6 +19,7 @@ internal class GitProcessRunner(
     timeoutSeconds: Int,
     private val outputDrainer: GitOutputDrainer = GitOutputDrainer(),
     private val processPermits: Semaphore = GitProcessResources.processPermits,
+    private val gracefulTerminationSupported: Boolean = !isWindowsRuntime(),
     private val processStarter: (ProcessBuilder) -> Process,
 ) {
     val effectiveTimeoutSeconds: Int = safeTimeoutSeconds(timeoutSeconds)
@@ -296,6 +297,11 @@ internal class GitProcessRunner(
         val resourcesStopped: Boolean,
     )
 
+    private data class TreeWaitResult(
+        val stopped: Boolean,
+        val interrupted: Boolean,
+    )
+
     private fun observeDescendants(process: Process, observed: MutableMap<Long, ProcessHandle>) {
         val descendants = try {
             process.descendants().use { stream -> stream.toList() }
@@ -324,26 +330,28 @@ internal class GitProcessRunner(
         val descendants = observedDescendants.values.toList()
         var interrupted = false
         try {
-            // Graceful first: SIGTERM lets a git write process remove its own index.lock
-            // before exiting. A write killed with SIGKILL between creating index.lock and
-            // writing the index leaves a stale 0-byte lock that blocks every later git
-            // write. Escalate to SIGKILL only for processes still alive after the window.
-            descendants.asReversed().forEach { descendant -> signalDescendant(descendant, graceful = true) }
-            val gracefulExit = try {
+            if (gracefulTerminationSupported) {
+                // Graceful first: SIGTERM lets a git write process remove its own
+                // index.lock before exiting. Wait for the whole observed tree; a
+                // parent exiting does not mean a nested git writer has stopped.
+                descendants.asReversed().forEach { descendant -> signalDescendant(descendant, graceful = true) }
                 signalProcess(process, graceful = true)
-                process.waitFor(TERMINATION_GRACE_MILLIS, TimeUnit.MILLISECONDS)
-            } catch (_: InterruptedException) {
-                interrupted = true
-                false
-            }
-            if (!gracefulExit || descendants.any(::isAlive)) {
+                val gracefulExit = waitForTree(process, descendants, TERMINATION_GRACE_MILLIS)
+                interrupted = gracefulExit.interrupted
+                if (!gracefulExit.stopped) {
+                    descendants.asReversed().forEach { descendant -> signalDescendant(descendant, graceful = false) }
+                    signalProcess(process, graceful = false)
+                    val hardExit = waitForTree(process, descendants, TERMINATION_HARD_WAIT_MILLIS)
+                    interrupted = interrupted || hardExit.interrupted
+                }
+            } else {
+                // Process.destroy() is a hard TerminateProcess-style operation on
+                // Windows, not a cooperative SIGTERM. Do not burn a fake grace
+                // window or describe the action as graceful.
                 descendants.asReversed().forEach { descendant -> signalDescendant(descendant, graceful = false) }
                 signalProcess(process, graceful = false)
-                try {
-                    process.waitFor(TERMINATION_HARD_WAIT_MILLIS, TimeUnit.MILLISECONDS)
-                } catch (_: InterruptedException) {
-                    interrupted = true
-                }
+                val hardExit = waitForTree(process, descendants, TERMINATION_HARD_WAIT_MILLIS)
+                interrupted = hardExit.interrupted
             }
         } finally {
             closeProcessStreams(process)
@@ -351,6 +359,40 @@ internal class GitProcessRunner(
         val parentStopped = !isProcessAlive(process)
         val descendantsStopped = descendants.none(::isAlive)
         return ProcessTermination(interrupted, parentStopped && descendantsStopped)
+    }
+
+    private fun waitForTree(
+        process: Process,
+        descendants: List<ProcessHandle>,
+        timeoutMillis: Long,
+    ): TreeWaitResult {
+        val deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMillis)
+        var interrupted = false
+        while (true) {
+            if (!isProcessAlive(process) && descendants.none(::isAlive)) {
+                try {
+                    // Preserve an interruption raised by a process implementation during
+                    // the final wait, even if it reported itself stopped immediately.
+                    process.waitFor(0, TimeUnit.MILLISECONDS)
+                } catch (_: InterruptedException) {
+                    interrupted = true
+                }
+                return TreeWaitResult(stopped = true, interrupted = interrupted)
+            }
+            val remainingNanos = deadline - System.nanoTime()
+            if (remainingNanos <= 0) return TreeWaitResult(stopped = false, interrupted = interrupted)
+            try {
+                if (isProcessAlive(process)) {
+                    process.waitFor(minOf(TimeUnit.NANOSECONDS.toMillis(remainingNanos), 50L), TimeUnit.MILLISECONDS)
+                } else {
+                    Thread.sleep(minOf(TimeUnit.NANOSECONDS.toMillis(remainingNanos), 10L))
+                }
+            } catch (_: InterruptedException) {
+                interrupted = true
+                break
+            }
+        }
+        return TreeWaitResult(stopped = false, interrupted = interrupted)
     }
 
     /** Best-effort SIGTERM/SIGKILL for one git process, tolerating unsupported/protected processes. */
@@ -411,5 +453,8 @@ internal class GitProcessRunner(
 
         /** Bounded wait for a SIGKILLed process to actually exit. */
         const val TERMINATION_HARD_WAIT_MILLIS = 5000L
+
+        fun isWindowsRuntime(): Boolean =
+            System.getProperty("os.name").startsWith("Windows", ignoreCase = true)
     }
 }

@@ -1,5 +1,6 @@
 package com.submodule.branchswitcher.switch
 
+import com.submodule.branchswitcher.git.GitQueryException
 import com.submodule.branchswitcher.git.SwitchGitClient
 import com.submodule.branchswitcher.log.AppLogger
 import com.submodule.branchswitcher.log.logFailure
@@ -96,26 +97,14 @@ class SwitchExecutor @JvmOverloads constructor(
             )
         }
 
-        val context = SwitchContext(
-            projectRoot = projectRoot,
-            preset = preset,
-            options = options,
-            git = git,
-            log = log,
-            cancellationHandle = cancellationHandle,
-            progressHandle = progressHandle,
-            cancelled = { cancelled?.invoke() == true || cancellationHandle?.isCanceled == true },
-            confirmBeforeInit = options.confirmBeforeInit,
-            preApprovedSubmoduleInit = preApprovedSubmoduleInit,
-            checkpoint = switchCheckpoint,
-        )
+        val context = createContext(preset, options, switchCheckpoint)
 
         context.progressHandle?.isIndeterminate = false
 
         // A stale git index.lock makes every write fail (checkout, pull, stash) and
         // `git stash` fails on it silently. Surface any existing lock before the first
         // mutation so the user sees exactly which repository is blocked.
-        val lockIssues = blockingLockIssues(context, preset)
+        val lockIssues = safeBlockingLockIssues(context, preset)
         if (lockIssues != null) {
             log.activity("=== done with errors ===")
             return SwitchExecutionResult(
@@ -152,7 +141,18 @@ class SwitchExecutor @JvmOverloads constructor(
                 val stepFailure = e as? SwitchStepException
                 switchState = stepFailure?.latestState ?: switchState
                 val error = stepFailure?.cause ?: e
-                if (cancellationClassifier.isCancellation(error)) {
+                val lock = error as? IndexLockBlockedException
+                if (lock != null) {
+                    issues += OperationIssue(
+                        stage = step.stage,
+                        code = OperationIssueCode.INDEX_LOCK_BLOCKING,
+                        repositoryPath = lock.repositoryPath,
+                        severity = OperationIssueSeverity.ERROR,
+                        diagnostic = indexLockBlockedDiagnostic(lock.lockPath),
+                        lockPath = lock.lockPath,
+                    )
+                    executionStatus = SwitchExecutionStatus.FAILED
+                } else if (cancellationClassifier.isCancellation(error)) {
                     git.cancel()
                     log.info("[cancelled] during step: ${step.name}")
                     executionStatus = SwitchExecutionStatus.CANCELLED
@@ -195,6 +195,34 @@ class SwitchExecutor @JvmOverloads constructor(
         return SwitchExecutionResult(executionStatus, switchCheckpoint, switchState, issues)
     }
 
+    private fun createContext(
+        preset: Preset,
+        options: com.submodule.branchswitcher.model.SwitchOptions,
+        checkpoint: Map<String, CheckpointEntry>,
+    ): SwitchContext {
+        val targetPaths = preset.targets().associate { target ->
+            val directory = resolveGitDir(projectRoot, target.path)
+            directory.canonicalPath to target.path
+        }
+        val guardedGit = WriteGuardGitClient(
+            git,
+            repositoryPath = { directory -> targetPaths[directory.canonicalPath] ?: directory.path },
+        )
+        return SwitchContext(
+            projectRoot = projectRoot,
+            preset = preset,
+            options = options,
+            git = guardedGit,
+            log = log,
+            cancellationHandle = cancellationHandle,
+            progressHandle = progressHandle,
+            cancelled = { cancelled?.invoke() == true || cancellationHandle?.isCanceled == true },
+            confirmBeforeInit = options.confirmBeforeInit,
+            preApprovedSubmoduleInit = preApprovedSubmoduleInit,
+            checkpoint = checkpoint,
+        )
+    }
+
     /**
      * Issues for every repository whose git `index.lock` already blocks writes, or null if none.
      * Read-only commands are unaffected by a lock, so this is checked once before any mutation.
@@ -204,6 +232,7 @@ class SwitchExecutor @JvmOverloads constructor(
             context.projectRoot,
             context.git,
             preset.targets().map(RepoTarget::path),
+            context.checkpoint,
         )
         if (blockedLocks.isEmpty()) return null
         blockedLocks.forEach { block ->
@@ -225,5 +254,20 @@ class SwitchExecutor @JvmOverloads constructor(
             )
         }
     }
+
+    private fun safeBlockingLockIssues(context: SwitchContext, preset: Preset): List<OperationIssue>? =
+        try {
+            blockingLockIssues(context, preset)
+        } catch (e: GitQueryException) {
+            val issue = OperationIssue(
+                stage = OperationStage.CHECKPOINT,
+                code = OperationIssueCode.GIT_QUERY_FAILED,
+                repositoryPath = ".",
+                severity = OperationIssueSeverity.ERROR,
+                diagnostic = e.result.diagnostic(),
+            )
+            log.error("[index.lock] preflight query failed: ${issue.diagnostic}")
+            listOf(issue)
+        }
 
 }

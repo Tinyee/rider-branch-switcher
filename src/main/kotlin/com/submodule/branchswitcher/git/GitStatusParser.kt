@@ -23,6 +23,7 @@ internal fun parsePorcelainV2Status(output: String): GitRepositoryInspection {
         currentBranch = currentBranch,
         head = head,
         dirtyFileCount = dirtyFileCount,
+        submoduleOnlyDirty = isSubmoduleOnlyPorcelainStatus(output),
     )
 }
 
@@ -47,12 +48,16 @@ private fun String.isPorcelainSubmoduleChange(): Boolean {
     if (isEmpty()) return false
     // Entry types: '1' tracked, '2' renamed/copied, 'u' unmerged, '?' untracked.
     // Untracked and unmerged entries are protectable by `git stash` and never
-    // count as submodule-only. For tracked entries the third field is the
-    // submodule status, whose first character is 'N' for non-submodules.
+    // count as submodule-only. For tracked entries the XY field must show no
+    // superproject index change: `1 M. S...` is a staged gitlink update and
+    // must be stashed, while `1 .M S.M.` is dirt inside the submodule worktree.
+    // The third field is the submodule status, whose first character is 'N'
+    // for non-submodules.
     val type = this[0]
     if (type != '1' && type != '2') return false
     val fields = split(' ', limit = 3)
     if (fields.size < 3) return false
-    val first = fields[2].firstOrNull() ?: return false
-    return first != 'N' && first != '.'
+    val xy = fields[1]
+    val submoduleStatus = fields[2].firstOrNull() ?: return false
+    return xy.firstOrNull() == '.' && submoduleStatus != 'N' && submoduleStatus != '.'
 }

@@ -4,6 +4,8 @@ import com.submodule.branchswitcher.executeTest
 import com.submodule.branchswitcher.executeResultTest
 
 import com.submodule.branchswitcher.git.GitClient
+import com.submodule.branchswitcher.git.GitFailureKind
+import com.submodule.branchswitcher.git.GitQueryException
 import com.submodule.branchswitcher.git.GitResult
 import com.submodule.branchswitcher.git.RepositoryIdentity
 import com.submodule.branchswitcher.git.SubmoduleRegistration
@@ -112,6 +114,7 @@ class SwitchExecutorTest {
     fun `stale index lock fails the switch before any mutation`() {
         var checkoutCalls = 0
         val lockedGit = object : GitClient by fakeGit {
+            override fun repositoryIdentity(workDir: File): RepositoryIdentity? = null
             override fun indexLockFile(workDir: File): String? = "/repo/.git/index.lock"
             override fun checkoutExisting(workDir: File, branch: String): GitResult {
                 checkoutCalls++
@@ -130,6 +133,101 @@ class SwitchExecutorTest {
         assertTrue(issue.diagnostic.orEmpty().contains("/repo/.git/index.lock"))
         assertEquals("Index lock must block the switch before checkout", 0, checkoutCalls)
         assertTrue(log.any { it.contains("index.lock") })
+    }
+
+    @Test
+    fun `index lock created after preflight blocks the next write`() {
+        var lockChecks = 0
+        var checkoutCalls = 0
+        val racingGit = object : GitClient by fakeGit {
+            override fun repositoryIdentity(workDir: File): RepositoryIdentity? = null
+            override fun indexLockFile(workDir: File): String? {
+                lockChecks++
+                return if (lockChecks == 1) null else "/repo/.git/index.lock"
+            }
+
+            override fun checkoutExisting(workDir: File, branch: String): GitResult {
+                checkoutCalls++
+                return GitResult("checkout", 0, "", "")
+            }
+        }
+        val executor = SwitchExecutor(projectRoot, createStringAppender { log += it }, racingGit)
+
+        val result = executor.executeResultTest(
+            preset,
+            SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false),
+        )
+
+        assertEquals(SwitchExecutionStatus.FAILED, result.status)
+        assertEquals(0, checkoutCalls)
+        assertEquals(OperationIssueCode.INDEX_LOCK_BLOCKING, result.issues.single().code)
+        assertTrue(lockChecks >= 2)
+    }
+
+    @Test
+    fun `lock preflight reuses checkpoint repository discovery`() {
+        var isGitRepoCalls = 0
+        var indexLockFileCalls = 0
+        val countingGit = object : GitClient by fakeGit {
+            override fun isGitRepo(workDir: File): Boolean {
+                isGitRepoCalls++
+                return true
+            }
+
+            override fun indexLockFile(workDir: File): String? {
+                indexLockFileCalls++
+                return null
+            }
+        }
+        val executor = SwitchExecutor(
+            projectRoot,
+            createStringAppender { log += it },
+            countingGit,
+            steps = emptyList(),
+        )
+
+        val result = executor.executeResultTest(
+            preset,
+            SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false),
+        )
+
+        assertTrue(result.ok)
+        assertEquals("checkpoint should provide the existing-repository fact", 1, isGitRepoCalls)
+        assertEquals("known git directories should cover the common no-lock path", 0, indexLockFileCalls)
+    }
+
+    @Test
+    fun `lock preflight query failure returns a structured failed result`() {
+        val failingGit = object : GitClient by fakeGit {
+            override fun repositoryIdentity(workDir: File): RepositoryIdentity? = null
+            override fun indexLockFile(workDir: File): String? {
+                throw GitQueryException(
+                    GitResult(
+                        "git rev-parse --git-path index.lock",
+                        -1,
+                        "",
+                        "process capacity unavailable after 60s",
+                    ),
+                )
+            }
+        }
+        val executor = SwitchExecutor(
+            projectRoot,
+            createStringAppender { log += it },
+            failingGit,
+            steps = emptyList(),
+        )
+
+        val result = executor.executeResultTest(
+            preset,
+            SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false),
+        )
+
+        assertEquals(SwitchExecutionStatus.FAILED, result.status)
+        val issue = result.issues.single()
+        assertEquals(OperationStage.CHECKPOINT, issue.stage)
+        assertEquals(OperationIssueCode.GIT_QUERY_FAILED, issue.code)
+        assertTrue(issue.diagnostic.orEmpty().contains(GitFailureKind.PROCESS_CAPACITY.name))
     }
 
     @Test

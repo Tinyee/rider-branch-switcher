@@ -276,6 +276,26 @@ class SwitchStepTest {
     }
 
     @Test
+    fun `staged gitlink dirt is stashed instead of treated as submodule-only`() {
+        var stashCalls = 0
+        val stagedGitlink = object : GitClient by fakeGit {
+            override fun isDirty(workDir: File): Boolean = true
+            override fun stash(workDir: File, message: String): GitResult {
+                stashCalls++
+                return GitResult("stash", 0, "", "")
+            }
+        }
+
+        val execution = DirtyHandlingStep().run(
+            context(SwitchOptions(DirtyAction.Stash)).copy(git = stagedGitlink),
+        )
+
+        assertTrue(execution.result is StepResult.Success)
+        assertEquals(1, stashCalls)
+        assertEquals("stash-oid", execution.state.trackedStash(".")?.oid)
+    }
+
+    @Test
     fun `stash failure surfaces a stale index lock as an actionable hint`() {
         val lockGit = object : GitClient by fakeGit {
             override fun isDirty(workDir: File): Boolean = true
@@ -418,7 +438,7 @@ class SwitchStepTest {
         val execution = PullStep().run(c, state)
 
         val issue = (execution.result as StepResult.Partial).issues.single()
-        assertEquals("." to OperationIssueCode.STASH_RESTORE_FAILED, issue.repositoryPath to issue.code)
+        assertEquals("." to OperationIssueCode.INDEX_LOCK_BLOCKING, issue.repositoryPath to issue.code)
         assertEquals("/repo/.git/index.lock", issue.lockPath)
         assertTrue(issue.diagnostic.orEmpty().contains("delete it and retry"))
         assertEquals("apply must not run on a locked repository", 0, popCalls)

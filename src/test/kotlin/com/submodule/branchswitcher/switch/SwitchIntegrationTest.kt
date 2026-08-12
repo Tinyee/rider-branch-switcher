@@ -199,6 +199,50 @@ class SwitchIntegrationTest {
         assertTrue("Dirty file should still exist", File(root, "dirty.txt").exists())
     }
 
+    @Test
+    fun `staged gitlink is treated as protectable but real git stash cannot save it`() {
+        val root = createRepo(tmpDir, "project")
+        val subA = createRepo(tmpDir, "subA-src")
+        createBranch(subA, "dev")
+        createBranch(subA, "release")
+        addSubmodule(root, subA, "SubA")
+        gitOk(root, "submodule", "update", "--init", "--recursive")
+        val subADir = File(root, "SubA")
+
+        // Build a target branch whose gitlink differs from the staged local pointer.
+        gitOk(root, "checkout", "-b", "target")
+        gitOk(subADir, "checkout", "release")
+        gitOk(root, "add", "SubA")
+        gitOk(root, "commit", "-m", "target gitlink")
+        gitOk(root, "checkout", "main")
+        gitOk(subADir, "checkout", "main")
+
+        // Stage a different gitlink without committing it: `1 M. S...`.
+        gitOk(subADir, "checkout", "dev")
+        gitOk(root, "add", "SubA")
+        val stagedStatus = gitOk(root, "status", "--porcelain=v2", "--untracked-files=normal")
+        assertTrue("test setup must create a staged gitlink", stagedStatus.contains("1 M. S..."))
+
+        val result = SwitchExecutor(root.toPath(), createStringAppender { log += it }, git)
+            .executeResultTest(
+                Preset("staged-gitlink", "target"),
+                SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false),
+            )
+
+        // Git's stash implementation ignores gitlink-only changes. The switch must
+        // fail closed and leave the user's staged pointer untouched, not attempt a
+        // checkout that aborts midway.
+        assertFalse(result.ok)
+        assertTrue(result.state.isSkipped("."))
+        assertTrue(result.issues.any { it.code == OperationIssueCode.STASH_IDENTITY_UNAVAILABLE })
+        assertEquals("main", git.currentBranch(root))
+        assertTrue(
+            "staged gitlink must remain intact",
+            gitOk(root, "status", "--porcelain=v2", "--untracked-files=normal").contains("1 M. S..."),
+        )
+        assertTrue("stash must document Git's no-op behavior", gitOk(root, "stash", "list").isBlank())
+    }
+
     // ---- Submodule init ----
 
     @Test

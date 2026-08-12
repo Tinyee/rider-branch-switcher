@@ -17,6 +17,7 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Semaphore
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * Unit tests for [GitOps].listSubmodulePaths — parses .gitmodules files.
@@ -308,6 +309,55 @@ class GitOpsTest {
     }
 
     @Test
+    fun `index lock probe fails closed when process capacity is unavailable`() {
+        val runner = GitProcessRunner(
+            timeoutSeconds = 1,
+            processPermits = Semaphore(0),
+            processStarter = { error("process must not start") },
+        )
+        val client = GitCommandClient(runner, ConcurrentHashMap())
+
+        val failure = assertThrows(GitQueryException::class.java) {
+            client.indexLockFile(tmpDir.toFile())
+        }
+
+        assertEquals(GitFailureKind.PROCESS_CAPACITY, failure.result.failureKind)
+    }
+
+    @Test
+    fun `index lock path is checked directly for a normal git directory`() {
+        val repository = tmpDir.resolve("direct-lock").toFile().also { it.mkdirs() }
+        val gitDirectory = File(repository, ".git").also { it.mkdirs() }
+        val lock = File(gitDirectory, "index.lock").also { it.writeText("") }
+        var starts = 0
+        val directGit = GitOps(timeoutSeconds = 10) { builder ->
+            starts++
+            builder.start()
+        }
+
+        assertEquals(lock.canonicalPath, directGit.indexLockFile(repository))
+        assertEquals("direct lock check must not spawn git", 0, starts)
+    }
+
+    @Test
+    fun `submodule-only status uses bounded untracked enumeration`() {
+        val commands = mutableListOf<List<String>>()
+        val boundedGit = GitOps(timeoutSeconds = 10) { builder ->
+            commands += builder.command()
+            ControllableProcess(
+                finished = true,
+                stdout = "# branch.oid abc123\n? untracked\n".toByteArray(),
+            )
+        }
+
+        assertFalse(boundedGit.isSubmoduleOnlyDirty(tmpDir.toFile()))
+
+        val command = commands.single().joinToString(" ")
+        assertTrue(command.contains("--untracked-files=normal"))
+        assertFalse(command.contains("--untracked-files=all"))
+    }
+
+    @Test
     fun `cancelled session rejects its subsequent commands until closed`() {
         val operation = git.openOperation()
         operation.cancel()
@@ -457,6 +507,59 @@ class GitOpsTest {
         assertEquals(GitFailureKind.CANCELLED, result.failureKind)
         assertTrue("SIGTERM must be attempted first", runningProcess.gracefulDestroyRequested)
         assertTrue("a stubborn process must be force-killed", runningProcess.forceDestroyRequested)
+    }
+
+    @Test
+    fun `grace window waits for a live descendant after the parent exits`() {
+        val descendantDestroyed = AtomicBoolean(false)
+        val forceDestroyAt = AtomicBoolean(false)
+        val descendant = java.lang.reflect.Proxy.newProxyInstance(
+            ProcessHandle::class.java.classLoader,
+            arrayOf(ProcessHandle::class.java),
+        ) { _, method, _ ->
+            when (method.name) {
+                "pid" -> 2345L
+                "isAlive" -> !descendantDestroyed.get()
+                "destroy" -> null
+                "destroyForcibly" -> {
+                    forceDestroyAt.set(true)
+                    descendantDestroyed.set(true)
+                    null
+                }
+                else -> null
+            }
+        } as ProcessHandle
+        val cancellation = AtomicBoolean(false)
+        val runningProcess = ControllableProcess(
+            finished = false,
+            descendant = descendant,
+            onWait = { cancellation.set(true) },
+        )
+        val runner = GitProcessRunner(timeoutSeconds = 10) { runningProcess }
+
+        val started = System.nanoTime()
+        val result = runner.run(tmpDir.toFile(), cancellation, "fetch")
+        val elapsedMillis = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started)
+
+        assertEquals(GitFailureKind.CANCELLED, result.failureKind)
+        assertTrue(forceDestroyAt.get())
+        assertTrue("descendant must receive the full grace window", elapsedMillis >= 1_000)
+    }
+
+    @Test
+    fun `windows termination skips the unsupported graceful phase`() {
+        val cancellation = AtomicBoolean(false)
+        val runningProcess = ControllableProcess(finished = false, onWait = { cancellation.set(true) })
+        val runner = GitProcessRunner(
+            timeoutSeconds = 10,
+            gracefulTerminationSupported = false,
+        ) { runningProcess }
+
+        val result = runner.run(tmpDir.toFile(), cancellation, "fetch")
+
+        assertEquals(GitFailureKind.CANCELLED, result.failureKind)
+        assertFalse(runningProcess.gracefulDestroyRequested)
+        assertTrue(runningProcess.forceDestroyRequested)
     }
 
     @Test

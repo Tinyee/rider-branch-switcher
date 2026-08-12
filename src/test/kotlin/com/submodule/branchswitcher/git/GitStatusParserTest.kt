@@ -25,9 +25,10 @@ class GitStatusParserTest {
             "1 .M S..U 160000 160000 160000 oid1 oid1 Sub"
         assertTrue(isSubmoduleOnlyPorcelainStatus(worktree))
 
-        // Staged gitlink change: <sub> field starts with S.
+        // A staged gitlink change is a superproject index change and must be
+        // protected by stash; it is not submodule-only dirt.
         val staged = "# branch.oid abc123\n1 M. S... 160000 160000 160000 oid1 oid2 Sub"
-        assertTrue(isSubmoduleOnlyPorcelainStatus(staged))
+        assertFalse(isSubmoduleOnlyPorcelainStatus(staged))
     }
 
     @Test

@@ -4,6 +4,9 @@ import com.intellij.icons.AllIcons
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.options.ShowSettingsUtil
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.vcs.FileStatusListener
+import com.intellij.openapi.vcs.FileStatusManager
+import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.ui.JBColor
 import com.intellij.ui.components.JBScrollPane
 import com.intellij.util.Alarm
@@ -232,12 +235,30 @@ class BranchSwitcherPanel(
                 logPanel.append(entry)
             }
         })
+        FileStatusManager.getInstance(project).addFileStatusListener(object : FileStatusListener {
+            override fun fileStatusesChanged() {
+                scheduleStateRefresh()
+            }
+
+            override fun fileStatusChanged(virtualFile: VirtualFile) {
+                val root = gitRoot()?.toString()?.replace('\\', '/') ?: return
+                val path = virtualFile.path.replace('\\', '/')
+                if (path == root || path.startsWith("$root/")) {
+                    scheduleStateRefresh()
+                }
+            }
+        }, this)
         addHierarchyListener { e ->
-            if ((e.changeFlags and java.awt.event.HierarchyEvent.SHOWING_CHANGED.toLong()) != 0L && isShowing) {
+            if ((e.changeFlags and java.awt.event.HierarchyEvent.SHOWING_CHANGED.toLong()) == 0L) return@addHierarchyListener
+            if (isShowing) {
+                startReflogWatch()
                 project.invokeLaterIfAlive {
                     detectCurrentState()
                     refreshStrategySummary()
                 }
+            } else {
+                stateRefreshAlarm.cancelAllRequests()
+                reflogWatchAlarm.cancelAllRequests()
             }
         }
         addAncestorListener(object : javax.swing.event.AncestorListener {
@@ -270,11 +291,15 @@ class BranchSwitcherPanel(
      */
     private fun startReflogWatch() {
         reflogWatchAlarm.cancelAllRequests()
+        if (!shouldRunReflogWatch(isShowing, project.isDisposed)) return
         reflogWatchAlarm.addRequest({ checkExternalGitSwitch() }, REFLOG_WATCH_INTERVAL_MS)
     }
 
     private fun checkExternalGitSwitch() {
-        if (!isShowing || project.isDisposed) return
+        if (!shouldRunReflogWatch(isShowing, project.isDisposed)) {
+            reflogWatchAlarm.cancelAllRequests()
+            return
+        }
         val reflog = mainReflogPath() ?: return
         val stamp = runCatching { reflog.lastModified() }.getOrElse { -1L }
         if (lastReflogStamp >= 0 && stamp != lastReflogStamp) {
@@ -357,3 +382,6 @@ class BranchSwitcherPanel(
         private const val REFLOG_WATCH_INTERVAL_MS = 2000L
     }
 }
+
+internal fun shouldRunReflogWatch(isShowing: Boolean, projectDisposed: Boolean): Boolean =
+    isShowing && !projectDisposed

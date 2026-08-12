@@ -190,6 +190,7 @@ data class GitRepositoryInspection(
     val currentBranch: String?,
     val head: String?,
     val dirtyFileCount: Int,
+    val submoduleOnlyDirty: Boolean = false,
     val localBranches: Set<String> = emptySet(),
     val remoteBranches: Set<String> = emptySet(),
 )
