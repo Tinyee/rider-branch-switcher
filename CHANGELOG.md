@@ -168,11 +168,42 @@
   actions to the bounded Tool Window diagnostics.
 - Enable Detekt limits for method length, nesting depth, and cyclomatic
   complexity, then split the existing switch/derive hotspots to comply.
+- The dirty strategy now applies uniformly even when a repository is already on
+  the target branch: with "stash" selected, a dirty repo already in place is
+  stashed before its post-checkout pull instead of being pulled unprotected.
+- Checkpoint and lock-query failures during a switch are contained as structured
+  results (`GIT_QUERY_FAILED` / `CHECKPOINT_UNAVAILABLE`) with the repository
+  path instead of escaping the workflow; cancelled or interrupted probes are
+  treated as cancellation, not failures.
+- Switch preflight runs in an isolated cancellable Git session; cancelling the
+  check terminates the in-flight probe promptly instead of letting it run until
+  its timeout.
+- Branch discovery reserves one global Git-process slot for foreground switches
+  and recovery (concurrency capped at 3 instead of 4).
+- The main-reflog watch re-arms when the git directory is temporarily
+  unresolvable instead of stopping until a panel hide/show.
+- A repository probe error is shown as its own warning instead of being
+  misreported as a missing branch, and the preview summary excludes probe-error
+  rows from both pending-switch and missing-branch counts.
+- Dirty handling reuses the batch inspection's repository fact and drops a
+  redundant `git rev-parse` per target.
+- Rollback notification base text and detail are separated so localized messages
+  do not glue to the first detail line.
 
 ### Fixed
 
 - Preserve the latest stash and checkout state when cancellation or a Git query
   fails in the middle of a switch step.
+- A stale `index.lock` created after the initial guard now blocks derive branch
+  creation and rollback, single-repository checkout, and recovery writes
+  (checkout/reset) with a structured `INDEX_LOCK_BLOCKING` instead of a generic
+  "File exists"-style failure.
+- A stash restore whose `stashApply` races a newly created `index.lock` reports
+  `INDEX_LOCK_BLOCKING` with the exact lock path instead of a generic apply
+  failure.
+- A derive `index.lock` probe that itself fails (process capacity, start failure)
+  is classified as `PREFLIGHT_FAILED`/`GIT_QUERY_FAILED` instead of being
+  downgraded to a generic branch-creation failure.
 - Attempt stash restoration even when repository rollback fails.
 - Restore the exact checkpoint SHA when the branch name is unchanged, while
   refusing destructive reset when the worktree is dirty.

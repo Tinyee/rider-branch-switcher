@@ -5,6 +5,47 @@ It records durable project decisions and historical outcomes, not active work.
 Current behavior is defined by the code, tests, [architecture](ARCHITECTURE.md),
 [roadmap](ROADMAP.md), and [changelog](../CHANGELOG.md).
 
+## 2026-08-12 - Switch Pipeline And Cancellation Review
+
+A follow-up review of the switch pipeline and cancellation found 9 findings,
+extended by an incremental pass with 4 more. All were fixed with regression tests:
+
+- The dirty strategy is no longer bypassed when a repository is already on the
+  target branch: with Stash selected, a dirty repo already in place is still
+  stashed before its post-checkout pull instead of being pulled unprotected. The
+  review's parallel "Skip is bypassed" claim did not reproduce — Skip already
+  marks on-target dirty repos skipped.
+- The check-then-act `index.lock` window is closed on every remaining write path:
+  derive branch creation and rollback, single-repository checkout, and recovery
+  checkout/reset now re-check immediately before each write and report a
+  structured `INDEX_LOCK_BLOCKING` instead of a generic checkout/reset mystery.
+- Checkpoint and lock-query failures during a switch are contained as structured
+  results (`GIT_QUERY_FAILED` / `CHECKPOINT_UNAVAILABLE`) with the repository
+  path, instead of escaping `execute()` and losing the execution result. A
+  cancelled or interrupted probe is rethrown as cancellation rather than
+  downgraded to a `FAILED` result.
+- Preflight runs against an isolated, cancellable Git session; a modal-cancel
+  watcher terminates the in-flight probe within one poll interval instead of
+  letting it run until its timeout.
+- Branch discovery reserves one global Git-process slot for foreground switches
+  and recovery (concurrency capped at 3 instead of 4).
+- The main-reflog watch re-arms itself when the git directory is temporarily
+  unresolvable instead of stopping permanently until a panel hide/show.
+- A repository probe error is reported as its own warning, and `branchMissing`
+  excludes probe errors so the UI no longer reports "branch not found" for an
+  unreadable repository.
+- Dirty handling reuses the batch inspection's repository fact and drops a
+  redundant `git rev-parse` per target.
+- Rollback notification base text and detail are separated so localized
+  (Chinese) messages do not glue to the first detail line.
+
+The incremental pass verified the checkpoint/lock-probe cancellation
+classification, re-classified a stash restore whose `stashApply` races a newly
+created `index.lock` as `INDEX_LOCK_BLOCKING`, wrapped the derive lock probes so
+a probe failure is `PREFLIGHT_FAILED`/`GIT_QUERY_FAILED` rather than a generic
+branch-creation failure, and made the modal-cancel watcher read its stop flag
+directly. The full suite, Detekt, and `quickCheck` pass at the end of the review.
+
 ## 2026-08-12 - Audit Regressions Review
 
 A multi-angle review of the index-lock defense, state-refresh, and UI feedback
