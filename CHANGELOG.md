@@ -189,6 +189,10 @@
   redundant `git rev-parse` per target.
 - Rollback notification base text and detail are separated so localized messages
   do not glue to the first detail line.
+- The submodule remote-change gate compares the `.gitmodules`-declared URL recorded
+  at checkpoint against the current topology, instead of the live config after
+  `submodule sync`; a local fork override no longer falsely blocks a switch, while
+  same-path repository replacement is still rejected.
 
 ### Fixed
 
@@ -271,6 +275,9 @@
 - Positive on-disk-lock, real submodule-only-status, and `ProcessCanceledException`
   classifier tests close previously mock-only paths; vacuous tests that could not
   model what they claimed were removed.
+- Direct tests cover the credential-redaction sanitizer, submodule worktree
+  association and expected git-directory resolution, and the core cancellation
+  classifier default.
 
 ## [0.6.0] - 2026-06-13
 

@@ -5,6 +5,35 @@ It records durable project decisions and historical outcomes, not active work.
 Current behavior is defined by the code, tests, [architecture](ARCHITECTURE.md),
 [roadmap](ROADMAP.md), and [changelog](../CHANGELOG.md).
 
+## 2026-08-13 - Remote-Change Gate Baseline And Coverage Follow-up
+
+The submodule remote-change gate compared the checkpoint's live-config remote
+against the post-`submodule sync` config. That both depended on sync ordering and
+falsely blocked a user's local fork override (`.gitmodules` unchanged), after sync
+had already clobbered the override. It now compares the `.gitmodules`-declared URL
+recorded in the checkpoint against the current topology, decoupling the check from
+sync and live config. The same-path repository-replacement integration test still
+passes unchanged, confirming the protection is intact.
+
+Three previously uncovered decision points gained direct tests:
+
+- `sanitizeDiagnosticText` redaction is now pinned against credential leakage
+  (URI remote, SCP remote, and bare/bearer secret assignments).
+- `isUnassociatedSubmoduleWorktree` and `expectedSubmoduleGitDirectory` now cover
+  the associated/unassociated predicate and top-level/nested git-directory
+  resolution, including the fail-closed cases (null identity, missing superproject
+  root, git-directory mismatch).
+- The core `CancellationClassifier.DEFAULT` and `rethrowIfCancellation` are tested
+  directly, complementing the platform classifier tests.
+
+Durable decisions: the remote-change gate answers "did this branch switch change
+the submodule's declared URL", not "did the live config remote change"; a
+legitimate migration (same repository, new URL) still fails closed, because
+distinguishing it from a replacement would require contacting the new remote — the
+exact action the gate exists to prevent. Submodule topology membership
+(`isUnregistered`) stays covered through the tree-step path rather than a dedicated
+trivial test.
+
 ## 2026-08-13 - Test Quality Review
 
 A follow-up review of the test suite found two coverage gaps and four false-positive
