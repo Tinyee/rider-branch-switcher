@@ -54,18 +54,17 @@ internal class SwitchCheckpointRecorder(
                 return null
             }
             val branch = git.currentBranch(dir)
-            val remoteUrl = git.remoteUrl(dir)
+            val declaredUrl = topology.byPath[target.path]?.url
             checkpoint[target.path] = CheckpointEntry(
                 sha,
                 branch,
                 identity?.gitDirectory,
-                remoteUrl,
-                topology.byPath[target.path]?.url,
+                declaredUrl,
             )
             log.info(
                 "[checkpoint] $label: branch=${branch ?: "(detached)"}, head=${sha.take(12)}, " +
                     "gitDir=${identity?.gitDirectory ?: "unknown"}, " +
-                    "remoteId=${diagnosticFingerprint(remoteUrl)}",
+                    "declaredId=${diagnosticFingerprint(declaredUrl)}",
             )
         }
         return checkpoint

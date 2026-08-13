@@ -36,7 +36,6 @@ class SwitchPreflightTest {
         override fun revParseHead(workDir: File): String? = "abc123"
         override fun repositoryIdentity(workDir: File): RepositoryIdentity =
             RepositoryIdentity(File(workDir, ".git").absolutePath, null)
-        override fun remoteUrl(workDir: File): String? = null
         override fun registeredSubmodules(gitRoot: File): List<SubmoduleRegistration> =
             listSubmodulePaths(gitRoot).map { SubmoduleRegistration(it, it, ".") }
         override fun resetHard(workDir: File, revision: String) = GitResult("reset", 0, "", "")

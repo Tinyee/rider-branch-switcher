@@ -13,7 +13,6 @@ data class CheckpointEntry(
     val sha: String,
     val branch: String?,
     val repositoryId: String? = null,
-    val remoteUrl: String? = null,
     val declaredUrl: String? = null,
 )
 

@@ -29,7 +29,6 @@ class DeriveBranchExecutorTest {
             override fun deleteBranch(workDir: File, branch: String): GitResult = GitResult("branch", 0, "", "")
             override fun registeredSubmodules(gitRoot: File): List<SubmoduleRegistration> = emptyList()
             override fun repositoryIdentity(workDir: File): RepositoryIdentity? = null
-            override fun remoteUrl(workDir: File): String? = null
             override fun isGitRepo(workDir: File): Boolean = true
             override fun indexLockFile(workDir: File): String? = "/repo/.git/index.lock"
         }
@@ -66,7 +65,6 @@ class DeriveBranchExecutorTest {
             override fun deleteBranch(workDir: File, branch: String): GitResult = GitResult("branch", 0, "", "")
             override fun registeredSubmodules(gitRoot: File): List<SubmoduleRegistration> = emptyList()
             override fun repositoryIdentity(workDir: File): RepositoryIdentity? = null
-            override fun remoteUrl(workDir: File): String? = null
             override fun isGitRepo(workDir: File): Boolean = true
             override fun indexLockFile(workDir: File): String? {
                 lockChecks++
@@ -102,7 +100,6 @@ class DeriveBranchExecutorTest {
             override fun deleteBranch(workDir: File, branch: String): GitResult = GitResult("branch", 0, "", "")
             override fun registeredSubmodules(gitRoot: File): List<SubmoduleRegistration> = emptyList()
             override fun repositoryIdentity(workDir: File): RepositoryIdentity? = null
-            override fun remoteUrl(workDir: File): String? = null
             override fun isGitRepo(workDir: File): Boolean = true
             override fun indexLockFile(workDir: File): String? = throw GitQueryException(
                 GitResult(

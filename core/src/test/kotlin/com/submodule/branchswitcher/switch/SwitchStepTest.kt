@@ -52,7 +52,6 @@ class SwitchStepTest {
             }
             return RepositoryIdentity(gitDirectory.absolutePath, root.takeIf { workDir.canonicalFile != root }?.path)
         }
-        override fun remoteUrl(workDir: File): String? = null
         override fun registeredSubmodules(gitRoot: File): List<SubmoduleRegistration> = listOf(
             SubmoduleRegistration("SubA", "SubA", "."),
         )
@@ -726,14 +725,11 @@ class SwitchStepTest {
     }
 
     @Test
-    fun `submodule live remote override does not block when declared URL is unchanged`() {
+    fun `submodule with unchanged declared URL is not blocked`() {
         projectRoot.resolve("SubA").toFile().mkdirs()
         var checkoutCalls = 0
         val validatingGit = object : GitClient by fakeGit {
             override fun isGitRepo(workDir: File): Boolean = true
-            // post-sync live remote differs from the pre-switch override,
-            // but the declared .gitmodules URL is unchanged across the switch
-            override fun remoteUrl(workDir: File): String = "upstream"
             override fun registeredSubmodules(gitRoot: File): List<SubmoduleRegistration> = listOf(
                 SubmoduleRegistration("SubA", "SubA", ".", url = "upstream"),
             )
@@ -747,13 +743,13 @@ class SwitchStepTest {
             git = validatingGit,
             preset = Preset("replacement", "main", mapOf("SubA" to "dev")),
             checkpoint = mapOf(
-                "SubA" to CheckpointEntry("before", "main", remoteUrl = "fork-override", declaredUrl = "upstream"),
+                "SubA" to CheckpointEntry("before", "main", declaredUrl = "upstream"),
             ),
         )
 
         val execution = SubmoduleTreeStep().run(c, SwitchState().withSuccessfulCheckout("."))
 
-        assertTrue("live remote override must not trigger a remote-change skip", execution.result is StepResult.Success)
+        assertTrue("unchanged declared URL must not trigger a remote-change skip", execution.result is StepResult.Success)
         assertEquals(1, checkoutCalls)
     }
 

@@ -81,8 +81,6 @@ interface GitRepositoryQuery {
     fun revParseHead(workDir: File): String?
     /** Returns stable repository storage and superproject paths, or null when unsupported. */
     fun repositoryIdentity(workDir: File): RepositoryIdentity? = null
-    /** Returns the selected fetch remote URL, or null when the repository has no remote. */
-    fun remoteUrl(workDir: File): String? = null
     /** Returns the Git executable version and effective per-command timeout when supported. */
     fun runtimeInfo(workDir: File): GitRuntimeInfo? = null
 
@@ -122,8 +120,6 @@ interface SubmoduleRegistrationQuery {
 interface SwitchGitClient : RepositoryStateGitClient, SubmoduleRegistrationQuery, GitCancellation {
     /** Write safety requires implementations to identify the repository backing an existing worktree. */
     override fun repositoryIdentity(workDir: File): RepositoryIdentity?
-    /** Write safety records the selected remote before submodule synchronization. */
-    override fun remoteUrl(workDir: File): String?
     /** Checks whether refs/heads/<branch> exists (plumbing: show-ref --verify). */
     fun localBranchExists(workDir: File, branch: String): Boolean
     /** Checks whether refs/remotes/origin/<branch> exists (plumbing: show-ref --verify). */

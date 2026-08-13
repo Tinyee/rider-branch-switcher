@@ -284,7 +284,6 @@ class SwitchRunnerTest {
         override fun currentBranch(workDir: File): String? = branch
         override fun repositoryIdentity(workDir: File): RepositoryIdentity =
             RepositoryIdentity(File(workDir, ".git").absolutePath, null)
-        override fun remoteUrl(workDir: File): String? = null
         override fun registeredSubmodules(gitRoot: File): List<SubmoduleRegistration> = emptyList()
         override fun resetHard(workDir: File, revision: String): GitResult = ok("reset")
         override fun localBranchProbe(workDir: File, branch: String): Boolean = true

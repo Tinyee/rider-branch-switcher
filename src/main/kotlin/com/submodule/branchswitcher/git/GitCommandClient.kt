@@ -225,18 +225,6 @@ internal class GitCommandClient(
         }
     }
 
-    override fun remoteUrl(workDir: File): String? {
-        val remotesResult = run(workDir, "remote")
-        if (!remotesResult.ok) throw GitQueryException(remotesResult)
-        val remotes = remotesResult.stdout.lines().map(String::trim).filter(String::isNotEmpty)
-        if (remotes.isEmpty()) return null
-        val remote = selectRemoteName(remotes)
-        remoteCache[workDir.absolutePath] = remote
-        val urlResult = run(workDir, "remote", "get-url", remote)
-        if (!urlResult.ok) throw GitQueryException(urlResult)
-        return urlResult.stdout.trim().ifEmpty { null }
-    }
-
     override fun remoteBranchExists(workDir: File, branch: String): Boolean {
         val result = run(workDir, "show-ref", "--verify", "--quiet", "refs/remotes/${remoteName(workDir)}/$branch")
         return when {

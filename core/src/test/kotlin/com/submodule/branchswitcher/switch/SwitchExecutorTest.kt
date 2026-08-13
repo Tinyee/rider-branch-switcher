@@ -55,7 +55,6 @@ class SwitchExecutorTest {
             }
             return RepositoryIdentity(directory.absolutePath, root.takeIf { workDir.canonicalFile != root }?.path)
         }
-        override fun remoteUrl(workDir: File): String? = null
         override fun registeredSubmodules(gitRoot: File): List<SubmoduleRegistration> = listOf(
             SubmoduleRegistration("SubA", "SubA", "."),
             SubmoduleRegistration("SubB", "SubB", "."),

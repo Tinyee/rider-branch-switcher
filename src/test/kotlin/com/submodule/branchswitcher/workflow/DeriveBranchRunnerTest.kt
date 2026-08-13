@@ -136,7 +136,6 @@ class DeriveBranchRunnerTest {
             } else {
                 RepositoryIdentity(File(workDir, ".git").canonicalPath, null)
             }
-        override fun remoteUrl(workDir: File): String? = null
         override fun registeredSubmodules(gitRoot: File): List<SubmoduleRegistration> =
             if (failNewBranchDirectoryName == null) {
                 emptyList()

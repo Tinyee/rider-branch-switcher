@@ -129,7 +129,6 @@ class LargeRepoScalabilityTest {
             val superproject = root.takeIf { workDir.canonicalFile != root.canonicalFile }?.canonicalPath
             return RepositoryIdentity(gitDirectory.canonicalPath, superproject)
         }
-        override fun remoteUrl(workDir: File): String? = null
         override fun registeredSubmodules(gitRoot: File): List<SubmoduleRegistration> =
             (1..submoduleCount).map { SubmoduleRegistration("sub-$it", "sub-$it", ".") }
         override fun resetHard(workDir: File, revision: String): GitResult = GitResult("reset", 0, "", "")
