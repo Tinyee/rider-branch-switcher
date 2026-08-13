@@ -5,6 +5,29 @@ It records durable project decisions and historical outcomes, not active work.
 Current behavior is defined by the code, tests, [architecture](ARCHITECTURE.md),
 [roadmap](ROADMAP.md), and [changelog](../CHANGELOG.md).
 
+## 2026-08-13 - Test Quality Review
+
+A follow-up review of the test suite found two coverage gaps and four false-positive
+tests. All were addressed:
+
+- The index-lock checkpoint fast path (a File-stat on the recorded repository id)
+  gained a positive on-disk-lock test; that deciding branch previously had no test
+  with a real lock present, so a path-resolution bug would silently defeat the
+  lock defense.
+- `isSubmoduleOnlyDirty` is now verified true against a real submodule-only porcelain
+  status; the prior GitOps test only asserted the false (untracked) case.
+- A vacuous "staged gitlink" unit test, whose fake could not model a gitlink, was
+  removed; the classification is pinned by the parser test and a real-git integration
+  test.
+- The checkpoint test now uses a stateful fake, proving the checkpoint is recorded
+  before the first checkout rather than after.
+- The IntelliJ `ProcessCanceledException` branch of the platform cancellation
+  classifier gained a direct test.
+
+Durable decisions: a test that cannot model the behavior it names is removed rather
+than kept for coverage count; call-count assertions are kept only when paired with a
+companion behavior assertion.
+
 ## 2026-08-13 - Failed-Switch Stash Recovery Review
 
 A follow-up review of the previous round's fixes found that a failed

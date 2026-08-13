@@ -268,6 +268,9 @@
   across the supported matrix.
 - `quickCheck` enforces module direction, background Git lifecycle, write-lease
   pairing, i18n symmetry, and deprecated lifecycle removal.
+- Positive on-disk-lock, real submodule-only-status, and `ProcessCanceledException`
+  classifier tests close previously mock-only paths; vacuous tests that could not
+  model what they claimed were removed.
 
 ## [0.6.0] - 2026-06-13
 
