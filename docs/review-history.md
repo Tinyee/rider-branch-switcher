@@ -5,6 +5,33 @@ It records durable project decisions and historical outcomes, not active work.
 Current behavior is defined by the code, tests, [architecture](ARCHITECTURE.md),
 [roadmap](ROADMAP.md), and [changelog](../CHANGELOG.md).
 
+## 2026-08-13 - Failed-Switch Stash Recovery Review
+
+A follow-up review of the previous round's fixes found that a failed
+(non-cancelled) switch left stashes created by the dirty-handling step unrestored:
+recovery only ran on cancellation, and the forward-path restore (PullStep) was
+skipped when an earlier step threw. A second pass then verified two
+exception-handling gaps in the initial fix.
+
+Fixed with regression tests:
+
+- A failed switch restores its own stashes before returning, contained behind a
+  structured boundary so a restore failure cannot lose the execution result,
+  checkpoint, or stash state.
+- A skipped parent submodule disables its nested descendants, matching every other
+  skip path in the traversal.
+- A stash restore blocked by an `index.lock` remains retryable on both lock paths:
+  the write guard throwing `IndexLockBlockedException`, and `stashApply` returning
+  a failure after the guard's check. Non-lock failures keep at-most-once semantics.
+- Recovery's detached-SHA fallback verifies the named branch and reports
+  `RECOVERY_FAILED` rather than a false `RESTORED`.
+- New preset names are validated as Git branch names before the dialog accepts them.
+
+Durable decisions: stash restore distinguishes a lock race (safe to retry, no Git
+apply started) from an apply failure (at-most-once, the worktree may be partially
+modified); the failed-switch restore reuses the same structured containment as
+cancellation recovery instead of letting an exception escape `execute()`.
+
 ## 2026-08-12 - Switch Pipeline And Cancellation Review
 
 A follow-up review of the switch pipeline and cancellation found 9 findings,

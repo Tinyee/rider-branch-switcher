@@ -237,6 +237,20 @@
   the available height.
 - Skip preset paths that no longer appear in the target branch's `.gitmodules`
   after the main checkout, while retaining obsolete worktrees to avoid data loss.
+- A failed switch restores stashes created by its own dirty-handling step before
+  returning, so uncommitted work is no longer left hidden in `refs/stash` when a
+  later step throws.
+- A skipped parent submodule disables its nested descendants, so a repository the
+  user chose to skip is not mutated through a nested child checkout or pull.
+- A stash restore whose apply is blocked by an `index.lock` stays retryable, both
+  when the write guard throws before Git starts and when Git returns the lock
+  failure, instead of permanently abandoning auto-restore.
+- Recovery no longer reports `RESTORED` when a branch checkout fell back to a
+  detached SHA checkout; it verifies the named branch and reports
+  `RECOVERY_FAILED` instead.
+- A new preset's name is validated as a Git branch name up front, so names such as
+  `HEAD` or `My Feature` cannot be accepted as the main branch and then fail every
+  save.
 
 ### Removed
 
