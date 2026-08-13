@@ -7,6 +7,7 @@ import com.submodule.branchswitcher.Bundle
 import com.submodule.branchswitcher.Notifier
 import com.submodule.branchswitcher.PresetLoader
 import com.submodule.branchswitcher.model.Preset
+import com.submodule.branchswitcher.model.isValidBranchName
 import com.submodule.branchswitcher.log.AppLogger
 import com.submodule.branchswitcher.log.logFailure
 import com.submodule.branchswitcher.service.BranchSwitcherService
@@ -181,7 +182,7 @@ internal class PresetCollectionActions(
     private fun newNameValidator(): InputValidator = object : InputValidator {
         override fun checkInput(input: String?): Boolean {
             val name = input?.trim().orEmpty()
-            return name.isNotEmpty() && host.editors.none { it.currentPreset().name == name }
+            return isValidBranchName(name) && host.editors.none { it.currentPreset().name == name }
         }
 
         override fun canClose(input: String?): Boolean = checkInput(input)

@@ -200,7 +200,10 @@ class SwitchRecoveryExecutor(
             log.warn("[rollback] $label $description checkout failed: ${checkout.diagnostic()}")
             return failed(action, OperationIssueCode.CHECKOUT_FAILED, checkout.diagnostic())
         }
-        return verifyHead(action, directory)
+        // A SHA checkout is detached. When a named checkpoint branch could not be
+        // checked out, matching the SHA alone is only a partial recovery and must
+        // not be reported as RESTORED.
+        return verifyHead(action, directory, requireBranch = action.targetBranch != null && description == "fallback SHA")
     }
 
     private fun resetToCheckpoint(
@@ -227,9 +230,11 @@ class SwitchRecoveryExecutor(
     private fun verifyHead(
         action: RepositoryRecoveryAction,
         directory: File,
+        requireBranch: Boolean = false,
     ): RepositoryRecoveryOutcome {
         val actualSha = git.revParseHead(directory)
-        if (actualSha == action.targetSha) {
+        val actualBranch = if (requireBranch) git.currentBranch(directory) else null
+        if (actualSha == action.targetSha && (!requireBranch || actualBranch == action.targetBranch)) {
             return RepositoryRecoveryOutcome(action, RecoveryActionStatus.RESTORED)
         }
         log.warn(
@@ -239,7 +244,8 @@ class SwitchRecoveryExecutor(
         return failed(
             action,
             OperationIssueCode.RECOVERY_FAILED,
-            "expected HEAD ${action.targetSha}, actual ${actualSha ?: "unavailable"}",
+            "expected HEAD ${action.targetSha} and branch ${action.targetBranch}, " +
+                "actual HEAD ${actualSha ?: "unavailable"}, branch ${actualBranch ?: "detached or unavailable"}",
         )
     }
 

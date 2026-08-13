@@ -60,6 +60,11 @@ class SwitchState private constructor(
         return copy(stashedPaths = stashedPaths + (path to stash.copy(restoreAttempted = true)))
     }
 
+    fun withStashRestoreRetryable(path: String): SwitchState {
+        val stash = stashedPaths[path] ?: return this
+        return copy(stashedPaths = stashedPaths + (path to stash.copy(restoreAttempted = false)))
+    }
+
     fun trackedStash(path: String): TrackedStash? = stashedPaths[path]
 
     fun stashesSnapshot(): Map<String, TrackedStash> = stashedPaths.toMap()

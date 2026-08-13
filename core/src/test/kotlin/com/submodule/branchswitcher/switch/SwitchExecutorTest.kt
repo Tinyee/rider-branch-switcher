@@ -490,7 +490,7 @@ class SwitchExecutorTest {
 
     @Test
     fun `rollback falls back to checkpoint sha when branch restore fails`() {
-        var currentBranch = "main"
+        var currentBranch: String? = "main"
         val rollbackCalls = mutableListOf<String>()
         val rollbackGit = object : GitClient by fakeGit {
             override fun currentBranch(workDir: File): String? = currentBranch
@@ -500,8 +500,12 @@ class SwitchExecutorTest {
                     return GitResult("checkout", 0, "", "")
                 }
                 rollbackCalls += branch
-                return if (branch == "abc123") GitResult("checkout", 0, "", "")
-                else GitResult("checkout", 1, "", "branch restore failed")
+                return if (branch == "abc123") {
+                    currentBranch = null
+                    GitResult("checkout", 0, "", "")
+                } else {
+                    GitResult("checkout", 1, "", "branch restore failed")
+                }
             }
         }
         val executor = SwitchExecutor(projectRoot, createStringAppender { log += it }, rollbackGit)
@@ -510,7 +514,9 @@ class SwitchExecutorTest {
             SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false),
         )
 
-        assertTrue(recovery(rollbackGit).recover(result).rollbackOk)
+        val outcome = recovery(rollbackGit).recover(result)
+        assertFalse("detached SHA fallback must not claim the named branch was restored", outcome.rollbackOk)
+        assertEquals(OperationIssueCode.RECOVERY_FAILED, outcome.rollback.issues.single().code)
         assertEquals(listOf("main", "abc123"), rollbackCalls)
     }
 
@@ -750,6 +756,38 @@ class SwitchExecutorTest {
     }
 
     @Test
+    fun `failed step restores stashes created by an earlier step`() {
+        var stashApplyCalls = 0
+        val dirtyGit = object : GitClient by fakeGit {
+            override fun isDirty(workDir: File): Boolean = true
+            override fun stashApply(workDir: File, oid: String): GitResult {
+                stashApplyCalls++
+                return GitResult("stash pop", 0, "", "")
+            }
+        }
+        val failingStep = object : SwitchStep {
+            override val name = "failing step"
+            override val stage = OperationStage.CHECKOUT
+            override fun execute(context: SwitchContext, state: SwitchState): StepExecution =
+                error("checkout query failed")
+        }
+        val result = SwitchExecutor(
+            projectRoot,
+            createStringAppender { log += it },
+            dirtyGit,
+            steps = listOf(DirtyHandlingStep(), failingStep),
+        ).executeResultTest(
+            Preset("test", "dev", emptyMap()),
+            SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false),
+        )
+
+        assertEquals(SwitchExecutionStatus.FAILED, result.status)
+        assertEquals(1, stashApplyCalls)
+        assertTrue("failed switches must not leave WIP hidden in stash", result.state.stashesSnapshot().isEmpty())
+        assertEquals(setOf("."), result.state.retainedStashBackupsSnapshot())
+    }
+
+    @Test
     fun `Git exception inside dirty step returns failed execution with latest state`() {
         initGitRepo(File(projectRoot.toFile(), "SubA"))
         val dirtyGit = object : GitClient by fakeGit {
@@ -772,7 +810,8 @@ class SwitchExecutorTest {
 
         assertEquals(SwitchExecutionStatus.FAILED, result.status)
         assertNotNull(result.checkpoint)
-        assertEquals(setOf("."), result.state.stashesSnapshot().keys)
+        assertTrue("failed switch should restore the stash created before the query failure", result.state.stashesSnapshot().isEmpty())
+        assertEquals(setOf("."), result.state.retainedStashBackupsSnapshot())
         val issue = result.issues.single()
         assertEquals(OperationStage.DIRTY_HANDLING, issue.stage)
         assertEquals(OperationIssueCode.STEP_FAILED, issue.code)

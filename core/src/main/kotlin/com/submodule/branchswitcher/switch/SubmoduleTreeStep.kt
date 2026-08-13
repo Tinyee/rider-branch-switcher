@@ -70,6 +70,7 @@ class SubmoduleTreeStep : SwitchStep {
         try {
             if (nextState.isSkipped(target.path)) {
                 context.log.info("[skip] ${target.path} - target disabled by an earlier step")
+                nextState = disableDescendants(nextState, targets, target.path)
                 return rejectedTarget(context, target, nextState, issues)
             }
             if (!nextState.checkoutSucceeded(".")) {

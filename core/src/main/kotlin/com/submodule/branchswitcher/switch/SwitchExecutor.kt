@@ -218,6 +218,42 @@ class SwitchExecutor @JvmOverloads constructor(
                 is StepResult.Success -> { /* continue */ }
             }
         }
+        if (executionStatus == SwitchExecutionStatus.FAILED && switchState.stashesSnapshot().isNotEmpty()) {
+            // A failed step can happen after DirtyHandlingStep has hidden user WIP.
+            // Restore it while the write session is still usable; otherwise the failed
+            // switch leaves the tree clean and the only copy silently in refs/stash.
+            val restore = try {
+                restoreTrackedStashes(projectRoot, context.git, log, switchState)
+            } catch (error: SwitchStepException) {
+                log.logFailure("[stash restore] exception", error.cause)
+                StashRestoreResult(
+                    error.latestState,
+                    listOf(
+                        OperationIssue(
+                            stage = OperationStage.STASH_RESTORE,
+                            code = OperationIssueCode.STASH_RESTORE_FAILED,
+                            severity = OperationIssueSeverity.ERROR,
+                            diagnostic = "${error.cause.javaClass.simpleName}: ${error.cause.message}",
+                        ),
+                    ),
+                )
+            } catch (error: RuntimeException) {
+                log.logFailure("[stash restore] exception", error)
+                StashRestoreResult(
+                    switchState,
+                    listOf(
+                        OperationIssue(
+                            stage = OperationStage.STASH_RESTORE,
+                            code = OperationIssueCode.STASH_RESTORE_FAILED,
+                            severity = OperationIssueSeverity.ERROR,
+                            diagnostic = "${error.javaClass.simpleName}: ${error.message}",
+                        ),
+                    ),
+                )
+            }
+            switchState = restore.state
+            issues += restore.issues
+        }
         log.info("")
         log.activity(
             if (executionStatus == SwitchExecutionStatus.SUCCESS) "=== done ===" else "=== done with errors ===",

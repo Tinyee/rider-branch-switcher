@@ -488,6 +488,24 @@ class SwitchStepTest {
     }
 
     @Test
+    fun `skipping a parent disables its nested targets`() {
+        projectRoot.resolve("Parent").toFile().mkdirs()
+        val c = context(SwitchOptions(DirtyAction.Skip, pull = false)).copy(
+            git = object : GitClient by fakeGit {
+                override fun isDirty(workDir: File): Boolean = workDir.name == "Parent"
+                override fun isGitRepo(workDir: File): Boolean = true
+            },
+            preset = Preset("nested", "dev", mapOf("Parent" to "dev", "Parent/Nested" to "dev")),
+        )
+        val initial = SwitchState().withSkipped("Parent")
+
+        val execution = SubmoduleTreeStep().execute(c, initial)
+
+        assertTrue(execution.state.isSkipped("Parent"))
+        assertTrue("a skipped parent must protect nested targets", execution.state.isSkipped("Parent/Nested"))
+    }
+
+    @Test
     fun `pull step skips repos whose checkout did not succeed`() {
         var pullCalls = 0
         val pullGit = object : GitClient by fakeGit {
@@ -521,6 +539,21 @@ class SwitchStepTest {
         assertEquals(1, popCalls)
         assertFalse(execution.state.stashesSnapshot().isNotEmpty())
         assertEquals(setOf("."), execution.state.retainedStashBackupsSnapshot())
+    }
+
+    @Test
+    fun `stash restore guard lock remains retryable when guard throws`() {
+        val guardedGit = object : GitClient by fakeGit {
+            override fun stashApply(workDir: File, oid: String): GitResult =
+                throw IndexLockBlockedException(".", "/repo/.git/index.lock")
+        }
+        val c = context(SwitchOptions(DirtyAction.Stash, pull = false)).copy(git = guardedGit)
+        val state = SwitchState().withTrackedStash(".", "before -> dev", "stash-oid")
+
+        val execution = PullStep().run(c, state)
+
+        assertTrue(execution.result is StepResult.Partial)
+        assertFalse(execution.state.trackedStash(".")?.restoreAttempted ?: true)
     }
 
     @Test
