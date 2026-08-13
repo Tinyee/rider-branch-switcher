@@ -309,10 +309,10 @@ internal class GitCommandClient(
         val file = File(baseDir, ".gitmodules")
         if (!file.exists()) return
         val entries = readSubmoduleEntries(baseDir, file)
-        for ((sectionName, path) in entries) {
-            if (!isSafeSubmodulePath(path)) continue
-            val fullPath = if (prefix.isEmpty()) path else "$prefix/$path"
-            val subDir = File(baseDir, path)
+        for (entry in entries) {
+            if (!isSafeSubmodulePath(entry.path)) continue
+            val fullPath = if (prefix.isEmpty()) entry.path else "$prefix/${entry.path}"
+            val subDir = File(baseDir, entry.path)
             val resolved = try {
                 subDir.resolvedIdentity()
             } catch (e: IOException) {
@@ -327,15 +327,16 @@ internal class GitCommandClient(
             result.add(
                 SubmoduleRegistration(
                     path = fullPath,
-                    sectionName = sectionName,
+                    sectionName = entry.sectionName,
                     parentPath = prefix.ifEmpty { "." },
+                    url = entry.url,
                 ),
             )
             collectSubmoduleRegistrations(subDir, fullPath, result, visited, rootCanonical, depth + 1)
         }
     }
 
-    private fun readSubmoduleEntries(baseDir: File, file: File): List<Pair<String, String>> {
+    private fun readSubmoduleEntries(baseDir: File, file: File): List<SubmoduleEntry> {
         val result = run(
             baseDir,
             "config",
@@ -343,24 +344,40 @@ internal class GitCommandClient(
             "--file",
             file.absolutePath,
             "--get-regexp",
-            SUBMODULE_PATH_KEY_REGEX,
+            SUBMODULE_ENTRY_KEY_REGEX,
         )
         if (!result.ok) {
             if (result.exitCode == 1 && result.failureKind == GitFailureKind.GIT_FAILED) return emptyList()
             throw GitQueryException(result)
         }
-        return result.stdout.split('\u0000').mapNotNull { record ->
-            if (record.isEmpty()) return@mapNotNull null
+        val paths = LinkedHashMap<String, String>()
+        val urls = LinkedHashMap<String, String>()
+        result.stdout.split('\u0000').forEach { record ->
+            if (record.isEmpty()) return@forEach
             val separator = record.indexOf('\n')
             if (separator <= 0) throw GitQueryException(
                 GitResult(result.cmd, 1, result.stdout, "invalid null-delimited git config output"),
             )
             val key = record.substring(0, separator)
-            val path = record.substring(separator + 1)
-            val sectionName = key.removePrefix(SUBMODULE_KEY_PREFIX).removeSuffix(SUBMODULE_PATH_SUFFIX)
-            sectionName to path
+            val value = record.substring(separator + 1)
+            val bare = key.removePrefix(SUBMODULE_KEY_PREFIX)
+            when {
+                bare.endsWith(SUBMODULE_PATH_SUFFIX) ->
+                    paths[bare.removeSuffix(SUBMODULE_PATH_SUFFIX)] = value
+                bare.endsWith(SUBMODULE_URL_SUFFIX) ->
+                    urls[bare.removeSuffix(SUBMODULE_URL_SUFFIX)] = value
+            }
+        }
+        return paths.map { (sectionName, path) ->
+            SubmoduleEntry(sectionName, path, urls[sectionName])
         }
     }
+
+    private data class SubmoduleEntry(
+        val sectionName: String,
+        val path: String,
+        val url: String?,
+    )
 
     override fun stashTopOid(workDir: File): String? {
         val result = run(workDir, "rev-parse", "--verify", "refs/stash")
@@ -409,9 +426,10 @@ internal class GitCommandClient(
 
     companion object {
         private const val MAX_SUBMODULE_DEPTH = 10
-        private const val SUBMODULE_PATH_KEY_REGEX = "^submodule\\..*\\.path$"
+        private const val SUBMODULE_ENTRY_KEY_REGEX = "^submodule\\..*\\.(path|url)$"
         private const val SUBMODULE_KEY_PREFIX = "submodule."
         private const val SUBMODULE_PATH_SUFFIX = ".path"
+        private const val SUBMODULE_URL_SUFFIX = ".url"
         private val LOG = IdeaLogger.getInstance("SubmoduleBranchSwitcher")
     }
 }

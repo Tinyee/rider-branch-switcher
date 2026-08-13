@@ -60,6 +60,7 @@ internal class SwitchCheckpointRecorder(
                 branch,
                 identity?.gitDirectory,
                 remoteUrl,
+                topology.byPath[target.path]?.url,
             )
             log.info(
                 "[checkpoint] $label: branch=${branch ?: "(detached)"}, head=${sha.take(12)}, " +

@@ -143,12 +143,12 @@ class SubmoduleTreeStep : SwitchStep {
             }
 
             val checkpoint = context.checkpoint[target.path]
-            val currentRemote = context.git.remoteUrl(directory)
-            if (checkpoint != null && checkpoint.remoteUrl != currentRemote) {
+            val currentDeclaredUrl = traversal.topology.byPath[target.path]?.url
+            if (checkpoint != null && checkpoint.declaredUrl != currentDeclaredUrl) {
                 context.log.warn(
                     "[skip] ${target.path} - registered repository remote changed; " +
-                        "before=${diagnosticFingerprint(checkpoint.remoteUrl)}, " +
-                        "current=${diagnosticFingerprint(currentRemote)}",
+                        "before=${diagnosticFingerprint(checkpoint.declaredUrl)}, " +
+                        "current=${diagnosticFingerprint(currentDeclaredUrl)}",
                 )
                 issues += OperationIssue(
                     OperationStage.TOPOLOGY,

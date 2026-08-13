@@ -89,6 +89,24 @@ class GitOpsTest {
     }
 
     @Test
+    fun `declared urls are read from gitmodules`() {
+        writeGitmodules("""
+            [submodule "SubA"]
+                path = SubA
+                url = https://example.com/SubA.git
+            [submodule "SubB"]
+                path = SubB
+        """.trimIndent())
+        assertEquals(
+            listOf(
+                SubmoduleRegistration("SubA", "SubA", ".", url = "https://example.com/SubA.git"),
+                SubmoduleRegistration("SubB", "SubB", ".", url = null),
+            ),
+            git.registeredSubmodules(tmpDir.toFile()),
+        )
+    }
+
+    @Test
     fun `path assignment accepts supported whitespace variants`() {
         val cases = listOf(
             "path=SubA",

@@ -14,6 +14,7 @@ data class CheckpointEntry(
     val branch: String?,
     val repositoryId: String? = null,
     val remoteUrl: String? = null,
+    val declaredUrl: String? = null,
 )
 
 enum class SwitchExecutionStatus {

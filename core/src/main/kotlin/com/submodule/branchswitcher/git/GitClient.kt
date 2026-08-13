@@ -63,11 +63,12 @@ data class GitRuntimeInfo(
     val timeoutSeconds: Int,
 )
 
-/** One `.gitmodules` entry with its full project path and immediate parent path. */
+/** One `.gitmodules` entry with its full project path, immediate parent path, and declared URL. */
 data class SubmoduleRegistration(
     val path: String,
     val sectionName: String,
     val parentPath: String,
+    val url: String? = null,
 )
 
 /** Repository metadata shared by multiple Git workflows. */

@@ -701,7 +701,9 @@ class SwitchStepTest {
         var checkoutCalls = 0
         val validatingGit = object : GitClient by fakeGit {
             override fun isGitRepo(workDir: File): Boolean = true
-            override fun remoteUrl(workDir: File): String = "replacement-url"
+            override fun registeredSubmodules(gitRoot: File): List<SubmoduleRegistration> = listOf(
+                SubmoduleRegistration("SubA", "SubA", ".", url = "replacement-url"),
+            )
 
             override fun checkoutExisting(workDir: File, branch: String): GitResult {
                 checkoutCalls++
@@ -711,7 +713,7 @@ class SwitchStepTest {
         val c = context().copy(
             git = validatingGit,
             preset = Preset("replacement", "main", mapOf("SubA" to "dev")),
-            checkpoint = mapOf("SubA" to CheckpointEntry("before", "main", remoteUrl = null)),
+            checkpoint = mapOf("SubA" to CheckpointEntry("before", "main", declaredUrl = null)),
         )
 
         val execution = SubmoduleTreeStep().run(c, SwitchState().withSuccessfulCheckout("."))
@@ -721,6 +723,38 @@ class SwitchStepTest {
             (execution.result as StepResult.Partial).issues.map { it.repositoryPath to it.code },
         )
         assertEquals(0, checkoutCalls)
+    }
+
+    @Test
+    fun `submodule live remote override does not block when declared URL is unchanged`() {
+        projectRoot.resolve("SubA").toFile().mkdirs()
+        var checkoutCalls = 0
+        val validatingGit = object : GitClient by fakeGit {
+            override fun isGitRepo(workDir: File): Boolean = true
+            // post-sync live remote differs from the pre-switch override,
+            // but the declared .gitmodules URL is unchanged across the switch
+            override fun remoteUrl(workDir: File): String = "upstream"
+            override fun registeredSubmodules(gitRoot: File): List<SubmoduleRegistration> = listOf(
+                SubmoduleRegistration("SubA", "SubA", ".", url = "upstream"),
+            )
+
+            override fun checkoutExisting(workDir: File, branch: String): GitResult {
+                checkoutCalls++
+                return GitResult("checkout", 0, "", "")
+            }
+        }
+        val c = context().copy(
+            git = validatingGit,
+            preset = Preset("replacement", "main", mapOf("SubA" to "dev")),
+            checkpoint = mapOf(
+                "SubA" to CheckpointEntry("before", "main", remoteUrl = "fork-override", declaredUrl = "upstream"),
+            ),
+        )
+
+        val execution = SubmoduleTreeStep().run(c, SwitchState().withSuccessfulCheckout("."))
+
+        assertTrue("live remote override must not trigger a remote-change skip", execution.result is StepResult.Success)
+        assertEquals(1, checkoutCalls)
     }
 
     @Test
