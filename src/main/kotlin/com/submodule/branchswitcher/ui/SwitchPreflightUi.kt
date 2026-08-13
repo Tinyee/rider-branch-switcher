@@ -13,7 +13,6 @@ import com.submodule.branchswitcher.model.PreflightRow
 import com.submodule.branchswitcher.model.Preset
 import com.submodule.branchswitcher.platform.ProgressCancellationHandle
 import com.submodule.branchswitcher.platform.platformCancellationClassifier
-import com.submodule.branchswitcher.presentation.shouldShowForceWarning
 import com.submodule.branchswitcher.service.BranchSwitcherService
 import com.submodule.branchswitcher.switch.SwitchPreflight
 import java.nio.file.Path
@@ -113,61 +112,6 @@ internal class SwitchPreflightUi(
 
         private companion object {
             const val POLL_INTERVAL_MS = 100L
-        }
-    }
-
-    fun confirmForceSwitch(preset: Preset, probeResult: List<PreflightRow>): Boolean {
-        val request = service.resolveSwitchRequest(preset)
-        if (!shouldShowForceWarning(request, probeResult)) return true
-        return confirm {
-            Messages.showYesNoDialog(
-                project,
-                Bundle.msg("dialog.force.confirm.msg", preset.name),
-                Bundle.msg("dialog.force.confirm.title"),
-                Messages.getWarningIcon(),
-            ) == Messages.YES
-        }
-    }
-
-    fun confirmPreflightWarnings(probeResult: List<PreflightRow>): Boolean {
-        val missingDirectories = probeResult.filter { !it.exists }
-        val missingBranches = probeResult.filter { it.branchMissing }
-        val probeFailures = probeResult.filter { it.probeError != null }
-        if (missingDirectories.isEmpty() && missingBranches.isEmpty() && probeFailures.isEmpty()) return true
-
-        val warnings = buildList {
-            if (missingDirectories.isNotEmpty()) {
-                add(
-                    Bundle.msg(
-                        "preflight.warn.dir.missing",
-                        missingDirectories.joinToString(", ") { it.label },
-                    ),
-                )
-            }
-            if (missingBranches.isNotEmpty()) {
-                add(
-                    Bundle.msg(
-                        "preflight.warn.branch.not.found",
-                        missingBranches.joinToString(", ") { it.label },
-                    ),
-                )
-            }
-            if (probeFailures.isNotEmpty()) {
-                add(
-                    Bundle.msg(
-                        "preflight.warn.probe.failed",
-                        probeFailures.joinToString(", ") { it.label },
-                    ),
-                )
-            }
-        }
-        return confirm {
-            Messages.showYesNoDialog(
-                project,
-                warnings.joinToString("\n\n") + "\n\n" + Bundle.msg("preflight.warn.continue"),
-                Bundle.msg("dialog.switch.title"),
-                Messages.getWarningIcon(),
-            ) == Messages.YES
         }
     }
 

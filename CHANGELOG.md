@@ -18,6 +18,10 @@
 
 ### Changed
 
+- The "Switch to Preset" shortcut now opens a filterable preset chooser
+  (type-to-filter with a per-row branch summary) and confirms through the same
+  rich `SwitchPreviewDialog` as the sidebar, replacing the wall-of-buttons
+  picker and the chain of native yes/no dialogs.
 - A staged submodule gitlink update is treated as stashable dirt, not
   submodule-only: if `git stash` cannot save it, the switch fails closed and
   skips the target rather than aborting a checkout midway.

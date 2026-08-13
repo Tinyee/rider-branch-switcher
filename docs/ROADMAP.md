@@ -20,21 +20,14 @@ in [`review-history.md`](review-history.md).
   wording, and ZIP contents.
 - Publish only after Plugin Verifier and the Rider smoke test pass.
 
-### Pre-release UX: Shortcut Entry Consistency
+### Pre-release UX: Shortcut Entry Consistency ✅ Done 2026-08-13
 
-Two user-facing gaps make the "Switch to Preset" shortcut (Ctrl+Alt+B, i.e.
+Two user-facing gaps made the "Switch to Preset" shortcut (Ctrl+Alt+B, i.e.
 Ctrl+Option+B on macOS) feel disjointed from the sidebar and fail to scale with
-the number of presets.
-
-- Unify the switch confirmation. The shortcut (`SwitchPresetAction`) confirms via a
-  chain of native yes/no dialogs (`showForceWarning`, `showPreflightWarnings`,
-  submodule-init confirmation) with no preview, while the sidebar shows one rich
-  `SwitchPreviewDialog`. Route the shortcut through the same preview after preset
-  selection so both entries share one confirmation UI.
-- Replace the preset picker with a filterable list. The shortcut renders every
-  preset as a button (`Messages.showDialog` with a `String[]`), which becomes a
-  wall of buttons as presets grow. Use a `JBPopupFactory` chooser with
-  type-to-filter and a per-row branch summary.
+the number of presets. Both were closed: the shortcut now picks from a
+filterable chooser (type-to-filter, per-row branch summary) and confirms through
+the same `SwitchPreviewDialog` as the sidebar. Recorded in the
+[changelog](../CHANGELOG.md).
 
 ## P2: Expand Compatibility Evidence
 

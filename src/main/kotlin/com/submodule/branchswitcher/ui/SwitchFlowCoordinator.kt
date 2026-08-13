@@ -58,8 +58,8 @@ internal class SwitchUiCompletion(
 /**
  * Shared switch orchestration for ToolWindow and keyboard shortcut entries.
  *
- * Each entry point owns its own preflight UI (preview dialog vs simple confirm),
- * but preflight logic, dirty-worktree warnings, and post-execution tail are shared here.
+ * Both entries confirm through the same [SwitchPreviewDialog]; preflight logic,
+ * submodule-init confirmation, and post-execution tail are shared here.
  */
 class SwitchFlowCoordinator(
     private val project: Project,
@@ -79,12 +79,6 @@ class SwitchFlowCoordinator(
         log: AppLogger,
         operationContext: OperationContext,
     ): List<PreflightRow> = preflightUi.probe(root, preset, log, operationContext)
-
-    fun showForceWarning(preset: Preset, probeResult: List<PreflightRow>): Boolean =
-        preflightUi.confirmForceSwitch(preset, probeResult)
-
-    fun showPreflightWarnings(probeResult: List<PreflightRow>): Boolean =
-        preflightUi.confirmPreflightWarnings(probeResult)
 
     /**
      * Resolves which missing submodule directories the user has approved for
