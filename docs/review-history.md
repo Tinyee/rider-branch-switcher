@@ -5,6 +5,29 @@ It records durable project decisions and historical outcomes, not active work.
 Current behavior is defined by the code, tests, [architecture](ARCHITECTURE.md),
 [roadmap](ROADMAP.md), and [changelog](../CHANGELOG.md).
 
+## 2026-08-13 - Dead Code Removal And Retention
+
+The over-engineering audit's cleanup removed the `remoteUrl` capability end to
+end: the `CheckpointEntry.remoteUrl` field, the `GitRepositoryQuery` and
+`SwitchGitClient` interface methods, the `GitCommandClient` implementation, the
+checkpoint `git remote get-url` call, and the test-double overrides. The checkpoint
+now records only the `.gitmodules`-declared URL and logs its fingerprint as
+`declaredId`. Eleven unreferenced i18n keys were removed from both bundles, and the
+empty `verification-2026-07-31 at 19.17.09/` directory was deleted.
+
+Two items initially listed as dead were verified and retained:
+
+- `DelegatingGitOperationSession` is the default `GitClient.openOperation()`
+  implementation; test doubles reach it via `super.openOperation()`. Removing it
+  would force `openOperation()` to be abstract across many fakes for no
+  maintainability gain.
+- `docs/design/branch-switcher-ui-v1.html` is referenced by four documents as the
+  retained design reference; deleting it would leave dangling links.
+
+Durable decisions: a symbol reachable only from test doubles is test
+infrastructure, not dead code to delete; a documented design reference is an
+asset, not a dead file.
+
 ## 2026-08-13 - Remote-Change Gate Baseline And Coverage Follow-up
 
 The submodule remote-change gate compared the checkpoint's live-config remote

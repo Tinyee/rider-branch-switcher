@@ -206,9 +206,9 @@ Before ordinary writes, an initialized submodule must report a superproject
 inside the project and external Git metadata rather than a standalone `.git`
 directory in the worktree. Structured `.gitmodules` registrations also retain
 the section name and immediate parent. The expected `.git/modules/<section>`
-directory must match the worktree identity, which rejects swapped paths. A
-checkpointed remote URL must still match after `submodule sync`, which rejects
-repository replacement at an unchanged path.
+directory must match the worktree identity, which rejects swapped paths. The
+checkpointed `.gitmodules`-declared URL must still match after `submodule sync`,
+which rejects repository replacement at an unchanged path.
 Submodules initialized by the failed or cancelled switch are deliberately
 retained: they had no pre-switch checkpoint, and deleting a newly populated
 worktree could discard useful data. Recovery logs and notifications list those

@@ -20,6 +20,22 @@ in [`review-history.md`](review-history.md).
   wording, and ZIP contents.
 - Publish only after Plugin Verifier and the Rider smoke test pass.
 
+### Pre-release UX: Shortcut Entry Consistency
+
+Two user-facing gaps make the "Switch to Preset" shortcut (Ctrl+Alt+B, i.e.
+Ctrl+Option+B on macOS) feel disjointed from the sidebar and fail to scale with
+the number of presets.
+
+- Unify the switch confirmation. The shortcut (`SwitchPresetAction`) confirms via a
+  chain of native yes/no dialogs (`showForceWarning`, `showPreflightWarnings`,
+  submodule-init confirmation) with no preview, while the sidebar shows one rich
+  `SwitchPreviewDialog`. Route the shortcut through the same preview after preset
+  selection so both entries share one confirmation UI.
+- Replace the preset picker with a filterable list. The shortcut renders every
+  preset as a button (`Messages.showDialog` with a `String[]`), which becomes a
+  wall of buttons as presets grow. Use a `JBPopupFactory` chooser with
+  type-to-filter and a per-row branch summary.
+
 ## P2: Expand Compatibility Evidence
 
 The unified IntelliJ IDEA distribution is the primary build target and Rider
@@ -63,3 +79,28 @@ and waits briefly for a cooperative exit (so git can remove its own `index.lock`
 then falls back to SIGKILL only for processes still alive after the grace window.
 The descendant shutdown paths were validated and are covered by tests. Recorded
 with the surrounding index-lock hardening in `review-history.md`.
+
+### P3-11: Decide The Derive Feature Scope
+
+The derive (feature-branch creation) path spans ~930 LOC and is a separate action
+from switching. Decide whether to keep it, cut it, or gate it behind a setting.
+
+### P3-12: Decide The Recovery/Rollback Scope
+
+Recovery, checkpoint, and rollback span ~650 LOC to support undoing a failed
+switch. Keep the checkpoint-before-mutation and stash-restore safety nets, but
+evaluate whether the full rollback surface is worth its weight versus simply
+surfacing the stash.
+
+### P3-13: Replace The Custom Responsive Layout
+
+~1024 LOC of hand-rolled null-layout (`ResponsiveRowPanel`, `ViewportWidthPanel`,
+`PopupAction`, `CollapsibleActionBar`, `FeedbackIconButton`, `GlobalActionBar`)
+replicate standard Swing/IntelliJ layout behavior. Evaluate replacing them with
+stock layout managers plus a minimum tool-window width.
+
+### P3-14: Collapse The Git Interface Hierarchy
+
+`GitClient.kt` defines 14 role interfaces backed by one production implementation
+(`GitCommandClient`). Collapse to the concrete client plus a minimal test-double
+boundary, and drop the never-hit `as?` batch fallbacks.

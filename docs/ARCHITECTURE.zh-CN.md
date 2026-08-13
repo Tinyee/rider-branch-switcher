@@ -123,7 +123,7 @@ Recovery 会先生成可检查的 `SwitchRecoveryPlan`，再逐项执行。每�
 superproject，并使用父仓吸收后的外部 Git 元数据，而不是 worktree 内独立的 `.git` 目录。
 结构化注册信息还保留 `.gitmodules` section 名和直接父路径，worktree 必须匹配对应的
 `.git/modules/<section>`；因此两个子模块交换路径时不会操作旧 worktree。`submodule sync`
-之后的 remote URL 也必须与 checkpoint 一致，同一路径换成另一个仓库会被阻止。
+之后，`.gitmodules` 声明的 URL 也必须与 checkpoint 一致，同一路径换成另一个仓库会被阻止。
 
 `.gitmodules` 通过 `git config --null --file` 读取，不再手工按行匹配。引号、注释、转义和
 损坏配置均使用 Git 自身的解析与错误语义。
@@ -305,8 +305,8 @@ stdout 超过 8 MiB 会明确失败，stderr 只保留最后 128 KiB 诊断内�
 的 warn/error 会在其中保留完整堆栈。
 
 完整切换、Derive 和单仓切换分别生成短操作 ID。请求参数、实际选项、各仓 checkpoint、Git
-失败详情、恢复动作、VCS 刷新和最终摘要使用同一个 ID。remote URL 不记录原文，只记录
-SHA-256 指纹，既能比较切换前后身份，又不会泄露凭据或私有地址。
+失败详情、恢复动作、VCS 刷新和最终摘要使用同一个 ID。`.gitmodules` 声明的 URL 不记录
+原文，只记录 SHA-256 指纹，既能比较切换前后身份，又不会泄露凭据或私有地址。
 
 ## 修改代码时先找职责
 
