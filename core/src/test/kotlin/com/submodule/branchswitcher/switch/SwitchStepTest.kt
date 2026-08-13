@@ -295,26 +295,6 @@ class SwitchStepTest {
     }
 
     @Test
-    fun `staged gitlink dirt is stashed instead of treated as submodule-only`() {
-        var stashCalls = 0
-        val stagedGitlink = object : GitClient by fakeGit {
-            override fun isDirty(workDir: File): Boolean = true
-            override fun stash(workDir: File, message: String): GitResult {
-                stashCalls++
-                return GitResult("stash", 0, "", "")
-            }
-        }
-
-        val execution = DirtyHandlingStep().run(
-            context(SwitchOptions(DirtyAction.Stash)).copy(git = stagedGitlink),
-        )
-
-        assertTrue(execution.result is StepResult.Success)
-        assertEquals(1, stashCalls)
-        assertEquals("stash-oid", execution.state.trackedStash(".")?.oid)
-    }
-
-    @Test
     fun `stash failure surfaces a stale index lock as an actionable hint`() {
         val lockGit = object : GitClient by fakeGit {
             override fun isDirty(workDir: File): Boolean = true

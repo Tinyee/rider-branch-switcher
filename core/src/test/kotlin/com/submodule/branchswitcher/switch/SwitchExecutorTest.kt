@@ -449,8 +449,16 @@ class SwitchExecutorTest {
     }
 
     @Test
-    fun `successful execution captures the main repository checkpoint`() {
-        val executor = SwitchExecutor(projectRoot, createStringAppender { log += it }, fakeGit)
+    fun `successful execution captures the checkpoint before mutation`() {
+        var currentBranch = "main"
+        val trackGit = object : GitClient by fakeGit {
+            override fun currentBranch(workDir: File): String? = currentBranch
+            override fun checkoutExisting(workDir: File, branch: String): GitResult {
+                currentBranch = branch
+                return GitResult("checkout", 0, "", "")
+            }
+        }
+        val executor = SwitchExecutor(projectRoot, createStringAppender { log += it }, trackGit)
         val result = executor.executeResultTest(
             preset,
             SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false),
@@ -459,7 +467,12 @@ class SwitchExecutorTest {
         assertNotNull("Checkpoint should exist", checkpoint)
         assertTrue("Checkpoint should contain main repo", checkpoint!!.containsKey("."))
         assertEquals("abc123", checkpoint["."]!!.sha)
-        assertEquals("main", checkpoint["."]!!.branch)
+        assertEquals(
+            "checkpoint must record the pre-switch branch, not the target",
+            "main",
+            checkpoint["."]!!.branch,
+        )
+        assertEquals("the switch must have moved to the target branch", "dev", currentBranch)
     }
 
     @Test

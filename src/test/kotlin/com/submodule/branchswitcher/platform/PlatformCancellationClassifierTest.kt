@@ -1,5 +1,6 @@
 package com.submodule.branchswitcher.platform
 
+import com.intellij.openapi.progress.ProcessCanceledException
 import com.submodule.branchswitcher.git.GitQueryException
 import com.submodule.branchswitcher.git.GitResult
 import org.junit.Assert.assertFalse
@@ -27,5 +28,10 @@ class PlatformCancellationClassifierTest {
         val failed = GitQueryException(GitResult("git status", 128, "", "fatal: not a git repository"))
 
         assertFalse(platformCancellationClassifier.isCancellation(failed))
+    }
+
+    @Test
+    fun `recognizes intellij process canceled exception as cancellation`() {
+        assertTrue(platformCancellationClassifier.isCancellation(ProcessCanceledException()))
     }
 }

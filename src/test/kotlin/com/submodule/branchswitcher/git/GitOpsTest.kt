@@ -358,6 +358,22 @@ class GitOpsTest {
     }
 
     @Test
+    fun `submodule-only dirt is recognized from a porcelain status`() {
+        val boundedGit = GitOps(timeoutSeconds = 10) { _ ->
+            ControllableProcess(
+                finished = true,
+                stdout = (
+                    "# branch.oid abc123\n" +
+                        "# branch.head main\n" +
+                        "1 .M S..U 160000 160000 160000 oid1 oid1 Sub\n"
+                    ).toByteArray(),
+            )
+        }
+
+        assertTrue(boundedGit.isSubmoduleOnlyDirty(tmpDir.toFile()))
+    }
+
+    @Test
     fun `cancelled session rejects its subsequent commands until closed`() {
         val operation = git.openOperation()
         operation.cancel()
