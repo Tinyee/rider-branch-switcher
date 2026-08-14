@@ -514,7 +514,10 @@ class GitOpsTest {
             stopAfterDestroy = true,
             onWait = { cancellation.set(true) },
         )
-        val runner = GitProcessRunner(timeoutSeconds = 10) { runningProcess }
+        val runner = GitProcessRunner(
+            timeoutSeconds = 10,
+            gracefulTerminationSupported = true,
+        ) { runningProcess }
 
         val result = runner.run(tmpDir.toFile(), cancellation, "fetch")
 
@@ -534,7 +537,10 @@ class GitOpsTest {
             stopAfterDestroy = false,
             onWait = { cancellation.set(true) },
         )
-        val runner = GitProcessRunner(timeoutSeconds = 10) { runningProcess }
+        val runner = GitProcessRunner(
+            timeoutSeconds = 10,
+            gracefulTerminationSupported = true,
+        ) { runningProcess }
 
         val result = runner.run(tmpDir.toFile(), cancellation, "fetch")
 
@@ -569,7 +575,10 @@ class GitOpsTest {
             descendant = descendant,
             onWait = { cancellation.set(true) },
         )
-        val runner = GitProcessRunner(timeoutSeconds = 10) { runningProcess }
+        val runner = GitProcessRunner(
+            timeoutSeconds = 10,
+            gracefulTerminationSupported = true,
+        ) { runningProcess }
 
         val started = System.nanoTime()
         val result = runner.run(tmpDir.toFile(), cancellation, "fetch")
