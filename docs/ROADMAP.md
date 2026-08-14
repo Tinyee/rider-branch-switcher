@@ -73,17 +73,27 @@ then falls back to SIGKILL only for processes still alive after the grace window
 The descendant shutdown paths were validated and are covered by tests. Recorded
 with the surrounding index-lock hardening in `review-history.md`.
 
-### P3-11: Decide The Derive Feature Scope
+### P3-11: Derive Feature Scope ✅ Keep 2026-08-14
 
-The derive (feature-branch creation) path spans ~930 LOC and is a separate action
-from switching. Decide whether to keep it, cut it, or gate it behind a setting.
+Keep the derive feature rather than cutting it or gating it behind a setting.
+Derive is one unobtrusive entry point (a button plus input dialog in the preset
+editor) that atomically creates a feature branch across the main repository and
+all submodules — a multi-repository operation stock git cannot do in one step.
+It is covered by focused tests (executor, runner, notification). It is a
+self-contained parallel implementation rather than shared switch logic, so any
+future reduction is a convergence toward switch's OperationIssue/notification
+machinery, not a deletion.
 
-### P3-12: Decide The Recovery/Rollback Scope
+### P3-12: Recovery/Rollback Scope ✅ Keep 2026-08-14
 
-Recovery, checkpoint, and rollback span ~650 LOC to support undoing a failed
-switch. Keep the checkpoint-before-mutation and stash-restore safety nets, but
-evaluate whether the full rollback surface is worth its weight versus simply
-surfacing the stash.
+Keep the full rollback surface rather than surfacing only the stash.
+Auto-rollback to the checkpoint HEAD plus stash restore is the tool's core
+safety property: a failed or interrupted switch otherwise strands the user on a
+new branch with a half-updated submodule tree. Each guard (identity recheck,
+clean-worktree requirement, at-most-once stash apply, retained-submodule
+tracking) maps to a concrete documented failure mode rather than speculative
+complexity. Reducing to "surface the stash" would remove the self-healing
+behavior recovery exists to provide.
 
 ### P3-13: Replace The Custom Responsive Layout
 
