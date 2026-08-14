@@ -95,12 +95,22 @@ tracking) maps to a concrete documented failure mode rather than speculative
 complexity. Reducing to "surface the stash" would remove the self-healing
 behavior recovery exists to provide.
 
-### P3-13: Replace The Custom Responsive Layout
+### P3-13: Responsive Layout — Consolidate Duplicated Helpers
 
-~1024 LOC of hand-rolled null-layout (`ResponsiveRowPanel`, `ViewportWidthPanel`,
-`PopupAction`, `CollapsibleActionBar`, `FeedbackIconButton`, `GlobalActionBar`)
-replicate standard Swing/IntelliJ layout behavior. Evaluate replacing them with
-stock layout managers plus a minimum tool-window width.
+Keep the hand-rolled responsive layout rather than replacing it with stock
+managers. The adaptive stacking, the 340 px compact transition, and the grouped
+overflow menu are the product's visual identity and cannot be reproduced by
+stock Swing/IntelliJ layout; `UiLayoutTest` already pins each component's
+behavior. The remaining work is a pure-extraction tidy-up with no visual change:
+
+- Share one `COMPACT_WIDTH = JBUI.scale(340)` constant between `GlobalActionBar`
+  and `CollapsibleActionBar` so the two compact thresholds cannot drift.
+- Extract the repeated `centeredY` / available-content-width / content-left
+  calculations into shared helpers next to `effectiveLayoutWidth()`.
+- Unify the metric property-listener registration (5 / 3 / 0 / 0 properties
+  across the row panels) into one helper, closing the gap where `GlobalActionBar`
+  and `TrailingControlRowPanel` do not relayout when a button's text or icon
+  changes.
 
 ### P3-14: Collapse The Git Interface Hierarchy
 
