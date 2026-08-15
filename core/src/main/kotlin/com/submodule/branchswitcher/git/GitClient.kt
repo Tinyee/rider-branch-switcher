@@ -117,7 +117,13 @@ interface SubmoduleRegistrationQuery {
 }
 
 /** Git operations required by the branch-switch pipeline. */
-interface SwitchGitClient : RepositoryStateGitClient, SubmoduleRegistrationQuery, GitCancellation {
+interface SwitchGitClient : RepositoryStateGitClient, SubmoduleRegistrationQuery {
+    /**
+     * Cancels the active operation and its currently running git command (if any).
+     * Implementations without processes must still acknowledge cancellation explicitly.
+     */
+    fun cancel()
+
     /** Write safety requires implementations to identify the repository backing an existing worktree. */
     override fun repositoryIdentity(workDir: File): RepositoryIdentity?
     /** Checks whether refs/heads/<branch> exists (plumbing: show-ref --verify). */
@@ -200,14 +206,6 @@ interface RepositoryStateBatchGitClient {
 /** Optional optimized capability for fail-closed switch preview inspection. */
 interface SwitchPreflightBatchGitClient {
     fun inspectPreflight(workDir: File, targetBranches: Set<String>): GitRepositoryInspection
-}
-
-interface GitCancellation {
-    /**
-     * Cancels the active operation and its currently running git command (if any).
-     * Implementations without processes must still acknowledge cancellation explicitly.
-     */
-    fun cancel()
 }
 
 /** All workflow capabilities exposed by a concrete Git implementation or operation session. */
