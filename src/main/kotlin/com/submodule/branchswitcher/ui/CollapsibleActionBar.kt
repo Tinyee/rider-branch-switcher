@@ -2,7 +2,6 @@ package com.submodule.branchswitcher.ui
 
 import com.intellij.util.ui.JBUI
 import java.awt.Dimension
-import java.beans.PropertyChangeListener
 import javax.swing.JComponent
 import javax.swing.JPanel
 
@@ -13,7 +12,7 @@ internal class CollapsibleActionBar(
     private val overflow: JComponent,
     private val responsiveContext: JComponent? = null,
     private val horizontalGap: Int = JBUI.scale(4),
-    private val minimumContextWidthForSecondary: Int = JBUI.scale(340),
+    private val minimumContextWidthForSecondary: Int = COMPACT_WIDTH,
 ) : JPanel(null) {
     init {
         isOpaque = false
@@ -22,12 +21,7 @@ internal class CollapsibleActionBar(
         add(secondary)
         add(overflow)
 
-        val metricsChanged = PropertyChangeListener { requestRelayout() }
-        listOf(primary, secondary, overflow).forEach { component ->
-            component.addPropertyChangeListener("font", metricsChanged)
-            component.addPropertyChangeListener("icon", metricsChanged)
-            component.addPropertyChangeListener("text", metricsChanged)
-        }
+        listOf(primary, secondary, overflow).registerMetricsRelayout { requestRelayout() }
     }
 
     override fun doLayout() {
@@ -35,11 +29,11 @@ internal class CollapsibleActionBar(
         val primarySize = primary.preferredSize
         val secondarySize = secondary.preferredSize
         val overflowSize = overflow.preferredSize
-        val availableWidth = (width - insets.left - insets.right).coerceAtLeast(0)
+        val availableWidth = availableContentWidth()
         val rowHeight = maxOf(primarySize.height, secondarySize.height, overflowSize.height)
         val visibleActions = listOf(primary, secondary, overflow).filter(JComponent::isVisible)
         val allocation = allocateWidths(visibleActions, availableWidth)
-        var nextX = insets.left.coerceIn(0, width.coerceAtLeast(0))
+        var nextX = contentLeft()
 
         visibleActions.forEachIndexed { index, component ->
             val preferredSize = component.preferredSize
@@ -87,9 +81,6 @@ internal class CollapsibleActionBar(
         val contextWidth = (responsiveContext ?: this).width.takeIf { it > 0 }
         return contextWidth == null || contextWidth >= minimumContextWidthForSecondary
     }
-
-    private fun centeredY(rowHeight: Int, componentHeight: Int): Int =
-        insets.top + (rowHeight - componentHeight) / 2
 
     private fun requiredFullWidth(): Int =
         insets.left + insets.right +

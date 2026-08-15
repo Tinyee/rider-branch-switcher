@@ -4,9 +4,16 @@ import com.intellij.util.ui.JBUI
 import java.awt.Component
 import java.awt.Dimension
 import java.awt.LayoutManager
+import java.beans.PropertyChangeListener
 import javax.swing.JComponent
 import javax.swing.JLabel
 import javax.swing.JPanel
+
+/**
+ * Shared compact-transition threshold for the action bars. Single source of
+ * truth so the two responsive thresholds cannot drift apart.
+ */
+internal val COMPACT_WIDTH: Int = JBUI.scale(340)
 
 class CompactHeightPanel(layout: LayoutManager? = null) : JPanel(layout) {
     override fun getMaximumSize(): Dimension =
@@ -29,11 +36,15 @@ internal class TrailingControlRowPanel(
         alignmentX = LEFT_ALIGNMENT
         add(leading)
         add(trailing)
+        listOf(leading, trailing).registerMetricsRelayout {
+            revalidate()
+            repaint()
+        }
     }
 
     override fun doLayout() {
-        val availableWidth = (width - insets.left - insets.right).coerceAtLeast(0)
-        val contentLeft = insets.left.coerceIn(0, width.coerceAtLeast(0))
+        val availableWidth = availableContentWidth()
+        val contentX = contentLeft()
         val trailingSize = trailing.preferredSize
         val leadingSize = leading.preferredSize
         val trailingWidth = minOf(trailingSize.width, availableWidth)
@@ -43,14 +54,14 @@ internal class TrailingControlRowPanel(
         val rowHeight = maxOf(leadingSize.height, trailingSize.height)
 
         leading.setBounds(
-            contentLeft,
-            insets.top + (rowHeight - leadingSize.height) / 2,
+            contentX,
+            centeredY(rowHeight, leadingSize.height),
             leadingWidth,
             leadingSize.height,
         )
         trailing.setBounds(
-            contentLeft + leadingWidth + actualGap,
-            insets.top + (rowHeight - trailingSize.height) / 2,
+            contentX + leadingWidth + actualGap,
+            centeredY(rowHeight, trailingSize.height),
             trailingWidth,
             trailingSize.height,
         )
@@ -78,6 +89,30 @@ internal fun Component.effectiveLayoutWidth(): Int? {
         .map { it.width }
         .filter { it > 0 }
         .minOrNull()
+}
+
+/** Width available for content after the horizontal insets, never negative. */
+internal fun JComponent.availableContentWidth(width: Int = this.width): Int =
+    (width - insets.left - insets.right).coerceAtLeast(0)
+
+/** Left edge of the content area, clamped into the component width. */
+internal fun JComponent.contentLeft(width: Int = this.width): Int =
+    insets.left.coerceIn(0, width.coerceAtLeast(0))
+
+/** Vertical center of a [componentHeight] control within a [rowHeight] row, after the top inset. */
+internal fun JComponent.centeredY(rowHeight: Int, componentHeight: Int): Int =
+    insets.top + (rowHeight - componentHeight) / 2
+
+/** Relayouts whenever a metric-affecting property changes on any of the components. */
+internal fun Iterable<JComponent>.registerMetricsRelayout(onChange: () -> Unit) {
+    val metricsChanged = PropertyChangeListener { onChange() }
+    forEach { component ->
+        component.addPropertyChangeListener("font", metricsChanged)
+        component.addPropertyChangeListener("icon", metricsChanged)
+        component.addPropertyChangeListener("preferredSize", metricsChanged)
+        component.addPropertyChangeListener("text", metricsChanged)
+        component.addPropertyChangeListener("visible", metricsChanged)
+    }
 }
 
 /** Shared label/field row used by the main repository and every submodule. */

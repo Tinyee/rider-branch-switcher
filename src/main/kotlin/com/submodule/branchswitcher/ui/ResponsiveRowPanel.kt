@@ -3,7 +3,6 @@ package com.submodule.branchswitcher.ui
 import com.intellij.util.ui.JBUI
 import java.awt.Dimension
 import java.awt.EventQueue
-import java.beans.PropertyChangeListener
 import javax.swing.JComponent
 import javax.swing.JPanel
 
@@ -43,14 +42,7 @@ internal class ResponsiveRowPanel(
         add(leading)
         add(trailing)
 
-        val metricsChanged = PropertyChangeListener { requestRelayout() }
-        listOf(leading, trailing).forEach { component ->
-            component.addPropertyChangeListener("font", metricsChanged)
-            component.addPropertyChangeListener("icon", metricsChanged)
-            component.addPropertyChangeListener("preferredSize", metricsChanged)
-            component.addPropertyChangeListener("text", metricsChanged)
-            component.addPropertyChangeListener("visible", metricsChanged)
-        }
+        listOf(leading, trailing).registerMetricsRelayout { requestRelayout() }
     }
 
     override fun doLayout() {
@@ -115,15 +107,6 @@ internal class ResponsiveRowPanel(
         leading.isVisible && trailing.isVisible &&
             availableContentWidth(componentWidth) < requiredHorizontalWidth()
 
-    private fun availableContentWidth(): Int =
-        availableContentWidth(width)
-
-    private fun availableContentWidth(componentWidth: Int): Int =
-        (componentWidth - insets.left - insets.right).coerceAtLeast(0)
-
-    private fun contentLeft(componentWidth: Int = width): Int =
-        insets.left.coerceIn(0, componentWidth.coerceAtLeast(0))
-
     private fun requiredHorizontalWidth(): Int {
         val requestedWidth = minimumTrailingWidth ?: trailing.preferredSize.width
         val trailingWidth = maximumTrailingWidth?.let { minOf(requestedWidth, it) } ?: requestedWidth
@@ -138,8 +121,8 @@ internal class ResponsiveRowPanel(
         val remainingWidth = (availableWidth - leadingWidth - horizontalGap).coerceAtLeast(0)
         val trailingWidth = trailingWidth(remainingWidth)
         val rowHeight = maxOf(leadingSize.height, trailingSize.height)
-        val leadingY = insets.top + (rowHeight - leadingSize.height) / 2
-        val trailingY = insets.top + (rowHeight - trailingSize.height) / 2
+        val leadingY = centeredY(rowHeight, leadingSize.height)
+        val trailingY = centeredY(rowHeight, trailingSize.height)
         val packedWidth = leadingWidth + horizontalGap + trailingWidth
         val leadingX = when (arrangement) {
             ResponsiveRowArrangement.PACKED_CENTER ->
