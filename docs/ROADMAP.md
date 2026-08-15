@@ -48,13 +48,24 @@ This is the complete active P3 inventory. Completed state-refresh, recovery
 plan, and structured-diagnostic work is recorded in
 [`review-history.md`](review-history.md).
 
-### P3-08: Re-evaluate The Git Backend With Evidence
+### P3-08: Re-evaluate The Git Backend With Evidence ✅ Done 2026-08-15
 
-The plugin uses the Git CLI. Consider a Git4Idea migration only after measured
-evidence identifies a compatibility, performance, or credential-handling
-limitation that the CLI implementation cannot reasonably address.
+Evaluated against measured evidence and the CLI implementation is retained.
+Process budgets are already near-minimal (one porcelain-v2 status process per
+repository, at most three first-time preflight processes, four-process global
+cap), CI passes on three OSes, and the hardened process lifecycle (graceful
+tree termination, output caps, structured failures, per-operation
+cancellation) has no known compatibility, performance, or credential gap.
+Git4Idea would not remove process spawning for writes and would replace the
+pinned process-layer tests and index-lock-safe termination with an internal
+API that still lacks the distinctive commands (porcelain-v2 batch status,
+`git config --null` .gitmodules reading, stash-by-oid apply).
 
-This item does not currently block maintenance or the first release.
+Re-evaluate only when one of these appears: a user reports a submodule fetch
+failing because credentials live only in the IDE credential store, a
+compatibility report where `git` is unavailable on PATH but configured in the
+IDE (or the reverse), or Git4Idea API usage in the plugin grows beyond the
+single VCS-refresh call.
 
 ### P3-09: Automate Marketplace Publishing After The First Release
 
@@ -112,8 +123,21 @@ behavior. The remaining work is a pure-extraction tidy-up with no visual change:
   and `TrailingControlRowPanel` do not relayout when a button's text or icon
   changes.
 
-### P3-14: Collapse The Git Interface Hierarchy
+### P3-14: Git Interface Hierarchy ✅ Keep 2026-08-15
 
-`GitClient.kt` defines 14 role interfaces backed by one production implementation
-(`GitCommandClient`). Collapse to the concrete client plus a minimal test-double
-boundary, and drop the never-hit `as?` batch fallbacks.
+Keep the capability-oriented hierarchy rather than collapsing to a concrete
+client. Both collapse premises fail on evidence: the `as?` batch fallbacks are
+not dead code — narrow test doubles (10 sites; e.g. an `IndexLockBlockTest`
+fake implementing only `indexLockFile`) rely on them — and `core` cannot depend
+on the concrete `GitCommandClient` (it lives in the plugin module and imports
+an IntelliJ Logger), so the interfaces are the dependency-direction carrier and
+the actual minimal test-double boundary. Every remaining interface has its own
+production consumer (switch steps, derive, preflight, preset discovery,
+repository state) and narrow fakes.
+
+The cleanup is done: `GitCancellation` (zero direct references, only inherited
+by `SwitchGitClient`) is merged into `SwitchGitClient`, reducing the count from
+14 to 13 with no behavior change; tests, Detekt, and `quickCheck` pass. A
+separate brittle spot to watch: `DirtyHandlingStep` detects the concrete
+`WriteGuardGitClient` wrapper with `is`; revisit when the wrapper is next
+touched.
