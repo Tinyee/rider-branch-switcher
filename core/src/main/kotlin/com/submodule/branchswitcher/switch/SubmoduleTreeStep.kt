@@ -144,7 +144,11 @@ class SubmoduleTreeStep : SwitchStep {
 
             val checkpoint = context.checkpoint[target.path]
             val currentDeclaredUrl = traversal.topology.byPath[target.path]?.url
-            if (checkpoint != null && checkpoint.declaredUrl != currentDeclaredUrl) {
+            // A target the current main did not register at checkpoint time has no declared URL
+            // to compare; once the main branch switches and registers it, the URL appears. That
+            // is a new registration, not a repository replacement, so the gate only runs against
+            // targets that were already registered when checkpointed.
+            if (checkpoint != null && checkpoint.registeredAtCheckpoint && checkpoint.declaredUrl != currentDeclaredUrl) {
                 context.log.warn(
                     "[skip] ${target.path} - registered repository remote changed; " +
                         "before=${diagnosticFingerprint(checkpoint.declaredUrl)}, " +

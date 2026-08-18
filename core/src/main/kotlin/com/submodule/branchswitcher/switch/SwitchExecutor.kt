@@ -14,6 +14,13 @@ data class CheckpointEntry(
     val branch: String?,
     val repositoryId: String? = null,
     val declaredUrl: String? = null,
+    /**
+     * True when the target was a registered submodule of the current main at checkpoint
+     * time. A target the preset registers only after the main branch switches is recorded
+     * with [declaredUrl] == null and this set to false, so the remote-change gate does not
+     * mistake a new registration for a repository replacement.
+     */
+    val registeredAtCheckpoint: Boolean = true,
 )
 
 enum class SwitchExecutionStatus {

@@ -83,6 +83,37 @@ class SubmoduleWorktreeStatusTest {
     }
 
     @Test
+    fun `leftover external git directory under modules is a canonical leftover`() {
+        val identity = RepositoryIdentity(File(root, ".git/modules/SubA").absolutePath, null)
+
+        assertTrue(isCanonicalLeftoverGitDirectory(worktree, identity))
+    }
+
+    @Test
+    fun `standalone worktree git directory is not a canonical leftover`() {
+        val identity = RepositoryIdentity(File(worktree, ".git").absolutePath, null)
+
+        assertFalse(isCanonicalLeftoverGitDirectory(worktree, identity))
+    }
+
+    @Test
+    fun `external git directory outside modules is not a canonical leftover`() {
+        val outside = Files.createTempDirectory("canonical-outside").toFile()
+        try {
+            val identity = RepositoryIdentity(File(outside, "data").absolutePath, null)
+
+            assertFalse(isCanonicalLeftoverGitDirectory(worktree, identity))
+        } finally {
+            outside.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun `missing identity is not a canonical leftover`() {
+        assertFalse(isCanonicalLeftoverGitDirectory(worktree, null))
+    }
+
+    @Test
     fun `expected git directory for a top-level registration`() {
         val git = object : GitRepositoryQuery {
             override fun currentBranch(workDir: File): String? = null

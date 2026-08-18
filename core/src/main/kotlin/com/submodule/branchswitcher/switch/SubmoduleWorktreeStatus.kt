@@ -36,6 +36,25 @@ fun isUnassociatedSubmoduleWorktree(
     }
 }
 
+/**
+ * True when a target the current topology does not register still looks like a canonical
+ * submodule leftover: its git metadata lives outside the worktree under a `.git/modules/`
+ * directory. The preset's main branch registers such paths again during the switch, so the
+ * checkpoint may record them; a standalone `.git` inside the worktree is not and stays
+ * fail-closed.
+ */
+fun isCanonicalLeftoverGitDirectory(
+    worktree: File,
+    identity: RepositoryIdentity?,
+): Boolean {
+    identity ?: return false
+    val gitDirectory = runCatching { File(identity.gitDirectory).canonicalPath }.getOrElse { return false }
+    val worktreePath = runCatching { worktree.canonicalPath }.getOrElse { return false }
+    if (gitDirectory == worktreePath || gitDirectory.startsWith(worktreePath + File.separator)) return false
+    val modulesMarker = File.separator + ".git" + File.separator + "modules" + File.separator
+    return gitDirectory.contains(modulesMarker)
+}
+
 fun expectedSubmoduleGitDirectory(
     projectRoot: File,
     registration: SubmoduleRegistration?,

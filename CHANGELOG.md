@@ -259,6 +259,14 @@
 - A new preset's name is validated as a Git branch name up front, so names such as
   `HEAD` or `My Feature` cannot be accepted as the main branch and then fail every
   save.
+- A preset target that exists on disk but is not registered by the current main
+  branch is checkpointed and switched instead of aborting the whole operation,
+  as long as its git metadata lives outside the worktree under `.git/modules/`
+  (a canonical leftover submodule the preset main will re-register); a standalone
+  `.git` inside the worktree still fails closed.
+- The submodule remote-change gate only applies to targets that were registered
+  at checkpoint time, so a leftover directory re-registered by the preset main is
+  not mistaken for a repository replacement.
 
 ### Removed
 

@@ -725,6 +725,38 @@ class SwitchStepTest {
     }
 
     @Test
+    fun `unregistered at checkpoint target registered by the preset is not blocked as remote change`() {
+        projectRoot.resolve("SubA").toFile().mkdirs()
+        var checkoutCalls = 0
+        val validatingGit = object : GitClient by fakeGit {
+            override fun isGitRepo(workDir: File): Boolean = true
+            override fun registeredSubmodules(gitRoot: File): List<SubmoduleRegistration> = listOf(
+                SubmoduleRegistration("SubA", "SubA", ".", url = "appears-url"),
+            )
+
+            override fun checkoutExisting(workDir: File, branch: String): GitResult {
+                checkoutCalls++
+                return GitResult("checkout", 0, "", "")
+            }
+        }
+        val c = context().copy(
+            git = validatingGit,
+            preset = Preset("restore", "main", mapOf("SubA" to "dev")),
+            checkpoint = mapOf(
+                "SubA" to CheckpointEntry("before", "main", declaredUrl = null, registeredAtCheckpoint = false),
+            ),
+        )
+
+        val execution = SubmoduleTreeStep().run(c, SwitchState().withSuccessfulCheckout("."))
+
+        assertTrue(
+            "a target unregistered at checkpoint time must not be skipped as a remote change",
+            execution.result is StepResult.Success,
+        )
+        assertEquals(1, checkoutCalls)
+    }
+
+    @Test
     fun `submodule with unchanged declared URL is not blocked`() {
         projectRoot.resolve("SubA").toFile().mkdirs()
         var checkoutCalls = 0

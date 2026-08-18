@@ -28,19 +28,29 @@ internal class SwitchCheckpointRecorder(
             if (!dir.exists() || !git.isGitRepo(dir)) continue
             val label = if (target.path == ".") projectRoot.fileName.toString() else target.path
             val identity = git.repositoryIdentity(dir)
+            val registration = topology.byPath[target.path]
             val expectedGitDirectory = expectedSubmoduleGitDirectory(
                 projectRoot.toFile(),
-                topology.byPath[target.path],
+                registration,
                 git,
             )
-            if (isUnassociatedSubmoduleWorktree(
+            // The main repository is always checkpointable regardless of topology. A target the
+            // current main does not register reports no superproject from git, even though it may
+            // be a canonical leftover submodule the preset's main branch will re-register during
+            // this switch. Only a standalone `.git` inside the worktree (or an otherwise
+            // non-canonical git directory) stays fail-closed.
+            val unassociated = when {
+                target.path == "." -> false
+                registration == null -> !isCanonicalLeftoverGitDirectory(dir, identity)
+                else -> isUnassociatedSubmoduleWorktree(
                     projectRoot.toFile(),
                     target.path,
                     dir,
                     identity,
                     expectedGitDirectory,
                 )
-            ) {
+            }
+            if (unassociated) {
                 log.error(
                     "[checkpoint] $label: repository is not associated with its superproject; " +
                         "actualGitDir=${identity?.gitDirectory}, expectedGitDir=$expectedGitDirectory, " +
@@ -54,12 +64,13 @@ internal class SwitchCheckpointRecorder(
                 return null
             }
             val branch = git.currentBranch(dir)
-            val declaredUrl = topology.byPath[target.path]?.url
+            val declaredUrl = registration?.url
             checkpoint[target.path] = CheckpointEntry(
                 sha,
                 branch,
                 identity?.gitDirectory,
                 declaredUrl,
+                registeredAtCheckpoint = registration != null,
             )
             log.info(
                 "[checkpoint] $label: branch=${branch ?: "(detached)"}, head=${sha.take(12)}, " +

@@ -458,6 +458,40 @@ class SwitchIntegrationTest {
         assertTrue(logs.any { it.contains("not associated with its superproject") })
     }
 
+    @Test
+    fun `leftover submodule directory registered by the target preset is switched`() {
+        // The current main branch does not register SubA, but its directory remains on disk
+        // with external git metadata from an earlier init, and the preset's main registers it
+        // again. The switch must checkpoint and switch it instead of aborting.
+        val sub = createRepo(tmpDir, "sub")
+        createBranch(sub, "release")
+
+        val mainAuthor = createRepo(tmpDir, "main-author")
+        addSubmodule(mainAuthor, sub, "SubA")
+        gitOk(mainAuthor, "checkout", "-b", "newmain")
+        gitOk(mainAuthor, "rm", "--cached", "-f", "SubA")
+        gitOk(mainAuthor, "config", "-f", ".gitmodules", "--remove-section", "submodule.SubA")
+        gitOk(mainAuthor, "add", ".gitmodules")
+        gitOk(mainAuthor, "commit", "-m", "remove submodule SubA on newmain")
+        gitOk(mainAuthor, "checkout", "main")
+
+        val local = publish(mainAuthor)
+        gitOk(local, "checkout", "newmain")
+        assertTrue(
+            "leftover SubA must still report no superproject on the unregistered main branch",
+            git.repositoryIdentity(File(local, "SubA"))?.superprojectRoot == null,
+        )
+
+        val (ok, logs) = runSwitch(
+            local,
+            Preset("restore", "main", mapOf("SubA" to "release")),
+            SwitchOptions(DirtyAction.Force, pull = false, fetchFirst = false),
+        )
+
+        assertTrue("switch must proceed past an unregistered leftover submodule directory: $logs", ok)
+        assertEquals("release", git.currentBranch(File(local, "SubA")))
+    }
+
     // ---- Rollback ----
 
     @Test
