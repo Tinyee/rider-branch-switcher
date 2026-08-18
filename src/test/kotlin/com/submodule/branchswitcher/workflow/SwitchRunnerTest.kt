@@ -23,15 +23,17 @@ import java.util.concurrent.CancellationException
 
 class SwitchRunnerTest {
     @Test
-    fun `workflow establishes an io worker context independently of its caller`() = runBlocking {
+    fun `workflow runs on the IO dispatcher independently of its caller`() = runBlocking {
         val callerThread = Thread.currentThread()
         var workflowThread: Thread? = null
+        var ranOnIoDispatcher = false
         val operations = object : com.submodule.branchswitcher.operation.GitOperationRunner {
             override suspend fun <T> run(
                 title: String,
                 block: (com.submodule.branchswitcher.operation.OperationProgress, GitOperationSession) -> T,
             ): com.submodule.branchswitcher.operation.GitOperationResult<T> {
                 workflowThread = Thread.currentThread()
+                ranOnIoDispatcher = Thread.currentThread().name.startsWith("DefaultDispatcher-worker")
                 return com.submodule.branchswitcher.operation.GitOperationResult.Cancelled()
             }
 
@@ -44,6 +46,7 @@ class SwitchRunnerTest {
 
         runner.execute("Switching", request(), createStringAppender {})
 
+        assertTrue("workflow must run on the IO dispatcher", ranOnIoDispatcher)
         assertNotNull(workflowThread)
         assertNotSame(callerThread, workflowThread)
     }

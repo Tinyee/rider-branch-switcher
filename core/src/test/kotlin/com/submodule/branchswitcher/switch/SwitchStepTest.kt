@@ -183,10 +183,13 @@ class SwitchStepTest {
     // ---- DirtyHandlingStep ----
 
     @Test
-    fun `dirty step skip clean repo`() {
+    fun `dirty step leaves a clean repo untouched`() {
         val c = context()
-        val step = DirtyHandlingStep()
-        assertTrue(step.run(c).result is StepResult.Success)
+        val execution = DirtyHandlingStep().run(c, SwitchState())
+
+        assertTrue(execution.result is StepResult.Success)
+        assertFalse(execution.state.isSkipped("."))
+        assertTrue(execution.state.stashesSnapshot().isEmpty())
     }
 
     @Test

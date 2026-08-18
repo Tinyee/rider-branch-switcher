@@ -784,7 +784,7 @@ class SwitchIntegrationTest {
         val preset = Preset("test", defaultBranch)
         val result = executor.execute(preset, "feature")
 
-        assertTrue("empty repo should block", result.checkpointBlocked || result.preflightBlocked)
+        assertTrue("empty repo must be blocked at the checkpoint (no HEAD)", result.checkpointBlocked)
         assertEquals(0, result.actualCreated)
     }
 

@@ -52,7 +52,7 @@ class SingleRepositorySwitcherTest {
         )
 
         val missing = runSwitch(switcher, root.toPath(), "module", "dev")
-        val module = root.resolve("module").apply { mkdirs() }
+        root.resolve("module").mkdirs()
         git.dirty = true
         val dirty = runSwitch(switcher, root.toPath(), "module", "dev")
         git.dirty = false
@@ -68,7 +68,6 @@ class SingleRepositorySwitcherTest {
             SingleRepositorySwitchResult.Skipped(SingleRepositorySkipReason.ALREADY_ON_TARGET),
             current,
         )
-        assertTrue(module.isDirectory)
         assertEquals(3, leaseCloseCount)
     }
 

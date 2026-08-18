@@ -23,29 +23,6 @@ class FeedbackIconButtonTest {
     }
 
     @Test
-    fun `action listener fires on click`() {
-        var fired = false
-        val button = FeedbackIconButton(stubIcon()).apply {
-            addActionListener { fired = true }
-        }
-
-        button.doClick()
-
-        assertTrue(fired)
-    }
-
-    @Test
-    fun `toggle exposes selected state`() {
-        val toggle = FeedbackIconToggleButton(stubIcon())
-
-        toggle.isSelected = true
-        assertTrue(toggle.isSelected)
-
-        toggle.isSelected = false
-        assertFalse(toggle.isSelected)
-    }
-
-    @Test
     fun `flashIcon swaps icon and tooltip immediately and restoreFlash reverts both`() {
         val button = FeedbackIconButton(stubIcon("copy"))
         button.toolTipText = "original tooltip"

@@ -302,53 +302,26 @@ class UiLayoutTest {
     }
 
     @Test
-    fun `action bars register metric relayout listeners on their children`() {
+    fun `action bar preferred size tracks child metric changes`() {
         val primary = JButton("Switch")
         val add = JButton("Add")
-        val before = metricListenerCounts(primary, add)
+        val panel = GlobalActionBar(primary, add, compactAtWidth = 340, horizontalGap = 6)
+        val before = panel.preferredSize.width
 
-        GlobalActionBar(primary, add, compactAtWidth = 340, horizontalGap = 6)
+        primary.text = "A much longer action label"
 
-        assertMetricListenersAdded(before, primary, add)
+        assertTrue("panel preferred size must track child text width", panel.preferredSize.width > before)
     }
 
     @Test
-    fun `trailing control registers metric relayout listeners on its children`() {
+    fun `trailing row preferred size tracks child metric changes`() {
         val label = ShrinkableLabel("Main: branch")
         val more = JButton("...")
-        val before = metricListenerCounts(label, more)
+        val panel = TrailingControlRowPanel(label, more, horizontalGap = 8)
+        val before = panel.preferredSize.width
 
-        TrailingControlRowPanel(label, more, horizontalGap = 8)
+        label.text = "Main: a much longer branch name"
 
-        assertMetricListenersAdded(before, label, more)
-    }
-
-    private fun metricListenerCounts(
-        vararg components: javax.swing.JComponent,
-    ): Map<javax.swing.JComponent, Map<String, Int>> =
-        components.associateWith { component ->
-            METRIC_PROPERTIES.associateWith { property ->
-                component.getPropertyChangeListeners(property).size
-            }
-        }
-
-    private fun assertMetricListenersAdded(
-        before: Map<javax.swing.JComponent, Map<String, Int>>,
-        vararg components: javax.swing.JComponent,
-    ) {
-        components.forEach { component ->
-            METRIC_PROPERTIES.forEach { property ->
-                val after = component.getPropertyChangeListeners(property).size
-                assertEquals(
-                    "listener count for '$property' should increase by 1 per child",
-                    before.getValue(component).getValue(property) + 1,
-                    after,
-                )
-            }
-        }
-    }
-
-    companion object {
-        private val METRIC_PROPERTIES = listOf("font", "icon", "preferredSize", "text", "visible")
+        assertTrue("row preferred size must track leading text width", panel.preferredSize.width > before)
     }
 }
