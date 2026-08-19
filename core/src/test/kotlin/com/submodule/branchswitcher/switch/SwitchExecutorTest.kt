@@ -757,6 +757,40 @@ class SwitchExecutorTest {
         assertTrue(outcome.stashRestore.state.retainedStashBackupsSnapshot().isEmpty())
     }
 
+    @Test
+    fun `recovery stops between repositories when cancelled`() {
+        initGitRepo(File(projectRoot.toFile(), "SubA"))
+        initGitRepo(File(projectRoot.toFile(), "SubB"))
+        var writes = 0
+        val countingGit = object : GitClient by fakeGit {
+            override fun currentBranch(workDir: File): String? = "main"
+            override fun resetHard(workDir: File, revision: String): GitResult {
+                writes++
+                return GitResult("reset", 0, "", "")
+            }
+        }
+        val execution = SwitchExecutionResult(
+            status = SwitchExecutionStatus.FAILED,
+            checkpoint = mapOf(
+                "." to CheckpointEntry("main-sha", "main"),
+                "SubA" to CheckpointEntry("subA-sha", "main"),
+                "SubB" to CheckpointEntry("subB-sha", "main"),
+            ),
+            state = SwitchState(),
+        )
+
+        val outcome = SwitchRecoveryExecutor(
+            projectRoot,
+            createStringAppender { log += it },
+            countingGit,
+            cancelled = { writes >= 1 },
+        ).recover(execution)
+
+        assertEquals("recovery must stop after the first write when cancelled", 1, writes)
+        assertFalse("a cancelled rollback is not complete", outcome.rollbackOk)
+        assertEquals("the remaining repositories are not reported as restored", 1, outcome.rollback.outcomes.size)
+    }
+
     // ---- Cancel ----
 
     @Test

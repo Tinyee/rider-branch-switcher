@@ -328,6 +328,14 @@
 - A user-initiated rollback shows the same in-progress indicator (buttons
   disabled and icon) as a forward switch, and the write-busy path no longer
   clears an in-progress state owned by a concurrent operation.
+- Rollback recovery can now be cancelled between repositories; a cancel stops
+  the rollback and releases the write lease instead of running every checkpoint
+  entry to completion.
+- Switch and derive checkpoints read the HEAD SHA and current branch from one
+  `git status --porcelain=v2 --branch` invocation, so a concurrent checkout can
+  never pair a SHA with the wrong branch name in the rollback record.
+- The shared git process pools wait (bounded) for drain threads to finish their
+  current read on plugin unload instead of returning immediately.
 
 ### Removed
 

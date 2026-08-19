@@ -407,6 +407,33 @@ internal class GitCommandClient(
         return if (result.ok) result.stdout.trim().ifEmpty { null } else null
     }
 
+    override fun headAndBranch(workDir: File): HeadAndBranch? {
+        // `git status --porcelain=v2 --branch --untracked-files=no` reports both the
+        // HEAD SHA and the current branch in one invocation, so the two facts cannot
+        // drift apart. --untracked-files=no keeps the output bounded even for
+        // pathological untracked trees (only branch header + tracked changes).
+        val result = run(
+            workDir,
+            "--no-optional-locks",
+            "status",
+            "--porcelain=v2",
+            "--branch",
+            "--untracked-files=no",
+        )
+        if (!result.ok) throw GitQueryException(result)
+        var sha: String? = null
+        var branch: String? = null
+        result.stdout.lineSequence().forEach { line ->
+            when {
+                line.startsWith("# branch.oid") ->
+                    sha = line.removePrefix("# branch.oid").trim().takeUnless { it == "(initial)" }
+                line.startsWith("# branch.head") ->
+                    branch = line.removePrefix("# branch.head").trim().takeUnless { it == "(detached)" }
+            }
+        }
+        return HeadAndBranch(sha, branch)
+    }
+
     override fun listAllBranches(workDir: File): List<String> {
         val remote = remoteName(workDir)
         val result = run(

@@ -193,7 +193,12 @@ class SwitchFlowCoordinator(
                 ) { indicator, operation ->
                     indicator.isIndeterminate = true
                     indicator.text = Bundle.msg("progress.rollback")
-                    val recovery = SwitchRecoveryExecutor(root, recoveryLog, operation)
+                    val recovery = SwitchRecoveryExecutor(
+                        root,
+                        recoveryLog,
+                        operation,
+                        cancelled = { indicator.isCanceled },
+                    )
                     recovery.recover(execution)
                 }
             when (rollbackBackgroundResult) {

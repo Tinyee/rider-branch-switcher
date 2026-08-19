@@ -10,6 +10,14 @@ interface GitRepositoryQuery {
     fun currentBranch(workDir: File): String?
     /** Returns the SHA of HEAD, or null if the repo has no commits. */
     fun revParseHead(workDir: File): String?
+
+    /**
+     * Atomically reads HEAD and the current branch from one git invocation so a
+     * concurrent HEAD move can never pair a SHA with the wrong branch name.
+     * Returns null when the implementation does not support the single-query read;
+     * callers fall back to [revParseHead] + [currentBranch].
+     */
+    fun headAndBranch(workDir: File): HeadAndBranch? = null
     /** Returns stable repository storage and superproject paths, or null when unsupported. */
     fun repositoryIdentity(workDir: File): RepositoryIdentity? = null
     /** Returns the Git executable version and effective per-command timeout when supported. */

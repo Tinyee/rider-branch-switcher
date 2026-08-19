@@ -210,9 +210,12 @@ class DeriveBranchExecutor(
             val repositoryDirectory = resolveGitDir(projectRoot, target.path)
             val repositoryLabel = labelFor(target.path)
             try {
-                val sha = git.revParseHead(repositoryDirectory)
+                // HEAD SHA and branch are read atomically when supported, so the
+                // derive checkpoint cannot pair a SHA with the wrong branch.
+                val headAndBranch = git.headAndBranch(repositoryDirectory)
+                val sha = headAndBranch?.sha ?: git.revParseHead(repositoryDirectory)
                 if (sha != null) {
-                    val branch = git.currentBranch(repositoryDirectory)
+                    val branch = headAndBranch?.branch ?: git.currentBranch(repositoryDirectory)
                     val repositoryId = git.repositoryIdentity(repositoryDirectory)?.gitDirectory
                     entries[target.path] = DeriveCheckpointEntry(
                         sha,

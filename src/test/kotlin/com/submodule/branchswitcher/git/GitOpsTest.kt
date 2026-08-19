@@ -392,6 +392,45 @@ class GitOpsTest {
     }
 
     @Test
+    fun `head and branch are read atomically from a bounded status query`() {
+        val commands = mutableListOf<List<String>>()
+        val atomicGit = GitOps(timeoutSeconds = 10) { builder ->
+            commands += builder.command()
+            ControllableProcess(
+                finished = true,
+                stdout = ("# branch.oid 0123456789abcdef\n" +
+                    "# branch.head (detached)\n" +
+                    "1 M. N... 100644 100644 100644 abc def file.txt\n").toByteArray(),
+            )
+        }
+
+        val detached = atomicGit.headAndBranch(tmpDir.toFile())
+        assertEquals("0123456789abcdef", detached?.sha)
+        assertNull(detached?.branch)
+
+        val command = commands.single().joinToString(" ")
+        assertTrue(command.contains("--porcelain=v2"))
+        assertTrue(
+            "untracked enumeration must stay bounded for a checkpoint read",
+            command.contains("--untracked-files=no"),
+        )
+    }
+
+    @Test
+    fun `head and branch report an unborn branch as no sha`() {
+        val unbornGit = GitOps(timeoutSeconds = 10) { _ ->
+            ControllableProcess(
+                finished = true,
+                stdout = "# branch.oid (initial)\n# branch.head main\n".toByteArray(),
+            )
+        }
+
+        val unborn = unbornGit.headAndBranch(tmpDir.toFile())
+        assertEquals("main", unborn?.branch)
+        assertNull(unborn?.sha)
+    }
+
+    @Test
     fun `cancelled session rejects its subsequent commands until closed`() {
         val operation = git.openOperation()
         operation.cancel()

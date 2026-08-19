@@ -80,3 +80,9 @@ data class GitRepositoryInspection(
     val localBranches: Set<String> = emptySet(),
     val remoteBranches: Set<String> = emptySet(),
 )
+
+/** HEAD SHA and current branch read atomically from a single git invocation. */
+data class HeadAndBranch(
+    val sha: String?,
+    val branch: String?,
+)

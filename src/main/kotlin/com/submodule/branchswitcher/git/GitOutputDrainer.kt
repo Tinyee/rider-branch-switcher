@@ -7,6 +7,7 @@ import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.Future
 import java.util.concurrent.Semaphore
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -18,6 +19,9 @@ internal const val GIT_EXIT_WATCHER_THREAD_PREFIX = "branch-switcher-git-exit-"
 /** Bound on simultaneously running git processes; also bounds concurrent state probes. */
 internal const val MAX_CONCURRENT_GIT_PROCESSES = 4
 private const val STREAM_BUFFER_BYTES = 8 * 1024
+
+/** Upper bound on the plugin-unload wait for drain threads to finish their current read. */
+private const val GIT_POOL_SHUTDOWN_WAIT_SECONDS = 5L
 
 internal data class GitCapturedOutput(
     val text: String,
@@ -54,6 +58,18 @@ internal object GitProcessResources {
     fun shutdown() {
         streamExecutor.shutdown()
         exitWatcherExecutor.shutdown()
+        // Bound the wait so plugin unload cannot hang on a drain stuck in read();
+        // the daemon threads are reclaimed by the JVM at process exit regardless.
+        awaitQuietly(streamExecutor)
+        awaitQuietly(exitWatcherExecutor)
+    }
+
+    private fun awaitQuietly(executor: ExecutorService) {
+        try {
+            executor.awaitTermination(GIT_POOL_SHUTDOWN_WAIT_SECONDS, TimeUnit.SECONDS)
+        } catch (_: InterruptedException) {
+            Thread.currentThread().interrupt()
+        }
     }
 }
 

@@ -58,12 +58,16 @@ internal class SwitchCheckpointRecorder(
                 )
                 return null
             }
-            val sha = git.revParseHead(dir)
+            // HEAD SHA and branch come from one git invocation when the client
+            // supports it, so a concurrent checkout cannot pair the SHA with the
+            // wrong branch name in the rollback checkpoint.
+            val headAndBranch = git.headAndBranch(dir)
+            val sha = headAndBranch?.sha ?: git.revParseHead(dir)
             if (sha == null) {
                 log.error("[checkpoint] $label: unable to read HEAD")
                 return null
             }
-            val branch = git.currentBranch(dir)
+            val branch = headAndBranch?.branch ?: git.currentBranch(dir)
             val declaredUrl = registration?.url
             checkpoint[target.path] = CheckpointEntry(
                 sha,
