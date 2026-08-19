@@ -336,6 +336,9 @@
   never pair a SHA with the wrong branch name in the rollback record.
 - The shared git process pools wait (bounded) for drain threads to finish their
   current read on plugin unload instead of returning immediately.
+- Automatic recovery after a failed or cancelled switch runs in its own visible,
+  cancellable background task, so a slow rollback shows progress and can be
+  cancelled between repositories (symmetric with the manual rollback path).
 
 ### Removed
 

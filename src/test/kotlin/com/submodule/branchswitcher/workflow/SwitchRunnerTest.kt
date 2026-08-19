@@ -1,5 +1,6 @@
 package com.submodule.branchswitcher.workflow
 
+import com.submodule.branchswitcher.Bundle
 import com.submodule.branchswitcher.git.GitClient
 import com.submodule.branchswitcher.git.GitOperationProvider
 import com.submodule.branchswitcher.git.GitOperationSession
@@ -11,6 +12,9 @@ import com.submodule.branchswitcher.log.createStringAppender
 import com.submodule.branchswitcher.model.Preset
 import com.submodule.branchswitcher.model.ResolvedSwitchRequest
 import com.submodule.branchswitcher.model.SwitchOptions
+import com.submodule.branchswitcher.operation.GitOperationResult
+import com.submodule.branchswitcher.operation.GitOperationRunner
+import com.submodule.branchswitcher.operation.OperationProgress
 import com.submodule.branchswitcher.switch.OperationIssueCode
 import com.submodule.branchswitcher.switch.SwitchExecutionStatus
 import kotlinx.coroutines.runBlocking
@@ -179,6 +183,47 @@ class SwitchRunnerTest {
         assertEquals(1, git.stashApplyCount)
         assertEquals(2, git.openCount)
         assertEquals(2, git.closeCount)
+    }
+
+    @Test
+    fun `auto recovery runs in its own cancellable background operation`() = runBlocking {
+        val root = Files.createTempDirectory("switch-runner-recovery-task")
+        initGitRepo(root.toFile())
+        val git = object : RecordingGit() {
+            override fun isDirty(workDir: File): Boolean = true
+            override fun submoduleSync(gitRoot: File): GitResult =
+                throw IllegalStateException("sync failed")
+        }
+        val runTitles = mutableListOf<String>()
+        val runner = SwitchRunner(
+            projectRoot = root,
+            operations = object : GitOperationRunner {
+                override suspend fun <T> run(
+                    title: String,
+                    block: (OperationProgress, GitOperationSession) -> T,
+                ): GitOperationResult<T> {
+                    runTitles += title
+                    return TestGitOperationRunner(git).run(title, block)
+                }
+
+                override fun openOperation(): GitOperationSession = git.openOperation()
+            },
+        )
+
+        val result = runner.execute(
+            title = "Switching",
+            request = request(target = "dev", fetchFirst = false, pull = false),
+            log = createStringAppender {},
+            recoveryTitle = Bundle.msg("progress.rollback"),
+        )
+
+        // The FAILED switch's automatic recovery now runs as its own task with a
+        // visible, cancellable indicator (symmetric with the manual rollback path).
+        assertEquals("recovery must run as a second background operation", 2, runTitles.size)
+        assertEquals(Bundle.msg("progress.rollback"), runTitles[1])
+        assertEquals("main", git.branch)
+        assertEquals(1, git.stashApplyCount)
+        assertTrue(result.recovery?.ok == true)
     }
 
     @Test

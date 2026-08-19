@@ -154,6 +154,7 @@ class SwitchFlowCoordinator(
                 request = request,
                 log = log,
                 operationContext = operationContext,
+                recoveryTitle = Bundle.msg("progress.rollback"),
             )
         }
         if (job == null) return

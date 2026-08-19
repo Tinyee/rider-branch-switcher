@@ -17,6 +17,7 @@ import com.submodule.branchswitcher.switch.SwitchExecutionResult
 import com.submodule.branchswitcher.switch.SwitchExecutionStatus
 import com.submodule.branchswitcher.switch.SwitchExecutor
 import com.submodule.branchswitcher.switch.SwitchRecoveryExecutor
+import com.submodule.branchswitcher.switch.SwitchRecoveryOutcome
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.nio.file.Path
@@ -65,8 +66,9 @@ class SwitchRunner(
         request: ResolvedSwitchRequest,
         log: AppLogger,
         operationContext: OperationContext = newOperationContext("switch"),
+        recoveryTitle: String = "Rolling back",
     ): SwitchRunResult = withContext(Dispatchers.IO) {
-        executeOnWorker(title, request, log, operationContext)
+        executeOnWorker(title, request, log, operationContext, recoveryTitle)
     }
 
     private suspend fun executeOnWorker(
@@ -74,6 +76,7 @@ class SwitchRunner(
         request: ResolvedSwitchRequest,
         log: AppLogger,
         operationContext: OperationContext,
+        recoveryTitle: String,
     ): SwitchRunResult {
         val operationId = operationContext.id
         val operationLog = log.withContext(operationContext.inPhase("execute"))
@@ -121,7 +124,7 @@ class SwitchRunner(
                 executionResult.status == SwitchExecutionStatus.FAILED)
         if (needsRecovery && executionResult != null) {
             val recoveryLog = log.withContext(operationContext.inPhase("recovery"))
-            val recovered = recoverSwitch(executionResult, recoveryLog)
+            val recovered = recoverSwitch(executionResult, recoveryLog, recoveryTitle)
             executionResult = recovered.execution
             recoveryResult = recovered.recovery
         }
@@ -163,48 +166,63 @@ class SwitchRunner(
     }
 
     @Suppress("TooGenericExceptionCaught") // recovery must return a report instead of escaping
-    private fun recoverSwitch(
+    private suspend fun recoverSwitch(
         execution: SwitchExecutionResult,
         log: AppLogger,
+        recoveryTitle: String,
     ): RecoveredSwitchOutcome {
-        // The cancelled GitOperationSession rejects every later command, and the
-        // completed session is closed once the background runner returns. Recovery
-        // therefore always requires a fresh operation session.
-        val recoveryOperation = try {
-            operations.openOperation()
-        } catch (e: RuntimeException) {
-            log.logFailure("cancel recovery session could not be opened", e)
-            return RecoveredSwitchOutcome(
-                execution = execution,
-                recovery = SwitchRecoveryResult(
-                    rollbackOk = false,
-                    issues = listOf(recoveryIssue(OperationIssueCode.RECOVERY_SESSION_UNAVAILABLE)),
-                ),
-            )
+        // Recovery runs in its own background task so a slow rollback is visible and
+        // cancellable: GitBackgroundRunner owns the fresh session's open/cancel/close,
+        // and the executor's cancellation lambda stops it between repositories.
+        val recoveryResult = operations.run(recoveryTitle) { indicator, operation ->
+            indicator.isIndeterminate = true
+            indicator.text = recoveryTitle
+            SwitchRecoveryExecutor(
+                projectRoot,
+                log,
+                operation,
+                cancelled = { indicator.isCanceled },
+            ).recover(execution)
         }
-        return try {
-            val recoveryExecutor = SwitchRecoveryExecutor(projectRoot, log, recoveryOperation)
-            val recoveryOutcome = recoveryExecutor.recover(execution)
-            RecoveredSwitchOutcome(
-                execution = execution.copy(state = recoveryOutcome.stashRestore.state),
-                recovery = SwitchRecoveryResult(
-                    rollbackOk = recoveryOutcome.rollbackOk,
-                    issues = recoveryOutcome.issues,
-                ),
-            )
-        } catch (e: RuntimeException) {
-            log.logFailure("recovery failed", e)
-            RecoveredSwitchOutcome(
-                execution = execution,
-                recovery = SwitchRecoveryResult(
-                    rollbackOk = false,
-                    issues = listOf(recoveryIssue(OperationIssueCode.RECOVERY_FAILED)),
-                ),
-            )
-        } finally {
-            recoveryOperation.close()
+        return when (recoveryResult) {
+            is GitOperationResult.Completed -> toRecoveredOutcome(execution, recoveryResult.value)
+            is GitOperationResult.Cancelled -> {
+                val outcome = recoveryResult.value
+                if (outcome != null) {
+                    toRecoveredOutcome(execution, outcome)
+                } else {
+                    RecoveredSwitchOutcome(
+                        execution = execution,
+                        recovery = SwitchRecoveryResult(
+                            rollbackOk = false,
+                            issues = listOf(recoveryIssue(OperationIssueCode.RECOVERY_FAILED)),
+                        ),
+                    )
+                }
+            }
+            is GitOperationResult.Failed -> {
+                log.logFailure("switch recovery failed", recoveryResult.error)
+                RecoveredSwitchOutcome(
+                    execution = execution,
+                    recovery = SwitchRecoveryResult(
+                        rollbackOk = false,
+                        issues = listOf(recoveryIssue(OperationIssueCode.RECOVERY_FAILED)),
+                    ),
+                )
+            }
         }
     }
+
+    private fun toRecoveredOutcome(
+        execution: SwitchExecutionResult,
+        outcome: SwitchRecoveryOutcome,
+    ): RecoveredSwitchOutcome = RecoveredSwitchOutcome(
+        execution = execution.copy(state = outcome.stashRestore.state),
+        recovery = SwitchRecoveryResult(
+            rollbackOk = outcome.rollbackOk,
+            issues = outcome.issues,
+        ),
+    )
 
     private fun recoveryIssue(code: OperationIssueCode) = OperationIssue(
         stage = OperationStage.RECOVERY,
