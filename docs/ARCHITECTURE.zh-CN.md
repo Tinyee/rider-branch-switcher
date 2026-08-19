@@ -103,6 +103,15 @@ Git 命令：
 Recovery 不使用当前注册状态，因为主仓回滚后某个 checkpoint 路径可能合法地变为废弃路径；
 它通过独立的 checkpoint 安全规则恢复。
 
+预检与实际 Git 写入之间还有一道锁闸门：`WriteGuardGitClient` 包装注入的
+`SwitchGitClient`，在每次写操作前立即重查 `index.lock`，一旦发现新锁就以结构化的
+`IndexLockBlockedException` 中止，关闭 check-then-act 竞态窗口。`IndexLockBlock` 和
+`LockBlockedPresentation` 把被阻塞仓库的路径保存为与语言无关的结构化数据，UI 可以直接
+本地化展示，不需要解析英文诊断。core 不依赖 IDE 类型也能识别取消：`CancellationClassifier`
+把异常归类为取消（默认只认 JDK `CancellationException`），`CancellationHandle` 和
+`ProgressHandle` 提供平台无关的取消与进度检查点，由 `platform` 适配到 IntelliJ 的
+`ProgressIndicator`。
+
 预检、执行、刷新和恢复共用一个 `OperationContext`，日志中的操作 ID 不会在预检后断开。
 可恢复失败使用包含阶段、错误码和仓库路径的 `OperationIssue`，展示文字不再承担控制流语义。
 
@@ -292,8 +301,9 @@ stdout 超过 8 MiB 会明确失败，stderr 只保留最后 128 KiB 诊断内�
 取消、超时或输出捕获卡住时，会终止运行期间观察到的子进程并关闭父进程流；如果强制终止在预算内仍未
 完成，对应的 Git 并发许可只会在进程实际退出后异步归还。后续命令等待许可的时间不超过配置的 Git 超时，
 超时后返回独立的 `PROCESS_CAPACITY` 错误，不会无限等待。如果 JVM 无法提供 `onExit` future，最多四个
-守护线程会轮询实际退出状态，确认退出后再归还许可。remote 名称只在单个 `GitOperationSession` 内缓存，
-预检也使用独立短会话，不会跨请求沿用失效结果。
+守护线程会轮询实际退出状态，确认退出后再归还许可。remote 名称按 `GitOperationSession` 缓存：共享的
+`GitOps.directClient` 为直接调用保留长期缓存，但每次 `openOperation()` 都从空缓存开始，预检也使用独立
+短会话，因此切换能看到改名或替换后的 remote，不会跨请求沿用失效结果。
 仓库状态刷新把分支、HEAD 和 dirty 状态合并为每仓库一个进程；预检再读取目标 refs，首次还会
 查询 remote 名称，最多三个进程。真正的切换、checkpoint 和恢复仍在写操作附近重新读取状态，
 不会使用可能过期的界面快照。

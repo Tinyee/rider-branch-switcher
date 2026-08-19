@@ -37,6 +37,14 @@ package boundaries; the
 [contributor validation guide](../CONTRIBUTING.md#validation) defines when to
 run broader checks.
 
+Concurrent repository-state probes are throttled below the Git process-pool
+bound so one slot stays free for a foreground switch or recovery. The UI layer
+injects that bound (`MAX_CONCURRENT_GIT_PROCESSES`) into
+`RepositoryStateRefreshCoordinator`; `workflow` never imports the plugin `git`
+package. `quickCheck` permits `workflow` to import `git`, but the binding rule
+is that `workflow` must still reference neither IntelliJ APIs nor concrete
+command implementations (`GitOps`, `GitCommandClient`, `GitProcessRunner`).
+
 The product models one main Git repository and the recursive submodule graph
 registered through `.gitmodules`. Multiple independent VCS roots and arbitrary
 sibling repositories are outside this architecture; supporting them would
@@ -48,12 +56,12 @@ require a different preset, checkpoint, and recovery model.
 | --- | --- | --- |
 | `core` root | Preset JSON lookup, parsing, and atomic persistence | `PresetLoader.kt` |
 | `core/model` | Presets, resolved requests, switch options | `PresetConfig.kt` |
-| `core/switch` | Preflight, ordered steps, structured issues, recovery plans, derive | `SwitchExecutor.kt`, `SwitchRecoveryExecutor.kt` |
+| `core/switch` | Preflight, ordered steps, immutable state, lock guard, structured issues, recovery plans, derive | `SwitchExecutor.kt`, `SwitchStep.kt`, `SwitchRecoveryExecutor.kt`, `DeriveBranchExecutor.kt`, `WriteGuardGitClient.kt` |
 | `core/git` | Capability-oriented Git interfaces and results | `GitClient.kt` |
 | `core/operation` | Platform-independent background Git result and progress contracts | `GitOperationRunner.kt` |
 | `core/presentation` | Pure import, preset editing, shortcut, and preview decisions | `PresetEditRules.kt`, `SwitchPreviewRules.kt` |
 | `core/settings` | Pure settings normalization and descriptions | `SettingsRules.kt` |
-| `core/log` | Platform-independent logging contracts and diagnostic sanitization | `AppLogger.kt`, `DiagnosticSanitizer.kt` |
+| `core/log` | Platform-independent logging contracts and diagnostic sanitization | `AppLogger.kt`, `DiagnosticSanitizer.kt`, `DiagnosticFingerprint.kt` |
 | `service` | Project-scoped state, preset repository, write lease | `BranchSwitcherService.kt`, `PresetRepository.kt` |
 | `workflow` | Reusable use cases and cancellable read coordination independent of IntelliJ APIs | `SwitchRunner.kt`, `RepositoryStateRefreshCoordinator.kt` |
 | `platform` | IntelliJ progress/cancellation/background adapters | `GitBackgroundRunner.kt`, `SwitchAdapters.kt` |
@@ -69,7 +77,8 @@ with the largest Swing class:
 
 1. `PresetConfig.kt` for presets, options, and resolved requests.
 2. `SwitchStep.kt` for step results, immutable state, and execution context.
-3. `SwitchExecutor.kt` for the ordered pipeline.
+3. `SwitchExecutor.kt` for the ordered pipeline, and `WriteGuardGitClient.kt`
+   for the pre-write lock guard.
 4. `SwitchRecoveryExecutor.kt` for checkpoint and stash recovery.
 5. `GitOperationRunner.kt`, `SwitchRunner.kt`, and `GitBackgroundRunner.kt` for
    the pure operation contract, workflow, and IntelliJ adapter.
@@ -185,6 +194,18 @@ path is absent from the current `.gitmodules` graph remains on disk but cannot
 be modified through those workflows. Recovery deliberately does not use current
 registration because rolling the main repository back may legitimately make a
 checkpointed path obsolete.
+
+A second gate closes the check-then-act window between preflight and mutation:
+`WriteGuardGitClient` wraps the injected `SwitchGitClient` and rechecks
+`index.lock` immediately before every write operation, aborting with a
+structured `IndexLockBlockedException` when a lock has appeared. `IndexLockBlock`
+and `LockBlockedPresentation` keep blocked-repository paths as locale-neutral
+structured data so the UI can present and localize the message without parsing
+English diagnostics. Core also recognizes cancellation without knowing IDE
+types: `CancellationClassifier` maps an exception to cancellation (defaulting to
+JDK `CancellationException`), while `CancellationHandle` and `ProgressHandle`
+expose platform-neutral cancellation and progress checkpoints that `platform`
+adapts to an IntelliJ `ProgressIndicator`.
 
 `SwitchRecoveryExecutor` first builds an immutable `SwitchRecoveryPlan` listing
 repository targets, stash actions, and retained initialized worktrees. The plan
@@ -330,7 +351,8 @@ so save failures and screen refresh behavior remain consistent.
 
 `GitOps` implements the aggregate Git interface but delegates commands to
 `GitCommandClient`. Only `GitProcessRunner` starts and waits for operating-system
-processes. It admits at most four active Git processes and assigns their stdout
+processes; the sole exception is `GitOps.isGitOnPath()`, which probes
+`git --version` directly — a deliberate allowance enforced by `quickCheck`. It admits at most four active Git processes and assigns their stdout
 and stderr pipes to a dedicated eight-thread drain executor. Stdout is capped at
 8 MiB and fails explicitly when exceeded; stderr retains only its final 128 KiB
 for diagnostics. Cancellation, timeout, and blocked output capture terminate
@@ -356,10 +378,11 @@ state combines completion and cancellation callbacks, so a completed execution
 result remains available for recovery when cancellation races with task
 completion.
 
-Remote-name selection is cached only inside one `GitOperationSession`.
-Preflight inspection uses a fresh short-lived session, and a later switch opens
-a new operation, so both observe remotes renamed or replaced since the previous
-request.
+Remote-name selection is cached per `GitOperationSession`: the shared
+`GitOps.directClient` keeps a long-lived cache for direct non-session calls,
+but every `openOperation()` starts with a fresh empty cache and preflight
+inspection uses a fresh short-lived session, so a later switch observes remotes
+renamed or replaced since the previous request.
 
 The service write lease prevents overlapping switch, derive, rollback, and
 single-repository writes. Each branch-combo discovery also opens an isolated
