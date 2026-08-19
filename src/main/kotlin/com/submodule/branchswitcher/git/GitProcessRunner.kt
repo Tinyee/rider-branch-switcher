@@ -61,6 +61,53 @@ internal class GitProcessRunner(
         val resourcesStopped: Boolean,
     )
 
+    private data class ProcessWait(
+        val exitCode: Int,
+        val terminationReason: String?,
+        val interrupted: Boolean,
+    )
+
+    /** Polls [process] until it exits, is cancelled, times out, or exceeds the stdout cap. */
+    private fun awaitProcessExit(
+        process: Process,
+        cancellation: AtomicBoolean,
+        stdoutLimitExceeded: AtomicBoolean,
+        timeoutSeconds: Int,
+        observedDescendants: MutableMap<Long, ProcessHandle>,
+    ): ProcessWait {
+        var exitCode = -1
+        var terminationReason: String? = null
+        var interrupted = false
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(timeoutSeconds.toLong())
+        while (true) {
+            observeDescendants(process, observedDescendants)
+            val finished = try {
+                process.waitFor(100, TimeUnit.MILLISECONDS)
+            } catch (_: InterruptedException) {
+                interrupted = true
+                terminationReason = "interrupted"
+                break
+            }
+            if (finished) {
+                exitCode = process.exitValue()
+                break
+            }
+            if (cancellation.get()) {
+                terminationReason = "cancelled"
+                break
+            }
+            if (System.nanoTime() - deadline >= 0) {
+                terminationReason = "timeout after ${timeoutSeconds}s"
+                break
+            }
+            if (stdoutLimitExceeded.get()) {
+                terminationReason = stdoutLimitMessage()
+                break
+            }
+        }
+        return ProcessWait(exitCode, terminationReason, interrupted)
+    }
+
     @Suppress("TooGenericExceptionCaught")
     private fun runWithPermit(
         workDir: File,
@@ -92,38 +139,17 @@ internal class GitProcessRunner(
             return drainSchedulingFailure(process, commandLabel, "stderr", error)
         }
 
-        val deadline = System.nanoTime() +
-            TimeUnit.SECONDS.toNanos(effectiveTimeoutSeconds.toLong())
-        var exitCode = -1
-        var terminationReason: String? = null
-        var interrupted = false
         val observedDescendants = linkedMapOf<Long, ProcessHandle>()
-        while (true) {
-            observeDescendants(process, observedDescendants)
-            val finished = try {
-                process.waitFor(100, TimeUnit.MILLISECONDS)
-            } catch (_: InterruptedException) {
-                interrupted = true
-                terminationReason = "interrupted"
-                break
-            }
-            if (finished) {
-                exitCode = process.exitValue()
-                break
-            }
-            if (cancellation.get()) {
-                terminationReason = "cancelled"
-                break
-            }
-            if (System.nanoTime() - deadline >= 0) {
-                terminationReason = "timeout after ${effectiveTimeoutSeconds}s"
-                break
-            }
-            if (stdoutLimitExceeded.get()) {
-                terminationReason = stdoutLimitMessage()
-                break
-            }
-        }
+        val wait = awaitProcessExit(
+            process,
+            cancellation,
+            stdoutLimitExceeded,
+            effectiveTimeoutSeconds,
+            observedDescendants,
+        )
+        val exitCode = wait.exitCode
+        val terminationReason = wait.terminationReason
+        var interrupted = wait.interrupted
 
         var resourcesStopped = true
         if (terminationReason != null) {

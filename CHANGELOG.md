@@ -375,6 +375,10 @@
   backups after clean restores.
 - Add direct coverage of the shared checkpoint HEAD-and-branch read, pinning the
   atomic-first path, the separate-read fallback, and the no-HEAD case.
+- Clear the Detekt debt that blocked the CI quality gate: split the oversized
+  `SwitchExecutorTest` and `GitOpsTest` classes, extract the stash-restore and
+  git-process wait-loop methods, and rename or trim misnamed or unused
+  declarations so both detekt tasks report zero issues.
 
 ## [0.6.0] - 2026-06-13
 

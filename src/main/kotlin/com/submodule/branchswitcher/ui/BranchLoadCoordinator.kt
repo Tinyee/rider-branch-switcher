@@ -94,6 +94,7 @@ internal class BranchLoadCoordinator(
      * branch loads, so a discovery started from an action handler never blocks the
      * EDT and is cancelled when the Tool Window closes.
      */
+    @Suppress("TooGenericExceptionCaught") // every probe failure is delivered to the UI callback, never lost
     fun <T> discover(
         block: (PresetDiscoveryGitClient) -> T,
         onResult: (Result<T>) -> Unit,
