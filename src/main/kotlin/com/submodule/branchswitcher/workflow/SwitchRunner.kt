@@ -66,8 +66,9 @@ class SwitchRunner(
         log: AppLogger,
         operationContext: OperationContext = newOperationContext("switch"),
         recoveryTitle: String,
+        stashRestoreTitle: String,
     ): SwitchRunResult = withContext(Dispatchers.IO) {
-        executeOnWorker(title, request, log, operationContext, recoveryTitle)
+        executeOnWorker(title, request, log, operationContext, recoveryTitle, stashRestoreTitle)
     }
 
     private suspend fun executeOnWorker(
@@ -76,6 +77,7 @@ class SwitchRunner(
         log: AppLogger,
         operationContext: OperationContext,
         recoveryTitle: String,
+        stashRestoreTitle: String,
     ): SwitchRunResult {
         val operationId = operationContext.id
         val operationLog = log.withContext(operationContext.inPhase("execute"))
@@ -126,6 +128,15 @@ class SwitchRunner(
             val recovered = recoverSwitch(executionResult, recoveryLog, recoveryTitle)
             executionResult = recovered.execution
             recoveryResult = recovered.recovery
+        }
+
+        // A SUCCESS/PARTIAL switch whose end-of-pipeline stash restore left retryable
+        // entries (a stale index.lock race, an interrupted apply) gets one automatic
+        // stash-only retry: the repositories are already at their targets, so this never
+        // rolls anything back. An explicit user cancel during the restore is recorded on
+        // the execution and suppresses the retry.
+        if (executionResult != null && needsStashRetry(executionResult)) {
+            executionResult = retryStashRestore(executionResult, log, operationContext, stashRestoreTitle)
         }
 
         val result = SwitchRunResult(
@@ -222,4 +233,61 @@ class SwitchRunner(
             issues = outcome.issues,
         ),
     )
+
+    /**
+     * True when a completed switch left stash entries that were never marked attempted
+     * (a lock race or an interrupted apply) and the restore was not stopped by a user
+     * cancel. These are exactly the entries a retry can make progress on; an apply that
+     * failed with Git refusing is already marked attempted and must not be re-applied.
+     */
+    private fun needsStashRetry(execution: SwitchExecutionResult): Boolean =
+        (execution.status == SwitchExecutionStatus.SUCCESS ||
+            execution.status == SwitchExecutionStatus.PARTIAL) &&
+            !execution.stashRestoreInterrupted &&
+            execution.state.stashesSnapshot().any { !it.value.restoreAttempted }
+
+    /**
+     * One stash-only retry for a SUCCESS/PARTIAL switch: restores the entries the inline
+     * restore could not apply without rolling any repository back. Runs in its own
+     * background task so it is visible and cancellable; at-most-once is preserved because
+     * [com.submodule.branchswitcher.switch.restoreTrackedStashes] skips attempted entries.
+     */
+    private suspend fun retryStashRestore(
+        execution: SwitchExecutionResult,
+        log: AppLogger,
+        operationContext: OperationContext,
+        title: String,
+    ): SwitchExecutionResult {
+        val retryLog = log.withContext(operationContext.inPhase("stash-restore"))
+        val retryResult = operations.run(title) { indicator, operation ->
+            indicator.isIndeterminate = true
+            indicator.text = title
+            val executor = SwitchRecoveryExecutor(
+                projectRoot,
+                retryLog,
+                operation,
+                cancelled = { indicator.isCanceled },
+            )
+            executor.restoreTrackedStashes(executor.plan(execution), execution.state)
+        }
+        return when (retryResult) {
+            is GitOperationResult.Completed -> {
+                val restore = retryResult.value
+                execution.copy(
+                    state = restore.state,
+                    issues = execution.issues + restore.issues,
+                    stashRestoreInterrupted = restore.interrupted,
+                )
+            }
+            is GitOperationResult.Cancelled -> {
+                // The user cancelled the retry; leave the result as-is so the remaining
+                // WIP stays tracked and visible instead of being silently dropped.
+                execution
+            }
+            is GitOperationResult.Failed -> {
+                log.logFailure("[stash restore] retry failed", retryResult.error)
+                execution
+            }
+        }
+    }
 }

@@ -230,6 +230,10 @@
 - Notification balloons carry the operation ID (`op: switch-…`), so an outcome
   can be matched to its tool-window log lines; the preflight-failure log line is
   recorded inside the same operation scope.
+- A completed switch whose end-of-pipeline stash restore left retryable entries
+  (a stale `index.lock` race or an interrupted apply) automatically retries the
+  restore once without rolling any repository back; an explicit cancel during
+  the restore suppresses the retry so the remaining WIP stays in `git stash`.
 
 ### Fixed
 
@@ -401,6 +405,9 @@
   repository inspection as a nullable capability so pipeline steps depend on an
   interface instead of a concrete write-guard wrapper; and single-pass the
   porcelain-v2 status parser.
+- Add tests for the automatic stash-restore retry (an interrupted inline restore
+  is re-applied by the runner without rollback) and for the cancel-interrupted
+  restore flag that suppresses the retry.
 
 ## [0.6.0] - 2026-06-13
 

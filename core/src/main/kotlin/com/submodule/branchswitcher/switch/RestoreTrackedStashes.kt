@@ -25,11 +25,14 @@ internal fun restoreTrackedStashes(
 ): StashRestoreResult {
     val issues = mutableListOf<OperationIssue>()
     var nextState = state
+    var interrupted = false
     try {
         for ((path, stash) in state.stashesSnapshot()) {
             if (cancelled?.invoke() == true) {
                 // Stop restoring on cancel; the remaining entries stay tracked and
-                // retryable (no apply started for them).
+                // retryable (no apply started for them). Callers use [interrupted]
+                // to avoid automatically retrying after an explicit user cancel.
+                interrupted = true
                 break
             }
             if (selectedPaths != null && path !in selectedPaths) continue
@@ -66,7 +69,7 @@ internal fun restoreTrackedStashes(
     } catch (e: RuntimeException) {
         throw SwitchStepException(nextState, e)
     }
-    return StashRestoreResult(nextState, issues)
+    return StashRestoreResult(nextState, issues, interrupted = interrupted)
 }
 
 /**

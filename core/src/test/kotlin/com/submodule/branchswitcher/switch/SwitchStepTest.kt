@@ -661,6 +661,23 @@ class SwitchStepTest {
     }
 
     @Test
+    fun `restore interrupted by cancel is reported as interrupted`() {
+        val state = SwitchState().withTrackedStash(".", "before -> dev", "stash-oid")
+
+        val restore = restoreTrackedStashes(
+            projectRoot,
+            fakeGit,
+            createStringAppender { log += it },
+            state,
+            cancelled = { true },
+        )
+
+        assertTrue("a cancel-stopped restore must be marked interrupted", restore.interrupted)
+        assertEquals("WIP stays tracked for a later explicit retry", "stash-oid", restore.state.trackedStash(".")?.oid)
+        assertTrue(restore.issues.isEmpty())
+    }
+
+    @Test
     fun `stash apply failure is retained but not automatically replayed`() {
         var applyCalls = 0
         val popGit = object : GitClient by fakeGit {

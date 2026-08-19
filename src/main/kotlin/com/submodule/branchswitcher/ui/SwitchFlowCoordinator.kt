@@ -156,6 +156,7 @@ class SwitchFlowCoordinator(
                 log = log,
                 operationContext = operationContext,
                 recoveryTitle = Bundle.msg("progress.rollback"),
+                stashRestoreTitle = Bundle.msg("progress.stash.restore"),
             )
         }
         if (job == null) return

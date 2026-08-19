@@ -41,6 +41,13 @@ data class SwitchExecutionResult(
     val checkpoint: Map<String, CheckpointEntry>?,
     val state: SwitchState,
     val issues: List<OperationIssue> = emptyList(),
+    /**
+     * True when the end-of-pipeline stash restore stopped because the user cancelled.
+     * The status stays SUCCESS/PARTIAL (a completed switch must not be rolled back), so
+     * this flag lets the caller distinguish "the restore needs a retry" from "the user
+     * chose to stop restoring".
+     */
+    val stashRestoreInterrupted: Boolean = false,
 ) {
     val ok: Boolean get() = status == SwitchExecutionStatus.SUCCESS
     val cancelled: Boolean get() = status == SwitchExecutionStatus.CANCELLED
@@ -166,6 +173,7 @@ class SwitchExecutor @JvmOverloads constructor(
     ): SwitchExecutionResult {
         var executionStatus = SwitchExecutionStatus.SUCCESS
         var switchState = initialState
+        var stashRestoreInterrupted = false
         val issues = mutableListOf<OperationIssue>()
         for (step in steps) {
             context.progressHandle?.text = step.name
@@ -247,48 +255,61 @@ class SwitchExecutor @JvmOverloads constructor(
         if (executionStatus == SwitchExecutionStatus.SUCCESS ||
             executionStatus == SwitchExecutionStatus.PARTIAL
         ) {
-            val restore = try {
-                // Honor cancellation inside the restore: a user cancel stops the loop
-                // with the remaining WIP preserved (and retryable) in git stash. The
-                // switch itself already completed, so this must not flip the status to
-                // CANCELLED — recovery would roll the completed switch back and its
-                // clean-tree reset would wipe already-restored WIP.
-                restoreTrackedStashes(projectRoot, context.git, log, switchState, cancelled = context.cancelled)
-            } catch (error: SwitchStepException) {
-                log.logFailure("[stash restore] exception", error.cause)
-                StashRestoreResult(
-                    error.latestState,
-                    listOf(
-                        OperationIssue(
-                            stage = OperationStage.STASH_RESTORE,
-                            code = OperationIssueCode.STASH_RESTORE_FAILED,
-                            severity = OperationIssueSeverity.ERROR,
-                            diagnostic = "${error.cause.javaClass.simpleName}: ${error.cause.message}",
-                        ),
-                    ),
-                )
-            } catch (error: RuntimeException) {
-                log.logFailure("[stash restore] exception", error)
-                StashRestoreResult(
-                    switchState,
-                    listOf(
-                        OperationIssue(
-                            stage = OperationStage.STASH_RESTORE,
-                            code = OperationIssueCode.STASH_RESTORE_FAILED,
-                            severity = OperationIssueSeverity.ERROR,
-                            diagnostic = "${error.javaClass.simpleName}: ${error.message}",
-                        ),
-                    ),
-                )
-            }
+            val restore = restoreCompletedStashes(context, switchState)
             switchState = restore.state
             issues += restore.issues
+            stashRestoreInterrupted = restore.interrupted
         }
         log.info("")
         log.activity(
             if (executionStatus == SwitchExecutionStatus.SUCCESS) "=== done ===" else "=== done with errors ===",
         )
-        return SwitchExecutionResult(executionStatus, switchCheckpoint, switchState, issues)
+        return SwitchExecutionResult(
+            executionStatus,
+            switchCheckpoint,
+            switchState,
+            issues,
+            stashRestoreInterrupted,
+        )
+    }
+
+    /**
+     * Restores the WIP that dirty handling stashed after a completed pipeline. Honors
+     * cancellation inside the restore: a user cancel stops the loop with the remaining WIP
+     * preserved (and retryable) in git stash, and is reported via [StashRestoreResult.interrupted].
+     * The switch itself already completed, so a cancel here must not flip the status to
+     * CANCELLED — recovery would roll the completed switch back and its clean-tree reset
+     * would wipe already-restored WIP.
+     */
+    @Suppress("TooGenericExceptionCaught") // any restore failure must report rather than escape
+    private fun restoreCompletedStashes(context: SwitchContext, state: SwitchState): StashRestoreResult = try {
+        restoreTrackedStashes(projectRoot, context.git, log, state, cancelled = context.cancelled)
+    } catch (error: SwitchStepException) {
+        log.logFailure("[stash restore] exception", error.cause)
+        StashRestoreResult(
+            error.latestState,
+            listOf(
+                OperationIssue(
+                    stage = OperationStage.STASH_RESTORE,
+                    code = OperationIssueCode.STASH_RESTORE_FAILED,
+                    severity = OperationIssueSeverity.ERROR,
+                    diagnostic = "${error.cause.javaClass.simpleName}: ${error.cause.message}",
+                ),
+            ),
+        )
+    } catch (error: RuntimeException) {
+        log.logFailure("[stash restore] exception", error)
+        StashRestoreResult(
+            state,
+            listOf(
+                OperationIssue(
+                    stage = OperationStage.STASH_RESTORE,
+                    code = OperationIssueCode.STASH_RESTORE_FAILED,
+                    severity = OperationIssueSeverity.ERROR,
+                    diagnostic = "${error.javaClass.simpleName}: ${error.message}",
+                ),
+            ),
+        )
     }
 
     private fun createContext(

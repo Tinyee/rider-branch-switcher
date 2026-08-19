@@ -48,7 +48,13 @@ class SwitchRunnerTest {
             operations,
         )
 
-        runner.execute("Switching", request(), createStringAppender {}, recoveryTitle = "Rolling back")
+        runner.execute(
+            "Switching",
+            request(),
+            createStringAppender {},
+            recoveryTitle = "Rolling back",
+            stashRestoreTitle = "Restoring stash",
+        )
 
         assertTrue("workflow must run on the IO dispatcher", ranOnIoDispatcher)
         assertNotNull(workflowThread)
@@ -65,6 +71,7 @@ class SwitchRunnerTest {
             request = request(),
             log = createStringAppender {},
             recoveryTitle = "Rolling back",
+            stashRestoreTitle = "Restoring stash",
         )
 
         assertFalse("missing git repo should fail through executor", result.ok)
@@ -86,6 +93,7 @@ class SwitchRunnerTest {
             request = request(),
             log = createStringAppender {},
             recoveryTitle = "Rolling back",
+            stashRestoreTitle = "Restoring stash",
         )
 
         assertFalse(result.ok)
@@ -109,6 +117,7 @@ class SwitchRunnerTest {
             request = request(target = "dev", fetchFirst = false, pull = false),
             log = createStringAppender(logs::add),
             recoveryTitle = "Rolling back",
+            stashRestoreTitle = "Restoring stash",
         )
 
         assertTrue(result.ok)
@@ -145,6 +154,7 @@ class SwitchRunnerTest {
             request = request(target = "dev", fetchFirst = false, pull = false),
             log = createStringAppender {},
             recoveryTitle = "Rolling back",
+            stashRestoreTitle = "Restoring stash",
         )
 
         assertTrue(result.cancelled)
@@ -176,6 +186,7 @@ class SwitchRunnerTest {
             request = request(target = "dev", fetchFirst = false, pull = false),
             log = createStringAppender {},
             recoveryTitle = "Rolling back",
+            stashRestoreTitle = "Restoring stash",
         )
 
         assertFalse(result.ok)
@@ -188,6 +199,44 @@ class SwitchRunnerTest {
         assertEquals(1, git.stashApplyCount)
         assertEquals(2, git.openCount)
         assertEquals(2, git.closeCount)
+    }
+
+    @Test
+    fun `completed switch retries a retryable stash restore without rollback`() = runBlocking {
+        val root = Files.createTempDirectory("switch-runner-stash-retry")
+        initGitRepo(root.toFile())
+        var applyCount = 0
+        val git = object : RecordingGit() {
+            override fun isDirty(workDir: File): Boolean = true
+            override fun stashApply(workDir: File, oid: String): GitResult {
+                applyCount++
+                // First apply (end-of-pipeline restore) is interrupted and left
+                // retryable; the automatic stash-only retry applies it cleanly.
+                return if (applyCount == 1) {
+                    GitResult("stash apply", -1, "", "interrupted")
+                } else {
+                    GitResult("stash apply", 0, "", "")
+                }
+            }
+        }
+        val runner = runner(root, git)
+
+        val result = runner.execute(
+            title = "Switching",
+            request = request(target = "dev", fetchFirst = false, pull = false),
+            log = createStringAppender {},
+            recoveryTitle = "Rolling back",
+            stashRestoreTitle = "Restoring stash",
+        )
+
+        assertTrue("a retried stash restore must not fail the switch", result.ok)
+        assertEquals("inline restore + automatic retry", 2, applyCount)
+        assertTrue(
+            "the retry must leave no stash tracked",
+            result.execution?.state?.stashesSnapshot().isNullOrEmpty(),
+        )
+        assertEquals("switch session + retry session", 2, git.openCount)
+        assertEquals("retry must not roll back the branch", "dev", git.branch)
     }
 
     @Test
@@ -220,6 +269,7 @@ class SwitchRunnerTest {
             request = request(target = "dev", fetchFirst = false, pull = false),
             log = createStringAppender {},
             recoveryTitle = Bundle.msg("progress.rollback"),
+            stashRestoreTitle = Bundle.msg("progress.stash.restore"),
         )
 
         // The FAILED switch's automatic recovery now runs as its own task with a
@@ -248,6 +298,7 @@ class SwitchRunnerTest {
             request = request(),
             log = createStringAppender(logs::add),
             recoveryTitle = "Rolling back",
+            stashRestoreTitle = "Restoring stash",
         )
 
         assertFalse(result.ok)
@@ -272,6 +323,7 @@ class SwitchRunnerTest {
             request = request(fetchFirst = false, pull = false),
             log = createStringAppender(logs::add),
             recoveryTitle = "Rolling back",
+            stashRestoreTitle = "Restoring stash",
         )
 
         // A checkpoint query failure must not escape the workflow as an unhandled
@@ -313,6 +365,7 @@ class SwitchRunnerTest {
             request = request(target = "dev", fetchFirst = false, pull = false),
             log = createStringAppender {},
             recoveryTitle = "Rolling back",
+            stashRestoreTitle = "Restoring stash",
         )
 
         assertTrue(result.cancelled)
