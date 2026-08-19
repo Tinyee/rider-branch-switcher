@@ -156,16 +156,16 @@ class PresetLoaderTest {
     }
 
     @Test
-    fun `load rejects presets missing required fields`() {
-        listOf(
-            """{"presets":[{"main":"dev"}]}""" to "preset.name",
-            """{"presets":[{"name":"dev"}]}""" to "preset.main",
-        ).forEach { (json, expectedField) ->
-            writePresetFile(json)
-            val result = PresetLoader.load(tmpDir)
-            assertTrue(result.isFailure)
-            assertTrue(result.exceptionOrNull()!!.message!!.contains(expectedField))
-        }
+    fun `presets missing required fields are dropped instead of failing the file`() {
+        writePresetFile(
+            """{"presets":[{"main":"dev"},{"name":"dev"},{"name":"ok","main":"main"}]}"""
+        )
+        val result = PresetLoader.loadWithDigest(tmpDir)
+        assertTrue(result.isSuccess)
+        val loaded = result.getOrThrow()
+        assertEquals("the valid preset still loads", 1, loaded.presetFile.presets.size)
+        assertEquals("ok", loaded.presetFile.presets[0].name)
+        assertEquals("both invalid entries are surfaced as dropped", 2, loaded.droppedNames.size)
     }
 
     @Test
@@ -224,15 +224,17 @@ class PresetLoaderTest {
     }
 
     @Test
-    fun `load rejects preset paths that escape the project root`() {
+    fun `unsafe submodule paths are dropped instead of failing the file`() {
         writePresetFile(
-            """{"presets":[{"name":"unsafe","main":"main","submodules":{"../outside":"dev"}}]}"""
+            """{"presets":[{"name":"unsafe","main":"main","submodules":{"../outside":"dev"}},{"name":"safe","main":"main"}]}"""
         )
 
-        val result = PresetLoader.load(tmpDir)
+        val result = PresetLoader.loadWithDigest(tmpDir)
 
-        assertTrue(result.isFailure)
-        assertTrue(result.exceptionOrNull()?.message.orEmpty().contains("invalid submodule path"))
+        assertTrue(result.isSuccess)
+        assertEquals("the valid preset still loads", 1, result.getOrThrow().presetFile.presets.size)
+        assertEquals("safe", result.getOrThrow().presetFile.presets[0].name)
+        assertEquals("the unsafe entry is surfaced as dropped", "unsafe", result.getOrThrow().droppedNames.single())
     }
 
     private fun writePresetFile(json: String) {

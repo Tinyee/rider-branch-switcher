@@ -1,7 +1,9 @@
 package com.submodule.branchswitcher.switch
 
+import com.submodule.branchswitcher.git.GitFailureKind
 import com.submodule.branchswitcher.git.SwitchGitClient
 import com.submodule.branchswitcher.log.AppLogger
+import java.io.File
 import java.nio.file.Path
 
 data class StashRestoreResult(
@@ -9,7 +11,14 @@ data class StashRestoreResult(
     val issues: List<OperationIssue>,
 )
 
-/** Restores tracked stashes and retains failed entries so a later recovery can retry them. */
+/**
+ * Restores tracked stashes, drops entries that applied cleanly, and retains failed
+ * entries so a later recovery can retry them.
+ *
+ * [cancelled] is polled before every repository so a user cancel stops the loop
+ * without marking the interrupted entry as at-most-once: a cancelled apply never
+ * started, so the WIP stays safe in the stash and remains retryable.
+ */
 @Suppress("TooGenericExceptionCaught", "ThrowsCount") // preserve successfully restored entries if a later Git query fails
 internal fun restoreTrackedStashes(
     projectRoot: Path,
@@ -17,11 +26,17 @@ internal fun restoreTrackedStashes(
     log: AppLogger,
     state: SwitchState,
     selectedPaths: Set<String>? = null,
+    cancelled: (() -> Boolean)? = null,
 ): StashRestoreResult {
     val issues = mutableListOf<OperationIssue>()
     var nextState = state
     try {
         for ((path, stash) in state.stashesSnapshot()) {
+            if (cancelled?.invoke() == true) {
+                // Stop restoring on cancel; the remaining entries stay tracked and
+                // retryable (no apply started for them).
+                break
+            }
             if (selectedPaths != null && path !in selectedPaths) continue
             val repositoryDirectory = resolveGitDir(projectRoot, path)
             if (stash.restoreAttempted) {
@@ -82,8 +97,16 @@ internal fun restoreTrackedStashes(
                 throw SwitchStepException(nextState, error)
             }
             if (applyResult.ok) {
-                log.info("stash apply ok; recovery backup retained (${stash.message}, oid=${stash.oid})")
-                nextState = nextState.withRestoredStashBackup(path)
+                log.info("stash apply ok (${stash.message}, oid=${stash.oid})")
+                // Drop the applied entry so refs/stash does not accumulate one backup
+                // per switch. A drop failure is only a leftover backup, not a restore
+                // failure, so it is tracked for the manual-recovery notice.
+                val dropped = dropRestoredStash(git, repositoryDirectory, stash.oid, path, log)
+                nextState = if (dropped) {
+                    nextState.withStashRestored(path)
+                } else {
+                    nextState.withRestoredStashBackup(path)
+                }
             } else {
                 // A lock created between the earlier check and the apply must surface as
                 // the structured lock block, not a generic stash-apply failure.
@@ -104,6 +127,26 @@ internal fun restoreTrackedStashes(
                         diagnostic = indexLockBlockedDiagnostic(racedLock),
                         lockPath = racedLock,
                     )
+                } else if (applyResult.failureKind == GitFailureKind.CANCELLED ||
+                    applyResult.failureKind == GitFailureKind.INTERRUPTED ||
+                    applyResult.failureKind == GitFailureKind.TIMEOUT
+                ) {
+                    // A cancelled/interrupted apply is a stop signal, not a failed
+                    // restore: the command died before completing, so the entry stays
+                    // tracked and retryable and the WIP is preserved in the stash.
+                    nextState = nextState.withStashRestoreRetryable(path)
+                    log.warn(
+                        "[fail] stash apply interrupted for $path: ${applyResult.failureKind}; " +
+                            "WIP preserved in stash (${stash.message})",
+                    )
+                    issues += OperationIssue(
+                        stage = OperationStage.STASH_RESTORE,
+                        code = OperationIssueCode.STASH_RESTORE_FAILED,
+                        repositoryPath = path,
+                        diagnostic = "restore interrupted by cancellation; WIP preserved in stash " +
+                            "(${stash.message}, oid=${stash.oid})",
+                    )
+                    break
                 } else {
                     nextState = nextState.withStashRestoreAttempted(path)
                     log.warn("[fail] stash apply failed for $path: ${applyResult.diagnostic()}")
@@ -132,4 +175,25 @@ internal fun restoreTrackedStashes(
         throw SwitchStepException(nextState, e)
     }
     return StashRestoreResult(nextState, issues)
+}
+
+/** Best-effort `git stash drop` after a successful apply; false leaves a backup behind. */
+private fun dropRestoredStash(
+    git: SwitchGitClient,
+    repositoryDirectory: File,
+    oid: String,
+    path: String,
+    log: AppLogger,
+): Boolean = try {
+    val drop = git.stashDrop(repositoryDirectory, oid)
+    if (drop.ok) {
+        log.info("stash drop ok ($path, oid=$oid)")
+        true
+    } else {
+        log.warn("[fail] stash drop failed for $path: ${drop.diagnostic()}")
+        false
+    }
+} catch (error: RuntimeException) {
+    log.warn("[fail] stash drop failed for $path: ${error.javaClass.simpleName}: ${error.message}")
+    false
 }

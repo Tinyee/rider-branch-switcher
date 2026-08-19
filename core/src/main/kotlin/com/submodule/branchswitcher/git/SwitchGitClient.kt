@@ -32,6 +32,15 @@ interface SwitchGitClient : RepositoryStateGitClient, SubmoduleRegistrationQuery
 
     /** Applies the stash identified by [oid] without removing its recovery backup. */
     fun stashApply(workDir: File, oid: String): GitResult
+
+    /**
+     * Drops the stash entry identified by [oid] from `refs/stash`. Called after a
+     * successful [stashApply] so successful switches do not accumulate one backup
+     * per switch in `git stash list`. Test doubles that never run a real apply may
+     * inherit the succeeding default; the CLI implementation overrides this.
+     */
+    fun stashDrop(workDir: File, oid: String): GitResult =
+        GitResult("stash drop", 0, "", "")
     /** Runs `git fetch --prune`. */
     fun fetch(workDir: File): GitResult
     /** Checks out an existing local branch by name. */

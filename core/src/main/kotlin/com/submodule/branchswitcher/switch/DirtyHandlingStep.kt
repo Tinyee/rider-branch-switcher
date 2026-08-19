@@ -108,6 +108,14 @@ class DirtyHandlingStep : SwitchStep {
             return state
         }
         val stashMessage = "$STASH_MESSAGE_PREFIX${target.branch}"
+        // Snapshot the stash stack top before the push so a terminated push can be told
+        // apart from a pre-existing entry (an old backup or an external stash) that must
+        // never be mistaken for the current WIP.
+        val beforeTop = try {
+            context.git.stashTopOid(repositoryDirectory)
+        } catch (_: GitQueryException) {
+            null
+        }
         val stashResult = context.git.stash(repositoryDirectory, stashMessage)
         if (!stashResult.ok) {
             // A terminated stash push (cancel / timeout / interruption) may have written
@@ -119,8 +127,13 @@ class DirtyHandlingStep : SwitchStep {
                 stashResult.failureKind == GitFailureKind.TIMEOUT
             if (terminated) {
                 val ghostOid = try {
-                    context.git.stashOidByMessage(repositoryDirectory, stashMessage)
-                        ?: context.git.stashTopOid(repositoryDirectory)
+                    val top = context.git.stashTopOid(repositoryDirectory)
+                    // Only an entry the terminated push actually created is tracked:
+                    // the top must have advanced AND the newest entry must carry our
+                    // message prefix. Falling back to any other top would apply an old
+                    // backup or a concurrent external stash onto the current tree.
+                    if (top == null || top == beforeTop) null
+                    else context.git.stashOidByMessage(repositoryDirectory, stashMessage)
                 } catch (_: GitQueryException) {
                     null
                 }

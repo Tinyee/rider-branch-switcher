@@ -36,7 +36,11 @@ internal class SwitchController(
     private val onStateChanged: () -> Unit,
 ) {
 
-    private val coordinator = SwitchFlowCoordinator(project, service)
+    private val coordinator = SwitchFlowCoordinator(
+        project,
+        service,
+        onRollbackInProgress = ::setSwitchInProgress,
+    )
     private val writeOperations = WriteOperationLauncher(service.scope, service::tryAcquireWrite)
 
     /** Notified on the UI thread whenever an in-flight mutation starts or ends. */

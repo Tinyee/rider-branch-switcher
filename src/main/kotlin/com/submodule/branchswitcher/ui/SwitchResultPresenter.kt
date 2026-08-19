@@ -95,11 +95,36 @@ internal class SwitchResultPresenter(
     ) {
         service.addHistory(preset.name, preset.id)
         onSuccess?.invoke()
-        Notifier.info(
-            project,
-            Bundle.msg("switch.complete"),
-            Bundle.msg("notify.switch.complete.msg", preset.name) + retainedStashBackupNotice(execution),
-        )
+        val issues = execution?.issues.orEmpty()
+        if (issues.isNotEmpty()) {
+            // The switch itself completed, but some stashed WIP could not be restored
+            // (a stale index.lock or a cancellation during the restore). Surface the
+            // preserved stash instead of claiming a fully clean success.
+            val lockLines = lockBlockedLines(issues)
+            val detailLines = if (lockLines.isNotEmpty()) {
+                lockLines
+            } else {
+                issues.mapNotNull(OperationIssue::diagnostic)
+            }
+            Notifier.warn(
+                project,
+                Bundle.msg("switch.complete"),
+                appendNotificationDetail(
+                    Bundle.msg("notify.switch.complete.msg", preset.name),
+                    joinNotificationDetails(
+                        Bundle.msg("notify.switch.stash.restore.suspended"),
+                        detailLines.joinToString("\n"),
+                        retainedStashBackupNotice(execution).trim(),
+                    ),
+                ),
+            )
+        } else {
+            Notifier.info(
+                project,
+                Bundle.msg("switch.complete"),
+                Bundle.msg("notify.switch.complete.msg", preset.name) + retainedStashBackupNotice(execution),
+            )
+        }
     }
 
     private fun notifyCancellation(runResult: SwitchRunResult) {

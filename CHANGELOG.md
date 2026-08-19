@@ -301,6 +301,33 @@
   processes instead of letting them finish on the project scope.
 - Adding a submodule no longer runs a Git query on the UI thread; the candidate
   list is discovered in the background and the menu is built afterwards.
+- A successfully restored stash is dropped from `refs/stash` instead of
+  accumulating one recovery backup per switch.
+- A stash push terminated mid-write no longer falls back to the top of
+  `refs/stash`, which could misapply an older backup or a concurrent external
+  stash; only an entry the push actually created is tracked.
+- Stash restoration honors cancellation: an interrupted apply stays retryable
+  and the preserved WIP is surfaced in the notification instead of being marked
+  as attempted and silently abandoned, and a completed switch that could not
+  restore some stashes warns with the preserved stash details.
+- A fetch-first switch is no longer short-circuited even when every target is
+  already on its branch with a clean tree, so remote-tracking refs stay fresh.
+- A background task that completes before its task infrastructure throws keeps
+  the completed switch result (checkpoint and stashes) instead of discarding it
+  as a workflow failure, and logs the anomaly.
+- The git child's stdin pipe is closed on the success path so frequent switching
+  cannot leak input-pipe file descriptors.
+- A capture recovered after a transient interruption keeps its real output
+  instead of reporting the command as interrupted.
+- Cancelling a submodule-discovery query no longer delivers a spurious failure
+  to the add-submodule popup.
+- One invalid preset entry no longer makes the whole preset file unloadable; it
+  is skipped and the drop is surfaced in the IDE log.
+- The add-submodule popup is not shown when its anchor was disposed while the
+  candidate query was running.
+- A user-initiated rollback shows the same in-progress indicator (buttons
+  disabled and icon) as a forward switch, and the write-busy path no longer
+  clears an in-progress state owned by a concurrent operation.
 
 ### Removed
 
@@ -326,6 +353,9 @@
   classifier default.
 - Add regression tests for failed-switch auto-recovery, message-scoped stash
   identity, terminated-stash ghost entries, and already-applied no-op switches.
+- Add regression tests for ghost stashes that did not advance the stack,
+  fetch-first short-circuiting, invalid-preset dropping, and dropped stash
+  backups after clean restores.
 
 ## [0.6.0] - 2026-06-13
 

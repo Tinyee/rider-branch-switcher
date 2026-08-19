@@ -55,6 +55,12 @@ class PresetRepository internal constructor(
             // The loader derives the digest from the same bytes it parsed, so the
             // recorded digest can never describe different content than presetFile.
             recordedDigest = loaded.digest
+            if (loaded.droppedNames.isNotEmpty()) {
+                LOG.warn(
+                    "preset file $loaded.file: skipped ${loaded.droppedNames.size} invalid preset(s): " +
+                        loaded.droppedNames.joinToString(", "),
+                )
+            }
             synchronizedWithDisk = true
         }.map { it.file to it.presetFile }
     }
@@ -81,4 +87,8 @@ class PresetRepository internal constructor(
         if (current == null && recorded == null) false
         else if (current == null || recorded == null) true
         else !current.contentEquals(recorded)
+
+    private companion object {
+        private val LOG = com.intellij.openapi.diagnostic.Logger.getInstance("SubmoduleBranchSwitcher")
+    }
 }

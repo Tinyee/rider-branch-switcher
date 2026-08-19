@@ -248,7 +248,12 @@ class SwitchExecutor @JvmOverloads constructor(
             executionStatus == SwitchExecutionStatus.PARTIAL
         ) {
             val restore = try {
-                restoreTrackedStashes(projectRoot, context.git, log, switchState)
+                // Honor cancellation inside the restore: a user cancel stops the loop
+                // with the remaining WIP preserved (and retryable) in git stash. The
+                // switch itself already completed, so this must not flip the status to
+                // CANCELLED — recovery would roll the completed switch back and its
+                // clean-tree reset would wipe already-restored WIP.
+                restoreTrackedStashes(projectRoot, context.git, log, switchState, cancelled = context.cancelled)
             } catch (error: SwitchStepException) {
                 log.logFailure("[stash restore] exception", error.cause)
                 StashRestoreResult(
@@ -324,7 +329,9 @@ class SwitchExecutor @JvmOverloads constructor(
      */
     @Suppress("TooGenericExceptionCaught") // fail closed on any probe failure; cancellation still propagates
     private fun alreadyAtTargetState(context: SwitchContext, preset: Preset): Boolean {
-        if (context.options.pull) return false
+        // fetchFirst refreshes remote-tracking refs even when pull is off, so a
+        // fetch-first switch must never be short-circuited.
+        if (context.options.pull || context.options.fetchFirst) return false
         return preset.targets().all { target ->
             // A missing or branch-mismatched target means the switch has real work.
             val entry = context.checkpoint[target.path] ?: return@all false

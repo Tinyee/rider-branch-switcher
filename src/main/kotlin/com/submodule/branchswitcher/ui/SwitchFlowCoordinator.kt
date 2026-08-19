@@ -63,6 +63,11 @@ internal class SwitchUiCompletion(
 class SwitchFlowCoordinator(
     private val project: Project,
     private val service: BranchSwitcherService,
+    /**
+     * Notified (on the UI thread) when a user-initiated rollback write starts or ends,
+     * so the Tool Window can show the same in-progress state as a forward switch.
+     */
+    private val onRollbackInProgress: ((Boolean) -> Unit)? = null,
 ) {
     private val preflightUi = SwitchPreflightUi(project, service)
     private val resultPresenter = SwitchResultPresenter(project, service)
@@ -166,7 +171,7 @@ class SwitchFlowCoordinator(
         operationContext: OperationContext,
     ) {
         val recoveryLog = log.withContext(operationContext.inPhase("recovery"))
-        writeOperations.launch(
+        val job = writeOperations.launch(
             onBusy = { uiLater { resultPresenter.showWriteBusy() } },
             afterRelease = { recoveryOutcome ->
                 val checkpointPaths = execution.checkpoint.orEmpty().keys.filterTo(mutableSetOf()) { it != "." }
@@ -201,5 +206,15 @@ class SwitchFlowCoordinator(
                     }
             }
         }
+        if (job == null) {
+            // The write lease is held by someone else, so no rollback starts. Any
+            // in-progress state belongs to whoever holds the lease — never clear it
+            // here (a running forward switch would lose its busy indicator).
+            return
+        }
+        // Claim in-progress only once the rollback owns the lease, so the busy path
+        // above never touches state set by a concurrent operation.
+        onRollbackInProgress?.invoke(true)
+        job.invokeOnCompletion { uiLater { onRollbackInProgress?.invoke(false) } }
     }
 }

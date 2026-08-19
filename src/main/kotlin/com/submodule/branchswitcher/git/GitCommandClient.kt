@@ -392,6 +392,9 @@ internal class GitCommandClient(
     override fun stashApply(workDir: File, oid: String): GitResult =
         run(workDir, "stash", "apply", oid)
 
+    override fun stashDrop(workDir: File, oid: String): GitResult =
+        run(workDir, "stash", "drop", oid)
+
     override fun checkoutNewBranch(workDir: File, branch: String): GitResult =
         run(workDir, "checkout", "-b", branch)
 

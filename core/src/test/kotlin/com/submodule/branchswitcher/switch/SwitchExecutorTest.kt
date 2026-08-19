@@ -189,6 +189,27 @@ class SwitchExecutorTest {
     }
 
     @Test
+    fun `fetch-first prevents the already-at-target short circuit even without pull`() {
+        var fetchCalls = 0
+        val noopGit = object : GitClient by fakeGit {
+            override fun currentBranch(workDir: File): String? = "dev"
+            override fun fetch(workDir: File): GitResult {
+                fetchCalls++
+                return GitResult("fetch", 0, "", "")
+            }
+        }
+        val executor = SwitchExecutor(projectRoot, createStringAppender { log += it }, noopGit)
+
+        val result = executor.executeResultTest(
+            Preset("test", "dev", emptyMap()),
+            SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = true),
+        )
+
+        assertTrue(result.ok)
+        assertEquals("a fetch-first switch must still fetch even when already at target", 1, fetchCalls)
+    }
+
+    @Test
     fun `index lock created after preflight blocks the next write`() {
         var lockChecks = 0
         var checkoutCalls = 0
@@ -732,7 +753,8 @@ class SwitchExecutorTest {
         assertTrue(outcome.stashRestore.issues.isEmpty())
         assertEquals(listOf("SubA"), stashApplyCalls)
         assertFalse(outcome.stashRestore.state.stashesSnapshot().isNotEmpty())
-        assertEquals(setOf("SubA"), outcome.stashRestore.state.retainedStashBackupsSnapshot())
+        // The applied stash is dropped after a clean restore, not retained as a backup.
+        assertTrue(outcome.stashRestore.state.retainedStashBackupsSnapshot().isEmpty())
     }
 
     // ---- Cancel ----

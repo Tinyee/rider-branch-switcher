@@ -183,6 +183,9 @@ internal class GitProcessRunner(
         } else {
             stderr.capture.text
         }
+        // The drain threads already closed stdout/stderr via `use {}`; close stdin too
+        // so a long-lived process never leaks its input pipe to GC (macOS FD limit).
+        closeProcessStreams(process)
         return completedOutcome(
             GitResult(commandLabel, exitCode, stdout.capture.text.trim(), stderrText.trim()),
             resourcesStopped,
@@ -312,7 +315,10 @@ internal class GitProcessRunner(
         var interrupted = false
         repeat(2) {
             try {
-                return AwaitedCapture(future.get(5, TimeUnit.SECONDS), interrupted)
+                // A value recovered on the retry is complete and trustworthy: do not
+                // carry a transient interrupt flag that would make the caller discard
+                // the real capture and report the command as "interrupted".
+                return AwaitedCapture(future.get(5, TimeUnit.SECONDS), interrupted = false)
             } catch (_: InterruptedException) {
                 interrupted = true
             } catch (error: ExecutionException) {

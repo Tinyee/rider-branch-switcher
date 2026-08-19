@@ -3,6 +3,7 @@ package com.submodule.branchswitcher.ui
 import com.submodule.branchswitcher.git.GitOperationSession
 import com.submodule.branchswitcher.git.MAX_CONCURRENT_GIT_PROCESSES
 import com.submodule.branchswitcher.git.PresetDiscoveryGitClient
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -107,6 +108,10 @@ internal class BranchLoadCoordinator(
                     ensureActive()
                     val value = withContext(Dispatchers.IO) { block(operation) }
                     if (!closed.get()) onResult(Result.success(value))
+                } catch (error: CancellationException) {
+                    // A cancelled discovery is normal coroutine cancellation, not a
+                    // query failure: deliver nothing and unwind (mirrors launch()).
+                    throw error
                 } catch (error: Throwable) {
                     if (!closed.get()) onResult(Result.failure(error))
                 } finally {

@@ -75,6 +75,10 @@ class GitBackgroundRunner(
 ) : GitOperationRunner {
     override fun openOperation(): GitOperationSession = git.openOperation()
 
+    private companion object {
+        private val LOG = com.intellij.openapi.diagnostic.Logger.getInstance("SubmoduleBranchSwitcher")
+    }
+
     /**
      * Executes [block] once and closes its Git session on every outcome.
      */
@@ -116,7 +120,36 @@ class GitBackgroundRunner(
             outcome.recordCancellation()
             outcome.result()
         } catch (e: RuntimeException) {
-            GitOperationResult.Failed(e)
+            // The block may have completed and recorded its value before the task
+            // infrastructure threw (e.g. a rejected background task). Discarding that
+            // value as Failed would drop a recorded checkpoint and orphan any stashes
+            // the switch already created. Prefer the recorded outcome; only report
+            // Failed when no value was ever completed.
+            when (val recorded = outcome.result()) {
+                is GitOperationResult.Completed -> {
+                    // The work finished but the task infrastructure still threw; keep
+                    // the completed value (dropping it would orphan stashes) and log the
+                    // anomaly so the diagnostic is not a silent blind spot.
+                    LOG.warn(
+                        "git operation reported a runtime failure after its work completed; " +
+                            "using the completed result: ${e.javaClass.simpleName}: ${e.message}",
+                    )
+                    recorded
+                }
+                is GitOperationResult.Cancelled ->
+                    if (recorded.value != null) {
+                        LOG.warn(
+                            "git operation reported a runtime failure after its work completed " +
+                                "under cancellation; using the completed result: " +
+                                "${e.javaClass.simpleName}: ${e.message}",
+                        )
+                        recorded
+                    } else {
+                        GitOperationResult.Failed(e)
+                    }
+                // result() never produces Failed; present only for exhaustiveness.
+                is GitOperationResult.Failed -> GitOperationResult.Failed(e)
+            }
         } finally {
             // Cancellation stops the process; close releases ownership of the
             // whole session. Both actions remain idempotent and independently required.

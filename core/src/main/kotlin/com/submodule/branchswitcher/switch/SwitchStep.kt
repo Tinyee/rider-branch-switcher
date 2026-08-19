@@ -55,6 +55,10 @@ class SwitchState private constructor(
     fun withRestoredStashBackup(path: String): SwitchState =
         copy(stashedPaths = stashedPaths - path, retainedStashBackups = retainedStashBackups + path)
 
+    /** Removes a successfully applied-and-dropped stash; no recovery backup is retained. */
+    fun withStashRestored(path: String): SwitchState =
+        copy(stashedPaths = stashedPaths - path)
+
     fun withStashRestoreAttempted(path: String): SwitchState {
         val stash = stashedPaths[path] ?: return this
         return copy(stashedPaths = stashedPaths + (path to stash.copy(restoreAttempted = true)))

@@ -76,8 +76,13 @@ object PresetLoader {
             val bytes = Files.readAllBytes(file)
             val text = String(bytes, StandardCharsets.UTF_8)
             val dto = gson.fromJson(text, PresetFileDto::class.java) ?: PresetFileDto()
-            val (parsed, _) = normalizePresetIds(dto)
-            PresetLoadResult(file, parsed, java.security.MessageDigest.getInstance("SHA-256").digest(bytes))
+            val (parsed, _, droppedNames) = normalizePresetIds(dto)
+            PresetLoadResult(
+                file,
+                parsed,
+                java.security.MessageDigest.getInstance("SHA-256").digest(bytes),
+                droppedNames,
+            )
         }.recoverCatching { e ->
             when (e) {
                 is JsonSyntaxException -> throw IllegalStateException("preset file parse error: ${e.message}", e)
@@ -86,10 +91,11 @@ object PresetLoader {
         }
     }
 
-    private fun normalizePresetIds(dto: PresetFileDto): Pair<PresetFile, Boolean> {
+    private fun normalizePresetIds(dto: PresetFileDto): Triple<PresetFile, Boolean, List<String>> {
         val usedIds = mutableSetOf<String>()
         var changed = false
-        val presets = dto.presets.orEmpty().filterNotNull().map { presetDto ->
+        val dropped = mutableListOf<String>()
+        val presets = dto.presets.orEmpty().filterNotNull().mapNotNull { presetDto ->
             val existingId = presetDto.id?.takeIf { it.isNotBlank() }
             val id = if (existingId != null && usedIds.add(existingId)) {
                 existingId
@@ -97,9 +103,16 @@ object PresetLoader {
                 changed = true
                 generateUniqueId(usedIds)
             }
-            presetDto.toPreset(explicitId = id)
+            runCatching { presetDto.toPreset(explicitId = id) }.getOrElse {
+                // One invalid preset (blank branch name, unsafe path) must not make the
+                // whole file unloadable: drop it and let the next save rewrite the file
+                // without it. Same per-entry policy as parsePresetImport.
+                dropped += presetDto.name?.trim()?.ifEmpty { id } ?: id
+                changed = true
+                null
+            }
         }
-        return PresetFile(presets) to changed
+        return Triple(PresetFile(presets), changed, dropped)
     }
 
     private fun generateUniqueId(usedIds: MutableSet<String>): String {
@@ -163,9 +176,14 @@ object PresetLoader {
 
 internal fun isRepositoryBoundary(directory: Path): Boolean = Files.exists(directory.resolve(".git"))
 
-/** A successfully loaded preset file plus the digest of the exact bytes that were parsed. */
+/**
+ * A successfully loaded preset file plus the digest of the exact bytes that were parsed.
+ * [droppedNames] lists preset entries that were invalid and skipped so the file still
+ * loads; callers surface them instead of treating the whole load as failed.
+ */
 data class PresetLoadResult(
     val file: Path,
     val presetFile: PresetFile,
     val digest: ByteArray?,
+    val droppedNames: List<String> = emptyList(),
 )

@@ -232,10 +232,17 @@ class SwitchStepTest {
 
     @Test
     fun `terminated stash with a created entry is tracked for recovery`() {
+        var pushRan = false
         val dirtyGit = object : GitClient by fakeGit {
             override fun isDirty(workDir: File): Boolean = true
-            override fun stash(workDir: File, message: String): GitResult =
-                GitResult("stash", -1, "", "cancelled")
+            override fun stashTopOid(workDir: File): String? =
+                if (pushRan) "created-oid" else "before-oid"
+            override fun stash(workDir: File, message: String): GitResult {
+                pushRan = true
+                return GitResult("stash", -1, "", "cancelled")
+            }
+            override fun stashOidByMessage(workDir: File, messagePrefix: String): String? =
+                if (pushRan) "created-oid" else null
         }
         val c = context(SwitchOptions(DirtyAction.Stash)).copy(git = dirtyGit)
 
@@ -244,7 +251,30 @@ class SwitchStepTest {
         assertTrue(execution.result is StepResult.Success)
         val stash = execution.state.stashesSnapshot()["."]
         assertNotNull("a terminated stash that created an entry must be tracked", stash)
-        assertEquals("stash-oid", stash?.oid)
+        assertEquals("created-oid", stash?.oid)
+    }
+
+    @Test
+    fun `terminated stash that did not advance the stack is not tracked`() {
+        // The push died before writing refs/stash, but an older backup still sits on
+        // top. That backup must not be mistaken for the current WIP (H2).
+        val dirtyGit = object : GitClient by fakeGit {
+            override fun isDirty(workDir: File): Boolean = true
+            override fun stash(workDir: File, message: String): GitResult =
+                GitResult("stash", -1, "", "cancelled")
+            // stashTopOid stays "stash-oid" throughout.
+        }
+        val c = context(SwitchOptions(DirtyAction.Stash)).copy(git = dirtyGit)
+
+        val execution = DirtyHandlingStep().run(c)
+
+        assertTrue(execution.result is StepResult.Partial)
+        assertTrue(execution.state.isSkipped("."))
+        assertNull("an old backup must not be tracked as the current WIP", execution.state.trackedStash("."))
+        assertEquals(
+            OperationIssueCode.STASH_FAILED,
+            (execution.result as StepResult.Partial).issues.single().code,
+        )
     }
 
     @Test

@@ -115,6 +115,9 @@ internal class SubmoduleRowManager(
             { client -> client.listSubmodulePaths(gitRoot.toFile()) },
         ) { result ->
             scheduleUi {
+                // The Tool Window may have been disposed while the query ran; a popup
+                // anchored to an orphaned component must not be shown.
+                if (!anchor.isDisplayable) return@scheduleUi
                 val all = result.getOrElse { error ->
                     // A topology discovery failure (e.g. unresolvable project root) must not
                     // crash the popup action; route through logFailure so environment failures
