@@ -1,10 +1,12 @@
 package com.submodule.branchswitcher
 
+import com.tngtech.archunit.core.domain.JavaClass.Predicates.resideInAPackage
 import com.tngtech.archunit.core.domain.JavaClasses
 import com.tngtech.archunit.core.importer.ClassFileImporter
 import com.tngtech.archunit.core.importer.Location
 import com.tngtech.archunit.lang.ArchRule
 import com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses
+import org.junit.Assert.assertFalse
 import org.junit.Test
 import java.nio.file.Path
 
@@ -15,6 +17,9 @@ import java.nio.file.Path
  *
  * Only `main` classes are imported (plugin and core modules) so that test code can
  * reference other layers freely, matching quickCheck's `src/main/kotlin` scope.
+ *
+ * Import paths are relative to the Gradle project root, which is the working
+ * directory for `test` and IDE runs; `:test` compiles `main` classes first.
  */
 class ArchitectureRulesTest {
 
@@ -28,6 +33,17 @@ class ArchitectureRulesTest {
     }
 
     private fun check(rule: ArchRule) = rule.check(MAIN_CLASSES)
+
+    /**
+     * Vacuity guard: a rule whose package pattern matches no class would otherwise
+     * "pass" silently. Each package the rules depend on must be non-empty.
+     */
+    private fun assertPackagePresent(pkg: String) {
+        assertFalse(
+            "no classes matched $pkg - its rules would pass vacuously",
+            MAIN_CLASSES.that(resideInAPackage(pkg)).size == 0,
+        )
+    }
 
     @Test
     fun `workflow does not depend on platform, ui, or service`() {
@@ -89,9 +105,25 @@ class ArchitectureRulesTest {
     fun `only GitProcessRunner and GitOps start operating-system processes`() {
         check(
             noClasses()
-                .that().doNotHaveSimpleName("GitProcessRunner")
-                .and().doNotHaveSimpleName("GitOps")
+                .that().haveNameNotMatching("^com\\.submodule\\.branchswitcher\\.git\\.(?:GitProcessRunner|GitOps)\$")
                 .should().callConstructor(ProcessBuilder::class.java)
         )
+    }
+
+    @Test
+    fun `no class starts operating-system processes through Runtime exec`() {
+        check(
+            noClasses()
+                .should().callMethod(Runtime::class.java, "exec")
+        )
+    }
+
+    @Test
+    fun `layer packages scanned by the rules contain classes`() {
+        assertPackagePresent("..workflow..")
+        assertPackagePresent("..platform..")
+        assertPackagePresent("..service..")
+        assertPackagePresent("..switch..")
+        assertPackagePresent("..git..")
     }
 }
