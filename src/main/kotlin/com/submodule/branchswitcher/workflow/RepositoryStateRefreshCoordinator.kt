@@ -1,7 +1,6 @@
 package com.submodule.branchswitcher.workflow
 
 import com.submodule.branchswitcher.git.GitOperationSession
-import com.submodule.branchswitcher.git.MAX_CONCURRENT_GIT_PROCESSES
 import com.submodule.branchswitcher.log.AppLogger
 import com.submodule.branchswitcher.log.logFailure
 import com.submodule.branchswitcher.log.newOperationContext
@@ -29,6 +28,8 @@ class RepositoryStateRefreshCoordinator(
     private val detector: RepositoryStateDetector,
     private val log: AppLogger,
     private val deliver: ((() -> Unit) -> Unit),
+    /** Max concurrently running Git processes; the probe throttle reserves one slot for a foreground switch or recovery. */
+    private val gitProcessBound: Int,
     private val worker: CoroutineDispatcher = Dispatchers.IO,
     private val cancellationClassifier: CancellationClassifier = CancellationClassifier.DEFAULT,
 ) : AutoCloseable {
@@ -64,7 +65,7 @@ class RepositoryStateRefreshCoordinator(
                     // pool's shared semaphore is the real cap; this local throttle reuses the
                     // same bound so we never even start coroutines beyond it.
                     // Keep one process slot available for a foreground switch or recovery.
-                    val probePermits = Semaphore((MAX_CONCURRENT_GIT_PROCESSES - 1).coerceAtLeast(1))
+                    val probePermits = Semaphore((gitProcessBound - 1).coerceAtLeast(1))
                     coroutineScope {
                         val probes = request.paths.map { path ->
                             async { probePermits.withPermit { detector.probe(request, path, openedOperation) } }
