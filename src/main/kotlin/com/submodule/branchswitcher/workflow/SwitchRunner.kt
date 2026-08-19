@@ -66,7 +66,7 @@ class SwitchRunner(
         request: ResolvedSwitchRequest,
         log: AppLogger,
         operationContext: OperationContext = newOperationContext("switch"),
-        recoveryTitle: String = "Rolling back",
+        recoveryTitle: String,
     ): SwitchRunResult = withContext(Dispatchers.IO) {
         executeOnWorker(title, request, log, operationContext, recoveryTitle)
     }

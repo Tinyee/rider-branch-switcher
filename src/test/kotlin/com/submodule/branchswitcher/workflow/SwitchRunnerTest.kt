@@ -48,7 +48,7 @@ class SwitchRunnerTest {
             operations,
         )
 
-        runner.execute("Switching", request(), createStringAppender {})
+        runner.execute("Switching", request(), createStringAppender {}, recoveryTitle = "Rolling back")
 
         assertTrue("workflow must run on the IO dispatcher", ranOnIoDispatcher)
         assertNotNull(workflowThread)
@@ -64,6 +64,7 @@ class SwitchRunnerTest {
             title = "Switching",
             request = request(),
             log = createStringAppender {},
+            recoveryTitle = "Rolling back",
         )
 
         assertFalse("missing git repo should fail through executor", result.ok)
@@ -84,6 +85,7 @@ class SwitchRunnerTest {
             title = "Switching",
             request = request(),
             log = createStringAppender {},
+            recoveryTitle = "Rolling back",
         )
 
         assertFalse(result.ok)
@@ -106,6 +108,7 @@ class SwitchRunnerTest {
             title = "Switching",
             request = request(target = "dev", fetchFirst = false, pull = false),
             log = createStringAppender(logs::add),
+            recoveryTitle = "Rolling back",
         )
 
         assertTrue(result.ok)
@@ -141,6 +144,7 @@ class SwitchRunnerTest {
             title = "Switching",
             request = request(target = "dev", fetchFirst = false, pull = false),
             log = createStringAppender {},
+            recoveryTitle = "Rolling back",
         )
 
         assertTrue(result.cancelled)
@@ -171,6 +175,7 @@ class SwitchRunnerTest {
             title = "Switching",
             request = request(target = "dev", fetchFirst = false, pull = false),
             log = createStringAppender {},
+            recoveryTitle = "Rolling back",
         )
 
         assertFalse(result.ok)
@@ -242,6 +247,7 @@ class SwitchRunnerTest {
             title = "Switching",
             request = request(),
             log = createStringAppender(logs::add),
+            recoveryTitle = "Rolling back",
         )
 
         assertFalse(result.ok)
@@ -265,6 +271,7 @@ class SwitchRunnerTest {
             title = "Switching",
             request = request(fetchFirst = false, pull = false),
             log = createStringAppender(logs::add),
+            recoveryTitle = "Rolling back",
         )
 
         // A checkpoint query failure must not escape the workflow as an unhandled
@@ -305,6 +312,7 @@ class SwitchRunnerTest {
             title = "Switching",
             request = request(target = "dev", fetchFirst = false, pull = false),
             log = createStringAppender {},
+            recoveryTitle = "Rolling back",
         )
 
         assertTrue(result.cancelled)
