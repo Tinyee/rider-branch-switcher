@@ -1,6 +1,9 @@
 package com.submodule.branchswitcher.platform
 
+import com.intellij.openapi.progress.ProcessCanceledException
 import com.intellij.openapi.progress.ProgressIndicator
+import com.intellij.openapi.project.Project
+import com.intellij.openapi.vfs.LocalFileSystem
 import com.submodule.branchswitcher.git.GitFailureKind
 import com.submodule.branchswitcher.git.GitQueryException
 import com.submodule.branchswitcher.log.AppLogger
@@ -8,6 +11,8 @@ import com.submodule.branchswitcher.log.logFailure
 import com.submodule.branchswitcher.operation.OperationProgress
 import com.submodule.branchswitcher.switch.CancellationClassifier
 import com.submodule.branchswitcher.switch.CancellationHandle
+import git4idea.repo.GitRepositoryManager
+import java.nio.file.Path
 
 /** Adapts an IntelliJ [ProgressIndicator] to a pure [CancellationHandle]. */
 class ProgressCancellationHandle(
@@ -48,13 +53,13 @@ data class VcsRefreshResult(
 
 @Suppress("TooGenericExceptionCaught") // VFS and repository adapters expose unrelated per-root failures
 fun refreshVcsRepos(
-    project: com.intellij.openapi.project.Project,
-    root: java.nio.file.Path,
+    project: Project,
+    root: Path,
     submodulePaths: Set<String>,
     log: AppLogger,
 ): VcsRefreshResult {
-    val lfs = com.intellij.openapi.vfs.LocalFileSystem.getInstance()
-    val mgr = git4idea.repo.GitRepositoryManager.getInstance(project)
+    val lfs = LocalFileSystem.getInstance()
+    val mgr = GitRepositoryManager.getInstance(project)
     var refreshedRepositories = 0
     val failures = linkedMapOf<String, String>()
     for (path in listOf(".") + submodulePaths) {
@@ -86,7 +91,7 @@ fun logVcsRefresh(log: AppLogger, result: VcsRefreshResult) {
  */
 val platformCancellationClassifier = CancellationClassifier { e ->
     e is java.util.concurrent.CancellationException ||
-        e is com.intellij.openapi.progress.ProcessCanceledException ||
+        e is ProcessCanceledException ||
         (e is GitQueryException && e.result.failureKind in
             setOf(GitFailureKind.CANCELLED, GitFailureKind.INTERRUPTED))
 }
