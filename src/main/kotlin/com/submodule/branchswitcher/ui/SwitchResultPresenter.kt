@@ -48,7 +48,7 @@ internal class SwitchResultPresenter(
         if (recovery?.ok == true) {
             Notifier.info(
                 project,
-                Bundle.msg("switch.failed"),
+                Bundle.msg("switch.failed.recovered"),
                 Bundle.msg("notify.switch.failed.recovered") + retainedStateNotice(execution),
             )
             return

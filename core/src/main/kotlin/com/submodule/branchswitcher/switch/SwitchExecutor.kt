@@ -326,8 +326,9 @@ class SwitchExecutor @JvmOverloads constructor(
     private fun alreadyAtTargetState(context: SwitchContext, preset: Preset): Boolean {
         if (context.options.pull) return false
         return preset.targets().all { target ->
+            // A missing or branch-mismatched target means the switch has real work.
             val entry = context.checkpoint[target.path] ?: return@all false
-            entry.branch != target.branch && return@all false
+            if (entry.branch != target.branch) return@all false
             try {
                 !git.isDirty(resolveGitDir(context.projectRoot, target.path))
             } catch (e: RuntimeException) {
