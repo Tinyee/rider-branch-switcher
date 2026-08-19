@@ -1,7 +1,0 @@
-package com.submodule.branchswitcher.workflow
-
-import com.intellij.openapi.project.Project
-
-class BrokenWorkflowIntellijDependency(
-    private val project: Project,
-)

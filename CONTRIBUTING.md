@@ -17,7 +17,9 @@ git config core.hooksPath .githooks
 ```
 
 Treat the architecture document as the source of truth for package ownership
-and dependency direction. `quickCheck` enforces its important boundaries.
+and dependency direction. `ArchitectureRulesTest` (ArchUnit) enforces the layer
+boundaries on compiled classes; `quickCheck` covers the remaining pairing
+heuristics.
 
 ## Validation
 
@@ -27,7 +29,8 @@ heavy Gradle tasks in parallel.
 | Change | Minimum validation |
 | --- | --- |
 | Documentation only | `git diff --check` |
-| Build scripts, i18n, or structural rules | `./gradlew quickCheck` and `git diff --check` |
+| Dependency direction (ArchUnit layer rules) | `./gradlew :test --tests "com.submodule.branchswitcher.ArchitectureRulesTest"` |
+| Build scripts, i18n, or quickCheck heuristics | `./gradlew quickCheck` and `git diff --check` |
 | Pure JVM rules, JSON, validation, or core switching | `./gradlew :core:test --tests "<ClassOrMethod>" --rerun-tasks` |
 | Platform, persistence, Git process, controller, or action behavior | `./gradlew :test --tests "<ClassOrMethod>" -x :core:test --rerun-tasks` |
 | Cross-module or test-infrastructure changes | `./gradlew :core:test test :core:detekt detekt --rerun-tasks --max-workers=2 --no-parallel` |
@@ -79,7 +82,9 @@ This task is intentionally outside normal tests and `releaseCheck`.
 
 - Review the diff for unrelated generated or local files.
 - Run the validation required for the changed behavior.
-- Run `quickCheck` and `git diff --check` for every code change.
+- Run `quickCheck` and `git diff --check` for every code change; run the
+  ArchUnit layer test (`:test --tests "*ArchitectureRulesTest"`) after package
+  or dependency changes.
 - Update user documentation when behavior changes.
 - Update current test totals only from a clean full run; do not rewrite
   historical records.

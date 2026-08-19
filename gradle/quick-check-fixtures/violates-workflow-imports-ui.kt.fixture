@@ -1,6 +1,0 @@
-package com.submodule.branchswitcher.workflow
-
-import com.submodule.branchswitcher.ui.SwitchController
-
-// Workflow use cases must not depend on UI controllers.
-class BrokenWorkflowImport

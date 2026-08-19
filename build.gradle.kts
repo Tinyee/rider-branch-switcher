@@ -57,6 +57,9 @@ dependencies {
     testImplementation("com.google.code.gson:gson:2.11.0")
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlin:kotlin-test")
+    // Architecture dependency-direction rules run on compiled main classes as a test.
+    // Test-only: never ships in the plugin artifact.
+    testImplementation("com.tngtech.archunit:archunit:1.4.1")
     testRuntimeOnly("org.junit.vintage:junit-vintage-engine:5.10.2")
 }
 
@@ -282,69 +285,7 @@ fun scanQuickChecks(
         }
     }
 
-    // 4. switch/ must not import ui/
-    val switchDir = file("$srcRoot/com/submodule/branchswitcher/switch")
-    if (switchDir.exists()) {
-        val violations = fileTree(switchDir).filter { it.extension == "kt" }
-            .flatMap(::kotlinCodeLines).filter { it.contains("import") && it.contains(".ui.") }
-        if (violations.isNotEmpty())
-            fail("switch/ imports ui/: ${violations.take(3)}")
-    }
-
-    // 5. Platform and application layers must keep a one-way dependency direction.
-    val forbiddenLayerImports = mapOf(
-        "workflow" to listOf(".platform.", ".ui.", ".service."),
-        "platform" to listOf(".workflow.", ".ui.", ".service."),
-        "service" to listOf(".workflow.", ".platform.", ".ui."),
-    )
-    for ((layer, forbidden) in forbiddenLayerImports) {
-        val layerDir = file("$srcRoot/com/submodule/branchswitcher/$layer")
-        if (!layerDir.exists()) continue
-        val violations = fileTree(layerDir).filter { it.extension == "kt" }
-            .flatMap { file ->
-                kotlinCodeLines(file)
-                    .filter { line ->
-                        forbidden.any { segment ->
-                            line.contains("com.submodule.branchswitcher$segment")
-                        }
-                    }
-                    .map { "${file.name}: $it" }
-            }
-        if (violations.isNotEmpty()) fail("$layer has forbidden layer imports: ${violations.take(3)}")
-    }
-
-    val workflowDir = file("$srcRoot/com/submodule/branchswitcher/workflow")
-    if (workflowDir.exists()) {
-        val intellijReferences = fileTree(workflowDir).filter { it.extension == "kt" }
-            .flatMap(::kotlinCodeLines)
-            .filter { line ->
-                line.contains("com.intellij.")
-            }
-        if (intellijReferences.isNotEmpty()) {
-            fail("workflow references IntelliJ API: ${intellijReferences.take(3)}")
-        }
-        val pluginImplementationReferences = fileTree(workflowDir).filter { it.extension == "kt" }
-            .flatMap(::kotlinCodeLines)
-            .filter { line ->
-                listOf("TaskBridge", "Bundle", "Notifier", "GitOps", "GitCommandClient", "GitProcessRunner")
-                    .any { type -> line.contains("com.submodule.branchswitcher.$type") ||
-                        line.contains("com.submodule.branchswitcher.git.$type") }
-            }
-        if (pluginImplementationReferences.isNotEmpty()) {
-            fail("workflow references plugin implementation: ${pluginImplementationReferences.take(3)}")
-        }
-    }
-
-    // 6. Git process execution belongs to GitProcessRunner; GitOps may only probe --version.
-    val rawGit = fileTree(srcRoot).filter {
-        it.extension == "kt" && it.name !in setOf("GitProcessRunner.kt", "GitOps.kt")
-    }.flatMap { file ->
-        file.readLines().zip(kotlinCodeLines(file))
-    }.filter { (rawLine, codeLine) -> codeLine.contains("ProcessBuilder") && rawLine.contains("\"git") }
-    if (rawGit.isNotEmpty())
-        fail("Raw git ProcessBuilder outside GitProcessRunner: ${rawGit.take(3)}")
-
-    // 7. i18n key count symmetry
+    // 4. i18n key count symmetry
     val enFile = file("$msgDir/BranchSwitcherBundle.properties")
     val zhFile = file("$msgDir/BranchSwitcherBundle_zh.properties")
     if (checkMessages && enFile.exists() && zhFile.exists()) {
@@ -358,7 +299,7 @@ fun scanQuickChecks(
         if (onlyZh.isNotEmpty()) fail("Keys only in ZH: $onlyZh")
     }
 
-    // 8. Deprecated IntelliJ API patterns
+    // 5. Deprecated IntelliJ API patterns
     val deprecated = fileTree(srcRoot).filter { it.extension == "kt" }
         .flatMap(::kotlinCodeLines).filter {
             it.contains("project.coroutineScope") ||
@@ -421,23 +362,11 @@ tasks {
             // Write fixtures under build/ to avoid interfering with detekt or other tools
             // scanning src/main/kotlin concurrently.
             val tempRoot = file("build/quick-check-fixtures")
-            // Must replicate the full package structure so rule 3 (switch/ui) finds
-            // com/submodule/branchswitcher/switch/ under srcRoot.
+            // Replicate the package structure so the core-boundary rules see the
+            // com/submodule/branchswitcher root under srcRoot.
             val tempSrcDir = file("$tempRoot/com/submodule/branchswitcher")
             val msgDir = file("src/main/resources/messages")
 
-            // Package-scoped fixtures must be placed under the directory scanned by their rule.
-            val fixtureToDir = mapOf(
-                "violates-switch-imports-ui.kt" to "switch/_fixture_test_",
-                "violates-workflow-imports-ui.kt" to "workflow/_fixture_test_",
-                "violates-workflow-imports-platform.kt" to "workflow/_fixture_test_",
-                "violates-workflow-intellij.kt" to "workflow/_fixture_test_",
-                "violates-workflow-intellij-qualified.kt" to "workflow/_fixture_test_",
-                "violates-workflow-intellij-template.kt" to "workflow/_fixture_test_",
-                "violates-workflow-intellij-nested-template.kt" to "workflow/_fixture_test_",
-                "violates-workflow-root-platform.kt" to "workflow/_fixture_test_",
-                "violates-workflow-git-implementation.kt" to "workflow/_fixture_test_",
-            )
             val defaultDir = "_fixture_test_"
 
             var passed = 0; var failed = 0
@@ -447,7 +376,7 @@ tasks {
                 for (fixture in fixtures) {
                     val name = fixture.name.removeSuffix(".fixture")
                     val shouldBeCaught = name.startsWith("violates-")
-                    val subDir = fixtureToDir[name] ?: defaultDir
+                    val subDir = defaultDir
                     val targetDir = file("$tempSrcDir/$subDir")
                     targetDir.mkdirs()
                     val target = file("$targetDir/$name")
@@ -464,11 +393,6 @@ tasks {
                             name.contains("direct-background") -> "direct TaskBridge.runBackground"
                             name.contains("cancel") -> "runBackground without"
                             name.contains("write") -> "tryAcquireWrite without writeLease.close"
-                            name.contains("switch") -> "switch/ imports ui/"
-                            name.contains("workflow-intellij") -> "workflow references IntelliJ API"
-                            name.contains("workflow-root-platform") || name.contains("workflow-git-implementation") ->
-                                "workflow references plugin implementation"
-                            name.contains("workflow") -> "workflow has forbidden layer imports"
                             name.contains("core-intellij") -> "Core references IntelliJ API"
                             name.contains("core-desktop-ui") -> "Core imports desktop UI"
                             name.contains("deprecated") -> "Deprecated API"

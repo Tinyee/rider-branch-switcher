@@ -32,8 +32,9 @@ flowchart LR
 The enforced rule is one-way dependency flow. `core` knows nothing about the
 IDE. `workflow` imports neither IntelliJ nor `platform`, `service`, or `ui`;
 the UI layer injects platform adapters through core contracts. `platform` and
-`service` do not depend back on workflow or UI. `quickCheck` verifies these
-package boundaries; the
+`service` do not depend back on workflow or UI. `ArchitectureRulesTest`
+(ArchUnit) verifies these package boundaries on compiled classes; `quickCheck`
+covers the remaining pairing heuristics. The
 [contributor validation guide](../CONTRIBUTING.md#validation) defines when to
 run broader checks.
 
@@ -41,9 +42,10 @@ Concurrent repository-state probes are throttled below the Git process-pool
 bound so one slot stays free for a foreground switch or recovery. The UI layer
 injects that bound (`MAX_CONCURRENT_GIT_PROCESSES`) into
 `RepositoryStateRefreshCoordinator`; `workflow` never imports the plugin `git`
-package. `quickCheck` permits `workflow` to import `git`, but the binding rule
-is that `workflow` must still reference neither IntelliJ APIs nor concrete
-command implementations (`GitOps`, `GitCommandClient`, `GitProcessRunner`).
+package. The ArchUnit layer rules permit `workflow` to import `git`, but the
+binding rule is that `workflow` must still reference neither IntelliJ APIs nor
+concrete command implementations (`GitOps`, `GitCommandClient`,
+`GitProcessRunner`).
 
 The product models one main Git repository and the recursive submodule graph
 registered through `.gitmodules`. Multiple independent VCS roots and arbitrary
@@ -352,7 +354,8 @@ so save failures and screen refresh behavior remain consistent.
 `GitOps` implements the aggregate Git interface but delegates commands to
 `GitCommandClient`. Only `GitProcessRunner` starts and waits for operating-system
 processes; the sole exception is `GitOps.isGitOnPath()`, which probes
-`git --version` directly — a deliberate allowance enforced by `quickCheck`. It admits at most four active Git processes and assigns their stdout
+`git --version` directly — a deliberate allowance enforced by the ArchUnit
+process-ownership rule. It admits at most four active Git processes and assigns their stdout
 and stderr pipes to a dedicated eight-thread drain executor. Stdout is capped at
 8 MiB and fails explicitly when exceeded; stderr retains only its final 128 KiB
 for diagnostics. Cancellation, timeout, and blocked output capture terminate

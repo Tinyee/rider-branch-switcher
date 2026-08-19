@@ -1,4 +1,0 @@
-package com.submodule.branchswitcher.workflow
-
-fun leakedProjectType(): String =
-    "type=${com.intellij.openapi.project.Project::class.qualifiedName}"

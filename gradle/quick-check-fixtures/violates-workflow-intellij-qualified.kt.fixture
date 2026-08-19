@@ -1,4 +1,0 @@
-package com.submodule.branchswitcher.workflow
-
-fun leakedCancellation(error: com.intellij.openapi.progress.ProcessCanceledException): String =
-    error.message.orEmpty()

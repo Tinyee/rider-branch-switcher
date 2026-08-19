@@ -1,5 +1,0 @@
-package com.submodule.branchswitcher.workflow
-
-import com.submodule.branchswitcher.git.GitOps
-
-class BrokenWorkflowGitDependency(private val git: GitOps)

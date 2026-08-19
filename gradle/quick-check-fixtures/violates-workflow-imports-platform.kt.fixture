@@ -1,7 +1,0 @@
-package com.submodule.branchswitcher.workflow
-
-import com.submodule.branchswitcher.platform.GitBackgroundRunner
-
-class BrokenWorkflowPlatformDependency(
-    private val runner: GitBackgroundRunner,
-)

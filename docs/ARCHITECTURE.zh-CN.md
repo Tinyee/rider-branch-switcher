@@ -32,7 +32,8 @@ Kotlin 语法。
 
 依赖只能朝底层流动：UI 可以调用 workflow、platform 和 core；workflow 不能引用
 IntelliJ、platform、service 或 UI；core 不能引用 IntelliJ 或桌面 UI。UI 通过 core 中的
-操作契约注入平台实现，`quickCheck` 会检查这些关键边界。
+操作契约注入平台实现，`ArchitectureRulesTest`（ArchUnit）在编译后的类上检查
+这些关键边界，`quickCheck` 负责其余配对启发式。
 
 产品模型只包含一个主 Git 仓库和通过 `.gitmodules` 注册的递归子模块图。
 多个独立 VCS Root 和任意同级仓库不在当前架构范围内；支持它们需要另一套
