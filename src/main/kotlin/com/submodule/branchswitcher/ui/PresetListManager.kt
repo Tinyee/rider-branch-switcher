@@ -9,10 +9,9 @@ import com.submodule.branchswitcher.Notifier
 import com.submodule.branchswitcher.log.AppLogger
 import com.submodule.branchswitcher.log.withContext
 import com.submodule.branchswitcher.model.Preset
-import com.submodule.branchswitcher.platform.logVcsRefresh
 import com.submodule.branchswitcher.platform.GitBackgroundRunner
 import com.submodule.branchswitcher.platform.platformCancellationClassifier
-import com.submodule.branchswitcher.platform.refreshVcsRepos
+import com.submodule.branchswitcher.platform.refreshVcsTail
 import com.submodule.branchswitcher.service.BranchSwitcherService
 import com.submodule.branchswitcher.workflow.SingleRepositorySwitchResult
 import com.submodule.branchswitcher.workflow.SingleRepositorySwitcher
@@ -67,6 +66,17 @@ internal class PresetListManager(
         emptyStatePanel = null
     }
 
+    /** Disposes every editor and cancels in-flight branch discovery (Tool Window close). */
+    fun dispose() {
+        clearEditors()
+        branchLoads.close()
+    }
+
+    /** Enables or disables every editor's switch/derive buttons while a mutation runs. */
+    fun setActionsEnabled(enabled: Boolean) {
+        mutableEditors.forEach { it.setActionsEnabled(enabled) }
+    }
+
     override fun addEditor(root: Path, preset: Preset) {
         emptyStatePanel?.let {
             presetsInner.remove(it)
@@ -84,7 +94,6 @@ internal class PresetListManager(
             nameValidator = { newName ->
                 mutableEditors.none { it !== editor && it.currentPreset().name == newName }
             },
-            gitClient = { service.gitClient },
             branchLoads = branchLoads,
             onSwitchOnly = { path, target -> switchSubmodule(root, path, target) },
         )
@@ -140,8 +149,7 @@ internal class PresetListManager(
             title = Bundle.msg("progress.switching.to", target),
         ) { outcome ->
             val operationLog = log.withContext(outcome.operationId)
-            val refreshResult = refreshVcsRepos(project, root, setOf(path), operationLog)
-            project.invokeLaterIfAlive {
+            refreshVcsTail(project, root, setOf(path), operationLog, project::invokeLaterIfAlive) {
                 when (val switchResult = outcome.result) {
                     is SingleRepositorySwitchResult.Success -> {
                         Notifier.info(
@@ -169,7 +177,6 @@ internal class PresetListManager(
                     SingleRepositorySwitchResult.Cancelled -> Unit
                     is SingleRepositorySwitchResult.Unexpected -> Unit
                 }
-                logVcsRefresh(operationLog, refreshResult)
                 notifyStateChanged()
             }
         }

@@ -11,9 +11,8 @@ import com.submodule.branchswitcher.model.Preset
 import com.submodule.branchswitcher.model.ResolvedSwitchRequest
 import com.submodule.branchswitcher.service.BranchSwitcherService
 import com.submodule.branchswitcher.platform.GitBackgroundRunner
-import com.submodule.branchswitcher.platform.logVcsRefresh
 import com.submodule.branchswitcher.platform.platformCancellationClassifier
-import com.submodule.branchswitcher.platform.refreshVcsRepos
+import com.submodule.branchswitcher.platform.refreshVcsTail
 import com.submodule.branchswitcher.operation.GitOperationResult
 import com.submodule.branchswitcher.switch.SwitchRecoveryExecutor
 import com.submodule.branchswitcher.switch.SwitchExecutionResult
@@ -128,10 +127,8 @@ class SwitchFlowCoordinator(
             },
             afterRelease = { runResult ->
                 val operationLog = log.withContext(operationContext.inPhase("refresh"))
-                val refreshResult = refreshVcsRepos(project, root, preset.submodules.keys, operationLog)
-                uiLater {
+                refreshVcsTail(project, root, preset.submodules.keys, operationLog, ::uiLater) {
                     completion.completeAfter {
-                        logVcsRefresh(operationLog, refreshResult)
                         resultPresenter.presentSwitchResult(
                             preset = preset,
                             runResult = runResult,
@@ -174,9 +171,7 @@ class SwitchFlowCoordinator(
             afterRelease = { recoveryOutcome ->
                 val checkpointPaths = execution.checkpoint.orEmpty().keys.filterTo(mutableSetOf()) { it != "." }
                 val refreshLog = log.withContext(operationContext.inPhase("recovery-refresh"))
-                val refreshResult = refreshVcsRepos(project, root, checkpointPaths, refreshLog)
-                uiLater {
-                    logVcsRefresh(refreshLog, refreshResult)
+                refreshVcsTail(project, root, checkpointPaths, refreshLog, ::uiLater) {
                     val recoveredExecution = recoveryOutcome?.let {
                         execution.copy(state = it.stashRestore.state)
                     } ?: execution

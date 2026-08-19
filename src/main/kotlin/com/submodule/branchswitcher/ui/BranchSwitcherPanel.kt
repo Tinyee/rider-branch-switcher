@@ -116,6 +116,12 @@ class BranchSwitcherPanel(
     private var worktreeInfoLogged = false
 
     init {
+        // Disable every editor's switch/derive buttons while a mutation is in flight,
+        // so a second click cannot run a whole preflight before being rejected as busy.
+        switchController.onInProgressChange = { inProgress ->
+            presetManager.setActionsEnabled(!inProgress)
+        }
+
         border = JBUI.Borders.empty(6, 8, 4, 8)
         minimumSize = Dimension(JBUI.scale(280), minimumSize.height)
 
@@ -335,6 +341,7 @@ class BranchSwitcherPanel(
 
     override fun dispose() {
         stateRefreshes.close()
+        presetManager.dispose()
     }
 
     private fun gitRoot(): Path? {

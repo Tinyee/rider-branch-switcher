@@ -373,6 +373,22 @@ internal class GitCommandClient(
         return if (result.ok) result.stdout.trim().ifEmpty { null } else null
     }
 
+    override fun stashOidByMessage(workDir: File, messagePrefix: String): String? {
+        // %gs is the stash reflog subject ("On <branch>: <message>"), so matching is
+        // scoped to stashes this plugin created rather than whatever sits on top of
+        // refs/stash (a concurrent external `git stash push` must not be misapplied).
+        val result = run(workDir, "stash", "list", "--format=%H%x09%gs")
+        if (!result.ok && result.failureKind != GitFailureKind.GIT_FAILED) throw GitQueryException(result)
+        if (!result.ok) return null
+        return result.stdout.lineSequence()
+            .mapNotNull { line ->
+                val tab = line.indexOf('\t')
+                if (tab < 0) null else line.substring(0, tab) to line.substring(tab + 1)
+            }
+            .firstOrNull { (_, subject) -> subject.contains(messagePrefix) }
+            ?.first
+    }
+
     override fun stashApply(workDir: File, oid: String): GitResult =
         run(workDir, "stash", "apply", oid)
 

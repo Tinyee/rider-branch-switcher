@@ -161,7 +161,7 @@ class SwitchStepTest {
     }
 
     @Test
-    fun `missing branch restores stash and removes its tracking entry`() {
+    fun `missing branch keeps the stash tracked for pipeline-level restore`() {
         var popCalls = 0
         val missingGit = object : GitClient by fakeGit {
             override fun localBranchExists(workDir: File, branch: String): Boolean = false
@@ -176,8 +176,8 @@ class SwitchStepTest {
 
         val execution = CheckoutStep().run(c, state)
         assertTrue(execution.result is StepResult.Partial)
-        assertEquals(1, popCalls)
-        assertFalse(execution.state.stashesSnapshot().containsKey("."))
+        assertEquals("checkout must not restore the stash before the outcome is final", 0, popCalls)
+        assertTrue("stash stays tracked so the executor restores it afterwards", execution.state.stashesSnapshot().containsKey("."))
     }
 
     // ---- DirtyHandlingStep ----
@@ -228,6 +228,43 @@ class SwitchStepTest {
         assertTrue(execution.result is StepResult.Success)
         assertEquals(1, stashCalls)
         assertTrue(execution.state.stashesSnapshot().isNotEmpty())
+    }
+
+    @Test
+    fun `terminated stash with a created entry is tracked for recovery`() {
+        val dirtyGit = object : GitClient by fakeGit {
+            override fun isDirty(workDir: File): Boolean = true
+            override fun stash(workDir: File, message: String): GitResult =
+                GitResult("stash", -1, "", "cancelled")
+        }
+        val c = context(SwitchOptions(DirtyAction.Stash)).copy(git = dirtyGit)
+
+        val execution = DirtyHandlingStep().run(c)
+
+        assertTrue(execution.result is StepResult.Success)
+        val stash = execution.state.stashesSnapshot()["."]
+        assertNotNull("a terminated stash that created an entry must be tracked", stash)
+        assertEquals("stash-oid", stash?.oid)
+    }
+
+    @Test
+    fun `terminated stash without an entry is reported as failed`() {
+        val dirtyGit = object : GitClient by fakeGit {
+            override fun isDirty(workDir: File): Boolean = true
+            override fun stash(workDir: File, message: String): GitResult =
+                GitResult("stash", -1, "", "interrupted")
+            override fun stashTopOid(workDir: File): String? = null
+        }
+        val c = context(SwitchOptions(DirtyAction.Stash)).copy(git = dirtyGit)
+
+        val execution = DirtyHandlingStep().run(c)
+
+        assertTrue(execution.result is StepResult.Partial)
+        assertTrue(execution.state.isSkipped("."))
+        assertEquals(
+            OperationIssueCode.STASH_FAILED,
+            (execution.result as StepResult.Partial).issues.single().code,
+        )
     }
 
     @Test
@@ -392,7 +429,7 @@ class SwitchStepTest {
     }
 
     @Test
-    fun `pull failure is partial and still restores tracked stash`() {
+    fun `pull failure is partial and leaves the stash tracked for the executor`() {
         var popCalls = 0
         val failingGit = object : GitClient by fakeGit {
             override fun currentBranch(workDir: File): String? = "dev"
@@ -415,8 +452,8 @@ class SwitchStepTest {
             listOf("." to OperationIssueCode.PULL_FAILED),
             (execution.result as StepResult.Partial).issues.map { it.repositoryPath to it.code },
         )
-        assertEquals(1, popCalls)
-        assertFalse(execution.state.stashesSnapshot().isNotEmpty())
+        assertEquals("a partial outcome must not restore the stash before the pipeline ends", 0, popCalls)
+        assertTrue(execution.state.stashesSnapshot().isNotEmpty())
     }
 
     @Test
@@ -431,20 +468,21 @@ class SwitchStepTest {
                 return GitResult("pop", 0, "", "")
             }
         }
-        val c = context(SwitchOptions(DirtyAction.Stash, pull = true)).copy(git = lockedGit)
         val state = SwitchState()
             .withSuccessfulCheckout(".")
             .withTrackedStash(".", "main -> dev", "stash-oid")
 
-        val execution = PullStep().run(c, state)
+        val restore = restoreTrackedStashes(
+            projectRoot, lockedGit, createStringAppender { log += it }, state,
+        )
 
-        val issue = (execution.result as StepResult.Partial).issues.single()
+        val issue = restore.issues.single()
         assertEquals("." to OperationIssueCode.INDEX_LOCK_BLOCKING, issue.repositoryPath to issue.code)
         assertEquals("/repo/.git/index.lock", issue.lockPath)
         assertTrue(issue.diagnostic.orEmpty().contains("delete it and retry"))
         assertEquals("apply must not run on a locked repository", 0, popCalls)
         // Not marked restore-attempted, so a later recovery retries the apply.
-        assertFalse(execution.state.stashesSnapshot()["."]?.restoreAttempted ?: true)
+        assertFalse(restore.state.stashesSnapshot()["."]?.restoreAttempted ?: true)
     }
 
     @Test
@@ -458,12 +496,13 @@ class SwitchStepTest {
             override fun stashApply(workDir: File, oid: String): GitResult =
                 GitResult("pop", 1, "", "failed")
         }
-        val c = context(SwitchOptions(DirtyAction.Stash, pull = false)).copy(git = racedLockGit)
         val state = SwitchState().withTrackedStash(".", "before -> dev", "stash-oid")
 
-        val execution = PullStep().run(c, state)
+        val restore = restoreTrackedStashes(
+            projectRoot, racedLockGit, createStringAppender { log += it }, state,
+        )
 
-        val issue = (execution.result as StepResult.Partial).issues.single()
+        val issue = restore.issues.single()
         assertEquals(OperationIssueCode.INDEX_LOCK_BLOCKING, issue.code)
         assertEquals("/repo/.git/index.lock", issue.lockPath)
         assertTrue(issue.diagnostic.orEmpty().contains("delete it and retry"))
@@ -505,7 +544,7 @@ class SwitchStepTest {
     }
 
     @Test
-    fun `pull disabled still restores tracked stashes`() {
+    fun `pull disabled leaves stash restoration to the end of the pipeline`() {
         var popCalls = 0
         val popGit = object : GitClient by fakeGit {
             override fun stashApply(workDir: File, oid: String): GitResult {
@@ -518,9 +557,9 @@ class SwitchStepTest {
 
         val execution = PullStep().run(c, state)
         assertTrue(execution.result is StepResult.Success)
-        assertEquals(1, popCalls)
-        assertFalse(execution.state.stashesSnapshot().isNotEmpty())
-        assertEquals(setOf("."), execution.state.retainedStashBackupsSnapshot())
+        assertEquals("PullStep no longer restores stashes; the executor does at the end", 0, popCalls)
+        assertTrue(execution.state.stashesSnapshot().isNotEmpty())
+        assertTrue(execution.state.retainedStashBackupsSnapshot().isEmpty())
     }
 
     @Test
@@ -529,13 +568,14 @@ class SwitchStepTest {
             override fun stashApply(workDir: File, oid: String): GitResult =
                 throw IndexLockBlockedException(".", "/repo/.git/index.lock")
         }
-        val c = context(SwitchOptions(DirtyAction.Stash, pull = false)).copy(git = guardedGit)
         val state = SwitchState().withTrackedStash(".", "before -> dev", "stash-oid")
 
-        val execution = PullStep().run(c, state)
+        val restore = restoreTrackedStashes(
+            projectRoot, guardedGit, createStringAppender { log += it }, state,
+        )
 
-        assertTrue(execution.result is StepResult.Partial)
-        assertFalse(execution.state.trackedStash(".")?.restoreAttempted ?: true)
+        assertEquals(OperationIssueCode.INDEX_LOCK_BLOCKING, restore.issues.single().code)
+        assertFalse(restore.state.trackedStash(".")?.restoreAttempted ?: true)
     }
 
     @Test
@@ -547,22 +587,21 @@ class SwitchStepTest {
                 return GitResult("pop", 1, "", "conflict")
             }
         }
-        val c = context(SwitchOptions(DirtyAction.Stash, pull = false)).copy(git = popGit)
         val state = SwitchState().withTrackedStash(".", "before -> dev", "stash-oid")
 
-        val firstExecution = PullStep().run(c, state)
-        val secondExecution = PullStep().run(c, firstExecution.state)
+        val first = restoreTrackedStashes(projectRoot, popGit, createStringAppender { log += it }, state)
+        val second = restoreTrackedStashes(projectRoot, popGit, createStringAppender { log += it }, first.state)
 
-        assertTrue(firstExecution.result is StepResult.Partial)
-        assertTrue(secondExecution.result is StepResult.Partial)
-        assertEquals(1, applyCalls)
-        assertTrue(secondExecution.state.stashesSnapshot().isNotEmpty())
-        assertTrue(secondExecution.state.trackedStash(".")?.restoreAttempted == true)
-        assertTrue(secondExecution.state.retainedStashBackupsSnapshot().isEmpty())
+        assertEquals(OperationIssueCode.STASH_RESTORE_FAILED, first.issues.single().code)
+        assertEquals(OperationIssueCode.STASH_RESTORE_FAILED, second.issues.single().code)
+        assertEquals("a failed apply is not replayed", 1, applyCalls)
+        assertTrue(second.state.stashesSnapshot().isNotEmpty())
+        assertTrue(second.state.trackedStash(".")?.restoreAttempted == true)
+        assertTrue(second.state.retainedStashBackupsSnapshot().isEmpty())
     }
 
     @Test
-    fun `staged pull restores only stashes in its target scope`() {
+    fun `restore honors a selected-path scope for staged recovery`() {
         val popped = mutableListOf<String>()
         projectRoot.resolve("SubA").toFile().mkdirs()
         val popGit = object : GitClient by fakeGit {
@@ -572,23 +611,21 @@ class SwitchStepTest {
                 return GitResult("pop", 0, "", "")
             }
         }
-        val c = context(SwitchOptions(DirtyAction.Stash, pull = false)).copy(
-            git = popGit,
-            preset = Preset("test", "dev", mapOf("SubA" to "dev")),
-        )
         val initialState = SwitchState()
             .withTrackedStash(".", "before -> dev", "stash-oid")
             .withTrackedStash("SubA", "before -> dev", "stash-oid")
 
-        val mainExecution = PullStep(SwitchTargetScope.MAIN).run(c, initialState)
-        assertTrue(mainExecution.result is StepResult.Success)
+        val mainRestore = restoreTrackedStashes(
+            projectRoot, popGit, createStringAppender { log += it }, initialState, setOf("."),
+        )
         assertEquals(listOf("."), popped)
-        assertEquals(setOf("SubA"), mainExecution.state.stashesSnapshot().keys)
+        assertEquals(setOf("SubA"), mainRestore.state.stashesSnapshot().keys)
 
-        val submoduleExecution = PullStep(SwitchTargetScope.SUBMODULES).run(c, mainExecution.state)
-        assertTrue(submoduleExecution.result is StepResult.Success)
+        val submoduleRestore = restoreTrackedStashes(
+            projectRoot, popGit, createStringAppender { log += it }, mainRestore.state, setOf("SubA"),
+        )
         assertEquals(listOf(".", "SubA"), popped)
-        assertFalse(submoduleExecution.state.stashesSnapshot().isNotEmpty())
+        assertFalse(submoduleRestore.state.stashesSnapshot().isNotEmpty())
     }
 
     @Test

@@ -135,6 +135,60 @@ class SwitchExecutorTest {
     }
 
     @Test
+    fun `already-at-target clean switch is a no-op without side effects`() {
+        var stashCalls = 0
+        var checkoutCalls = 0
+        var pullCalls = 0
+        val noopGit = object : GitClient by fakeGit {
+            override fun currentBranch(workDir: File): String? = "dev"
+            override fun stash(workDir: File, message: String): GitResult {
+                stashCalls++
+                return GitResult("stash", 0, "", "")
+            }
+            override fun checkoutExisting(workDir: File, branch: String): GitResult {
+                checkoutCalls++
+                return GitResult("checkout", 0, "", "")
+            }
+            override fun pullFf(workDir: File, branch: String): GitResult {
+                pullCalls++
+                return GitResult("pull", 0, "", "")
+            }
+        }
+        val executor = SwitchExecutor(projectRoot, createStringAppender { log += it }, noopGit)
+
+        val result = executor.executeResultTest(
+            Preset("test", "dev", emptyMap()),
+            SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false),
+        )
+
+        assertTrue("already-at-target must succeed", result.ok)
+        assertEquals("a no-op switch must not re-stash", 0, stashCalls)
+        assertEquals("a no-op switch must not re-checkout", 0, checkoutCalls)
+        assertEquals("a no-op switch must not re-pull", 0, pullCalls)
+    }
+
+    @Test
+    fun `pull enabled prevents the already-at-target short circuit`() {
+        var pullCalls = 0
+        val noopGit = object : GitClient by fakeGit {
+            override fun currentBranch(workDir: File): String? = "dev"
+            override fun pullFf(workDir: File, branch: String): GitResult {
+                pullCalls++
+                return GitResult("pull", 0, "", "")
+            }
+        }
+        val executor = SwitchExecutor(projectRoot, createStringAppender { log += it }, noopGit)
+
+        val result = executor.executeResultTest(
+            Preset("test", "dev", emptyMap()),
+            SwitchOptions(DirtyAction.Stash, pull = true, fetchFirst = false),
+        )
+
+        assertTrue(result.ok)
+        assertEquals("pull is part of the switch and must still run", 1, pullCalls)
+    }
+
+    @Test
     fun `index lock created after preflight blocks the next write`() {
         var lockChecks = 0
         var checkoutCalls = 0
@@ -768,7 +822,7 @@ class SwitchExecutorTest {
     }
 
     @Test
-    fun `failed step restores stashes created by an earlier step`() {
+    fun `failed step keeps stashes tracked so recovery restores them after rollback`() {
         var stashApplyCalls = 0
         val dirtyGit = object : GitClient by fakeGit {
             override fun isDirty(workDir: File): Boolean = true
@@ -783,20 +837,29 @@ class SwitchExecutorTest {
             override fun execute(context: SwitchContext, state: SwitchState): StepExecution =
                 error("checkout query failed")
         }
-        val result = SwitchExecutor(
+        val executor = SwitchExecutor(
             projectRoot,
             createStringAppender { log += it },
             dirtyGit,
             steps = listOf(DirtyHandlingStep(), failingStep),
-        ).executeResultTest(
+        )
+        val result = executor.executeResultTest(
             Preset("test", "dev", emptyMap()),
             SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false),
         )
 
+        // A FAILED pipeline must not apply the WIP before the rollback: restoring it
+        // first would dirty the trees and block the recovery's clean-tree requirement.
         assertEquals(SwitchExecutionStatus.FAILED, result.status)
+        assertEquals(0, stashApplyCalls)
+        assertEquals("failed switches must keep stashes tracked for recovery", setOf("."), result.state.stashesSnapshot().keys)
+        assertTrue(result.state.retainedStashBackupsSnapshot().isEmpty())
+
+        // Recovery rolls the repositories back first, then restores the WIP.
+        val outcome = recovery(dirtyGit).recover(result)
+        assertTrue("rollback-then-restore must succeed", outcome.rollbackOk)
         assertEquals(1, stashApplyCalls)
-        assertTrue("failed switches must not leave WIP hidden in stash", result.state.stashesSnapshot().isEmpty())
-        assertEquals(setOf("."), result.state.retainedStashBackupsSnapshot())
+        assertTrue(outcome.stashRestore.state.stashesSnapshot().isEmpty())
     }
 
     @Test
@@ -822,8 +885,8 @@ class SwitchExecutorTest {
 
         assertEquals(SwitchExecutionStatus.FAILED, result.status)
         assertNotNull(result.checkpoint)
-        assertTrue("failed switch should restore the stash created before the query failure", result.state.stashesSnapshot().isEmpty())
-        assertEquals(setOf("."), result.state.retainedStashBackupsSnapshot())
+        assertTrue("failed switch keeps the stash tracked for recovery", setOf(".") == result.state.stashesSnapshot().keys)
+        assertTrue(result.state.retainedStashBackupsSnapshot().isEmpty())
         val issue = result.issues.single()
         assertEquals(OperationStage.DIRTY_HANDLING, issue.stage)
         assertEquals(OperationIssueCode.STEP_FAILED, issue.code)

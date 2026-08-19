@@ -32,7 +32,7 @@ class SwitchPreflight(
         val total = targets.size.coerceAtLeast(1)
         return targets.mapIndexed { idx, t ->
             cancellationHandle?.checkCanceled()
-            onProgress?.invoke(idx, total, if (t.path == ".") projectRoot.fileName.toString() else t.path)
+            onProgress?.invoke(idx, total, displayLabel(projectRoot, t.path))
             probeOne(projectRoot, t)
         }
     }

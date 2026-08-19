@@ -879,6 +879,26 @@ class SwitchIntegrationTest {
     }
 
     @Test
+    fun `tracked modifications are stashed and restored on successful switch`() {
+        val root = createRepo(tmpDir, "project")
+        File(root, "tracked.txt").writeText("clean\n")
+        gitOk(root, "add", ".")
+        gitOk(root, "commit", "-m", "add tracked file")
+        createBranch(root, "dev")
+        // WIP is a modification of a TRACKED file (the failure mode that used to
+        // block rollback); a successful switch must stash it, switch, and restore it.
+        File(root, "tracked.txt").writeText("dirty tracked change\n")
+
+        val (ok, _) = runSwitch(root, Preset("test", "dev"),
+            SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false))
+        assertTrue("Switch with tracked WIP should succeed", ok)
+        assertEquals("dev", git.currentBranch(root))
+        assertEquals("dirty tracked change", File(root, "tracked.txt").readText().trim())
+        val (_, stashList) = runGit(root, "stash", "list")
+        assertTrue("Backup stash should be retained", stashList.isNotBlank())
+    }
+
+    @Test
     fun `multi-repo dirty stash all restored on successful switch`() {
         val root = createRepo(tmpDir, "project")
         val subA = createRepo(tmpDir, "subA-src")

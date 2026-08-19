@@ -100,7 +100,7 @@ class SwitchRunnerTest {
 
         val result = runner.execute(
             title = "Switching",
-            request = request(fetchFirst = false, pull = false),
+            request = request(target = "dev", fetchFirst = false, pull = false),
             log = createStringAppender(logs::add),
         )
 
@@ -113,7 +113,7 @@ class SwitchRunnerTest {
         assertTrue(logs.any { it.contains("$executionContext operation started: root=") })
         assertTrue(logs.any { it.contains("$executionContext options: dirty=") })
         assertTrue(logs.any { it.contains("runtime inspection failed") && it.contains("version unavailable") })
-        assertTrue(logs.any { it.contains("$executionContext requested target: path=., branch=main") })
+        assertTrue(logs.any { it.contains("$executionContext requested target: path=., branch=dev") })
         assertTrue(logs.any { it.contains("$executionContext [checkpoint]") })
         assertTrue(logs.any { it.contains("$executionContext operation finished: cancelled=false") })
     }
@@ -141,6 +141,40 @@ class SwitchRunnerTest {
 
         assertTrue(result.cancelled)
         assertTrue(result.recovery?.ok == true)
+        assertEquals("main", git.branch)
+        assertEquals(1, git.stashApplyCount)
+        assertEquals(2, git.openCount)
+        assertEquals(2, git.closeCount)
+    }
+
+    @Test
+    fun `failed switch with checkpoint is automatically recovered after rollback`() = runBlocking {
+        val root = Files.createTempDirectory("switch-runner-failed-recover")
+        initGitRepo(root.toFile())
+        val git = object : RecordingGit() {
+            override fun isDirty(workDir: File): Boolean = true
+            override fun stashApply(workDir: File, oid: String): GitResult {
+                stashApplyCount++
+                return GitResult("stash pop", 0, "", "")
+            }
+
+            override fun submoduleSync(gitRoot: File): GitResult =
+                throw IllegalStateException("sync failed")
+        }
+        val runner = runner(root, git)
+
+        val result = runner.execute(
+            title = "Switching",
+            request = request(target = "dev", fetchFirst = false, pull = false),
+            log = createStringAppender {},
+        )
+
+        assertFalse(result.ok)
+        assertFalse(result.cancelled)
+        assertEquals(SwitchExecutionStatus.FAILED, result.execution?.status)
+        // The WIP stash is left tracked by the executor (not restored into the dirty
+        // new-branch tree), so the automatic recovery can roll back first.
+        assertTrue("FAILED-with-checkpoint must trigger automatic recovery", result.recovery?.ok == true)
         assertEquals("main", git.branch)
         assertEquals(1, git.stashApplyCount)
         assertEquals(2, git.openCount)

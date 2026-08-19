@@ -416,8 +416,7 @@ class DeriveBranchExecutor(
 
     private fun isCancelled(): Boolean = cancelled?.invoke() == true
 
-    private fun labelFor(path: String): String =
-        if (path == ".") projectRoot.fileName.toString() else path
+    private fun labelFor(path: String): String = displayLabel(projectRoot, path)
 
     private fun RepoTarget.outcome(
         status: DeriveRepositoryStatus,

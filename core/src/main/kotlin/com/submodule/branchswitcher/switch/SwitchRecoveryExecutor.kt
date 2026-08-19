@@ -117,7 +117,13 @@ class SwitchRecoveryExecutor(
     /** Executes a previously inspected plan; each write is guarded by fresh repository checks. */
     fun execute(plan: SwitchRecoveryPlan): RecoveryExecutionResult {
         plan.retainedInitializedSubmodules.forEach { path ->
-            log.info("[rollback] retained submodule initialized by this switch: $path")
+            // Retention is intentional (the switch may have initialized a submodule the
+            // rolled-back superproject no longer registers). Warn with the cleanup path
+            // so the orphan worktree is not silently left behind.
+            log.warn(
+                "[rollback] retained submodule initialized by this switch: $path; " +
+                    "run 'git submodule deinit -f $path' to remove the orphan worktree",
+            )
         }
         if (plan.repositories.isEmpty()) {
             log.debug("[rollback] no repository actions available")
@@ -313,8 +319,7 @@ class SwitchRecoveryExecutor(
         lockPath = lockPath,
     )
 
-    private fun labelFor(path: String): String =
-        if (path == ".") projectRoot.fileName.toString() else path
+    private fun labelFor(path: String): String = displayLabel(projectRoot, path)
 
     private fun Throwable.diagnosticText(): String = "${javaClass.simpleName}: $message"
 }

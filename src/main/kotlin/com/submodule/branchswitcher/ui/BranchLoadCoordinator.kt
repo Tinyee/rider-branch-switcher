@@ -11,6 +11,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
+import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 
@@ -62,11 +63,14 @@ internal class BranchLoadCoordinator(
     private val openOperation: () -> GitOperationSession,
 ) {
     private val permits = Semaphore(maxConcurrentLoads.coerceAtLeast(1))
+    private val activeJobs = ConcurrentLinkedQueue<Job>()
+    private val closed = AtomicBoolean(false)
 
     fun launch(block: suspend (PresetDiscoveryGitClient) -> Unit): BranchLoadHandle {
         val state = BranchLoadState()
         val job = scope.launch {
             permits.withPermit {
+                if (closed.get()) return@withPermit
                 val operation = openOperation()
                 state.attach(operation)
                 try {
@@ -78,7 +82,53 @@ internal class BranchLoadCoordinator(
                 }
             }
         }
+        activeJobs.add(job)
+        job.invokeOnCompletion { activeJobs.remove(job) }
         return BranchLoadHandle(job, state::cancel)
+    }
+
+    /**
+     * Runs one read-only discovery query in the background and delivers its result
+     * to [onResult]. Shares the same concurrency limit and close-cancellation as
+     * branch loads, so a discovery started from an action handler never blocks the
+     * EDT and is cancelled when the Tool Window closes.
+     */
+    fun <T> discover(
+        block: (PresetDiscoveryGitClient) -> T,
+        onResult: (Result<T>) -> Unit,
+    ): BranchLoadHandle {
+        val state = BranchLoadState()
+        val job = scope.launch {
+            permits.withPermit {
+                if (closed.get()) return@withPermit
+                val operation = openOperation()
+                state.attach(operation)
+                try {
+                    ensureActive()
+                    val value = withContext(Dispatchers.IO) { block(operation) }
+                    if (!closed.get()) onResult(Result.success(value))
+                } catch (error: Throwable) {
+                    if (!closed.get()) onResult(Result.failure(error))
+                } finally {
+                    state.detach(operation)
+                    operation.close()
+                }
+            }
+        }
+        activeJobs.add(job)
+        job.invokeOnCompletion { activeJobs.remove(job) }
+        return BranchLoadHandle(job, state::cancel)
+    }
+
+    /**
+     * Cancels every pending and in-flight discovery when the owning Tool Window
+     * closes. Without this, branch probes keep running on the project scope and
+     * keep their Git processes (and the disposed editor UI) alive until they finish.
+     */
+    fun close() {
+        closed.set(true)
+        activeJobs.forEach(Job::cancel)
+        activeJobs.clear()
     }
 
     companion object {

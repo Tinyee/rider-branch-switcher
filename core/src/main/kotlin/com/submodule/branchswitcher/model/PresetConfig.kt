@@ -21,13 +21,20 @@ data class Preset(
     val submodules: Map<String, String> = emptyMap(),
     val id: String = java.util.UUID.randomUUID().toString(),
 ) {
-    /** Returns all targets: main (".") first, then submodules. Main-first ordering is critical for submodule init. */
-    fun targets(): List<RepoTarget> {
+    /**
+     * All targets: main (".") first, then submodules. Main-first ordering is critical
+     * for submodule init. The immutable preset caches the validated list so the whole
+     * switch pipeline does not rebuild it (and re-validate) on every step.
+     */
+    private val cachedTargets: List<RepoTarget> by lazy {
         requireValidPreset(this)
-        val list = mutableListOf(RepoTarget(".", main))
-        submodules.forEach { (path, branch) -> list += RepoTarget(path, branch) }
-        return list
+        buildList {
+            add(RepoTarget(".", main))
+            submodules.forEach { (path, branch) -> add(RepoTarget(path, branch)) }
+        }
     }
+
+    fun targets(): List<RepoTarget> = cachedTargets
 }
 
 /**

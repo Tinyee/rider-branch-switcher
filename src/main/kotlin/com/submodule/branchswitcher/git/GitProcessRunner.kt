@@ -4,6 +4,7 @@ import java.io.File
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ExecutionException
 import java.util.concurrent.Future
+import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.Semaphore
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.TimeoutException
@@ -80,8 +81,16 @@ internal class GitProcessRunner(
         }
 
         val stdoutLimitExceeded = AtomicBoolean(false)
-        val stdoutFuture = outputDrainer.captureStdout(process.inputStream, stdoutLimitExceeded)
-        val stderrFuture = outputDrainer.captureStderr(process.errorStream)
+        val stdoutFuture = try {
+            outputDrainer.captureStdout(process.inputStream, stdoutLimitExceeded)
+        } catch (error: RuntimeException) {
+            return drainSchedulingFailure(process, commandLabel, "stdout", error)
+        }
+        val stderrFuture = try {
+            outputDrainer.captureStderr(process.errorStream)
+        } catch (error: RuntimeException) {
+            return drainSchedulingFailure(process, commandLabel, "stderr", error)
+        }
 
         val deadline = System.nanoTime() +
             TimeUnit.SECONDS.toNanos(effectiveTimeoutSeconds.toLong())
@@ -182,6 +191,28 @@ internal class GitProcessRunner(
         )
     }
 
+    /**
+     * A drain task could not even be scheduled (the shared executor is shutting down
+     * during plugin unload). The process was already started, so stop it before
+     * returning: a released permit must never correspond to a process that is still
+     * running. [completedOutcome] keeps the permit held until the process tree exits.
+     */
+    private fun drainSchedulingFailure(
+        process: Process,
+        commandLabel: String,
+        drain: String,
+        error: RuntimeException,
+    ): ProcessRunOutcome {
+        val observedDescendants = linkedMapOf<Long, ProcessHandle>()
+        val termination = terminateProcess(process, observedDescendants)
+        return completedOutcome(
+            GitResult(commandLabel, -1, "", "output capture failed: $drain: ${error.javaClass.name}: ${error.message}"),
+            termination.resourcesStopped,
+            process,
+            observedDescendants,
+        )
+    }
+
     /** Defers permit release until every still-live process is actually gone. */
     @Suppress("SpreadOperator") // CompletableFuture.allOf exposes only a Java vararg API.
     private fun completedOutcome(
@@ -220,19 +251,35 @@ internal class GitProcessRunner(
         process: Process,
         observedDescendants: Map<Long, ProcessHandle>,
     ): ProcessRunOutcome {
-        GitProcessResources.exitWatcherExecutor.execute {
-            var interrupted = false
-            while (isProcessAlive(process) || observedDescendants.values.any(::isAlive)) {
-                try {
-                    Thread.sleep(250)
-                } catch (_: InterruptedException) {
-                    interrupted = true
+        val watcherScheduled = try {
+            GitProcessResources.exitWatcherExecutor.execute {
+                var interrupted = false
+                // isAlive() reports true for handles that cannot be queried, so the
+                // loop must be bounded: an unqueryable handle must not hold a permit
+                // (and a watcher thread) forever.
+                val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(POLL_DEADLINE_SECONDS)
+                while (System.nanoTime() - deadline < 0 &&
+                    (isProcessAlive(process) || observedDescendants.values.any(::isAlive))
+                ) {
+                    try {
+                        Thread.sleep(250)
+                    } catch (_: InterruptedException) {
+                        interrupted = true
+                    }
                 }
+                processPermits.release()
+                if (interrupted) Thread.currentThread().interrupt()
             }
-            processPermits.release()
-            if (interrupted) Thread.currentThread().interrupt()
+            true
+        } catch (_: RejectedExecutionException) {
+            // The exit watcher is already shutting down (plugin unload) and cannot hold
+            // the permit until the process exits. Stop the process here so the
+            // synchronous release below does not leave a live process running.
+            false
         }
-        return ProcessRunOutcome(result, resourcesStopped = false)
+        if (watcherScheduled) return ProcessRunOutcome(result, resourcesStopped = false)
+        terminateProcess(process, observedDescendants.toMutableMap())
+        return ProcessRunOutcome(result, resourcesStopped = true)
     }
 
     private fun acquireProcessPermit(cancellation: AtomicBoolean): String? {
@@ -453,6 +500,9 @@ internal class GitProcessRunner(
 
         /** Bounded wait for a SIGKILLed process to actually exit. */
         const val TERMINATION_HARD_WAIT_MILLIS = 5000L
+
+        /** Upper bound on the exit-watcher polling loop before a permit is force-released. */
+        const val POLL_DEADLINE_SECONDS = 60L
 
         fun isWindowsRuntime(): Boolean =
             System.getProperty("os.name").startsWith("Windows", ignoreCase = true)

@@ -127,6 +127,19 @@ class SwitchExecutor @JvmOverloads constructor(
 
         context.progressHandle?.isIndeterminate = false
 
+        // Re-running a preset that is already fully applied (every target on its branch
+        // with a clean tree) is a no-op. Short-circuit so it does not re-stash clean WIP
+        // or re-pull, which would accumulate stash backups on every repetition.
+        if (alreadyAtTargetState(context, preset)) {
+            log.info("[no-op] all targets already on their branches and clean; skipping pipeline")
+            log.activity("=== done ===")
+            return SwitchExecutionResult(
+                status = SwitchExecutionStatus.SUCCESS,
+                checkpoint = switchCheckpoint,
+                state = switchState,
+            )
+        }
+
         // A stale git index.lock makes every write fail (checkout, pull, stash) and
         // `git stash` fails on it silently. Surface any existing lock before the first
         // mutation so the user sees exactly which repository is blocked.
@@ -225,10 +238,15 @@ class SwitchExecutor @JvmOverloads constructor(
                 is StepResult.Success -> { /* continue */ }
             }
         }
-        if (executionStatus == SwitchExecutionStatus.FAILED && switchState.stashesSnapshot().isNotEmpty()) {
-            // A failed step can happen after DirtyHandlingStep has hidden user WIP.
-            // Restore it while the write session is still usable; otherwise the failed
-            // switch leaves the tree clean and the only copy silently in refs/stash.
+        // Restore the WIP that dirty handling stashed only once the switch outcome is
+        // final. SUCCESS and PARTIAL restore inline: all checkouts and pulls are done and
+        // the write session is still usable. FAILED and CANCELLED deliberately leave the
+        // stashes tracked so SwitchRunner's recovery can roll the repositories back while
+        // the trees are still clean and only then re-apply the WIP — restoring earlier
+        // would dirty the trees and block the rollback's clean-tree requirement.
+        if (executionStatus == SwitchExecutionStatus.SUCCESS ||
+            executionStatus == SwitchExecutionStatus.PARTIAL
+        ) {
             val restore = try {
                 restoreTrackedStashes(projectRoot, context.git, log, switchState)
             } catch (error: SwitchStepException) {
@@ -294,6 +312,29 @@ class SwitchExecutor @JvmOverloads constructor(
             preApprovedSubmoduleInit = preApprovedSubmoduleInit,
             checkpoint = checkpoint,
         )
+    }
+
+    /**
+     * True when every preset target already sits on its target branch with a clean
+     * working tree and pulling is disabled, so the pipeline has nothing to do. The
+     * "on branch" fact comes from the freshly recorded [context.checkpoint] (existing
+     * repos only — a missing target fails this check), so the only extra probe is one
+     * dirty check per target. A failed probe fails closed (returns false) so the normal
+     * pipeline still runs and reports the real outcome.
+     */
+    @Suppress("TooGenericExceptionCaught") // fail closed on any probe failure; cancellation still propagates
+    private fun alreadyAtTargetState(context: SwitchContext, preset: Preset): Boolean {
+        if (context.options.pull) return false
+        return preset.targets().all { target ->
+            val entry = context.checkpoint[target.path] ?: return@all false
+            entry.branch != target.branch && return@all false
+            try {
+                !git.isDirty(resolveGitDir(context.projectRoot, target.path))
+            } catch (e: RuntimeException) {
+                if (cancellationClassifier.isCancellation(e)) throw e
+                false
+            }
+        }
     }
 
     /**

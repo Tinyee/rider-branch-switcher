@@ -1,9 +1,13 @@
 package com.submodule.branchswitcher.switch
 
+import com.submodule.branchswitcher.git.GitFailureKind
 import com.submodule.branchswitcher.git.GitQueryException
 import com.submodule.branchswitcher.model.DirtyAction
 import com.submodule.branchswitcher.model.RepoTarget
 import java.io.File
+
+/** Subject prefix of every stash this plugin creates; used to locate them reliably. */
+internal const val STASH_MESSAGE_PREFIX = "branch-switcher: before -> "
 
 /**
  * For each target with a dirty working tree, apply the configured strategy
@@ -25,14 +29,15 @@ class DirtyHandlingStep : SwitchStep {
                 val repositoryDirectory = resolveGitDir(context.projectRoot, target.path)
                 if (!repositoryDirectory.exists()) continue
                 // Use the batch inspection's own repository fact to skip non-repos and
-                // avoid a second process per target (isGitRepo runs `rev-parse`). Only
-                // clients without a batch inspection fall back to the standalone check.
-                val inspection = when (val client = context.git) {
-                    is com.submodule.branchswitcher.git.RepositoryStateBatchGitClient ->
-                        client.inspectRepositoryState(repositoryDirectory)
-                    is WriteGuardGitClient -> client.inspectRepositoryStateIfAvailable(repositoryDirectory)
-                    else -> null
-                }
+                // avoid a second process per target (isGitRepo runs `rev-parse`). The
+                // write guard wraps the pipeline client and exposes this as a nullable
+                // capability (null when the underlying client lacks it); a raw batch
+                // client is a secondary fallback for guard-less contexts. Order is
+                // irrelevant because the guard branch is consulted first either way.
+                val inspection = (context.git as? WriteGuardGitClient)
+                    ?.inspectRepositoryStateIfAvailable(repositoryDirectory)
+                    ?: (context.git as? com.submodule.branchswitcher.git.RepositoryStateBatchGitClient)
+                        ?.inspectRepositoryState(repositoryDirectory)
                 if (inspection?.isGitRepository == false ||
                     (inspection == null && !context.git.isGitRepo(repositoryDirectory))
                 ) {
@@ -102,11 +107,31 @@ class DirtyHandlingStep : SwitchStep {
             )
             return state
         }
-        val stashResult = context.git.stash(
-            repositoryDirectory,
-            "branch-switcher: before -> ${target.branch}",
-        )
+        val stashMessage = "$STASH_MESSAGE_PREFIX${target.branch}"
+        val stashResult = context.git.stash(repositoryDirectory, stashMessage)
         if (!stashResult.ok) {
+            // A terminated stash push (cancel / timeout / interruption) may have written
+            // refs/stash before dying, leaving WIP split between the stash and the tree.
+            // Track any entry that did appear so recovery can still apply it instead of
+            // leaving a "torn" stash nobody owns.
+            val terminated = stashResult.failureKind == GitFailureKind.CANCELLED ||
+                stashResult.failureKind == GitFailureKind.INTERRUPTED ||
+                stashResult.failureKind == GitFailureKind.TIMEOUT
+            if (terminated) {
+                val ghostOid = try {
+                    context.git.stashOidByMessage(repositoryDirectory, stashMessage)
+                        ?: context.git.stashTopOid(repositoryDirectory)
+                } catch (_: GitQueryException) {
+                    null
+                }
+                if (ghostOid != null) {
+                    context.log.warn(
+                        "stash: terminated mid-write but entry created (${target.path}, oid=$ghostOid); " +
+                            "tracked for recovery",
+                    )
+                    return state.withTrackedStash(target.path, "before -> ${target.branch}", ghostOid)
+                }
+            }
             val lockHint = context.git.indexLockFile(repositoryDirectory)?.let { lock ->
                 " [index.lock exists at $lock; if no other git process is running, delete it and retry]"
             }.orEmpty()
@@ -121,7 +146,10 @@ class DirtyHandlingStep : SwitchStep {
             return state.withSkipped(target.path)
         }
         val stashOid = try {
-            context.git.stashTopOid(repositoryDirectory)
+            // Locate our stash by message prefix: an external `git stash push` racing in
+            // between stash and lookup must not make recovery apply the wrong entry.
+            context.git.stashOidByMessage(repositoryDirectory, stashMessage)
+                ?: context.git.stashTopOid(repositoryDirectory)
         } catch (error: GitQueryException) {
             return unidentifiedStash(context, target, state, issues, error.result.diagnostic())
         }
@@ -156,9 +184,6 @@ class DirtyHandlingStep : SwitchStep {
     }
 
     private fun updateProgress(context: SwitchContext, index: Int, total: Int, path: String) {
-        context.progressHandle?.apply {
-            fraction = index.toDouble() / total
-            text2 = if (path == ".") context.projectRoot.fileName.toString() else path
-        }
+        context.progressHandle?.updateProgress(index, total, context.projectRoot, path)
     }
 }

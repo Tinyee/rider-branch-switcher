@@ -186,7 +186,6 @@ class SubmoduleTreeStep : SwitchStep {
             issues += checkout.issues
             if (!checkout.succeeded) {
                 nextState = disableDescendants(nextState, targets, target.path)
-                nextState = restoreTargetStash(context, nextState, target.path, issues)
                 return SubmoduleTraversal(nextState, topology)
             }
 
@@ -205,7 +204,6 @@ class SubmoduleTreeStep : SwitchStep {
                 }
                 topology = loadTopology(context, nextState)
             }
-            nextState = restoreTargetStash(context, nextState, target.path, issues)
             return SubmoduleTraversal(nextState, topology)
         } catch (error: RuntimeException) {
             throw SwitchStepException(nextState, error)
@@ -256,10 +254,7 @@ class SubmoduleTreeStep : SwitchStep {
         target: RepoTarget,
         state: SwitchState,
         issues: MutableList<OperationIssue>,
-    ) = PreparedSubmodule(
-        restoreTargetStash(context, state, target.path, issues),
-        directory = null,
-    )
+    ) = PreparedSubmodule(state, directory = null)
 
     private fun loadTopology(context: SwitchContext, state: SwitchState): SubmoduleTopology =
         if (state.checkoutSucceeded(".")) {
@@ -267,23 +262,6 @@ class SubmoduleTreeStep : SwitchStep {
         } else {
             SubmoduleTopology(emptySet(), emptyMap())
         }
-
-    private fun restoreTargetStash(
-        context: SwitchContext,
-        state: SwitchState,
-        path: String,
-        issues: MutableList<OperationIssue>,
-    ): SwitchState {
-        val restore = restoreTrackedStashes(
-            context.projectRoot,
-            context.git,
-            context.log,
-            state,
-            setOf(path),
-        )
-        issues += restore.issues
-        return restore.state
-    }
 
     private fun disableTargetAndDescendants(
         state: SwitchState,
@@ -328,9 +306,6 @@ class SubmoduleTreeStep : SwitchStep {
     private data class RegistrationLocation(val root: File, val path: String)
 
     private fun updateProgress(context: SwitchContext, index: Int, total: Int, path: String) {
-        context.progressHandle?.apply {
-            fraction = index.toDouble() / total
-            text2 = path
-        }
+        context.progressHandle?.updateProgress(index, total, context.projectRoot, path)
     }
 }

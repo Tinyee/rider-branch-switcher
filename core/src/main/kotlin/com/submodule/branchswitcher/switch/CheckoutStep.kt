@@ -14,10 +14,7 @@ class CheckoutStep : SwitchStep {
             return StepExecution(StepResult.Success, state)
         }
 
-        context.progressHandle?.apply {
-            fraction = 0.0
-            text2 = context.projectRoot.fileName.toString()
-        }
+        context.progressHandle?.updateProgress(0, 1, context.projectRoot, ".")
         context.cancellationHandle?.checkCanceled()
         context.log.info("")
         context.log.info("--- ${context.projectRoot.fileName} - ${target.branch} ---")

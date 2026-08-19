@@ -26,7 +26,7 @@ internal class SwitchCheckpointRecorder(
         for (target in preset.targets()) {
             val dir = resolveGitDir(projectRoot, target.path)
             if (!dir.exists() || !git.isGitRepo(dir)) continue
-            val label = if (target.path == ".") projectRoot.fileName.toString() else target.path
+            val label = displayLabel(projectRoot, target.path)
             val identity = git.repositoryIdentity(dir)
             val registration = topology.byPath[target.path]
             val expectedGitDirectory = expectedSubmoduleGitDirectory(

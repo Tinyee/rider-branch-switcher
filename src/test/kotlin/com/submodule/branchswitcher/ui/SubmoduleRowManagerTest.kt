@@ -29,7 +29,6 @@ class SubmoduleRowManagerTest {
     fun `submodule row context menu listener is installed on child label panel`() {
         val manager = SubmoduleRowManager(
             gitRoot = Paths.get("."),
-            gitClient = ::emptyGit,
             branchLoads = emptyBranchLoads(),
             body = JPanel(),
             log = createStringAppender {},
@@ -51,7 +50,6 @@ class SubmoduleRowManagerTest {
         var requested: Pair<String, String>? = null
         val manager = SubmoduleRowManager(
             gitRoot = Paths.get("."),
-            gitClient = ::emptyGit,
             branchLoads = emptyBranchLoads(),
             body = JPanel(),
             log = createStringAppender {},
@@ -74,7 +72,6 @@ class SubmoduleRowManagerTest {
         val finished = CountDownLatch(1)
         val manager = SubmoduleRowManager(
             gitRoot = root,
-            gitClient = { failingCurrentBranchGit() },
             branchLoads = BranchLoadCoordinator(CoroutineScope(Dispatchers.Unconfined)) {
                 failingCurrentBranchOperation()
             },
@@ -109,7 +106,6 @@ class SubmoduleRowManagerTest {
         val retryDone = CountDownLatch(1)
         val manager = SubmoduleRowManager(
             gitRoot = root,
-            gitClient = ::emptyGit,
             branchLoads = BranchLoadCoordinator(CoroutineScope(Dispatchers.Unconfined)) {
                 gitOperation { methodName ->
                     if (methodName == "listAllBranches") {
@@ -163,7 +159,6 @@ class SubmoduleRowManagerTest {
         }
         val manager = SubmoduleRowManager(
             gitRoot = root,
-            gitClient = ::emptyGit,
             branchLoads = BranchLoadCoordinator(CoroutineScope(Dispatchers.Unconfined)) { operation },
             body = body,
             log = createStringAppender {},
@@ -195,35 +190,10 @@ class SubmoduleRowManagerTest {
             listOf(root)
         }
 
-    private fun emptyGit(): PresetDiscoveryGitClient =
-        Proxy.newProxyInstance(
-            PresetDiscoveryGitClient::class.java.classLoader,
-            arrayOf(PresetDiscoveryGitClient::class.java),
-        ) { _, method, _ ->
-            when (method.returnType) {
-                Boolean::class.javaPrimitiveType -> false
-                Int::class.javaPrimitiveType -> 0
-                List::class.java -> emptyList<String>()
-                else -> null
-            }
-        } as PresetDiscoveryGitClient
-
     private fun emptyBranchLoads(): BranchLoadCoordinator =
         BranchLoadCoordinator(CoroutineScope(Dispatchers.Unconfined)) {
             gitOperation()
         }
-
-    private fun failingCurrentBranchGit(): PresetDiscoveryGitClient =
-        Proxy.newProxyInstance(
-            PresetDiscoveryGitClient::class.java.classLoader,
-            arrayOf(PresetDiscoveryGitClient::class.java),
-        ) { _, method, _ ->
-            when (method.name) {
-                "currentBranch" -> error("cannot inspect branch")
-                "listAllBranches", "listSubmodulePaths" -> emptyList<String>()
-                else -> null
-            }
-        } as PresetDiscoveryGitClient
 
     private fun failingCurrentBranchOperation(): GitOperationSession =
         gitOperation { methodName ->

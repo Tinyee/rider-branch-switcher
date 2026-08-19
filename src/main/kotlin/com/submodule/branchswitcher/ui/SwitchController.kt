@@ -10,10 +10,9 @@ import com.submodule.branchswitcher.log.withContext
 import com.submodule.branchswitcher.Notifier
 import com.submodule.branchswitcher.Bundle
 import com.submodule.branchswitcher.model.Preset
-import com.submodule.branchswitcher.platform.logVcsRefresh
 import com.submodule.branchswitcher.platform.GitBackgroundRunner
 import com.submodule.branchswitcher.platform.platformCancellationClassifier
-import com.submodule.branchswitcher.platform.refreshVcsRepos
+import com.submodule.branchswitcher.platform.refreshVcsTail
 import com.submodule.branchswitcher.service.BranchSwitcherService
 import com.submodule.branchswitcher.switch.DeriveNotification
 import com.submodule.branchswitcher.switch.deriveNotification
@@ -39,6 +38,10 @@ internal class SwitchController(
 
     private val coordinator = SwitchFlowCoordinator(project, service)
     private val writeOperations = WriteOperationLauncher(service.scope, service::tryAcquireWrite)
+
+    /** Notified on the UI thread whenever an in-flight mutation starts or ends. */
+    var onInProgressChange: ((Boolean) -> Unit)? = null
+    private var switchInProgress = false
 
     @Suppress("TooGenericExceptionCaught") // platform preflight adapters report unrelated failures through one UI boundary
     fun runSwitch(preset: Preset) {
@@ -74,16 +77,16 @@ internal class SwitchController(
     }
 
     fun derivePresetBranch(root: Path, preset: Preset, branchName: String) {
-        writeOperations.launch(
+        setSwitchInProgress(true)
+        val job = writeOperations.launch(
             onBusy = {
+                // The lease was already held, so no mutation will start; clear the state.
+                setSwitchInProgress(false)
                 Notifier.warn(project, Bundle.msg("notify.write.busy"), Bundle.msg("notify.write.busy.msg"))
             },
             afterRelease = { runResult ->
                 val operationLog = log.withContext(runResult.operationId)
-                val refreshResult = refreshVcsRepos(project, root, preset.submodules.keys, operationLog)
-
-                invokeLaterIfProjectAlive {
-                    logVcsRefresh(operationLog, refreshResult)
+                refreshVcsTail(project, root, preset.submodules.keys, operationLog, ::invokeLaterIfProjectAlive) {
                     onStateChanged()
                     showDeriveNotification(runResult, branchName)
                 }
@@ -99,6 +102,9 @@ internal class SwitchController(
                     branchName = branchName,
                     log = log,
                 )
+        }
+        job?.invokeOnCompletion {
+            invokeLaterIfProjectAlive { setSwitchInProgress(false) }
         }
     }
 
@@ -209,6 +215,9 @@ internal class SwitchController(
     private fun invokeLaterIfProjectAlive(action: () -> Unit) = project.invokeLaterIfAlive(action)
 
     private fun setSwitchInProgress(inProgress: Boolean) {
+        if (switchInProgress == inProgress) return
+        switchInProgress = inProgress
+        onInProgressChange?.invoke(inProgress)
         val toolWindow = com.intellij.openapi.wm.ToolWindowManager.getInstance(project)
             .getToolWindow("SubmoduleBranches") ?: return
         toolWindow.setIcon(if (inProgress) AllIcons.Process.Step_4 else AllIcons.Vcs.Branch)

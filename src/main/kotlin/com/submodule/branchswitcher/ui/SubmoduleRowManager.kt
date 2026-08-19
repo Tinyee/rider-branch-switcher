@@ -4,7 +4,6 @@ import com.intellij.ui.JBColor
 import com.submodule.branchswitcher.Bundle
 import com.submodule.branchswitcher.log.AppLogger
 import com.submodule.branchswitcher.log.logFailure
-import com.submodule.branchswitcher.git.PresetDiscoveryGitClient
 import com.submodule.branchswitcher.model.Preset
 import com.submodule.branchswitcher.switch.shortLabel
 import java.awt.Component
@@ -27,7 +26,6 @@ import javax.swing.SwingUtilities
  */
 internal class SubmoduleRowManager(
     private val gitRoot: Path,
-    private val gitClient: () -> PresetDiscoveryGitClient,
     private val branchLoads: BranchLoadCoordinator,
     private val body: JPanel,
     private val log: AppLogger,
@@ -107,32 +105,39 @@ internal class SubmoduleRowManager(
         body.repaint()
     }
 
-    /** Shows a popup to add a new submodule from .gitmodules paths not yet in the preset. */
-    @Suppress("TooGenericExceptionCaught") // discovery failures converge at this UI boundary
+    /**
+     * Shows a popup to add a new submodule from .gitmodules paths not yet in the preset.
+     * The topology query runs in the background (never on the EDT) and the menu is
+     * assembled on the UI thread once the paths are available.
+     */
     fun showAddSubmoduleMenu(anchor: JButton, currentPreset: Preset) {
-        val all = try {
-            gitClient().listSubmodulePaths(gitRoot.toFile())
-        } catch (e: Exception) {
-            // A topology discovery failure (e.g. unresolvable project root) must not crash
-            // the popup action; route through logFailure so environment failures stay WARN
-            // while programming defects still surface as errors.
-            log.logFailure("cannot discover submodule paths", e)
-            return
+        branchLoads.discover(
+            { client -> client.listSubmodulePaths(gitRoot.toFile()) },
+        ) { result ->
+            scheduleUi {
+                val all = result.getOrElse { error ->
+                    // A topology discovery failure (e.g. unresolvable project root) must not
+                    // crash the popup action; route through logFailure so environment failures
+                    // stay WARN while programming defects still surface as errors.
+                    log.logFailure("cannot discover submodule paths", error)
+                    return@scheduleUi
+                }
+                val current = subRows.values.filter { !it.deleted }.map { it.path }.toSet()
+                val available = all.filter { it !in current }
+                if (available.isEmpty()) {
+                    log.debug(Bundle.msg("log.no.submodules.available", currentPreset.name))
+                    return@scheduleUi
+                }
+                val popup = javax.swing.JPopupMenu()
+                available.forEach { path ->
+                    popup.add(javax.swing.JMenuItem(shortLabel(path)).apply {
+                        toolTipText = path
+                        addActionListener { addSubmoduleFromMenu(path) }
+                    })
+                }
+                popup.show(anchor, 0, anchor.height)
+            }
         }
-        val current = subRows.values.filter { !it.deleted }.map { it.path }.toSet()
-        val available = all.filter { it !in current }
-        if (available.isEmpty()) {
-            log.debug(Bundle.msg("log.no.submodules.available", currentPreset.name))
-            return
-        }
-        val popup = javax.swing.JPopupMenu()
-        available.forEach { path ->
-            popup.add(javax.swing.JMenuItem(shortLabel(path)).apply {
-                toolTipText = path
-                addActionListener { addSubmoduleFromMenu(path) }
-            })
-        }
-        popup.show(anchor, 0, anchor.height)
     }
 
     /** Adds a submodule row for [path], reactivating deleted rows or creating new ones. */

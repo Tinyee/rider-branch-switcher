@@ -14,6 +14,7 @@ import com.submodule.branchswitcher.switch.OperationIssueCode
 import com.submodule.branchswitcher.switch.OperationIssueSeverity
 import com.submodule.branchswitcher.switch.OperationStage
 import com.submodule.branchswitcher.switch.SwitchExecutionResult
+import com.submodule.branchswitcher.switch.SwitchExecutionStatus
 import com.submodule.branchswitcher.switch.SwitchExecutor
 import com.submodule.branchswitcher.switch.SwitchRecoveryExecutor
 import kotlinx.coroutines.Dispatchers
@@ -41,7 +42,7 @@ private data class BackgroundSwitchOutcome(
     val execution: SwitchExecutionResult?,
 )
 
-private data class CancelledSwitchRecovery(
+private data class RecoveredSwitchOutcome(
     val execution: SwitchExecutionResult,
     val recovery: SwitchRecoveryResult,
 )
@@ -111,11 +112,18 @@ class SwitchRunner(
         if (executionResult?.cancelled == true) {
             wasCancelled = true
         }
-        if (wasCancelled && executionResult != null) {
+        // Recovery runs for cancellations and for FAILED results that recorded a
+        // checkpoint: repositories may already be mutated before the failure, and the
+        // stash restore is deferred until after the rollback so the trees stay clean.
+        val needsRecovery = wasCancelled ||
+            (executionResult != null &&
+                executionResult.checkpoint != null &&
+                executionResult.status == SwitchExecutionStatus.FAILED)
+        if (needsRecovery && executionResult != null) {
             val recoveryLog = log.withContext(operationContext.inPhase("recovery"))
-            val cancelledRecovery = recoverCancelledSwitch(executionResult, recoveryLog)
-            executionResult = cancelledRecovery.execution
-            recoveryResult = cancelledRecovery.recovery
+            val recovered = recoverSwitch(executionResult, recoveryLog)
+            executionResult = recovered.execution
+            recoveryResult = recovered.recovery
         }
 
         val result = SwitchRunResult(
@@ -154,19 +162,19 @@ class SwitchRunner(
         }
     }
 
-    @Suppress("TooGenericExceptionCaught") // cancellation recovery must return a report instead of escaping
-    private fun recoverCancelledSwitch(
+    @Suppress("TooGenericExceptionCaught") // recovery must return a report instead of escaping
+    private fun recoverSwitch(
         execution: SwitchExecutionResult,
         log: AppLogger,
-    ): CancelledSwitchRecovery {
-        // GitOperationSession remains cancelled after cancel() and rejects every
-        // later command. Recovery therefore requires a new session after the
-        // background runner has closed the cancelled one.
+    ): RecoveredSwitchOutcome {
+        // The cancelled GitOperationSession rejects every later command, and the
+        // completed session is closed once the background runner returns. Recovery
+        // therefore always requires a fresh operation session.
         val recoveryOperation = try {
             operations.openOperation()
         } catch (e: RuntimeException) {
             log.logFailure("cancel recovery session could not be opened", e)
-            return CancelledSwitchRecovery(
+            return RecoveredSwitchOutcome(
                 execution = execution,
                 recovery = SwitchRecoveryResult(
                     rollbackOk = false,
@@ -177,7 +185,7 @@ class SwitchRunner(
         return try {
             val recoveryExecutor = SwitchRecoveryExecutor(projectRoot, log, recoveryOperation)
             val recoveryOutcome = recoveryExecutor.recover(execution)
-            CancelledSwitchRecovery(
+            RecoveredSwitchOutcome(
                 execution = execution.copy(state = recoveryOutcome.stashRestore.state),
                 recovery = SwitchRecoveryResult(
                     rollbackOk = recoveryOutcome.rollbackOk,
@@ -185,8 +193,8 @@ class SwitchRunner(
                 ),
             )
         } catch (e: RuntimeException) {
-            log.logFailure("cancel recovery failed", e)
-            CancelledSwitchRecovery(
+            log.logFailure("recovery failed", e)
+            RecoveredSwitchOutcome(
                 execution = execution,
                 recovery = SwitchRecoveryResult(
                     rollbackOk = false,

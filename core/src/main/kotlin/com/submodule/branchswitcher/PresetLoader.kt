@@ -1,6 +1,7 @@
 package com.submodule.branchswitcher
 
 import com.google.gson.Gson
+import com.google.gson.GsonBuilder
 import com.google.gson.JsonSyntaxException
 import com.submodule.branchswitcher.model.PresetFile
 import com.submodule.branchswitcher.model.PresetFileDto
@@ -23,6 +24,10 @@ import java.nio.file.Path
 object PresetLoader {
     const val FILE_NAME = ".branch-presets.json"
     const val IDEA_FILE_NAME = "branch-presets.json"
+
+    // Gson instances are thread-safe and immutable; reuse instead of rebuilding per call.
+    private val gson = Gson()
+    private val prettyGson = GsonBuilder().setPrettyPrinting().create()
 
     /**
      * Locates an existing preset file. Returns null if none found.
@@ -70,7 +75,7 @@ object PresetLoader {
             if (!Files.exists(file)) return@runCatching PresetLoadResult(file, PresetFile(), null)
             val bytes = Files.readAllBytes(file)
             val text = String(bytes, StandardCharsets.UTF_8)
-            val dto = Gson().fromJson(text, PresetFileDto::class.java) ?: PresetFileDto()
+            val dto = gson.fromJson(text, PresetFileDto::class.java) ?: PresetFileDto()
             val (parsed, _) = normalizePresetIds(dto)
             PresetLoadResult(file, parsed, java.security.MessageDigest.getInstance("SHA-256").digest(bytes))
         }.recoverCatching { e ->
@@ -132,8 +137,7 @@ object PresetLoader {
      */
     fun save(file: Path, presetFile: PresetFile): ByteArray {
         presetFile.presets.forEach(::requireValidPreset)
-        val gson = com.google.gson.GsonBuilder().setPrettyPrinting().create()
-        val payload = (gson.toJson(presetFile) + "\n").toByteArray(StandardCharsets.UTF_8)
+        val payload = (prettyGson.toJson(presetFile) + "\n").toByteArray(StandardCharsets.UTF_8)
         val parent = file.parent ?: throw IllegalStateException("preset file has no parent: $file")
         Files.createDirectories(parent)
         val tmp = Files.createTempFile(parent, file.fileName.toString() + ".", ".tmp")

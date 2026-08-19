@@ -194,3 +194,13 @@ fun resolveGitDir(root: java.nio.file.Path, path: String): java.io.File {
     }
     return candidate
 }
+
+/** Human-readable repository label: the project directory name for the main repo, else the target path. */
+internal fun displayLabel(root: Path, path: String): String =
+    if (path == ".") root.fileName.toString() else path
+
+/** Advances a bounded progress handle to [index]/[total] with a repository label. */
+internal fun ProgressHandle.updateProgress(index: Int, total: Int, root: Path, path: String) {
+    fraction = index.toDouble() / total
+    text2 = displayLabel(root, path)
+}

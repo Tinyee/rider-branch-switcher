@@ -4,7 +4,6 @@ import com.intellij.icons.AllIcons
 import com.intellij.ui.JBColor
 import com.intellij.util.ui.JBUI
 import com.submodule.branchswitcher.Bundle
-import com.submodule.branchswitcher.git.PresetDiscoveryGitClient
 import com.submodule.branchswitcher.log.AppLogger
 import com.submodule.branchswitcher.log.logFailure
 import com.submodule.branchswitcher.model.Preset
@@ -50,7 +49,6 @@ internal class PresetEditor(
     private val onDelete: () -> Unit,
     private val onDerive: (preset: Preset, branchName: String) -> Unit = { _, _ -> },
     private val nameValidator: (String) -> Boolean = { true },
-    private val gitClient: () -> PresetDiscoveryGitClient,
     private val branchLoads: BranchLoadCoordinator,
     private val onSwitchOnly: (path: String, target: String) -> Unit = { _, _ -> },
 ) : JPanel() {
@@ -102,7 +100,7 @@ internal class PresetEditor(
     private var persistenceInProgress = false
 
     private val submoduleManager = SubmoduleRowManager(
-        gitRoot, gitClient, branchLoads, body, log, ::updateUnsavedState, onSwitchOnly,
+        gitRoot, branchLoads, body, log, ::updateUnsavedState, onSwitchOnly,
     )
     private val submoduleRows get() = submoduleManager.subRows
     val loadingCount get() = submoduleManager.loadingCount
@@ -322,6 +320,12 @@ internal class PresetEditor(
     fun dispose() {
         cancelComboBranchLoad(mainCombo)
         submoduleManager.cancelBranchLoads()
+    }
+
+    /** Enables or disables the mutation buttons (switch/derive) while another operation runs. */
+    fun setActionsEnabled(enabled: Boolean) {
+        switchBtn.isEnabled = enabled
+        deriveBtn.isEnabled = enabled
     }
 
     /**

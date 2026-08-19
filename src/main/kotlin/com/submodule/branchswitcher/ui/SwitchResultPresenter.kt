@@ -28,8 +28,41 @@ internal class SwitchResultPresenter(
         when {
             runResult.cancelled -> notifyCancellation(runResult)
             runResult.ok -> notifySuccessfulSwitch(preset, runResult.execution, onSuccess)
+            runResult.recovery != null -> notifyRecoveredFailure(preset, runResult, onRollback)
             else -> notifySwitchFailure(preset, runResult.execution, onRollback)
         }
+    }
+
+    /**
+     * A FAILED switch with a checkpoint was automatically rolled back (repositories
+     * first, then the stashed WIP). Present the recovery outcome, and offer a manual
+     * rollback retry only when that automatic recovery was itself incomplete.
+     */
+    private fun notifyRecoveredFailure(
+        preset: Preset,
+        runResult: SwitchRunResult,
+        onRollback: (SwitchExecutionResult) -> Unit,
+    ) {
+        val recovery = runResult.recovery
+        val execution = runResult.execution
+        if (recovery?.ok == true) {
+            Notifier.info(
+                project,
+                Bundle.msg("switch.failed"),
+                Bundle.msg("notify.switch.failed.recovered") + retainedStateNotice(execution),
+            )
+            return
+        }
+        val message = Bundle.msg("notify.switch.partial.msg", preset.name) + retainedStateNotice(execution)
+        if (execution?.checkpoint == null) {
+            Notifier.error(project, Bundle.msg("switch.failed"), message)
+            return
+        }
+        Notifier.rollbackAction(
+            project,
+            Bundle.msg("switch.failed"),
+            message + Bundle.msg("notify.switch.rollback.hint"),
+        ) { onRollback(execution) }
     }
 
     fun presentRollbackResult(

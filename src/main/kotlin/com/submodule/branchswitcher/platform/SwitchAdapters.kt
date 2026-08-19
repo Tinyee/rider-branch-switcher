@@ -85,6 +85,26 @@ fun logVcsRefresh(log: AppLogger, result: VcsRefreshResult) {
 }
 
 /**
+ * Runs the shared post-mutation VCS refresh tail: queries the touched repositories in
+ * the background, then on the UI thread logs the result and runs [onUi]. Every
+ * repository-mutation entry point uses this so the tail cannot drift between them.
+ */
+fun refreshVcsTail(
+    project: Project,
+    root: Path,
+    paths: Set<String>,
+    log: AppLogger,
+    uiLater: (() -> Unit) -> Unit,
+    onUi: () -> Unit,
+) {
+    val refreshResult = refreshVcsRepos(project, root, paths, log)
+    uiLater {
+        logVcsRefresh(log, refreshResult)
+        onUi()
+    }
+}
+
+/**
  * Platform classifier: recognizes JDK CancellationException, IntelliJ ProcessCanceledException,
  * and git queries cancelled mid-run (failureKind CANCELLED/INTERRUPTED), so a superseded probe
  * is treated as cancellation instead of a noisy failure.

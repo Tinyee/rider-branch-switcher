@@ -64,8 +64,10 @@ internal object BranchCheckout {
     }
 
     /**
-     * A missing target branch must not leave a stash created earlier in the
-     * switch hidden from the user.
+     * A missing target branch must not leave a stash created earlier in the switch
+     * hidden from the user. The stash stays tracked here; SwitchExecutor restores it
+     * at the end of a partial pipeline, or SwitchRunner's recovery applies it after
+     * rolling the repositories back.
      */
     private fun recoverStashAfterMissingBranch(
         context: SwitchContext,
@@ -73,21 +75,7 @@ internal object BranchCheckout {
         state: SwitchState,
     ): Result {
         context.log.warn("[fail] branch '${target.branch}' not found locally or on origin")
-        if (state.trackedStash(target.path) == null) {
-            return Result(state, succeeded = false, issues = listOf(branchMissingIssue(target.path)))
-        }
-        val restore = restoreTrackedStashes(
-            context.projectRoot,
-            context.git,
-            context.log,
-            state,
-            selectedPaths = setOf(target.path),
-        )
-        return Result(
-            state = restore.state,
-            succeeded = false,
-            issues = listOf(branchMissingIssue(target.path)) + restore.issues,
-        )
+        return Result(state, succeeded = false, issues = listOf(branchMissingIssue(target.path)))
     }
 
     private fun branchMissingIssue(path: String) = OperationIssue(

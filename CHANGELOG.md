@@ -197,6 +197,22 @@
   at checkpoint against the current topology, instead of the live config after
   `submodule sync`; a local fork override no longer falsely blocks a switch, while
   same-path repository replacement is still rejected.
+- A switch that fails after recording a checkpoint is automatically rolled back
+  and its stashes restored, instead of leaving the repositories partially
+  switched until the user clicks rollback.
+- Stash restoration is deferred to the end of the switch pipeline (or to recovery
+  for failed and cancelled switches), so a failure can no longer restore WIP into
+  a tree the rollback must reset.
+- Re-running a preset that is already fully applied (every target on its branch
+  with a clean tree, pull disabled) is a no-op instead of re-stashing and
+  re-pulling.
+- Switch and derive buttons are disabled while a switch or derive is in flight,
+  so a second click is rejected immediately instead of after a full preflight.
+- Orphan submodule worktrees retained after a rollback carry a
+  `git submodule deinit -f` cleanup hint in the log and the notification.
+- Split the Git capability interfaces out of the single aggregate file into
+  per-workflow files, and consolidate repeated display-label, progress-update,
+  stash-restore, and post-mutation VCS-refresh glue.
 
 ### Fixed
 
@@ -267,6 +283,24 @@
 - The submodule remote-change gate only applies to targets that were registered
   at checkpoint time, so a leftover directory re-registered by the preset main is
   not mistaken for a repository replacement.
+- A failed switch is rolled back (repositories first, then the stashed WIP)
+  instead of re-applying the WIP onto the partially switched branch first, which
+  used to dirty the tree and block the rollback's clean-tree requirement.
+- A stash created by dirty handling is located by its message prefix instead of
+  the top of `refs/stash`, so a concurrent external `git stash push` cannot make
+  recovery apply the wrong entry.
+- A stash push terminated mid-write (cancel, timeout, or interruption) that did
+  create a stash entry is now tracked for recovery instead of being skipped as a
+  failed stash, so WIP split between the stash and the worktree is not lost.
+- A drain-task scheduling failure (e.g. during plugin unload) no longer releases
+  a process permit while the started Git process is still running; the process is
+  terminated before the permit is returned.
+- The exit-watcher polling loop that defers a permit release is bounded, so an
+  unqueryable process handle cannot hold a permit and a watcher thread forever.
+- Closing the Tool Window cancels in-flight branch discovery and its Git
+  processes instead of letting them finish on the project scope.
+- Adding a submodule no longer runs a Git query on the UI thread; the candidate
+  list is discovered in the background and the menu is built afterwards.
 
 ### Removed
 
@@ -290,6 +324,8 @@
 - Direct tests cover the credential-redaction sanitizer, submodule worktree
   association and expected git-directory resolution, and the core cancellation
   classifier default.
+- Add regression tests for failed-switch auto-recovery, message-scoped stash
+  identity, terminated-stash ghost entries, and already-applied no-op switches.
 
 ## [0.6.0] - 2026-06-13
 
