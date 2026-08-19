@@ -59,6 +59,13 @@ internal class WriteGuardGitClient(
         delegate.submoduleInitPath(gitRoot, path)
     }
 
+    override fun stashDrop(
+        workDir: File,
+        oid: String,
+    ): com.submodule.branchswitcher.git.GitResult = guarded(workDir) {
+        delegate.stashDrop(workDir, oid)
+    }
+
     private fun <T> guarded(workDir: File, action: () -> T): T {
         val lock = delegate.indexLockFile(workDir)
         if (lock != null) throw IndexLockBlockedException(repositoryPath(workDir), lock)

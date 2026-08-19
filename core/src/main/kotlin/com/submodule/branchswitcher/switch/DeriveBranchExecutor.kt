@@ -1,6 +1,7 @@
 package com.submodule.branchswitcher.switch
 
 import com.submodule.branchswitcher.git.DeriveGitClient
+import com.submodule.branchswitcher.git.resolveHeadAndBranch
 import com.submodule.branchswitcher.log.AppLogger
 import com.submodule.branchswitcher.log.logFailure
 import com.submodule.branchswitcher.model.Preset
@@ -212,19 +213,21 @@ class DeriveBranchExecutor(
             try {
                 // HEAD SHA and branch are read atomically when supported, so the
                 // derive checkpoint cannot pair a SHA with the wrong branch.
-                val headAndBranch = git.headAndBranch(repositoryDirectory)
-                val sha = headAndBranch?.sha ?: git.revParseHead(repositoryDirectory)
-                if (sha != null) {
-                    val branch = headAndBranch?.branch ?: git.currentBranch(repositoryDirectory)
+                val resolved = git.resolveHeadAndBranch(repositoryDirectory)
+                if (resolved != null) {
+                    // resolveHeadAndBranch only returns a result when HEAD is
+                    // resolvable, so its SHA is guaranteed non-null here.
+                    val sha = resolved.sha!!
                     val repositoryId = git.repositoryIdentity(repositoryDirectory)?.gitDirectory
                     entries[target.path] = DeriveCheckpointEntry(
                         sha,
-                        branch,
+                        resolved.branch,
                         repositoryId,
                     )
                     log.info(
-                        "[derive checkpoint] $repositoryLabel: branch=${branch ?: "(detached)"}, " +
-                            "head=${sha.take(12)}, gitDir=${repositoryId ?: "unknown"}",
+                        "[derive checkpoint] $repositoryLabel: " +
+                            "branch=${resolved.branch ?: "(detached)"}, head=${sha.take(12)}, " +
+                            "gitDir=${repositoryId ?: "unknown"}",
                     )
                 } else {
                     log.warn("[derive] $repositoryLabel: no HEAD - cannot checkpoint")

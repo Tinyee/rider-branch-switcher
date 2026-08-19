@@ -213,6 +213,12 @@
 - Split the Git capability interfaces out of the single aggregate file into
   per-workflow files, and consolidate repeated display-label, progress-update,
   stash-restore, and post-mutation VCS-refresh glue.
+- Consolidate the switch and derive checkpoint HEAD-and-branch read into one
+  shared fallback (`resolveHeadAndBranch`) and collapse the duplicate
+  `dirtyProbe`/`localBranchProbe` methods onto their equivalents, so both
+  checkpoints share a single atomic-read-then-fallback contract.
+- `stashDrop` now rechecks for a pre-existing `index.lock` immediately before
+  dropping, matching every other mutating git write.
 
 ### Fixed
 
@@ -367,6 +373,8 @@
 - Add regression tests for ghost stashes that did not advance the stack,
   fetch-first short-circuiting, invalid-preset dropping, and dropped stash
   backups after clean restores.
+- Add direct coverage of the shared checkpoint HEAD-and-branch read, pinning the
+  atomic-first path, the separate-read fallback, and the no-HEAD case.
 
 ## [0.6.0] - 2026-06-13
 

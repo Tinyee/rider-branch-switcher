@@ -1,6 +1,7 @@
 package com.submodule.branchswitcher.switch
 
 import com.submodule.branchswitcher.git.SwitchGitClient
+import com.submodule.branchswitcher.git.resolveHeadAndBranch
 import com.submodule.branchswitcher.log.AppLogger
 import com.submodule.branchswitcher.log.diagnosticFingerprint
 import com.submodule.branchswitcher.model.Preset
@@ -61,13 +62,15 @@ internal class SwitchCheckpointRecorder(
             // HEAD SHA and branch come from one git invocation when the client
             // supports it, so a concurrent checkout cannot pair the SHA with the
             // wrong branch name in the rollback checkpoint.
-            val headAndBranch = git.headAndBranch(dir)
-            val sha = headAndBranch?.sha ?: git.revParseHead(dir)
-            if (sha == null) {
+            val resolved = git.resolveHeadAndBranch(dir)
+            if (resolved == null) {
                 log.error("[checkpoint] $label: unable to read HEAD")
                 return null
             }
-            val branch = headAndBranch?.branch ?: git.currentBranch(dir)
+            // resolveHeadAndBranch only returns a result when HEAD is resolvable,
+            // so its SHA is guaranteed non-null here.
+            val sha = resolved.sha!!
+            val branch = resolved.branch
             val declaredUrl = registration?.url
             checkpoint[target.path] = CheckpointEntry(
                 sha,

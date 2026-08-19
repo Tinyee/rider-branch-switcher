@@ -198,20 +198,12 @@ internal class GitCommandClient(
         }
     }
 
-    override fun localBranchProbe(workDir: File, branch: String): Boolean {
-        val result = run(workDir, "show-ref", "--verify", "--quiet", "refs/heads/$branch")
-        return when {
-            result.ok -> true
-            result.exitCode == 1 -> false
-            else -> throw GitQueryException(result)
-        }
-    }
+    /** Same command as [localBranchExists]; exposed for the DeriveGitClient split. */
+    override fun localBranchProbe(workDir: File, branch: String): Boolean =
+        localBranchExists(workDir, branch)
 
-    override fun dirtyProbe(workDir: File): Boolean {
-        val result = run(workDir, "--no-optional-locks", "status", "--porcelain")
-        if (!result.ok) throw GitQueryException(result)
-        return result.stdout.isNotBlank()
-    }
+    /** Same command as [isDirty]; exposed for the DeriveGitClient split. */
+    override fun dirtyProbe(workDir: File): Boolean = isDirty(workDir)
 
     private fun remoteName(workDir: File): String {
         val key = workDir.absolutePath

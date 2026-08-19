@@ -15,7 +15,7 @@ interface GitRepositoryQuery {
      * Atomically reads HEAD and the current branch from one git invocation so a
      * concurrent HEAD move can never pair a SHA with the wrong branch name.
      * Returns null when the implementation does not support the single-query read;
-     * callers fall back to [revParseHead] + [currentBranch].
+     * callers use [resolveHeadAndBranch] for the shared atomic-read-then-fallback.
      */
     fun headAndBranch(workDir: File): HeadAndBranch? = null
     /** Returns stable repository storage and superproject paths, or null when unsupported. */
@@ -82,4 +82,21 @@ interface RepositoryStateBatchGitClient {
 /** Optional optimized capability for fail-closed switch preview inspection. */
 interface SwitchPreflightBatchGitClient {
     fun inspectPreflight(workDir: File, targetBranches: Set<String>): GitRepositoryInspection
+}
+
+/**
+ * Reads HEAD and the current branch atomically when the client supports it,
+ * falling back to separate reads otherwise. Returns null only when HEAD
+ * cannot be resolved. Prefer this over calling [headAndBranch] +
+ * [revParseHead] + [currentBranch] so callers share one fallback contract.
+ *
+ * Implemented as an extension (not an interface default method) so the reads
+ * dispatch to the receiver's overrides: an interface default would be forwarded
+ * wholesale by `by`-delegation wrappers such as [GitWorkflowClient] sessions,
+ * pairing a delegate's SHA with a wrapper's branch override.
+ */
+fun GitRepositoryQuery.resolveHeadAndBranch(workDir: File): HeadAndBranch? {
+    val atomic = headAndBranch(workDir)
+    val sha = atomic?.sha ?: revParseHead(workDir) ?: return null
+    return HeadAndBranch(sha, atomic?.branch ?: currentBranch(workDir))
 }
