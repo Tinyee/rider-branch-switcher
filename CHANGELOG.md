@@ -219,6 +219,17 @@
   checkpoints share a single atomic-read-then-fallback contract.
 - `stashDrop` now rechecks for a pre-existing `index.lock` immediately before
   dropping, matching every other mutating git write.
+- Every switch, derive, and recovery failure diagnostic names the resolved
+  repository directory, so a single log line locates the affected repo without
+  cross-referencing the operation header; recovery stash-restore failures also
+  carry the directory instead of a bare `"."`.
+- Stash query failures during dirty handling (reading the pre-push stash top or
+  inspecting entries after a terminated push) and submodule-association
+  path-resolution failures are logged with their git diagnostic and root cause
+  instead of failing silently.
+- Notification balloons carry the operation ID (`op: switch-…`), so an outcome
+  can be matched to its tool-window log lines; the preflight-failure log line is
+  recorded inside the same operation scope.
 
 ### Fixed
 
@@ -379,6 +390,17 @@
   `SwitchExecutorTest` and `GitOpsTest` classes, extract the stash-restore and
   git-process wait-loop methods, and rename or trim misnamed or unused
   declarations so both detekt tasks report zero issues.
+- Add ArchUnit bytecode rules: core must not reference the IntelliJ Platform or
+  plugin implementations (guarding against a future build-gradle change), and
+  the workflow plugin-class isolation is enforced by a comprehensive allowlist
+  instead of a hand-picked subset.
+- Add tests pinning the new stash-failure diagnostics (pre-push top read and
+  ghost-inspection failures both surface a warning).
+- Consolidate the repository-association gate into one shared helper used by the
+  checkpoint, derive, tree-step, and single-switch sites; expose batch
+  repository inspection as a nullable capability so pipeline steps depend on an
+  interface instead of a concrete write-guard wrapper; and single-pass the
+  porcelain-v2 status parser.
 
 ## [0.6.0] - 2026-06-13
 

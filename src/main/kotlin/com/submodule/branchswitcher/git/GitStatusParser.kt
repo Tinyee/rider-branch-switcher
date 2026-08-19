@@ -4,7 +4,9 @@ package com.submodule.branchswitcher.git
 internal fun parsePorcelainV2Status(output: String): GitRepositoryInspection {
     var currentBranch: String? = null
     var head: String? = null
-    var dirtyFileCount = 0
+    // Collect the dirty entries in the same pass so the submodule-only classification
+    // below does not rescan the whole output.
+    val dirtyEntries = mutableListOf<String>()
     output.lineSequence().forEach { line ->
         when {
             line.startsWith(BRANCH_HEAD_PREFIX) -> {
@@ -15,15 +17,15 @@ internal fun parsePorcelainV2Status(output: String): GitRepositoryInspection {
                 head = line.removePrefix(BRANCH_OID_PREFIX)
                     .takeUnless { it == INITIAL_BRANCH }
             }
-            line.isNotBlank() && !line.startsWith("# ") -> dirtyFileCount++
+            line.isNotBlank() && !line.startsWith("# ") -> dirtyEntries += line
         }
     }
     return GitRepositoryInspection(
         isGitRepository = true,
         currentBranch = currentBranch,
         head = head,
-        dirtyFileCount = dirtyFileCount,
-        submoduleOnlyDirty = isSubmoduleOnlyPorcelainStatus(output),
+        dirtyFileCount = dirtyEntries.size,
+        submoduleOnlyDirty = isSubmoduleOnlyDirtyEntries(dirtyEntries),
     )
 }
 
@@ -37,12 +39,15 @@ private const val INITIAL_BRANCH = "(initial)"
  * every entry is a submodule change. `git stash` ignores submodules, so a repo
  * classified this way has nothing a superproject stash can protect.
  */
-internal fun isSubmoduleOnlyPorcelainStatus(output: String): Boolean {
-    val entries = output.lineSequence()
-        .filter { it.isNotBlank() && !it.startsWith("# ") }
-        .toList()
-    return entries.isNotEmpty() && entries.all { it.isPorcelainSubmoduleChange() }
-}
+internal fun isSubmoduleOnlyPorcelainStatus(output: String): Boolean =
+    isSubmoduleOnlyDirtyEntries(
+        output.lineSequence()
+            .filter { it.isNotBlank() && !it.startsWith("# ") }
+            .toList(),
+    )
+
+private fun isSubmoduleOnlyDirtyEntries(entries: List<String>): Boolean =
+    entries.isNotEmpty() && entries.all { it.isPorcelainSubmoduleChange() }
 
 private fun String.isPorcelainSubmoduleChange(): Boolean {
     if (isEmpty()) return false

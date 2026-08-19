@@ -81,7 +81,7 @@ private fun restoreGuard(
     repositoryDirectory: File,
 ): OperationIssue? {
     if (stash.restoreAttempted) {
-        log.warn("[fail] stash restore not retried for $path; a previous apply may have changed the worktree")
+        log.warn("[fail] stash restore not retried for $path (${repositoryDirectory.path}); a previous apply may have changed the worktree")
         return OperationIssue(
             stage = OperationStage.STASH_RESTORE,
             code = OperationIssueCode.STASH_RESTORE_FAILED,
@@ -91,7 +91,7 @@ private fun restoreGuard(
         )
     }
     if (stash.oid == null) {
-        log.error("[fail] stash restore skipped - identity unavailable for $path (${stash.message})")
+        log.error("[fail] stash restore skipped - identity unavailable for $path (${repositoryDirectory.path}) (${stash.message})")
         return OperationIssue(
             stage = OperationStage.STASH_RESTORE,
             code = OperationIssueCode.STASH_IDENTITY_UNAVAILABLE,
@@ -100,7 +100,7 @@ private fun restoreGuard(
         )
     }
     if (!repositoryDirectory.exists() || !git.isGitRepo(repositoryDirectory)) {
-        log.warn("[fail] stash apply skipped - repository unavailable for $path (${stash.message})")
+        log.warn("[fail] stash apply skipped - repository unavailable for $path (${repositoryDirectory.path}) (${stash.message})")
         return OperationIssue(
             stage = OperationStage.STASH_RESTORE,
             code = OperationIssueCode.STASH_REPOSITORY_UNAVAILABLE,
@@ -198,7 +198,7 @@ private fun applyRestoredStash(
         // tracked and retryable and the WIP is preserved in the stash.
         current = current.withStashRestoreRetryable(path)
         log.warn(
-            "[fail] stash apply interrupted for $path: ${applyResult.failureKind}; " +
+            "[fail] stash apply interrupted for $path (${repositoryDirectory.path}): ${applyResult.failureKind}; " +
                 "WIP preserved in stash (${stash.message})",
         )
         issues += OperationIssue(
@@ -211,7 +211,7 @@ private fun applyRestoredStash(
         return RestoreApplyOutcome(current, stop = true)
     } else {
         current = current.withStashRestoreAttempted(path)
-        log.warn("[fail] stash apply failed for $path: ${applyResult.diagnostic()}")
+        log.warn("[fail] stash apply failed for $path (${repositoryDirectory.path}): ${applyResult.diagnostic()}")
         issues += OperationIssue(
             stage = OperationStage.STASH_RESTORE,
             code = OperationIssueCode.STASH_RESTORE_FAILED,
@@ -239,10 +239,10 @@ private fun dropRestoredStash(
         log.info("stash drop ok ($path, oid=$oid)")
         true
     } else {
-        log.warn("[fail] stash drop failed for $path: ${drop.diagnostic()}")
+        log.warn("[fail] stash drop failed for $path (${repositoryDirectory.path}): ${drop.diagnostic()}")
         false
     }
 } catch (error: RuntimeException) {
-    log.warn("[fail] stash drop failed for $path: ${error.javaClass.simpleName}: ${error.message}")
+    log.warn("[fail] stash drop failed for $path (${repositoryDirectory.path}): ${error.javaClass.simpleName}: ${error.message}")
     false
 }

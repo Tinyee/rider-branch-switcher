@@ -13,14 +13,14 @@ import java.util.concurrent.atomic.AtomicBoolean
 object Notifier {
     private const val GROUP_ID = "Submodule Branch Switcher"
 
-    fun info(project: Project?, @Nls title: String, @Nls content: String) =
-        notify(project, title, content, NotificationType.INFORMATION)
+    fun info(project: Project?, @Nls title: String, @Nls content: String, operationId: String? = null) =
+        notify(project, title, content, NotificationType.INFORMATION, operationId)
 
-    fun warn(project: Project?, @Nls title: String, @Nls content: String) =
-        notify(project, title, content, NotificationType.WARNING)
+    fun warn(project: Project?, @Nls title: String, @Nls content: String, operationId: String? = null) =
+        notify(project, title, content, NotificationType.WARNING, operationId)
 
-    fun error(project: Project?, @Nls title: String, @Nls content: String) =
-        notify(project, title, content, NotificationType.ERROR)
+    fun error(project: Project?, @Nls title: String, @Nls content: String, operationId: String? = null) =
+        notify(project, title, content, NotificationType.ERROR, operationId)
 
     /**
      * Shows an ERROR notification with a clickable "rollback" action button.
@@ -31,7 +31,8 @@ object Notifier {
         @Nls title: String,
         @Nls content: String,
         onRollback: () -> Unit,
-    ) = actionNotification(project, title, content, NotificationType.ERROR, Bundle.msg("rollback.action"), onRollback)
+        operationId: String? = null,
+    ) = actionNotification(project, title, content, NotificationType.ERROR, Bundle.msg("rollback.action"), onRollback, operationId)
 
     /**
      * Shows a WARNING notification with one clickable action button.
@@ -43,7 +44,15 @@ object Notifier {
         @Nls content: String,
         @Nls actionLabel: String,
         onAction: () -> Unit,
-    ) = actionNotification(project, title, content, NotificationType.WARNING, actionLabel, onAction)
+        operationId: String? = null,
+    ) = actionNotification(project, title, content, NotificationType.WARNING, actionLabel, onAction, operationId)
+
+    /**
+     * Appends the correlation ID to the content so a balloon can be matched to the
+     * operation's log lines (the tool window prefixes every line with `[<id>...]`).
+     */
+    private fun contentWithOperation(content: String, operationId: String?): String =
+        if (operationId == null) content else "$content\nop: $operationId"
 
     private fun actionNotification(
         project: Project?,
@@ -52,10 +61,11 @@ object Notifier {
         type: NotificationType,
         actionLabel: String,
         onAction: () -> Unit,
+        operationId: String?,
     ) {
         val notification = NotificationGroupManager.getInstance()
             .getNotificationGroup(GROUP_ID)
-            .createNotification(title, content, type)
+            .createNotification(title, contentWithOperation(content, operationId), type)
         val started = AtomicBoolean(false)
         notification.addAction(com.intellij.notification.NotificationAction.createSimple(actionLabel) {
             if (started.compareAndSet(false, true)) {
@@ -66,10 +76,16 @@ object Notifier {
         notification.notify(project)
     }
 
-    private fun notify(project: Project?, title: String, content: String, type: NotificationType) {
+    private fun notify(
+        project: Project?,
+        title: String,
+        content: String,
+        type: NotificationType,
+        operationId: String?,
+    ) {
         NotificationGroupManager.getInstance()
             .getNotificationGroup(GROUP_ID)
-            .createNotification(title, content, type)
+            .createNotification(title, contentWithOperation(content, operationId), type)
             .notify(project)
     }
 }

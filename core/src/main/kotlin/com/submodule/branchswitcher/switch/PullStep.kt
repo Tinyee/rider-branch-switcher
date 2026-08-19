@@ -36,7 +36,7 @@ class PullStep(
             if (pullResult.ok) {
                 context.log.info("pull ok - ${target.path}")
             } else {
-                context.log.warn(" pull failed (kept local): ${pullResult.diagnostic()}")
+                context.log.warn(" pull failed (kept local) - ${repositoryDirectory.path}: ${pullResult.diagnostic()}")
                 issues += OperationIssue(
                     stage = stage,
                     code = OperationIssueCode.PULL_FAILED,

@@ -1,6 +1,7 @@
 package com.submodule.branchswitcher.switch
 
 import com.submodule.branchswitcher.git.GitClient
+import com.submodule.branchswitcher.git.GitQueryException
 import com.submodule.branchswitcher.git.GitResult
 import com.submodule.branchswitcher.git.RepositoryIdentity
 import com.submodule.branchswitcher.git.SubmoduleRegistration
@@ -252,6 +253,57 @@ class SwitchStepTest {
         val stash = execution.state.stashesSnapshot()["."]
         assertNotNull("a terminated stash that created an entry must be tracked", stash)
         assertEquals("created-oid", stash?.oid)
+    }
+
+    @Test
+    fun `failed pre-push stash top read logs a warning`() {
+        var reads = 0
+        val dirtyGit = object : GitClient by fakeGit {
+            override fun isDirty(workDir: File): Boolean = true
+            override fun stashTopOid(workDir: File): String? {
+                reads++
+                if (reads == 1) throw GitQueryException(GitResult("rev-parse", 1, "", "index.lock exists"))
+                return "stash-oid"
+            }
+            override fun stashOidByMessage(workDir: File, messagePrefix: String): String? = "stash-oid"
+        }
+        val c = context(SwitchOptions(DirtyAction.Stash)).copy(git = dirtyGit)
+
+        val execution = DirtyHandlingStep().run(c)
+
+        assertTrue(execution.result is StepResult.Success)
+        assertTrue(
+            "pre-push read failure must be logged",
+            log.any { it.contains("could not read stash top") },
+        )
+        assertEquals("stash-oid", execution.state.stashesSnapshot()["."]?.oid)
+    }
+
+    @Test
+    fun `failed ghost stash inspection logs a warning`() {
+        var reads = 0
+        val dirtyGit = object : GitClient by fakeGit {
+            override fun isDirty(workDir: File): Boolean = true
+            override fun stashTopOid(workDir: File): String? {
+                reads++
+                // Pre-push read succeeds; the post-termination inspection throws.
+                if (reads == 1) return "before-oid"
+                throw GitQueryException(GitResult("rev-parse", 1, "", "index.lock exists"))
+            }
+            override fun stash(workDir: File, message: String): GitResult =
+                GitResult("stash", -1, "", "cancelled")
+        }
+        val c = context(SwitchOptions(DirtyAction.Stash)).copy(git = dirtyGit)
+
+        val execution = DirtyHandlingStep().run(c)
+
+        assertTrue(execution.result is StepResult.Partial)
+        assertTrue(
+            "ghost inspection failure must be logged",
+            log.any { it.contains("torn stash") },
+        )
+        assertTrue(execution.state.isSkipped("."))
+        assertNull("an unverifiable entry must not be tracked", execution.state.trackedStash("."))
     }
 
     @Test

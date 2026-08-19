@@ -139,6 +139,7 @@ class SwitchFlowCoordinator(
                             runResult = runResult,
                             onSuccess = onSuccess,
                             onRollback = { execution -> rollbackSwitch(root, execution, log, operationContext) },
+                            operationId = operationContext.id,
                         )
                     }
                 }
@@ -185,6 +186,7 @@ class SwitchFlowCoordinator(
                         recoveredExecution,
                         recoveryOutcome?.ok == true,
                         recoveryIssues = recoveryOutcome?.issues.orEmpty(),
+                        operationId = operationContext.id,
                     )
                 }
             },

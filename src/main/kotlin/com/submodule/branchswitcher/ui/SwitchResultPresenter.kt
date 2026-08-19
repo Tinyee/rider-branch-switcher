@@ -24,12 +24,13 @@ internal class SwitchResultPresenter(
         runResult: SwitchRunResult,
         onSuccess: (() -> Unit)?,
         onRollback: (SwitchExecutionResult) -> Unit,
+        operationId: String,
     ) {
         when {
-            runResult.cancelled -> notifyCancellation(runResult)
-            runResult.ok -> notifySuccessfulSwitch(preset, runResult.execution, onSuccess)
-            runResult.recovery != null -> notifyRecoveredFailure(preset, runResult, onRollback)
-            else -> notifySwitchFailure(preset, runResult.execution, onRollback)
+            runResult.cancelled -> notifyCancellation(runResult, operationId)
+            runResult.ok -> notifySuccessfulSwitch(preset, runResult.execution, onSuccess, operationId)
+            runResult.recovery != null -> notifyRecoveredFailure(preset, runResult, onRollback, operationId)
+            else -> notifySwitchFailure(preset, runResult.execution, onRollback, operationId)
         }
     }
 
@@ -42,6 +43,7 @@ internal class SwitchResultPresenter(
         preset: Preset,
         runResult: SwitchRunResult,
         onRollback: (SwitchExecutionResult) -> Unit,
+        operationId: String,
     ) {
         val recovery = runResult.recovery
         val execution = runResult.execution
@@ -50,25 +52,29 @@ internal class SwitchResultPresenter(
                 project,
                 Bundle.msg("switch.failed.recovered"),
                 Bundle.msg("notify.switch.failed.recovered") + retainedStateNotice(execution),
+                operationId,
             )
             return
         }
         val message = Bundle.msg("notify.switch.partial.msg", preset.name) + retainedStateNotice(execution)
         if (execution?.checkpoint == null) {
-            Notifier.error(project, Bundle.msg("switch.failed"), message)
+            Notifier.error(project, Bundle.msg("switch.failed"), message, operationId)
             return
         }
         Notifier.rollbackAction(
             project,
             Bundle.msg("switch.failed"),
             message + Bundle.msg("notify.switch.rollback.hint"),
-        ) { onRollback(execution) }
+            onRollback = { onRollback(execution) },
+            operationId = operationId,
+        )
     }
 
     fun presentRollbackResult(
         execution: SwitchExecutionResult,
         succeeded: Boolean,
         recoveryIssues: List<OperationIssue> = emptyList(),
+        operationId: String,
     ) {
         val retainedNotice = retainedStateNotice(execution)
         val lockLines = lockBlockedLines(execution.issues + recoveryIssues)
@@ -78,12 +84,14 @@ internal class SwitchResultPresenter(
                 project,
                 Bundle.msg("rollback.complete"),
                 appendNotificationDetail(Bundle.msg("notify.rollback.complete.msg"), detail),
+                operationId,
             )
         } else {
             Notifier.error(
                 project,
                 Bundle.msg("rollback.failed"),
                 appendNotificationDetail(Bundle.msg("notify.rollback.partial.msg"), detail),
+                operationId,
             )
         }
     }
@@ -92,6 +100,7 @@ internal class SwitchResultPresenter(
         preset: Preset,
         execution: SwitchExecutionResult?,
         onSuccess: (() -> Unit)?,
+        operationId: String,
     ) {
         service.addHistory(preset.name, preset.id)
         onSuccess?.invoke()
@@ -117,17 +126,19 @@ internal class SwitchResultPresenter(
                         retainedStashBackupNotice(execution).trim(),
                     ),
                 ),
+                operationId,
             )
         } else {
             Notifier.info(
                 project,
                 Bundle.msg("switch.complete"),
                 Bundle.msg("notify.switch.complete.msg", preset.name) + retainedStashBackupNotice(execution),
+                operationId,
             )
         }
     }
 
-    private fun notifyCancellation(runResult: SwitchRunResult) {
+    private fun notifyCancellation(runResult: SwitchRunResult, operationId: String) {
         val recovery = runResult.recovery ?: return
         val retainedNotice = retainedStateNotice(runResult.execution)
         if (recovery.ok) {
@@ -135,12 +146,14 @@ internal class SwitchResultPresenter(
                 project,
                 Bundle.msg("switch.cancelled"),
                 Bundle.msg("notify.switch.cancelled.recovered") + retainedNotice,
+                operationId,
             )
         } else {
             Notifier.error(
                 project,
                 Bundle.msg("switch.cancelled"),
                 Bundle.msg("notify.switch.cancelled.partial") + retainedNotice,
+                operationId,
             )
         }
     }
@@ -149,27 +162,28 @@ internal class SwitchResultPresenter(
         preset: Preset,
         execution: SwitchExecutionResult?,
         onRollback: (SwitchExecutionResult) -> Unit,
+        operationId: String,
     ) {
         val lockLines = lockBlockedLines(execution?.issues.orEmpty())
         if (lockLines.isNotEmpty()) {
             // A stale index.lock blocked the switch before any mutation, so there is
             // nothing to roll back — surface the actionable message instead.
-            Notifier.error(project, Bundle.msg("switch.failed"), lockLines.joinToString("\n"))
+            Notifier.error(project, Bundle.msg("switch.failed"), lockLines.joinToString("\n"), operationId)
             return
         }
         val message = Bundle.msg("notify.switch.partial.msg", preset.name) +
             retainedStateNotice(execution)
         if (execution?.checkpoint == null) {
-            Notifier.error(project, Bundle.msg("switch.failed"), message)
+            Notifier.error(project, Bundle.msg("switch.failed"), message, operationId)
             return
         }
         Notifier.rollbackAction(
             project,
             Bundle.msg("switch.failed"),
             message + Bundle.msg("notify.switch.rollback.hint"),
-        ) {
-            onRollback(execution)
-        }
+            onRollback = { onRollback(execution) },
+            operationId = operationId,
+        )
     }
 
     /** Localized, actionable lines for every stale-index.lock issue in [issues]. */

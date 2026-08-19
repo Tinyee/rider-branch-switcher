@@ -156,6 +156,7 @@ internal class PresetListManager(
                             project,
                             Bundle.msg("switch.complete"),
                             Bundle.msg("notify.switch.only.complete", path, target),
+                            outcome.operationId,
                         )
                     }
                     is SingleRepositorySwitchResult.GitFailure -> {
@@ -163,6 +164,7 @@ internal class PresetListManager(
                             project,
                             Bundle.msg("switch.failed"),
                             Bundle.msg("notify.switch.only.failed", path, target),
+                            outcome.operationId,
                         )
                     }
                     is SingleRepositorySwitchResult.LockBlocked -> {
@@ -171,6 +173,7 @@ internal class PresetListManager(
                             project,
                             Bundle.msg("switch.failed"),
                             Bundle.msg("index.lock.blocking", label, switchResult.lockPath),
+                            outcome.operationId,
                         )
                     }
                     is SingleRepositorySwitchResult.Skipped -> Unit

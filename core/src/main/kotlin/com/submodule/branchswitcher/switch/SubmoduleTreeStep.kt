@@ -119,20 +119,16 @@ class SubmoduleTreeStep : SwitchStep {
                 traversal.topology.byPath[target.path],
                 context.git,
             )
-            if (isUnassociatedSubmoduleWorktree(
-                    context.projectRoot.toFile(),
-                    target.path,
-                    directory,
-                    preparation.repositoryIdentity,
-                    expectedGitDirectory,
-                )
-            ) {
-                context.log.warn(
-                    "[skip] ${target.path} - repository is not associated with its superproject; " +
-                        "actualGitDir=${preparation.repositoryIdentity?.gitDirectory}, " +
-                        "expectedGitDir=$expectedGitDirectory, " +
-                        "superproject=${preparation.repositoryIdentity?.superprojectRoot}",
-                )
+            val blockReason = unassociatedSubmoduleBlockReason(
+                context.projectRoot.toFile(),
+                target.path,
+                directory,
+                preparation.repositoryIdentity,
+                expectedGitDirectory,
+                context.log,
+            )
+            if (blockReason != null) {
+                context.log.warn("[skip] ${target.path} - $blockReason")
                 issues += OperationIssue(
                     OperationStage.TOPOLOGY,
                     OperationIssueCode.REPOSITORY_IDENTITY_CHANGED,
@@ -193,7 +189,7 @@ class SubmoduleTreeStep : SwitchStep {
             if (hasDescendants(targets, target.path)) {
                 val sync = context.git.submoduleSync(directory)
                 if (!sync.ok) {
-                    context.log.warn("nested submodule sync failed: ${sync.diagnostic()} (${target.path})")
+                    context.log.warn("nested submodule sync failed - ${directory.path}: ${sync.diagnostic()}")
                     issues += OperationIssue(
                         OperationStage.SUBMODULE_SYNC,
                         OperationIssueCode.SUBMODULE_SYNC_FAILED,
@@ -219,7 +215,7 @@ class SubmoduleTreeStep : SwitchStep {
         if (!context.options.fetchFirst) return
         val fetch = context.git.fetch(directory)
         if (fetch.ok) return
-        context.log.warn("fetch warn: ${fetch.diagnostic()} (${target.path})")
+        context.log.warn("fetch warn - ${directory.path}: ${fetch.diagnostic()}")
         issues += OperationIssue(
             OperationStage.FETCH,
             OperationIssueCode.FETCH_FAILED,
@@ -240,7 +236,7 @@ class SubmoduleTreeStep : SwitchStep {
             context.log.info("pull ok - ${target.path}")
             return
         }
-        context.log.warn("pull failed (kept local): ${pull.diagnostic()}")
+        context.log.warn("pull failed (kept local) - ${directory.path}: ${pull.diagnostic()}")
         issues += OperationIssue(
             OperationStage.PULL,
             OperationIssueCode.PULL_FAILED,

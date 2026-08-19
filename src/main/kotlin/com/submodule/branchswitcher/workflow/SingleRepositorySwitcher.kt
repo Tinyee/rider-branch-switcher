@@ -11,7 +11,7 @@ import com.submodule.branchswitcher.operation.GitOperationRunner
 import com.submodule.branchswitcher.switch.CancellationClassifier
 import com.submodule.branchswitcher.switch.expectedSubmoduleGitDirectory
 import com.submodule.branchswitcher.switch.indexLockBlockedDiagnostic
-import com.submodule.branchswitcher.switch.isUnassociatedSubmoduleWorktree
+import com.submodule.branchswitcher.switch.unassociatedSubmoduleBlockReason
 import com.submodule.branchswitcher.switch.loadSubmoduleTopology
 import com.submodule.branchswitcher.switch.resolveGitDir
 import com.submodule.branchswitcher.switch.SubmoduleTopology
@@ -153,19 +153,16 @@ class SingleRepositorySwitcher(
     ): SingleRepositorySwitchResult {
         val identity = operation.repositoryIdentity(directory)
         val expectedGitDirectory = expectedSubmoduleGitDirectory(root.toFile(), topology.byPath[path], operation)
-        if (isUnassociatedSubmoduleWorktree(
-                root.toFile(),
-                path,
-                directory,
-                identity,
-                expectedGitDirectory,
-            )
-        ) {
-            operationLog.warn(
-                "safety gate: repository is not associated with its superproject; " +
-                    "actualGitDir=${identity?.gitDirectory}, expectedGitDir=$expectedGitDirectory, " +
-                    "superproject=${identity?.superprojectRoot}",
-            )
+        val blockReason = unassociatedSubmoduleBlockReason(
+            root.toFile(),
+            path,
+            directory,
+            identity,
+            expectedGitDirectory,
+            operationLog,
+        )
+        if (blockReason != null) {
+            operationLog.warn("safety gate: $blockReason")
             return SingleRepositorySwitchResult.Skipped(SingleRepositorySkipReason.NOT_REGISTERED)
         }
         if (operation.isDirty(directory)) {

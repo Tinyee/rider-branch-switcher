@@ -37,11 +37,11 @@ internal object BranchCheckout {
                 context.git.checkoutFromRemote(directory, target.branch)
             }
 
-            else -> return recoverStashAfterMissingBranch(context, target, state)
+            else -> return recoverStashAfterMissingBranch(context, target, directory, state)
         }
 
         if (!checkoutResult.ok) {
-            context.log.warn("[fail] checkout: ${checkoutResult.diagnostic()}")
+            context.log.warn("[fail] checkout - ${directory.path}: ${checkoutResult.diagnostic()}")
             return Result(
                 state,
                 succeeded = false,
@@ -72,9 +72,10 @@ internal object BranchCheckout {
     private fun recoverStashAfterMissingBranch(
         context: SwitchContext,
         target: RepoTarget,
+        directory: File,
         state: SwitchState,
     ): Result {
-        context.log.warn("[fail] branch '${target.branch}' not found locally or on origin")
+        context.log.warn("[fail] branch '${target.branch}' not found locally or on origin - ${directory.path}")
         return Result(state, succeeded = false, issues = listOf(branchMissingIssue(target.path)))
     }
 

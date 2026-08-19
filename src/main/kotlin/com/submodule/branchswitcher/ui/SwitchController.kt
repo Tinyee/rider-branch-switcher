@@ -59,10 +59,14 @@ internal class SwitchController(
             } catch (_: com.intellij.openapi.progress.ProcessCanceledException) {
                 return@launch
             } catch (e: Exception) {
-                log.logFailure("preflight probe failed", e)
+                log.withContext(operationContext).logFailure("preflight probe failed", e)
                 invokeLaterIfProjectAlive {
-                    Notifier.error(project, Bundle.msg("notify.preflight.failed"),
-                        Bundle.msg("notify.preflight.failed.msg", e.javaClass.simpleName, e.message ?: ""))
+                    Notifier.error(
+                        project,
+                        Bundle.msg("notify.preflight.failed"),
+                        Bundle.msg("notify.preflight.failed.msg", e.javaClass.simpleName, e.message ?: ""),
+                        operationContext.id,
+                    )
                 }
                 return@launch
             }
@@ -119,6 +123,7 @@ internal class SwitchController(
             rollbackFailureCount = runResult.rollbackFailures.size,
             branchName = branchName,
         )
+        val operationId = runResult.operationId
         when (notification) {
             is DeriveNotification.Success -> {
                 Notifier.info(
@@ -129,6 +134,7 @@ internal class SwitchController(
                         notification.branchName,
                         notification.repoCount,
                     ),
+                    operationId,
                 )
             }
             is DeriveNotification.Failure -> {
@@ -143,6 +149,7 @@ internal class SwitchController(
                         DeriveNotification.Reason.PARTIAL ->
                             Bundle.msg("notify.derive.partial.msg", notification.branchName)
                     },
+                    operationId,
                 )
             }
             is DeriveNotification.Blocked -> {
@@ -182,6 +189,7 @@ internal class SwitchController(
                     project,
                     Bundle.msg("notify.derive.blocked"),
                     blockedReasons.joinToString("\n"),
+                    operationId,
                 )
             }
             is DeriveNotification.Silent -> Unit

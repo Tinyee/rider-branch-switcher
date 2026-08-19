@@ -1,8 +1,8 @@
 package com.submodule.branchswitcher.switch
 
-import com.submodule.branchswitcher.git.SwitchGitClient
 import com.submodule.branchswitcher.git.GitRepositoryInspection
-import com.submodule.branchswitcher.git.RepositoryStateBatchGitClient
+import com.submodule.branchswitcher.git.RepositoryStateBatchInspection
+import com.submodule.branchswitcher.git.SwitchGitClient
 import java.io.File
 
 /** Raised when a write is about to start while the repository has an index lock. */
@@ -19,10 +19,10 @@ internal class IndexLockBlockedException(
 internal class WriteGuardGitClient(
     private val delegate: SwitchGitClient,
     private val repositoryPath: (File) -> String,
-) : SwitchGitClient by delegate {
+) : SwitchGitClient by delegate, RepositoryStateBatchInspection {
 
-    internal fun inspectRepositoryStateIfAvailable(workDir: File): GitRepositoryInspection? =
-        (delegate as? RepositoryStateBatchGitClient)?.inspectRepositoryState(workDir)
+    override fun inspectRepositoryStateIfAvailable(workDir: File): GitRepositoryInspection? =
+        (delegate as? RepositoryStateBatchInspection)?.inspectRepositoryStateIfAvailable(workDir)
 
     override fun stash(workDir: File, message: String): com.submodule.branchswitcher.git.GitResult =
         guarded(workDir) { delegate.stash(workDir, message) }

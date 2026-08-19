@@ -317,20 +317,6 @@ class SwitchRecoveryExecutor(
         )
     }
 
-    private fun recoveryIssue(
-        path: String,
-        code: OperationIssueCode,
-        diagnostic: String? = null,
-        lockPath: String? = null,
-    ) = OperationIssue(
-        stage = OperationStage.RECOVERY,
-        code = code,
-        repositoryPath = path,
-        severity = OperationIssueSeverity.ERROR,
-        diagnostic = diagnostic,
-        lockPath = lockPath,
-    )
-
     private fun labelFor(path: String): String = displayLabel(projectRoot, path)
 
     private fun Throwable.diagnosticText(): String = "${javaClass.simpleName}: $message"

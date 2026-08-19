@@ -3,16 +3,19 @@ package com.submodule.branchswitcher.switch
 import com.submodule.branchswitcher.git.GitRepositoryQuery
 import com.submodule.branchswitcher.git.RepositoryIdentity
 import com.submodule.branchswitcher.git.SubmoduleRegistration
+import com.submodule.branchswitcher.log.AppLogger
 import java.io.File
 import java.nio.file.Paths
 
 /** True only when repository metadata proves that a submodule worktree is unrelated or misplaced. */
+@Suppress("TooGenericExceptionCaught") // fail closed on any unresolvable path; the cause is logged when a logger is provided
 fun isUnassociatedSubmoduleWorktree(
     projectRoot: File,
     path: String,
     worktree: File,
     identity: RepositoryIdentity?,
     expectedGitDirectory: String? = null,
+    log: AppLogger? = null,
 ): Boolean {
     if (path == ".") return false
     identity ?: return true
@@ -30,10 +33,42 @@ fun isUnassociatedSubmoduleWorktree(
         val parentIsInProject = parent == root || parent.startsWith(root)
         val childIsBelowParent = child != parent && child.startsWith(parent)
         !(metadataIsExternal && parentIsInProject && childIsBelowParent)
-    } catch (_: Exception) {
+    } catch (error: Exception) {
         // Fail closed: an unresolvable path is treated as unassociated so the write is blocked.
+        log?.warn(
+            "submodule association check could not resolve paths " +
+                "(path=$path, worktree=${worktree.path}, gitDir=${identity.gitDirectory}, " +
+                "superproject=${identity.superprojectRoot}); blocking as unassociated",
+            error,
+        )
         true
     }
+}
+
+/** Message body shared by the repository-association gates (main, submodule, leftover). */
+internal fun unassociatedReasonText(identity: RepositoryIdentity?, expectedGitDirectory: String?) =
+    "repository is not associated with its superproject; " +
+        "actualGitDir=${identity?.gitDirectory}, expectedGitDir=$expectedGitDirectory, " +
+        "superproject=${identity?.superprojectRoot}"
+
+/**
+ * The gate used by the four repository-association sites (checkpoint / derive / tree
+ * step / single switch). Returns the diagnostic reason when [isUnassociatedSubmoduleWorktree]
+ * blocks [path], or null when the worktree may proceed. Callers keep their own log prefix
+ * and their own block/return; this only dedups the gate call and the message body.
+ */
+fun unassociatedSubmoduleBlockReason(
+    projectRoot: File,
+    path: String,
+    worktree: File,
+    identity: RepositoryIdentity?,
+    expectedGitDirectory: String? = null,
+    log: AppLogger? = null,
+): String? {
+    if (!isUnassociatedSubmoduleWorktree(projectRoot, path, worktree, identity, expectedGitDirectory, log)) {
+        return null
+    }
+    return unassociatedReasonText(identity, expectedGitDirectory)
 }
 
 /**

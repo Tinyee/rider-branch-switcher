@@ -30,14 +30,11 @@ class DirtyHandlingStep : SwitchStep {
                 if (!repositoryDirectory.exists()) continue
                 // Use the batch inspection's own repository fact to skip non-repos and
                 // avoid a second process per target (isGitRepo runs `rev-parse`). The
-                // write guard wraps the pipeline client and exposes this as a nullable
-                // capability (null when the underlying client lacks it); a raw batch
-                // client is a secondary fallback for guard-less contexts. Order is
-                // irrelevant because the guard branch is consulted first either way.
-                val inspection = (context.git as? WriteGuardGitClient)
+                // capability is nullable: write-guard wrappers forward to their delegate
+                // and null means the client chain lacks the batch read, so the fallback
+                // per-query probes below are used instead.
+                val inspection = (context.git as? com.submodule.branchswitcher.git.RepositoryStateBatchInspection)
                     ?.inspectRepositoryStateIfAvailable(repositoryDirectory)
-                    ?: (context.git as? com.submodule.branchswitcher.git.RepositoryStateBatchGitClient)
-                        ?.inspectRepositoryState(repositoryDirectory)
                 if (inspection?.isGitRepository == false ||
                     (inspection == null && !context.git.isGitRepo(repositoryDirectory))
                 ) {
@@ -113,7 +110,12 @@ class DirtyHandlingStep : SwitchStep {
         // never be mistaken for the current WIP.
         val beforeTop = try {
             context.git.stashTopOid(repositoryDirectory)
-        } catch (_: GitQueryException) {
+        } catch (error: GitQueryException) {
+            context.log.warn(
+                "stash: could not read stash top before push (${target.path}); " +
+                    "ghost-stash detection after a terminated push will be less precise: " +
+                    error.result.diagnostic(),
+            )
             null
         }
         val stashResult = context.git.stash(repositoryDirectory, stashMessage)
@@ -134,7 +136,11 @@ class DirtyHandlingStep : SwitchStep {
                     // backup or a concurrent external stash onto the current tree.
                     if (top == null || top == beforeTop) null
                     else context.git.stashOidByMessage(repositoryDirectory, stashMessage)
-                } catch (_: GitQueryException) {
+                } catch (error: GitQueryException) {
+                    context.log.warn(
+                        "stash: could not inspect entries after a terminated push (${target.path}); " +
+                            "a torn stash entry may remain untracked: " + error.result.diagnostic(),
+                    )
                     null
                 }
                 if (ghostOid != null) {

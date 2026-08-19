@@ -113,19 +113,16 @@ class DeriveBranchExecutor(
             topology.byPath[target.path],
             git,
         )
-        if (isUnassociatedSubmoduleWorktree(
-                projectRoot.toFile(),
-                target.path,
-                directory,
-                identity,
-                expectedGitDirectory,
-            )
-        ) {
-            log.warn(
-                "[derive] $label: repository is not associated with its superproject - blocked; " +
-                    "actualGitDir=${identity?.gitDirectory}, expectedGitDir=$expectedGitDirectory, " +
-                    "superproject=${identity?.superprojectRoot}",
-            )
+        val blockReason = unassociatedSubmoduleBlockReason(
+            projectRoot.toFile(),
+            target.path,
+            directory,
+            identity,
+            expectedGitDirectory,
+            log,
+        )
+        if (blockReason != null) {
+            log.warn("[derive] $label: $blockReason")
             return target.outcome(DeriveRepositoryStatus.SKIPPED, OperationIssueCode.REPOSITORY_IDENTITY_CHANGED)
         }
 

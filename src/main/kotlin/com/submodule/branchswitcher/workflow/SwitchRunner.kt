@@ -11,8 +11,7 @@ import com.submodule.branchswitcher.operation.GitOperationRunner
 import com.submodule.branchswitcher.switch.CancellationClassifier
 import com.submodule.branchswitcher.switch.OperationIssue
 import com.submodule.branchswitcher.switch.OperationIssueCode
-import com.submodule.branchswitcher.switch.OperationIssueSeverity
-import com.submodule.branchswitcher.switch.OperationStage
+import com.submodule.branchswitcher.switch.recoveryIssue
 import com.submodule.branchswitcher.switch.SwitchExecutionResult
 import com.submodule.branchswitcher.switch.SwitchExecutionStatus
 import com.submodule.branchswitcher.switch.SwitchExecutor
@@ -195,7 +194,7 @@ class SwitchRunner(
                         execution = execution,
                         recovery = SwitchRecoveryResult(
                             rollbackOk = false,
-                            issues = listOf(recoveryIssue(OperationIssueCode.RECOVERY_FAILED)),
+                            issues = listOf(recoveryIssue(".", OperationIssueCode.RECOVERY_FAILED)),
                         ),
                     )
                 }
@@ -206,7 +205,7 @@ class SwitchRunner(
                     execution = execution,
                     recovery = SwitchRecoveryResult(
                         rollbackOk = false,
-                        issues = listOf(recoveryIssue(OperationIssueCode.RECOVERY_FAILED)),
+                        issues = listOf(recoveryIssue(".", OperationIssueCode.RECOVERY_FAILED)),
                     ),
                 )
             }
@@ -222,12 +221,5 @@ class SwitchRunner(
             rollbackOk = outcome.rollbackOk,
             issues = outcome.issues,
         ),
-    )
-
-    private fun recoveryIssue(code: OperationIssueCode) = OperationIssue(
-        stage = OperationStage.RECOVERY,
-        code = code,
-        repositoryPath = ".",
-        severity = OperationIssueSeverity.ERROR,
     )
 }

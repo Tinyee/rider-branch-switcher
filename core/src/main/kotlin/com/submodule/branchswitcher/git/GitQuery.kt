@@ -79,6 +79,16 @@ interface RepositoryStateBatchGitClient {
     fun inspectRepositoryState(workDir: File): GitRepositoryInspection
 }
 
+/**
+ * Optional single-invocation inspection as a nullable capability. Batch clients expose
+ * their read here and write-guard wrappers forward to their delegate, so consumers can
+ * probe the chain without referencing a concrete wrapper class. Returns null when the
+ * client chain lacks the capability.
+ */
+interface RepositoryStateBatchInspection {
+    fun inspectRepositoryStateIfAvailable(workDir: File): GitRepositoryInspection?
+}
+
 /** Optional optimized capability for fail-closed switch preview inspection. */
 interface SwitchPreflightBatchGitClient {
     fun inspectPreflight(workDir: File, targetBranches: Set<String>): GitRepositoryInspection

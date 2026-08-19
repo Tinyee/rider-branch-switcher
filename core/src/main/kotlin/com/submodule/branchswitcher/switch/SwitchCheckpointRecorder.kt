@@ -40,23 +40,22 @@ internal class SwitchCheckpointRecorder(
             // be a canonical leftover submodule the preset's main branch will re-register during
             // this switch. Only a standalone `.git` inside the worktree (or an otherwise
             // non-canonical git directory) stays fail-closed.
-            val unassociated = when {
-                target.path == "." -> false
-                registration == null -> !isCanonicalLeftoverGitDirectory(dir, identity)
-                else -> isUnassociatedSubmoduleWorktree(
+            val unassociatedReason = when {
+                target.path == "." -> null
+                registration == null ->
+                    if (isCanonicalLeftoverGitDirectory(dir, identity)) null
+                    else unassociatedReasonText(identity, expectedGitDirectory)
+                else -> unassociatedSubmoduleBlockReason(
                     projectRoot.toFile(),
                     target.path,
                     dir,
                     identity,
                     expectedGitDirectory,
+                    log,
                 )
             }
-            if (unassociated) {
-                log.error(
-                    "[checkpoint] $label: repository is not associated with its superproject; " +
-                        "actualGitDir=${identity?.gitDirectory}, expectedGitDir=$expectedGitDirectory, " +
-                        "superproject=${identity?.superprojectRoot}",
-                )
+            if (unassociatedReason != null) {
+                log.error("[checkpoint] $label: $unassociatedReason")
                 return null
             }
             // HEAD SHA and branch come from one git invocation when the client

@@ -30,9 +30,39 @@ class ArchitectureRulesTest {
                 Location.of(Path.of("core/build/classes/kotlin/main").toUri()),
             )
         )
+
+        /**
+         * Core only, so purity rules can target the pure-JVM module without the plugin
+         * classes that share `com.submodule.branchswitcher.*` package names.
+         */
+        private val CORE_CLASSES: JavaClasses = ClassFileImporter().importLocations(
+            listOf(
+                Location.of(Path.of("core/build/classes/kotlin/main").toUri()),
+            )
+        )
+
+        /**
+         * Plugin-implemented classes that live in the mixed `com.submodule.branchswitcher.git`
+         * package (core interfaces share that package, so it cannot be forbidden wholesale).
+         * Top-level functions compile to `<File>Kt` classes. Kept in one place so the
+         * workflow-isolation and core-purity rules stay in sync.
+         */
+        private const val PLUGIN_GIT_IMPLS =
+            "com\\.submodule\\.branchswitcher\\.git\\.(?:GitCommandClient|GitOps|GitOutputDrainer|" +
+                "GitProcessResources|GitProcessRunner|GitProcessShutdown|GitCommandClientKt|GitStatusParserKt)"
+
+        /**
+         * Plugin-only classes in the mixed root package `com.submodule.branchswitcher`
+         * (core classes like EnvironmentFailure and PresetLoader live there too, so the
+         * package itself cannot be forbidden).
+         */
+        private const val PLUGIN_ROOT_CLASSES =
+            "com\\.submodule\\.branchswitcher\\.(?:TaskBridge|Bundle|Notifier|BranchSwitchListener)"
     }
 
     private fun check(rule: ArchRule) = rule.check(MAIN_CLASSES)
+
+    private fun checkCore(rule: ArchRule) = rule.check(CORE_CLASSES)
 
     /**
      * Vacuity guard: a rule whose package pattern matches no class would otherwise
@@ -69,7 +99,31 @@ class ArchitectureRulesTest {
             noClasses()
                 .that().resideInAPackage("..workflow..")
                 .should().dependOnClassesThat().haveNameMatching(
-                    "com\\.submodule\\.branchswitcher\\.(?:git\\.)?(?:TaskBridge|Bundle|Notifier|GitOps|GitCommandClient|GitProcessRunner)"
+                    "$PLUGIN_ROOT_CLASSES|$PLUGIN_GIT_IMPLS"
+                )
+        )
+    }
+
+    /**
+     * The pure-JVM contract enforced here is defense in depth: the Gradle module boundary
+     * already keeps `com.intellij.*` and plugin classes off core's compile classpath, so
+     * this catches a future build.gradle change (e.g. an IntelliJ dependency sneaking in)
+     * before it silently starts coupling core to the platform.
+     */
+    @Test
+    fun `core does not depend on the IntelliJ Platform or plugin implementation classes`() {
+        checkCore(
+            noClasses()
+                .that().resideInAPackage("com.submodule.branchswitcher..")
+                .should().dependOnClassesThat().resideInAnyPackage(
+                    "com.intellij..",
+                    "com.submodule.branchswitcher.ui..",
+                    "com.submodule.branchswitcher.service..",
+                    "com.submodule.branchswitcher.platform..",
+                    "com.submodule.branchswitcher.action..",
+                )
+                .orShould().dependOnClassesThat().haveNameMatching(
+                    "$PLUGIN_ROOT_CLASSES|$PLUGIN_GIT_IMPLS"
                 )
         )
     }

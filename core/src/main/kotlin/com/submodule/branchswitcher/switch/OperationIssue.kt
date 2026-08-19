@@ -61,3 +61,21 @@ data class OperationIssue(
     /** Structured path of a blocking git `index.lock`, so the UI can localize it. */
     val lockPath: String? = null,
 )
+
+/**
+ * RECOVERY-stage error issue factory shared by [com.submodule.branchswitcher.switch.SwitchRecoveryExecutor]
+ * and the workflow layer's recovery reporting, so both produce identical structured diagnostics.
+ */
+fun recoveryIssue(
+    path: String,
+    code: OperationIssueCode,
+    diagnostic: String? = null,
+    lockPath: String? = null,
+) = OperationIssue(
+    stage = OperationStage.RECOVERY,
+    code = code,
+    repositoryPath = path,
+    severity = OperationIssueSeverity.ERROR,
+    diagnostic = diagnostic,
+    lockPath = lockPath,
+)

@@ -19,7 +19,7 @@ fun selectRemoteName(remotes: List<String>): String = when {
 internal class GitCommandClient(
     private val processRunner: GitProcessRunner,
     private val remoteCache: ConcurrentHashMap<String, String>,
-) : GitOperationSession, RepositoryStateBatchGitClient, SwitchPreflightBatchGitClient {
+) : GitOperationSession, RepositoryStateBatchGitClient, SwitchPreflightBatchGitClient, RepositoryStateBatchInspection {
     private val cancellation = AtomicBoolean(false)
 
     override fun cancel() {
@@ -143,6 +143,10 @@ internal class GitCommandClient(
         if (!hasRepositoryMarker(workDir)) return missingRepositoryInspection()
         return inspectStatus(workDir)
     }
+
+    /** Same single-invocation read as [inspectRepositoryState]; exposed for capability probes. */
+    override fun inspectRepositoryStateIfAvailable(workDir: File): GitRepositoryInspection? =
+        inspectRepositoryState(workDir)
 
     override fun inspectPreflight(
         workDir: File,

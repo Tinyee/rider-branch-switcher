@@ -23,7 +23,8 @@ class GitOps private constructor(
 ) : GitClient,
     GitWorkflowClient by components.directClient,
     RepositoryStateBatchGitClient,
-    SwitchPreflightBatchGitClient {
+    SwitchPreflightBatchGitClient,
+    RepositoryStateBatchInspection {
 
     constructor(
         timeoutSeconds: Int = 60,
@@ -34,6 +35,9 @@ class GitOps private constructor(
 
     override fun inspectRepositoryState(workDir: File): GitRepositoryInspection =
         components.directClient.inspectRepositoryState(workDir)
+
+    override fun inspectRepositoryStateIfAvailable(workDir: File): GitRepositoryInspection? =
+        components.directClient.inspectRepositoryStateIfAvailable(workDir)
 
     override fun inspectPreflight(
         workDir: File,

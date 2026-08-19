@@ -21,7 +21,7 @@ class CheckoutStep : SwitchStep {
 
         val directory = context.projectRoot.toFile()
         if (!directory.exists() || !context.git.isGitRepo(directory)) {
-            context.log.warn("[fail] main repository is unavailable")
+            context.log.warn("[fail] main repository is unavailable - ${directory.path}")
             return StepExecution(
                 StepResult.Partial(
                     listOf(
