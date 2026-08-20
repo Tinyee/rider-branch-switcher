@@ -4,6 +4,7 @@ import com.intellij.openapi.application.ApplicationManager
 import com.submodule.branchswitcher.Bundle
 import com.submodule.branchswitcher.git.GitFailureKind
 import com.submodule.branchswitcher.git.GitQueryException
+import com.submodule.branchswitcher.git.PresetDiscoveryGitClient
 import com.submodule.branchswitcher.log.AppLogger
 import com.submodule.branchswitcher.log.logFailure
 import kotlinx.coroutines.CancellationException
@@ -176,32 +177,12 @@ internal fun loadComboBranches(
 
     val handle = branchLoads.launch { client ->
         val loadResult = try {
-            val selectedBranch = if (discoverCurrent && dir.exists()) {
-                client.currentBranch(dir).orEmpty()
-            } else {
-                current
-            }
-            currentCoroutineContext().ensureActive()
-            val branches = if (loadChoices && dir.exists()) {
-                client.listAllBranches(dir)
-            } else {
-                emptyList()
-            }
-            currentCoroutineContext().ensureActive()
-            BranchComboLoadResult(selectedBranch, branches)
+            discoverBranchChoices(client, dir, current, discoverCurrent, loadChoices, log)
         } catch (e: CancellationException) {
+            // A cancelled discovery leaves no UI to apply; end the lifecycle without
+            // touching the combo. A superseded token still balances the load counter.
             finish(null)
             throw e
-        } catch (e: GitQueryException) {
-            if (e.result.failureKind == GitFailureKind.CANCELLED) {
-                finish(null)
-                throw CancellationException("branch discovery cancelled").apply { initCause(e) }
-            }
-            log.warn("loadBranches failed for ${dir.name}", e)
-            BranchComboLoadResult(current, emptyList(), succeeded = false)
-        } catch (e: Exception) {
-            log.logFailure("loadBranches failed for ${dir.name}", e)
-            BranchComboLoadResult(current, emptyList(), succeeded = false)
         }
         finish(loadResult)
     }
@@ -213,6 +194,49 @@ internal fun loadComboBranches(
     }
     combo.putClientProperty(KEY_BRANCH_LOAD, handle)
     return handle
+}
+
+/**
+ * Reads the current branch and branch list for one combo in the background.
+ * A [CancellationException] (coroutine cancel or a CANCELLED Git query) propagates so
+ * the caller ends the lifecycle without applying any UI; any other query failure
+ * degrades to a non-succeeded result the caller may use to reset retry state.
+ */
+@Suppress("TooGenericExceptionCaught") // Git query adapters vary; cancellation propagates via the explicit catch
+private suspend fun discoverBranchChoices(
+    client: PresetDiscoveryGitClient,
+    dir: File,
+    current: String,
+    discoverCurrent: Boolean,
+    loadChoices: Boolean,
+    log: AppLogger,
+): BranchComboLoadResult {
+    return try {
+        val selectedBranch = if (discoverCurrent && dir.exists()) {
+            client.currentBranch(dir).orEmpty()
+        } else {
+            current
+        }
+        currentCoroutineContext().ensureActive()
+        val branches = if (loadChoices && dir.exists()) {
+            client.listAllBranches(dir)
+        } else {
+            emptyList()
+        }
+        currentCoroutineContext().ensureActive()
+        BranchComboLoadResult(selectedBranch, branches)
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: GitQueryException) {
+        if (e.result.failureKind == GitFailureKind.CANCELLED) {
+            throw CancellationException("branch discovery cancelled").apply { initCause(e) }
+        }
+        log.warn("loadBranches failed for ${dir.name}", e)
+        BranchComboLoadResult(current, emptyList(), succeeded = false)
+    } catch (e: Exception) {
+        log.logFailure("loadBranches failed for ${dir.name}", e)
+        BranchComboLoadResult(current, emptyList(), succeeded = false)
+    }
 }
 
 /** Cancels the active branch discovery associated with [combo], if any. */
