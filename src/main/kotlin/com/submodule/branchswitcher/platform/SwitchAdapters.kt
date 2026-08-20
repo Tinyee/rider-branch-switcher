@@ -46,13 +46,13 @@ class ProgressIndicatorHandle(
  * Refreshes VCS status for main repo + submodule paths.
  * Shared by both tool-window switch and shortcut action switch.
  */
-data class VcsRefreshResult(
+private data class VcsRefreshResult(
     val refreshedRepositories: Int,
     val failures: Map<String, String>,
 )
 
 @Suppress("TooGenericExceptionCaught") // VFS and repository adapters expose unrelated per-root failures
-fun refreshVcsRepos(
+private fun refreshVcsRepos(
     project: Project,
     root: Path,
     submodulePaths: Set<String>,
@@ -78,7 +78,7 @@ fun refreshVcsRepos(
     return VcsRefreshResult(refreshedRepositories, failures)
 }
 
-fun logVcsRefresh(log: AppLogger, result: VcsRefreshResult) {
+private fun logVcsRefresh(log: AppLogger, result: VcsRefreshResult) {
     log.debug(
         "[vcs] refreshed ${result.refreshedRepositories} repo(s), failures=${result.failures.size}",
     )
