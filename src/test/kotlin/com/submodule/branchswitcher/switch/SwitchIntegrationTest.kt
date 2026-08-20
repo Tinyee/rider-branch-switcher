@@ -4,7 +4,7 @@ import com.submodule.branchswitcher.executeTest
 import com.submodule.branchswitcher.executeResultTest
 
 import com.submodule.branchswitcher.git.GitClient
-import com.submodule.branchswitcher.git.GitOps
+import com.submodule.branchswitcher.git.impl.GitOps
 import com.submodule.branchswitcher.model.DirtyAction
 import com.submodule.branchswitcher.model.Preset
 import com.submodule.branchswitcher.log.AppLogger

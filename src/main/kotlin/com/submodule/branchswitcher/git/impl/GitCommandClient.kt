@@ -1,6 +1,20 @@
-package com.submodule.branchswitcher.git
+package com.submodule.branchswitcher.git.impl
 
 import com.intellij.openapi.diagnostic.Logger as IdeaLogger
+import com.submodule.branchswitcher.git.DeriveGitClient
+import com.submodule.branchswitcher.git.GitFailureKind
+import com.submodule.branchswitcher.git.GitOperationSession
+import com.submodule.branchswitcher.git.GitQueryException
+import com.submodule.branchswitcher.git.GitRepositoryInspection
+import com.submodule.branchswitcher.git.GitResult
+import com.submodule.branchswitcher.git.GitRuntimeInfo
+import com.submodule.branchswitcher.git.HeadAndBranch
+import com.submodule.branchswitcher.git.RepositoryIdentity
+import com.submodule.branchswitcher.git.RepositoryStateBatchGitClient
+import com.submodule.branchswitcher.git.RepositoryStateBatchInspection
+import com.submodule.branchswitcher.git.SubmoduleDiscoveryException
+import com.submodule.branchswitcher.git.SubmoduleRegistration
+import com.submodule.branchswitcher.git.SwitchPreflightBatchGitClient
 import com.submodule.branchswitcher.switch.resolvedIdentity
 import java.io.File
 import java.io.IOException

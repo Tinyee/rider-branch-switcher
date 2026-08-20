@@ -13,7 +13,7 @@ import com.intellij.util.Alarm
 import com.intellij.util.ui.JBUI
 import com.submodule.branchswitcher.BranchSwitchListener
 import com.submodule.branchswitcher.Bundle
-import com.submodule.branchswitcher.git.MAX_CONCURRENT_GIT_PROCESSES
+import com.submodule.branchswitcher.git.impl.MAX_CONCURRENT_GIT_PROCESSES
 import com.submodule.branchswitcher.log.AppLogger
 import com.submodule.branchswitcher.log.LogEntry
 import com.submodule.branchswitcher.log.ToolWindowLogger

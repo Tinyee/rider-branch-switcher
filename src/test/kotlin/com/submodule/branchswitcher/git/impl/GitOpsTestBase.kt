@@ -1,4 +1,4 @@
-package com.submodule.branchswitcher.git
+package com.submodule.branchswitcher.git.impl
 
 import org.junit.After
 import org.junit.Assert.assertEquals

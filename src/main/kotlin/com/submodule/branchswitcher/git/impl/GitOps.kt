@@ -1,6 +1,13 @@
-package com.submodule.branchswitcher.git
+package com.submodule.branchswitcher.git.impl
 
 import com.intellij.openapi.diagnostic.Logger
+import com.submodule.branchswitcher.git.GitClient
+import com.submodule.branchswitcher.git.GitOperationSession
+import com.submodule.branchswitcher.git.GitRepositoryInspection
+import com.submodule.branchswitcher.git.GitWorkflowClient
+import com.submodule.branchswitcher.git.RepositoryStateBatchGitClient
+import com.submodule.branchswitcher.git.RepositoryStateBatchInspection
+import com.submodule.branchswitcher.git.SwitchPreflightBatchGitClient
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 

@@ -7,7 +7,7 @@ import java.nio.file.Path
  * Canonical path identity reliable on Windows (symlinks, 8.3 short names).
  *
  * - existing path -> `toRealPath()` (resolves symlinks; the pattern already used by
- *   `GitCommandClient.resolvedPath` and proven on Windows CI)
+ *   `com.submodule.branchswitcher.git.impl.GitCommandClient.resolvedPath` and proven on Windows CI)
  * - missing path  -> `canonicalPath` (best-effort normalization of the existing ancestors;
  *   `toRealPath()` would throw `NoSuchFileException`)
  * - any failure   -> `absolutePath` (never throws)

@@ -7,7 +7,7 @@ import com.intellij.openapi.wm.ToolWindowFactory
 import com.intellij.ui.content.ContentFactory
 import com.submodule.branchswitcher.Notifier
 import com.submodule.branchswitcher.Bundle
-import com.submodule.branchswitcher.git.GitOps
+import com.submodule.branchswitcher.git.impl.GitOps
 import com.submodule.branchswitcher.service.BranchSwitcherService
 import kotlinx.coroutines.launch
 

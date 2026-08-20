@@ -1,5 +1,6 @@
-package com.submodule.branchswitcher.git
+package com.submodule.branchswitcher.git.impl
 
+import com.submodule.branchswitcher.git.GitResult
 import java.io.File
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ExecutionException

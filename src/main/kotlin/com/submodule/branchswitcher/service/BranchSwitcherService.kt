@@ -7,8 +7,8 @@ import com.intellij.openapi.components.Storage
 import com.intellij.openapi.components.service
 import com.intellij.openapi.project.Project
 import com.submodule.branchswitcher.git.GitClient
-import com.submodule.branchswitcher.git.GitOps
-import com.submodule.branchswitcher.git.GitProcessShutdown
+import com.submodule.branchswitcher.git.impl.GitOps
+import com.submodule.branchswitcher.git.impl.GitProcessShutdown
 import com.submodule.branchswitcher.model.DirtyAction
 import com.submodule.branchswitcher.model.ResolvedSwitchRequest
 import com.submodule.branchswitcher.model.SwitchOptions

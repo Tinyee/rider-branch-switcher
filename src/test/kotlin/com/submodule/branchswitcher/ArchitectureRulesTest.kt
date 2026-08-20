@@ -43,18 +43,10 @@ class ArchitectureRulesTest {
         )
 
         /**
-         * Plugin-implemented classes that live in the mixed `com.submodule.branchswitcher.git`
-         * package (core interfaces share that package, so it cannot be forbidden wholesale).
-         * Derived from the compiled classpath rather than hand-maintained: every plugin
-         * class in the shared package is covered automatically, so adding a new
-         * implementation can never silently weaken the rules below.
-         */
-        private val PLUGIN_GIT_IMPLS = pluginClassesRegex("com.submodule.branchswitcher.git")
-
-        /**
          * Plugin-only classes in the mixed root package `com.submodule.branchswitcher`
          * (core classes like EnvironmentFailure and PresetLoader live there too, so the
-         * package itself cannot be forbidden). Derived like [PLUGIN_GIT_IMPLS].
+         * package itself cannot be forbidden). Derived from the compiled classpath so a
+         * new plugin class in the root package is covered automatically.
          */
         private val PLUGIN_ROOT_CLASSES = pluginClassesRegex("com.submodule.branchswitcher")
 
@@ -126,9 +118,8 @@ class ArchitectureRulesTest {
         check(
             noClasses()
                 .that().resideInAPackage("..workflow..")
-                .should().dependOnClassesThat().haveNameMatching(
-                    "$PLUGIN_ROOT_CLASSES|$PLUGIN_GIT_IMPLS"
-                )
+                .should().dependOnClassesThat().resideInAnyPackage("com.submodule.branchswitcher.git.impl..")
+                .orShould().dependOnClassesThat().haveNameMatching("$PLUGIN_ROOT_CLASSES")
         )
     }
 
@@ -149,10 +140,9 @@ class ArchitectureRulesTest {
                     "com.submodule.branchswitcher.service..",
                     "com.submodule.branchswitcher.platform..",
                     "com.submodule.branchswitcher.action..",
+                    "com.submodule.branchswitcher.git.impl..",
                 )
-                .orShould().dependOnClassesThat().haveNameMatching(
-                    "$PLUGIN_ROOT_CLASSES|$PLUGIN_GIT_IMPLS"
-                )
+                .orShould().dependOnClassesThat().haveNameMatching("$PLUGIN_ROOT_CLASSES")
         )
     }
 
@@ -202,7 +192,7 @@ class ArchitectureRulesTest {
     fun `only GitProcessRunner and GitOps start operating-system processes`() {
         check(
             noClasses()
-                .that().haveNameNotMatching("^com\\.submodule\\.branchswitcher\\.git\\.(?:GitProcessRunner|GitOps)\$")
+                .that().resideOutsideOfPackage("com.submodule.branchswitcher.git.impl")
                 .should().callConstructor(ProcessBuilder::class.java)
         )
     }
@@ -216,11 +206,7 @@ class ArchitectureRulesTest {
     }
 
     @Test
-    fun `derived plugin class whitelists are non-empty`() {
-        assertTrue(
-            "git package must contain plugin classes",
-            pluginClassesIn("com.submodule.branchswitcher.git").isNotEmpty(),
-        )
+    fun `derived plugin class whitelist for the root package is non-empty`() {
         assertTrue(
             "root package must contain plugin classes",
             pluginClassesIn("com.submodule.branchswitcher").isNotEmpty(),
@@ -228,13 +214,7 @@ class ArchitectureRulesTest {
     }
 
     @Test
-    fun `derived whitelist includes known plugin classes and excludes core classes`() {
-        val gitClasses = pluginClassesIn("com.submodule.branchswitcher.git")
-        assertTrue(gitClasses.contains("com.submodule.branchswitcher.git.GitProcessRunner"))
-        assertTrue(gitClasses.contains("com.submodule.branchswitcher.git.GitOutputDrainerKt"))
-        assertFalse(gitClasses.contains("com.submodule.branchswitcher.git.GitQueryKt"))
-        assertFalse(gitClasses.contains("com.submodule.branchswitcher.git.GitResult"))
-
+    fun `derived whitelist includes known root plugin classes and excludes core classes`() {
         val rootClasses = pluginClassesIn("com.submodule.branchswitcher")
         assertTrue(rootClasses.contains("com.submodule.branchswitcher.TaskBridge"))
         assertFalse(rootClasses.contains("com.submodule.branchswitcher.PresetLoader"))

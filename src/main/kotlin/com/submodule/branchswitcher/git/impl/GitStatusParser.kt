@@ -1,4 +1,6 @@
-package com.submodule.branchswitcher.git
+package com.submodule.branchswitcher.git.impl
+
+import com.submodule.branchswitcher.git.GitRepositoryInspection
 
 /** Parses `git status --porcelain=v2 --branch` without depending on localized output. */
 internal fun parsePorcelainV2Status(output: String): GitRepositoryInspection {

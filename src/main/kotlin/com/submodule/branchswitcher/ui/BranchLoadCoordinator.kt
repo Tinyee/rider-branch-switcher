@@ -1,7 +1,7 @@
 package com.submodule.branchswitcher.ui
 
 import com.submodule.branchswitcher.git.GitOperationSession
-import com.submodule.branchswitcher.git.MAX_CONCURRENT_GIT_PROCESSES
+import com.submodule.branchswitcher.git.impl.MAX_CONCURRENT_GIT_PROCESSES
 import com.submodule.branchswitcher.git.PresetDiscoveryGitClient
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope

@@ -1,8 +1,11 @@
-package com.submodule.branchswitcher.git
+package com.submodule.branchswitcher.git.impl
 
 import org.junit.Assert.*
 import org.junit.Assume.assumeTrue
 import org.junit.Test
+import com.submodule.branchswitcher.git.GitFailureKind
+import com.submodule.branchswitcher.git.GitQueryException
+import com.submodule.branchswitcher.git.SubmoduleRegistration
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Semaphore

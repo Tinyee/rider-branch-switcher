@@ -33,7 +33,7 @@ private class DelegatingGitOperationSession(
 /**
  * Aggregate implementation boundary. Consumers should depend on a workflow interface above.
  *
- * Implementations: [com.submodule.branchswitcher.git.GitOps] (CLI via ProcessBuilder).
+ * Implementations: [com.submodule.branchswitcher.git.impl.GitOps] (CLI via ProcessBuilder).
  *
  * Key semantics:
  * - [currentBranch] returns null on detached HEAD
@@ -49,7 +49,7 @@ interface GitClient :
     GitOperationProvider {
     /**
      * Compatibility adapter for test doubles and alternate implementations.
-     * [GitOps] overrides this with a cancellation-isolated session.
+     * [com.submodule.branchswitcher.git.impl.GitOps] overrides this with a cancellation-isolated session.
      */
     override fun openOperation(): GitOperationSession {
         return DelegatingGitOperationSession(this)

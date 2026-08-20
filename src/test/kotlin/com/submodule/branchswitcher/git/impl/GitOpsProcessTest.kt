@@ -1,7 +1,8 @@
-package com.submodule.branchswitcher.git
+package com.submodule.branchswitcher.git.impl
 
 import org.junit.Assert.*
 import org.junit.Test
+import com.submodule.branchswitcher.git.GitFailureKind
 import java.io.File
 import java.io.InputStream
 import java.util.concurrent.CompletableFuture

@@ -1,7 +1,7 @@
 package com.submodule.branchswitcher.workflow
 
 import com.submodule.branchswitcher.git.GitOperationSession
-import com.submodule.branchswitcher.git.MAX_CONCURRENT_GIT_PROCESSES
+import com.submodule.branchswitcher.git.impl.MAX_CONCURRENT_GIT_PROCESSES
 import com.submodule.branchswitcher.log.createStringAppender
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
