@@ -89,45 +89,10 @@ class SwitchExecutor @JvmOverloads constructor(
         val preset = request.preset
         val options = request.options
         log.activity("=== switching to preset: ${preset.name} ===")
-        var switchState = SwitchState()
-        // Fail closed: every existing repository needs a known branch and SHA
-        // before the first mutation, otherwise rollback could only be partial.
-        // Checkpoint queries can fail (Git process capacity, start failure, permission),
-        // so they must not escape as an unhandled exception that loses the repository
-        // path and structured diagnostic the caller relies on.
-        val switchCheckpoint = try {
-            checkpointRecorder.record(preset)
-        } catch (error: GitQueryException) {
-            // The platform classifier recognizes a cancelled/interrupted Git query as
-            // cancellation; it must not be downgraded to a FAILED/GIT_QUERY_FAILED result.
-            if (cancellationClassifier.isCancellation(error)) throw error
-            log.error("[checkpoint] switch aborted: git query failed: ${error.result.diagnostic()}")
-            return checkpointFailure(switchState, OperationIssueCode.GIT_QUERY_FAILED, error.result.diagnostic())
-        } catch (error: RuntimeException) {
-            if (cancellationClassifier.isCancellation(error)) throw error
-            log.logFailure("[checkpoint] switch aborted: unable to record every existing repository", error)
-            return checkpointFailure(
-                switchState,
-                OperationIssueCode.CHECKPOINT_UNAVAILABLE,
-                "${error.javaClass.simpleName}: ${error.message}",
-            )
-        }
-        if (switchCheckpoint == null) {
-            log.error("[checkpoint] switch aborted: unable to record every existing repository")
-            log.activity("=== done with errors ===")
-            return SwitchExecutionResult(
-                status = SwitchExecutionStatus.FAILED,
-                checkpoint = null,
-                state = switchState,
-                issues = listOf(
-                    OperationIssue(
-                        stage = OperationStage.CHECKPOINT,
-                        code = OperationIssueCode.CHECKPOINT_UNAVAILABLE,
-                        repositoryPath = ".",
-                        severity = OperationIssueSeverity.ERROR,
-                    ),
-                ),
-            )
+        val switchState = SwitchState()
+        val switchCheckpoint = when (val checkpoint = recordCheckpoint(preset, switchState)) {
+            is Checkpoint.Recorded -> checkpoint.entries
+            is Checkpoint.Failed -> return checkpoint.result
         }
 
         val context = createContext(preset, options, switchCheckpoint)
@@ -162,6 +127,51 @@ class SwitchExecutor @JvmOverloads constructor(
         }
 
         return runSteps(context, switchCheckpoint, switchState)
+    }
+
+    /** Result of checkpoint recording: either the recorded entries or an already-final failure result. */
+    private sealed interface Checkpoint {
+        data class Recorded(val entries: Map<String, CheckpointEntry>) : Checkpoint
+        data class Failed(val result: SwitchExecutionResult) : Checkpoint
+    }
+
+    /**
+     * Records every existing repository's pre-switch state. Fail closed: every repository
+     * needs a known branch and SHA before the first mutation, otherwise rollback could only
+     * be partial. Checkpoint queries can fail (Git process capacity, start failure,
+     * permission), so failures are mapped to a structured result instead of escaping as an
+     * unhandled exception that loses the repository path and diagnostic the caller relies on.
+     */
+    @Suppress("TooGenericExceptionCaught") // platform cancellation type is recognized through the injected classifier
+    private fun recordCheckpoint(preset: Preset, switchState: SwitchState): Checkpoint = try {
+        val entries = checkpointRecorder.record(preset)
+        if (entries != null) {
+            Checkpoint.Recorded(entries)
+        } else {
+            log.error("[checkpoint] switch aborted: unable to record every existing repository")
+            log.activity("=== done with errors ===")
+            Checkpoint.Failed(
+                checkpointFailure(switchState, OperationIssueCode.CHECKPOINT_UNAVAILABLE, null),
+            )
+        }
+    } catch (error: GitQueryException) {
+        // The platform classifier recognizes a cancelled/interrupted Git query as
+        // cancellation; it must not be downgraded to a FAILED/GIT_QUERY_FAILED result.
+        if (cancellationClassifier.isCancellation(error)) throw error
+        log.error("[checkpoint] switch aborted: git query failed: ${error.result.diagnostic()}")
+        Checkpoint.Failed(
+            checkpointFailure(switchState, OperationIssueCode.GIT_QUERY_FAILED, error.result.diagnostic()),
+        )
+    } catch (error: RuntimeException) {
+        if (cancellationClassifier.isCancellation(error)) throw error
+        log.logFailure("[checkpoint] switch aborted: unable to record every existing repository", error)
+        Checkpoint.Failed(
+            checkpointFailure(
+                switchState,
+                OperationIssueCode.CHECKPOINT_UNAVAILABLE,
+                "${error.javaClass.simpleName}: ${error.message}",
+            ),
+        )
     }
 
     /** Executes the pipeline steps and folds their outcomes into one structured result. */
@@ -373,7 +383,7 @@ class SwitchExecutor @JvmOverloads constructor(
     private fun checkpointFailure(
         switchState: SwitchState,
         code: OperationIssueCode,
-        diagnostic: String,
+        diagnostic: String?,
     ): SwitchExecutionResult = SwitchExecutionResult(
         status = SwitchExecutionStatus.FAILED,
         checkpoint = null,

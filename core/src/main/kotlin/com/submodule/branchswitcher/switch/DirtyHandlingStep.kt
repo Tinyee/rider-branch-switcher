@@ -120,33 +120,11 @@ class DirtyHandlingStep : SwitchStep {
         }
         val stashResult = context.git.stash(repositoryDirectory, stashMessage)
         if (!stashResult.ok) {
-            // A terminated stash push (cancel / timeout / interruption) may have written
-            // refs/stash before dying, leaving WIP split between the stash and the tree.
-            // Track any entry that did appear so recovery can still apply it instead of
-            // leaving a "torn" stash nobody owns.
+            // A terminated push may have written refs/stash before dying; track any entry
+            // it created so recovery can apply it instead of leaving a torn stash.
             if (stashResult.failureKind.isTermination) {
-                val ghostOid = try {
-                    val top = context.git.stashTopOid(repositoryDirectory)
-                    // Only an entry the terminated push actually created is tracked:
-                    // the top must have advanced AND the newest entry must carry our
-                    // message prefix. Falling back to any other top would apply an old
-                    // backup or a concurrent external stash onto the current tree.
-                    if (top == null || top == beforeTop) null
-                    else context.git.stashOidByMessage(repositoryDirectory, stashMessage)
-                } catch (error: GitQueryException) {
-                    context.log.warn(
-                        "stash: could not inspect entries after a terminated push (${target.path}); " +
-                            "a torn stash entry may remain untracked: " + error.result.diagnostic(),
-                    )
-                    null
-                }
-                if (ghostOid != null) {
-                    context.log.warn(
-                        "stash: terminated mid-write but entry created (${target.path}, oid=$ghostOid); " +
-                            "tracked for recovery",
-                    )
-                    return state.withTrackedStash(target.path, "before -> ${target.branch}", ghostOid)
-                }
+                trackGhostStashIfCreated(context, target, repositoryDirectory, beforeTop, stashMessage, state)
+                    ?.let { return it }
             }
             val lockHint = context.git.indexLockFile(repositoryDirectory)?.let { lock ->
                 " [index.lock exists at $lock; if no other git process is running, delete it and retry]"
@@ -174,6 +152,41 @@ class DirtyHandlingStep : SwitchStep {
         }
         context.log.info("stash: ok (${target.path}, oid=$stashOid)")
         return state.withTrackedStash(target.path, "before -> ${target.branch}", stashOid)
+    }
+
+    /**
+     * After a terminated stash push, locates any entry the write actually created and
+     * tracks it for recovery. Only the newest entry carrying our message prefix is
+     * accepted: the top must have advanced AND the newest entry must match, so an old
+     * backup or a concurrent external stash is never mistaken for the current WIP.
+     *
+     * Returns the state to return immediately, or null when there is no ghost entry.
+     */
+    private fun trackGhostStashIfCreated(
+        context: SwitchContext,
+        target: RepoTarget,
+        repositoryDirectory: File,
+        beforeTop: String?,
+        stashMessage: String,
+        state: SwitchState,
+    ): SwitchState? {
+        val ghostOid = try {
+            val top = context.git.stashTopOid(repositoryDirectory)
+            if (top == null || top == beforeTop) null
+            else context.git.stashOidByMessage(repositoryDirectory, stashMessage)
+        } catch (error: GitQueryException) {
+            context.log.warn(
+                "stash: could not inspect entries after a terminated push (${target.path}); " +
+                    "a torn stash entry may remain untracked: " + error.result.diagnostic(),
+            )
+            null
+        }
+        if (ghostOid == null) return null
+        context.log.warn(
+            "stash: terminated mid-write but entry created (${target.path}, oid=$ghostOid); " +
+                "tracked for recovery",
+        )
+        return state.withTrackedStash(target.path, "before -> ${target.branch}", ghostOid)
     }
 
     private fun unidentifiedStash(
