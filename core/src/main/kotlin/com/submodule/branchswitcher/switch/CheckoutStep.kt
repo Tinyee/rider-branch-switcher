@@ -37,9 +37,7 @@ class CheckoutStep : SwitchStep {
         }
 
         val checkout = BranchCheckout.execute(context, target, directory, state)
-        val result = checkout.issues.takeIf(List<OperationIssue>::isNotEmpty)
-            ?.let(StepResult::Partial)
-            ?: StepResult.Success
+        val result = checkout.issues.toStepResult()
         return StepExecution(result, checkout.state)
     }
 }

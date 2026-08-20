@@ -56,7 +56,7 @@ class DirtyHandlingStep : SwitchStep {
         } catch (e: RuntimeException) {
             throw SwitchStepException(nextState, e)
         }
-        val result = if (issues.isEmpty()) StepResult.Success else StepResult.Partial(issues)
+        val result = issues.toStepResult()
         return StepExecution(result, nextState)
     }
 

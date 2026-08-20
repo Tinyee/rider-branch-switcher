@@ -23,6 +23,10 @@ sealed class StepResult {
     data class Partial(val issues: List<OperationIssue>) : StepResult()
 }
 
+/** Folds a step's collected issues into the pipeline control-flow result. */
+internal fun List<OperationIssue>.toStepResult(): StepResult =
+    if (isEmpty()) StepResult.Success else StepResult.Partial(this)
+
 /**
  * Immutable record of side effects completed by earlier pipeline steps.
  *

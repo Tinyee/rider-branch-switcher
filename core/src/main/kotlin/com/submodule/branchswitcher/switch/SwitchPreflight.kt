@@ -41,18 +41,7 @@ class SwitchPreflight(
     private fun probeOne(projectRoot: Path, target: RepoTarget): PreflightRow {
         val dir = resolveGitDir(projectRoot, target.path)
         val label = if (target.path == ".") projectRoot.fileName.toString() else shortLabel(target.path)
-        if (!dir.exists()) {
-            return PreflightRow(
-                label = label,
-                path = target.path,
-                target = target.branch,
-                exists = false,
-                current = null,
-                dirtyCount = -1,
-                hasLocal = false,
-                hasRemote = false,
-            )
-        }
+        if (!dir.exists()) return notGitRepoRow(label, target)
         return try {
             val inspection = if (git is SwitchPreflightBatchGitClient) {
                 git.inspectPreflight(dir, setOf(target.branch))
@@ -60,16 +49,7 @@ class SwitchPreflight(
                 null
             }
             if (inspection?.isGitRepository == false || (inspection == null && !git.isGitRepo(dir))) {
-                return PreflightRow(
-                    label = label,
-                    path = target.path,
-                    target = target.branch,
-                    exists = false,
-                    current = null,
-                    dirtyCount = -1,
-                    hasLocal = false,
-                    hasRemote = false,
-                )
+                return notGitRepoRow(label, target)
             }
             PreflightRow(
                 label = label,
@@ -89,19 +69,34 @@ class SwitchPreflight(
             // probe failure -> fail-closed row (includes platform cancellation if classifier says so)
             // Fail closed per repo: one flaky git command must not abort the whole preflight.
             // All flags default to blocking/unknown so the user sees this repo as a warning.
-            PreflightRow(
-                label = "$label $probeErrorSuffix",
-                path = target.path,
-                target = target.branch,
-                exists = true,
-                current = null,
-                dirtyCount = -1,
-                hasLocal = false,
-                hasRemote = false,
-                probeError = "${e.javaClass.simpleName}: ${e.message.orEmpty()}".take(300),
-            )
+            probeErrorRow(label, target, e)
         }
     }
+
+    /** Row for a target that is missing or is not a git repository: absent, every state flag unknown. */
+    private fun notGitRepoRow(label: String, target: RepoTarget) = PreflightRow(
+        label = label,
+        path = target.path,
+        target = target.branch,
+        exists = false,
+        current = null,
+        dirtyCount = -1,
+        hasLocal = false,
+        hasRemote = false,
+    )
+
+    /** Fail-closed row for a repo whose probe errored: exists, but every state flag stays unknown. */
+    private fun probeErrorRow(label: String, target: RepoTarget, error: Exception) = PreflightRow(
+        label = "$label $probeErrorSuffix",
+        path = target.path,
+        target = target.branch,
+        exists = true,
+        current = null,
+        dirtyCount = -1,
+        hasLocal = false,
+        hasRemote = false,
+        probeError = "${error.javaClass.simpleName}: ${error.message.orEmpty()}".take(300),
+    )
 
 }
 

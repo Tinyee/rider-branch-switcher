@@ -31,7 +31,7 @@ class FetchStep(
                 )
             }
         }
-        val result = if (issues.isEmpty()) StepResult.Success else StepResult.Partial(issues)
+        val result = issues.toStepResult()
         return StepExecution(result, state)
     }
 }

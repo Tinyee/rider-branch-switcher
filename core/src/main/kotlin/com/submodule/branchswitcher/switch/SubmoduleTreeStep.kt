@@ -35,7 +35,7 @@ class SubmoduleTreeStep : SwitchStep {
             throw SwitchStepException(traversal.state, error)
         }
 
-        val result = if (issues.isEmpty()) StepResult.Success else StepResult.Partial(issues)
+        val result = issues.toStepResult()
         return StepExecution(result, traversal.state)
     }
 
