@@ -1,7 +1,7 @@
 package com.submodule.branchswitcher.switch
 
-import com.submodule.branchswitcher.git.GitFailureKind
 import com.submodule.branchswitcher.git.GitQueryException
+import com.submodule.branchswitcher.git.isTermination
 import com.submodule.branchswitcher.model.DirtyAction
 import com.submodule.branchswitcher.model.RepoTarget
 import java.io.File
@@ -124,10 +124,7 @@ class DirtyHandlingStep : SwitchStep {
             // refs/stash before dying, leaving WIP split between the stash and the tree.
             // Track any entry that did appear so recovery can still apply it instead of
             // leaving a "torn" stash nobody owns.
-            val terminated = stashResult.failureKind == GitFailureKind.CANCELLED ||
-                stashResult.failureKind == GitFailureKind.INTERRUPTED ||
-                stashResult.failureKind == GitFailureKind.TIMEOUT
-            if (terminated) {
+            if (stashResult.failureKind.isTermination) {
                 val ghostOid = try {
                     val top = context.git.stashTopOid(repositoryDirectory)
                     // Only an entry the terminated push actually created is tracked:

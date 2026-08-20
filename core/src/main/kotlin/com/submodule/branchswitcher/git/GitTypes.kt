@@ -44,6 +44,15 @@ enum class GitFailureKind {
     GIT_FAILED,
 }
 
+/**
+ * True when a command was terminated mid-run (cancelled, interrupted, or timed out)
+ * rather than failing on its own. Terminated writes may have left partial side effects
+ * (a "torn" stash push, an in-flight checkout), so callers treat them as a stop signal
+ * instead of a real failure: the write stays at-most-once and remains retryable.
+ */
+val GitFailureKind.isTermination: Boolean
+    get() = this == GitFailureKind.CANCELLED || this == GitFailureKind.INTERRUPTED || this == GitFailureKind.TIMEOUT
+
 /** A Git read/query failed and cannot be safely interpreted as a normal negative result. */
 class GitQueryException(val result: GitResult) : RuntimeException(result.diagnostic()), EnvironmentFailure
 

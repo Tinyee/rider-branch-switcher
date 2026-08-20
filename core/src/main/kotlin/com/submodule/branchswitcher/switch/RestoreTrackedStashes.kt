@@ -1,7 +1,7 @@
 package com.submodule.branchswitcher.switch
 
-import com.submodule.branchswitcher.git.GitFailureKind
 import com.submodule.branchswitcher.git.SwitchGitClient
+import com.submodule.branchswitcher.git.isTermination
 import com.submodule.branchswitcher.log.AppLogger
 import java.io.File
 import java.nio.file.Path
@@ -192,10 +192,7 @@ private fun applyRestoredStash(
             diagnostic = indexLockBlockedDiagnostic(racedLock),
             lockPath = racedLock,
         )
-    } else if (applyResult.failureKind == GitFailureKind.CANCELLED ||
-        applyResult.failureKind == GitFailureKind.INTERRUPTED ||
-        applyResult.failureKind == GitFailureKind.TIMEOUT
-    ) {
+    } else if (applyResult.failureKind.isTermination) {
         // A cancelled/interrupted apply is a stop signal, not a failed
         // restore: the command died before completing, so the entry stays
         // tracked and retryable and the WIP is preserved in the stash.

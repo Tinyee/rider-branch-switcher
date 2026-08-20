@@ -37,7 +37,14 @@ internal object BranchCheckout {
                 context.git.checkoutFromRemote(directory, target.branch)
             }
 
-            else -> return recoverStashAfterMissingBranch(context, target, directory, state)
+            else -> {
+                // A missing target branch must not leave a stash created earlier in the
+                // switch hidden from the user: returning a failed checkout keeps state
+                // unchanged, so the stash stays tracked. SwitchExecutor restores it at
+                // the end of a partial pipeline, or SwitchRunner's recovery applies it
+                // after rolling the repositories back.
+                return branchMissingFailure(context, target, directory, state)
+            }
         }
 
         if (!checkoutResult.ok) {
@@ -63,13 +70,8 @@ internal object BranchCheckout {
         )
     }
 
-    /**
-     * A missing target branch must not leave a stash created earlier in the switch
-     * hidden from the user. The stash stays tracked here; SwitchExecutor restores it
-     * at the end of a partial pipeline, or SwitchRunner's recovery applies it after
-     * rolling the repositories back.
-     */
-    private fun recoverStashAfterMissingBranch(
+    /** Records the structured failure for a target whose branch exists neither locally nor on origin. */
+    private fun branchMissingFailure(
         context: SwitchContext,
         target: RepoTarget,
         directory: File,
