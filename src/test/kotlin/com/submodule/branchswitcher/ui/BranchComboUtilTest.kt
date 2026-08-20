@@ -20,6 +20,11 @@ import javax.swing.JTextField
 
 class BranchComboUtilTest {
 
+    // Windows CI runners can be slow to schedule the shared IO dispatcher, so a
+    // trivially-synchronous branch load may take longer than a tight 5s latch. Keep a
+    // generous window; a healthy load still completes in milliseconds.
+    private val loadCompletionTimeoutSeconds = 30L
+
     @Test
     fun `branch popup filter is case insensitive and preserves typed text`() {
         val combo = JComboBox(arrayOf("main", "feature/login", "Feature/Search"))
@@ -91,7 +96,7 @@ class BranchComboUtilTest {
             scheduleUi = { it() },
         )
 
-        assertTrue("branch load should finish", finished.await(5, TimeUnit.SECONDS))
+        assertTrue("branch load should finish", finished.await(loadCompletionTimeoutSeconds, TimeUnit.SECONDS))
         assertEquals(1, starts)
         assertEquals(1, ends)
         assertTrue(combo.isEnabled)
@@ -118,7 +123,7 @@ class BranchComboUtilTest {
             scheduleUi = { it() },
         )
 
-        assertTrue("failed branch load should finish", finished.await(5, TimeUnit.SECONDS))
+        assertTrue("failed branch load should finish", finished.await(loadCompletionTimeoutSeconds, TimeUnit.SECONDS))
         assertEquals(1, ends)
         assertFalse("failed load must report success=false so callers can retry", loadSucceeded!!)
         assertTrue(combo.isEnabled)
@@ -143,7 +148,7 @@ class BranchComboUtilTest {
             scheduleUi = { it() },
         )
 
-        assertTrue("disposed combo load should finish", finished.await(5, TimeUnit.SECONDS))
+        assertTrue("disposed combo load should finish", finished.await(loadCompletionTimeoutSeconds, TimeUnit.SECONDS))
         assertEquals(1, ends)
         assertFalse(combo.isEnabled)
         assertEquals(listOf(LOADING_BRANCH), (0 until combo.itemCount).map(combo::getItemAt))
@@ -180,7 +185,7 @@ class BranchComboUtilTest {
             onLoadEnd = { _, superseded -> supersededFlags += superseded; endCount++; finished.countDown() },
             scheduleUi = { it() },
         )
-        assertTrue("first discovery should start", firstStarted.await(5, TimeUnit.SECONDS))
+        assertTrue("first discovery should start", firstStarted.await(loadCompletionTimeoutSeconds, TimeUnit.SECONDS))
 
         loadComboBranches(
             combo, File("."), "latest", coordinator, createStringAppender {},
@@ -192,7 +197,7 @@ class BranchComboUtilTest {
         // The superseded load still signals its lifecycle end so the caller's in-flight
         // counter balances (start == end), but it is flagged superseded so callers skip
         // the retry-state reset for it.
-        assertTrue("both branch loads should signal completion", finished.await(5, TimeUnit.SECONDS))
+        assertTrue("both branch loads should signal completion", finished.await(loadCompletionTimeoutSeconds, TimeUnit.SECONDS))
         assertEquals("every start must have a matching end", 2, startCount)
         assertEquals("every end must pair with a start", 2, endCount)
         assertTrue("superseded load must be flagged so callers skip the retry reset", supersededFlags.any { it })

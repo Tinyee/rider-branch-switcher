@@ -139,6 +139,23 @@ class ArchitectureRulesTest {
         )
     }
 
+    /**
+     * Core must stay free of desktop UI. Unlike `com.intellij.*` (a Maven dependency
+     * the module boundary excludes), `java.awt`/`javax.swing` live in the JDK's
+     * `java.desktop` module, which `jvmToolchain(21)` puts on every compile classpath,
+     * so a Swing import in core would compile silently. The quickCheck text rule that
+     * used to trip on it was removed when the text checks were consolidated, and this
+     * bytecode rule is what keeps the pure-JVM contract enforceable.
+     */
+    @Test
+    fun `core does not depend on desktop UI`() {
+        checkCore(
+            noClasses()
+                .that().resideInAPackage("com.submodule.branchswitcher..")
+                .should().dependOnClassesThat().resideInAnyPackage("java..awt..", "javax..swing..")
+        )
+    }
+
     @Test
     fun `platform does not depend on workflow, ui, or service`() {
         check(

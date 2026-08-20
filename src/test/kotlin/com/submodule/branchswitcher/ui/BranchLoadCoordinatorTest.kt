@@ -13,6 +13,11 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 class BranchLoadCoordinatorTest {
 
+    // Windows CI runners can be slow to schedule the shared IO dispatcher, so a
+    // trivially-synchronous load may take longer than a tight 5s latch. Keep a
+    // generous window; a healthy load still completes in milliseconds.
+    private val loadCompletionTimeoutSeconds = 30L
+
     @Test
     fun `close cancels an in-flight load's git session`() {
         val firstStarted = CountDownLatch(1)
@@ -30,7 +35,7 @@ class BranchLoadCoordinatorTest {
             },
             onResult = { },
         )
-        assertTrue("load should start", firstStarted.await(5, TimeUnit.SECONDS))
+        assertTrue("load should start", firstStarted.await(loadCompletionTimeoutSeconds, TimeUnit.SECONDS))
 
         coordinator.close()
 
@@ -51,7 +56,7 @@ class BranchLoadCoordinatorTest {
             firstStarted.countDown()
             while (!firstCancelled.get()) Thread.sleep(10)
         }
-        assertTrue("first load should start", firstStarted.await(5, TimeUnit.SECONDS))
+        assertTrue("first load should start", firstStarted.await(loadCompletionTimeoutSeconds, TimeUnit.SECONDS))
 
         // Second load never opens a session: it is queued behind the only permit.
         val pending = coordinator.launch { }

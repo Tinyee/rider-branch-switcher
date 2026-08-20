@@ -25,6 +25,11 @@ import javax.swing.JPanel
 
 class SubmoduleRowManagerTest {
 
+    // Windows CI runners can be slow to schedule the shared IO dispatcher, so a
+    // trivially-synchronous row load may take longer than a tight 5s latch. Keep a
+    // generous window; a healthy load still completes in milliseconds.
+    private val loadCompletionTimeoutSeconds = 30L
+
     @Test
     fun `submodule row context menu listener is installed on child label panel`() {
         val manager = SubmoduleRowManager(
@@ -87,7 +92,7 @@ class SubmoduleRowManagerTest {
 
         manager.addSubmoduleFromMenu("SubA")
 
-        assertTrue("row branch load should finish", finished.await(5, TimeUnit.SECONDS))
+        assertTrue("row branch load should finish", finished.await(loadCompletionTimeoutSeconds, TimeUnit.SECONDS))
         requireNotNull(manager.subRows["SubA"])
         assertEquals(0, manager.loadingCount)
     }
@@ -129,14 +134,14 @@ class SubmoduleRowManagerTest {
         manager.onFirstExpand()
 
         manager.addSubmoduleFromMenu("SubA")
-        assertTrue("first load should finish", firstLoadDone.await(5, TimeUnit.SECONDS))
+        assertTrue("first load should finish", firstLoadDone.await(loadCompletionTimeoutSeconds, TimeUnit.SECONDS))
         val row = requireNotNull(manager.subRows["SubA"])
         assertFalse("failed load must reset row.loaded so a re-expand retries", row.loaded)
         assertTrue("failed row must leave the manager with unloaded rows", manager.hasUnloadedRows())
         assertEquals(0, manager.loadingCount)
 
         manager.loadAllBranches(Preset("Work", "main", mapOf("SubA" to "dev")))
-        assertTrue("retry load should finish", retryDone.await(5, TimeUnit.SECONDS))
+        assertTrue("retry load should finish", retryDone.await(loadCompletionTimeoutSeconds, TimeUnit.SECONDS))
         assertFalse("a successful retry clears the unloaded rows", manager.hasUnloadedRows())
         assertEquals("failed load must be retried on the next loadAllBranches", 2, listCalls)
     }
@@ -173,11 +178,11 @@ class SubmoduleRowManagerTest {
         body.add(row.panel)
         manager.onFirstExpand()
         manager.loadAllBranches(preset)
-        assertTrue("row discovery should start", started.await(5, TimeUnit.SECONDS))
+        assertTrue("row discovery should start", started.await(loadCompletionTimeoutSeconds, TimeUnit.SECONDS))
 
         manager.applyPresetToUI(preset.copy(submodules = emptyMap()))
 
-        assertTrue("removed row load should finish", finished.await(5, TimeUnit.SECONDS))
+        assertTrue("removed row load should finish", finished.await(loadCompletionTimeoutSeconds, TimeUnit.SECONDS))
         assertTrue("removed row Git operation should be cancelled", cancelled.get())
         assertTrue("removed row should leave the manager", "SubA" !in manager.subRows)
         assertEquals(0, manager.loadingCount)
