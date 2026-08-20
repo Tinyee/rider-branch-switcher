@@ -70,26 +70,33 @@ class SubmoduleTreeStep : SwitchStep {
         try {
             if (nextState.isSkipped(target.path)) {
                 context.log.info("[skip] ${target.path} - target disabled by an earlier step")
-                nextState = disableDescendants(nextState, targets, target.path)
-                return rejectedTarget(nextState)
+                return rejectedTarget(disableDescendants(nextState, targets, target.path))
             }
             if (!nextState.checkoutSucceeded(".")) {
-                issues += OperationIssue(stage, OperationIssueCode.MAIN_CHECKOUT_REQUIRED, target.path)
-                nextState = disableTargetAndDescendants(nextState, targets, target.path)
-                return rejectedTarget(nextState)
+                return reject(
+                    nextState,
+                    targets,
+                    target,
+                    OperationIssue(stage, OperationIssueCode.MAIN_CHECKOUT_REQUIRED, target.path),
+                    issues,
+                )
             }
             if (traversal.topology.isUnregistered(target.path)) {
                 context.log.warn(
                     "[skip] ${target.path} - not registered in current .gitmodules graph; " +
                         "obsolete worktree retained",
                 )
-                issues += OperationIssue(
-                    OperationStage.TOPOLOGY,
-                    OperationIssueCode.SUBMODULE_NOT_REGISTERED,
-                    target.path,
+                return reject(
+                    nextState,
+                    targets,
+                    target,
+                    OperationIssue(
+                        OperationStage.TOPOLOGY,
+                        OperationIssueCode.SUBMODULE_NOT_REGISTERED,
+                        target.path,
+                    ),
+                    issues,
                 )
-                nextState = disableTargetAndDescendants(nextState, targets, target.path)
-                return rejectedTarget(nextState)
             }
 
             context.log.info("")
@@ -129,13 +136,18 @@ class SubmoduleTreeStep : SwitchStep {
             )
             if (blockReason != null) {
                 context.log.warn("[skip] ${target.path} - $blockReason")
-                issues += OperationIssue(
-                    OperationStage.TOPOLOGY,
-                    OperationIssueCode.REPOSITORY_IDENTITY_CHANGED,
-                    target.path,
+                return reject(
+                    nextState,
+                    targets,
+                    target,
+                    OperationIssue(
+                        OperationStage.TOPOLOGY,
+                        OperationIssueCode.REPOSITORY_IDENTITY_CHANGED,
+                        target.path,
+                    ),
+                    issues,
+                    disableSelf = false,
                 )
-                nextState = disableDescendants(nextState, targets, target.path)
-                return rejectedTarget(nextState)
             }
 
             val checkpoint = context.checkpoint[target.path]
@@ -150,13 +162,18 @@ class SubmoduleTreeStep : SwitchStep {
                         "before=${diagnosticFingerprint(checkpoint.declaredUrl)}, " +
                         "current=${diagnosticFingerprint(currentDeclaredUrl)}",
                 )
-                issues += OperationIssue(
-                    OperationStage.TOPOLOGY,
-                    OperationIssueCode.REPOSITORY_REMOTE_CHANGED,
-                    target.path,
+                return reject(
+                    nextState,
+                    targets,
+                    target,
+                    OperationIssue(
+                        OperationStage.TOPOLOGY,
+                        OperationIssueCode.REPOSITORY_REMOTE_CHANGED,
+                        target.path,
+                    ),
+                    issues,
+                    disableSelf = false,
                 )
-                nextState = disableDescendants(nextState, targets, target.path)
-                return rejectedTarget(nextState)
             }
             return PreparedSubmodule(nextState, directory)
         } catch (error: RuntimeException) {
@@ -247,6 +264,29 @@ class SubmoduleTreeStep : SwitchStep {
 
     private fun rejectedTarget(state: SwitchState): PreparedSubmodule =
         PreparedSubmodule(state, directory = null)
+
+    /**
+     * Records [issue], disables [target] (and its descendants when [disableSelf]) so
+     * later steps skip them, and returns the not-ready outcome for the prepare loop.
+     * A target that is only individually unusable (identity or remote changed) keeps
+     * itself out of [disableSelf] = false and just blocks its descendants.
+     */
+    private fun reject(
+        state: SwitchState,
+        targets: List<RepoTarget>,
+        target: RepoTarget,
+        issue: OperationIssue,
+        issues: MutableList<OperationIssue>,
+        disableSelf: Boolean = true,
+    ): PreparedSubmodule {
+        issues += issue
+        val nextState = if (disableSelf) {
+            disableTargetAndDescendants(state, targets, target.path)
+        } else {
+            disableDescendants(state, targets, target.path)
+        }
+        return rejectedTarget(nextState)
+    }
 
     private fun loadTopology(context: SwitchContext, state: SwitchState): SubmoduleTopology =
         if (state.checkoutSucceeded(".")) {

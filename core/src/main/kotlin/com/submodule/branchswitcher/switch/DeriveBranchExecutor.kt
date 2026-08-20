@@ -87,25 +87,17 @@ class DeriveBranchExecutor(
             return target.outcome(DeriveRepositoryStatus.SKIPPED, OperationIssueCode.REPOSITORY_MISSING)
         }
 
-        // The probe wrapper keeps a lock-query failure (process capacity, start failure)
-        // distinct from an actual detected lock: probe failure -> PREFLIGHT_FAILED.
-        val lockProbe = probe(label, "index lock") { git.indexLockFile(directory) }
-        if (lockProbe.failed) {
-            return target.outcome(
-                DeriveRepositoryStatus.PREFLIGHT_FAILED,
-                OperationIssueCode.PREFLIGHT_FAILED,
-                lockProbe.diagnostic,
-            )
-        }
-        lockProbe.value?.let { lock ->
-            log.warn("[derive] $label: stale index.lock blocks branch creation - delete it and retry: $lock")
-            return target.outcome(
-                DeriveRepositoryStatus.SKIPPED,
-                OperationIssueCode.INDEX_LOCK_BLOCKING,
-                indexLockBlockedDiagnostic(lock),
-                lockPath = lock,
-            )
-        }
+        probeOrBlock(target, label, "index lock", { git.indexLockFile(directory) }) { lock ->
+            lock?.let {
+                log.warn("[derive] $label: stale index.lock blocks branch creation - delete it and retry: $it")
+                target.outcome(
+                    DeriveRepositoryStatus.SKIPPED,
+                    OperationIssueCode.INDEX_LOCK_BLOCKING,
+                    indexLockBlockedDiagnostic(it),
+                    lockPath = it,
+                )
+            }
+        }?.let { return it }
 
         val identity = git.repositoryIdentity(directory)
         val expectedGitDirectory = expectedSubmoduleGitDirectory(
@@ -126,56 +118,42 @@ class DeriveBranchExecutor(
             return target.outcome(DeriveRepositoryStatus.SKIPPED, OperationIssueCode.REPOSITORY_IDENTITY_CHANGED)
         }
 
-        val currentBranchProbe = probe(label, "current branch") { git.currentBranch(directory) }
-        if (currentBranchProbe.failed) {
-            return target.outcome(
-                DeriveRepositoryStatus.PREFLIGHT_FAILED,
-                OperationIssueCode.PREFLIGHT_FAILED,
-                currentBranchProbe.diagnostic,
-            )
-        }
-        val currentBranch = currentBranchProbe.value
-        if (currentBranch == null) {
-            log.warn("[derive] $label: detached HEAD or current branch unavailable - blocked")
-            return target.outcome(DeriveRepositoryStatus.BRANCH_MISMATCH, OperationIssueCode.BRANCH_MISMATCH)
-        }
-        if (currentBranch != target.branch) {
-            log.warn("[derive] $label: expected branch '${target.branch}', actual '$currentBranch' - blocked")
-            return target.outcome(
-                DeriveRepositoryStatus.BRANCH_MISMATCH,
-                OperationIssueCode.BRANCH_MISMATCH,
-                "expected=${target.branch}, actual=$currentBranch",
-            )
-        }
+        probeOrBlock(target, label, "current branch", { git.currentBranch(directory) }) { branch ->
+            when {
+                branch == null -> {
+                    log.warn("[derive] $label: detached HEAD or current branch unavailable - blocked")
+                    target.outcome(DeriveRepositoryStatus.BRANCH_MISMATCH, OperationIssueCode.BRANCH_MISMATCH)
+                }
+                branch != target.branch -> {
+                    log.warn("[derive] $label: expected branch '${target.branch}', actual '$branch' - blocked")
+                    target.outcome(
+                        DeriveRepositoryStatus.BRANCH_MISMATCH,
+                        OperationIssueCode.BRANCH_MISMATCH,
+                        "expected=${target.branch}, actual=$branch",
+                    )
+                }
+                else -> null
+            }
+        }?.let { return it }
 
-        val branchExistsProbe = probe(label, "branch existence") {
-            git.localBranchProbe(directory, branchName)
-        }
-        if (branchExistsProbe.failed) {
-            return target.outcome(
-                DeriveRepositoryStatus.PREFLIGHT_FAILED,
-                OperationIssueCode.PREFLIGHT_FAILED,
-                branchExistsProbe.diagnostic,
-            )
-        }
-        if (branchExistsProbe.value == true) {
-            log.warn("[derive] $label: branch '$branchName' already exists - blocked")
-            return target.outcome(DeriveRepositoryStatus.BRANCH_EXISTS, OperationIssueCode.BRANCH_ALREADY_EXISTS)
-        }
+        probeOrBlock(target, label, "branch existence", { git.localBranchProbe(directory, branchName) }) { exists ->
+            if (exists == true) {
+                log.warn("[derive] $label: branch '$branchName' already exists - blocked")
+                target.outcome(DeriveRepositoryStatus.BRANCH_EXISTS, OperationIssueCode.BRANCH_ALREADY_EXISTS)
+            } else {
+                null
+            }
+        }?.let { return it }
 
         if (requireClean) {
-            val dirtyProbe = probe(label, "dirty state") { git.dirtyProbe(directory) }
-            if (dirtyProbe.failed) {
-                return target.outcome(
-                    DeriveRepositoryStatus.PREFLIGHT_FAILED,
-                    OperationIssueCode.PREFLIGHT_FAILED,
-                    dirtyProbe.diagnostic,
-                )
-            }
-            if (dirtyProbe.value == true) {
-                log.warn("[derive] $label: working tree is dirty - blocked")
-                return target.outcome(DeriveRepositoryStatus.DIRTY, OperationIssueCode.WORKTREE_DIRTY)
-            }
+            probeOrBlock(target, label, "dirty state", { git.dirtyProbe(directory) }) { dirty ->
+                if (dirty == true) {
+                    log.warn("[derive] $label: working tree is dirty - blocked")
+                    target.outcome(DeriveRepositoryStatus.DIRTY, OperationIssueCode.WORKTREE_DIRTY)
+                } else {
+                    null
+                }
+            }?.let { return it }
         }
         return null
     }
@@ -191,6 +169,31 @@ class DeriveBranchExecutor(
         rethrowIfCancellation(error)
         log.logFailure("[derive] $label: $description probe failed", error)
         ProbeResult(null, error)
+    }
+
+    /**
+     * Runs a read-only probe and maps a probe failure (process capacity, start failure)
+     * to a distinct PREFLIGHT_FAILED block, keeping it apart from an actual detected
+     * condition. Returns the blocked outcome when [onBlock] produces one for the probed
+     * value, or null to continue the preflight chain.
+     */
+    @Suppress("TooGenericExceptionCaught") // Git probe adapters vary; cancellation is rethrown
+    private fun <T> probeOrBlock(
+        target: RepoTarget,
+        label: String,
+        description: String,
+        query: () -> T,
+        onBlock: (T?) -> DeriveRepositoryOutcome?,
+    ): DeriveRepositoryOutcome? {
+        val probeResult = probe(label, description, query)
+        if (probeResult.failed) {
+            return target.outcome(
+                DeriveRepositoryStatus.PREFLIGHT_FAILED,
+                OperationIssueCode.PREFLIGHT_FAILED,
+                probeResult.diagnostic,
+            )
+        }
+        return onBlock(probeResult.value)
     }
 
     private data class ProbeResult<T>(val value: T?, val error: Exception? = null) {
