@@ -67,27 +67,8 @@ internal class BranchLoadCoordinator(
     private val activeLoads = ConcurrentLinkedQueue<BranchLoadHandle>()
     private val closed = AtomicBoolean(false)
 
-    fun launch(block: suspend (PresetDiscoveryGitClient) -> Unit): BranchLoadHandle {
-        val state = BranchLoadState()
-        val job = scope.launch {
-            permits.withPermit {
-                if (closed.get()) return@withPermit
-                val operation = openOperation()
-                state.attach(operation)
-                try {
-                    ensureActive()
-                    withContext(Dispatchers.IO) { block(operation) }
-                } finally {
-                    state.detach(operation)
-                    operation.close()
-                }
-            }
-        }
-        val handle = BranchLoadHandle(job, state::cancel)
-        activeLoads.add(handle)
-        job.invokeOnCompletion { activeLoads.remove(handle) }
-        return handle
-    }
+    fun launch(block: suspend (PresetDiscoveryGitClient) -> Unit): BranchLoadHandle =
+        launchInternal(block)
 
     /**
      * Runs one read-only discovery query in the background and delivers its result
@@ -99,7 +80,25 @@ internal class BranchLoadCoordinator(
     fun <T> discover(
         block: (PresetDiscoveryGitClient) -> T,
         onResult: (Result<T>) -> Unit,
-    ): BranchLoadHandle {
+    ): BranchLoadHandle = launchInternal { operation ->
+        try {
+            val value = block(operation)
+            if (!closed.get()) onResult(Result.success(value))
+        } catch (error: CancellationException) {
+            // A cancelled discovery is normal coroutine cancellation, not a
+            // query failure: deliver nothing and unwind (mirrors launch()).
+            throw error
+        } catch (error: Throwable) {
+            if (!closed.get()) onResult(Result.failure(error))
+        }
+    }
+
+    /**
+     * Runs one discovery under the shared concurrency limit, attached to a fresh
+     * Git operation session that is cancelled when the Tool Window closes. The block
+     * executes on the IO dispatcher; a closed coordinator skips execution entirely.
+     */
+    private fun launchInternal(block: suspend (PresetDiscoveryGitClient) -> Unit): BranchLoadHandle {
         val state = BranchLoadState()
         val job = scope.launch {
             permits.withPermit {
@@ -108,14 +107,7 @@ internal class BranchLoadCoordinator(
                 state.attach(operation)
                 try {
                     ensureActive()
-                    val value = withContext(Dispatchers.IO) { block(operation) }
-                    if (!closed.get()) onResult(Result.success(value))
-                } catch (error: CancellationException) {
-                    // A cancelled discovery is normal coroutine cancellation, not a
-                    // query failure: deliver nothing and unwind (mirrors launch()).
-                    throw error
-                } catch (error: Throwable) {
-                    if (!closed.get()) onResult(Result.failure(error))
+                    withContext(Dispatchers.IO) { block(operation) }
                 } finally {
                     state.detach(operation)
                     operation.close()

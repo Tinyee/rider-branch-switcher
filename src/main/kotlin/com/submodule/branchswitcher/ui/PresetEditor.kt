@@ -203,26 +203,35 @@ internal class PresetEditor(
         }
     }
 
-    @Suppress("TooGenericExceptionCaught") // persistence callbacks may expose unrelated IO and serialization failures
     private fun saveChanges() {
-        if (persistenceInProgress) return
         val editedPreset = buildEditedPreset()
+        persistAndFinalize(editedPreset, "save failed") {
+            savedPreset = editedPreset
+            submoduleManager.removeDeletedRows()
+            body.revalidate()
+            body.repaint()
+        }
+    }
+
+    /**
+     * Persists [preset] through the shared save callback, guarding re-entry and
+     * clearing the in-progress flag on both success and failure. [onSaved] runs on
+     * the UI thread when the save succeeded.
+     */
+    @Suppress("TooGenericExceptionCaught") // persistence callbacks may expose unrelated IO and serialization failures
+    private fun persistAndFinalize(preset: Preset, failureContext: String, onSaved: () -> Unit) {
+        if (persistenceInProgress) return
         persistenceInProgress = true
         updateUnsavedState()
         try {
-            onSave(editedPreset) { saved ->
-                if (saved) {
-                    savedPreset = editedPreset
-                    submoduleManager.removeDeletedRows()
-                    body.revalidate()
-                    body.repaint()
-                }
+            onSave(preset) { saved ->
+                if (saved) onSaved()
                 persistenceInProgress = false
                 updateUnsavedState()
             }
         } catch (e: Exception) {
             persistenceInProgress = false
-            log.logFailure("save failed", e)
+            log.logFailure(failureContext, e)
             updateUnsavedState()
         }
     }
@@ -440,19 +449,7 @@ internal class PresetEditor(
             }
             is PresetRenameDecision.Rename -> decision.preset
         }
-        persistenceInProgress = true
-        updateUnsavedState()
-        try {
-            onSave(renamed) { saved ->
-                if (saved) updatePresetName(renamed.name)
-                persistenceInProgress = false
-                updateUnsavedState()
-            }
-        } catch (e: Exception) {
-            persistenceInProgress = false
-            log.logFailure("rename failed", e)
-            updateUnsavedState()
-        }
+        persistAndFinalize(renamed, "rename failed") { updatePresetName(renamed.name) }
     }
 
     private fun deriveBranch() {
