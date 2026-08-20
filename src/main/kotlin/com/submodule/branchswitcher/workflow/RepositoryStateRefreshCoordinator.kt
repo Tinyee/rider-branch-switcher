@@ -2,6 +2,7 @@ package com.submodule.branchswitcher.workflow
 
 import com.submodule.branchswitcher.git.GitOperationSession
 import com.submodule.branchswitcher.log.AppLogger
+import com.submodule.branchswitcher.operation.SessionCancelGuard
 import com.submodule.branchswitcher.log.logFailure
 import com.submodule.branchswitcher.log.newOperationContext
 import com.submodule.branchswitcher.log.withContext
@@ -18,7 +19,6 @@ import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import java.nio.file.Path
-import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 
 /** Owns one cancellable repository-state read and suppresses superseded UI deliveries. */
@@ -119,27 +119,20 @@ class RepositoryStateRefreshCoordinator(
     }
 
     private class RefreshState {
-        private val cancelled = AtomicBoolean(false)
-        private val operation = AtomicReference<GitOperationSession?>()
+        private val guard = SessionCancelGuard()
         private val job = AtomicReference<Job?>()
 
-        fun attach(candidate: GitOperationSession) {
-            operation.set(candidate)
-            if (cancelled.get()) candidate.cancel()
-        }
+        fun attach(candidate: GitOperationSession) = guard.attach(candidate)
+
+        fun detach(candidate: GitOperationSession) = guard.detach(candidate)
 
         fun attach(candidate: Job) {
             job.set(candidate)
-            if (cancelled.get()) candidate.cancel()
-        }
-
-        fun detach(candidate: GitOperationSession) {
-            operation.compareAndSet(candidate, null)
+            if (guard.isCancelled()) candidate.cancel()
         }
 
         fun cancel() {
-            cancelled.set(true)
-            operation.get()?.cancel()
+            guard.cancel()
             job.get()?.cancel()
         }
     }

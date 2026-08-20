@@ -3,6 +3,7 @@ package com.submodule.branchswitcher.ui
 import com.submodule.branchswitcher.git.GitOperationSession
 import com.submodule.branchswitcher.git.impl.MAX_CONCURRENT_GIT_PROCESSES
 import com.submodule.branchswitcher.git.PresetDiscoveryGitClient
+import com.submodule.branchswitcher.operation.SessionCancelGuard
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -14,7 +15,6 @@ import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.atomic.AtomicBoolean
-import java.util.concurrent.atomic.AtomicReference
 
 /** Cancels both the coroutine and the Git process owned by one branch discovery. */
 internal class BranchLoadHandle(
@@ -30,25 +30,6 @@ internal class BranchLoadHandle(
 
     fun invokeOnCompletion(handler: (Throwable?) -> Unit) {
         job.invokeOnCompletion(handler)
-    }
-}
-
-private class BranchLoadState {
-    private val cancelled = AtomicBoolean(false)
-    private val operation = AtomicReference<GitOperationSession?>()
-
-    fun attach(candidate: GitOperationSession) {
-        operation.set(candidate)
-        if (cancelled.get()) candidate.cancel()
-    }
-
-    fun detach(candidate: GitOperationSession) {
-        operation.compareAndSet(candidate, null)
-    }
-
-    fun cancel() {
-        cancelled.set(true)
-        operation.get()?.cancel()
     }
 }
 
@@ -99,7 +80,7 @@ internal class BranchLoadCoordinator(
      * executes on the IO dispatcher; a closed coordinator skips execution entirely.
      */
     private fun launchInternal(block: suspend (PresetDiscoveryGitClient) -> Unit): BranchLoadHandle {
-        val state = BranchLoadState()
+        val state = SessionCancelGuard()
         val job = scope.launch {
             permits.withPermit {
                 if (closed.get()) return@withPermit
