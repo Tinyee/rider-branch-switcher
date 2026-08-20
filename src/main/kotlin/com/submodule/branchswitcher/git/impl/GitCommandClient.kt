@@ -63,9 +63,7 @@ internal class GitCommandClient(
         if (!workDir.isDirectory) return false
         val result = run(workDir, "rev-parse", "--show-toplevel")
         if (!result.ok) {
-            if (File(workDir, ".git").exists() || result.failureKind != GitFailureKind.GIT_FAILED) {
-                throw GitQueryException(result)
-            }
+            if (!isNotGitRepoResult(workDir, result)) throw GitQueryException(result)
             return false
         }
         if (result.stdout.isBlank()) throw GitQueryException(result)
@@ -78,9 +76,7 @@ internal class GitCommandClient(
         if (!workDir.isDirectory) return null
         val result = run(workDir, "rev-parse", "--absolute-git-dir", "--show-superproject-working-tree")
         if (!result.ok) {
-            if (File(workDir, ".git").exists() || result.failureKind != GitFailureKind.GIT_FAILED) {
-                throw GitQueryException(result)
-            }
+            if (!isNotGitRepoResult(workDir, result)) throw GitQueryException(result)
             return null
         }
         val lines = result.stdout.lineSequence().map(String::trim).filter(String::isNotEmpty).toList()
@@ -137,6 +133,14 @@ internal class GitCommandClient(
             ?: File(workDir, path)
         return lock.path.takeIf { it.isNotEmpty() && lock.exists() }
     }
+
+    /**
+     * True when a failed `rev-parse` is the normal "not a git repository" negative rather
+     * than a genuine query failure. A repository with a `.git` marker, or any failure kind
+     * other than a plain git failure, must surface as an exception.
+     */
+    private fun isNotGitRepoResult(workDir: File, result: GitResult): Boolean =
+        result.failureKind == GitFailureKind.GIT_FAILED && !File(workDir, ".git").exists()
 
     private fun directGitDirectory(workDir: File): File? {
         val dotGit = File(workDir, ".git")
@@ -377,11 +381,18 @@ internal class GitCommandClient(
         val url: String?,
     )
 
-    override fun stashTopOid(workDir: File): String? {
-        val result = run(workDir, "rev-parse", "--verify", "refs/stash")
+    /**
+     * Reads a git revision that may legitimately not exist (an empty stash ref, or HEAD
+     * in a freshly initialized repository). A plain git failure is the normal negative
+     * and maps to null; any other failure kind is a genuine query failure.
+     */
+    private fun revParseOptional(workDir: File, vararg args: String): String? {
+        val result = run(workDir, "rev-parse", *args)
         if (!result.ok && result.failureKind != GitFailureKind.GIT_FAILED) throw GitQueryException(result)
         return if (result.ok) result.stdout.trim().ifEmpty { null } else null
     }
+
+    override fun stashTopOid(workDir: File): String? = revParseOptional(workDir, "--verify", "refs/stash")
 
     override fun stashOidByMessage(workDir: File, messagePrefix: String): String? {
         // %gs is the stash reflog subject ("On <branch>: <message>"), so matching is
@@ -411,11 +422,7 @@ internal class GitCommandClient(
     override fun deleteBranch(workDir: File, branch: String): GitResult =
         run(workDir, "branch", "-d", branch)
 
-    override fun revParseHead(workDir: File): String? {
-        val result = run(workDir, "rev-parse", "HEAD")
-        if (!result.ok && result.failureKind != GitFailureKind.GIT_FAILED) throw GitQueryException(result)
-        return if (result.ok) result.stdout.trim().ifEmpty { null } else null
-    }
+    override fun revParseHead(workDir: File): String? = revParseOptional(workDir, "HEAD")
 
     override fun headAndBranch(workDir: File): HeadAndBranch? {
         // `git status --porcelain=v2 --branch --untracked-files=no` reports both the
@@ -431,17 +438,8 @@ internal class GitCommandClient(
             "--untracked-files=no",
         )
         if (!result.ok) throw GitQueryException(result)
-        var sha: String? = null
-        var branch: String? = null
-        result.stdout.lineSequence().forEach { line ->
-            when {
-                line.startsWith("# branch.oid") ->
-                    sha = line.removePrefix("# branch.oid").trim().takeUnless { it == "(initial)" }
-                line.startsWith("# branch.head") ->
-                    branch = line.removePrefix("# branch.head").trim().takeUnless { it == "(detached)" }
-            }
-        }
-        return HeadAndBranch(sha, branch)
+        val inspection = parsePorcelainV2Status(result.stdout)
+        return HeadAndBranch(inspection.head, inspection.currentBranch)
     }
 
     override fun listAllBranches(workDir: File): List<String> {
