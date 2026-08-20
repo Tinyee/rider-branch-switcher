@@ -1,6 +1,6 @@
 package com.submodule.branchswitcher.git
 
-import com.submodule.branchswitcher.EnvironmentFailure
+import com.submodule.branchswitcher.log.EnvironmentFailure
 import com.submodule.branchswitcher.log.sanitizeDiagnosticText
 
 /** Result of a git CLI command. [ok] is true when exitCode == 0. */

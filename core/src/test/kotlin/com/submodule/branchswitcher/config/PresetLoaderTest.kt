@@ -1,4 +1,4 @@
-package com.submodule.branchswitcher
+package com.submodule.branchswitcher.config
 
 import com.submodule.branchswitcher.model.Preset
 import com.submodule.branchswitcher.model.PresetFile

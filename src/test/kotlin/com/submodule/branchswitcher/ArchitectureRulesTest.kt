@@ -7,7 +7,6 @@ import com.tngtech.archunit.core.importer.Location
 import com.tngtech.archunit.lang.ArchRule
 import com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.nio.file.Path
 
@@ -43,14 +42,6 @@ class ArchitectureRulesTest {
         )
 
         /**
-         * Plugin-only classes in the mixed root package `com.submodule.branchswitcher`
-         * (core classes like EnvironmentFailure and PresetLoader live there too, so the
-         * package itself cannot be forbidden). Derived from the compiled classpath so a
-         * new plugin class in the root package is covered automatically.
-         */
-        private val PLUGIN_ROOT_CLASSES = pluginClassesRegex("com.submodule.branchswitcher")
-
-        /**
          * Every package the JDK's `java.desktop` module exports. Core must stay off all
          * of them: unlike `com.intellij.*`, `java.desktop` sits on core's compile
          * classpath (`jvmToolchain` compiles against the full JDK), so a desktop import
@@ -66,18 +57,6 @@ class ArchitectureRulesTest {
             "javax..sound..",
             "javax..swing..",
         )
-
-        /** Classes in [pkg] provided by the plugin module only (present in MAIN, absent from CORE). */
-        private fun pluginClassesIn(pkg: String): Set<String> {
-            fun inPackage(classes: JavaClasses) = classes.that(resideInAPackage(pkg)).map { it.name }.toSet()
-            return inPackage(MAIN_CLASSES) - inPackage(CORE_CLASSES)
-        }
-
-        /** `^pkg\.(?:name1|name2|...)$` over the plugin classes in [pkg], for ArchUnit FQN matching. */
-        private fun pluginClassesRegex(pkg: String): String {
-            val escaped = pluginClassesIn(pkg).sorted().joinToString("|") { Regex.escape(it.substringAfterLast('.')) }
-            return "^${pkg.replace(".", "\\.")}\\.(?:$escaped)$"
-        }
     }
 
     private fun check(rule: ArchRule) = rule.check(MAIN_CLASSES)
@@ -118,8 +97,10 @@ class ArchitectureRulesTest {
         check(
             noClasses()
                 .that().resideInAPackage("..workflow..")
-                .should().dependOnClassesThat().resideInAnyPackage("com.submodule.branchswitcher.git.impl..")
-                .orShould().dependOnClassesThat().haveNameMatching("$PLUGIN_ROOT_CLASSES")
+                .should().dependOnClassesThat().resideInAnyPackage(
+                    "com.submodule.branchswitcher.git.impl..",
+                    "com.submodule.branchswitcher",
+                )
         )
     }
 
@@ -136,13 +117,14 @@ class ArchitectureRulesTest {
                 .that().resideInAPackage("com.submodule.branchswitcher..")
                 .should().dependOnClassesThat().resideInAnyPackage(
                     "com.intellij..",
+                    "com.submodule.branchswitcher",
                     "com.submodule.branchswitcher.ui..",
                     "com.submodule.branchswitcher.service..",
                     "com.submodule.branchswitcher.platform..",
                     "com.submodule.branchswitcher.action..",
+                    "com.submodule.branchswitcher.workflow..",
                     "com.submodule.branchswitcher.git.impl..",
                 )
-                .orShould().dependOnClassesThat().haveNameMatching("$PLUGIN_ROOT_CLASSES")
         )
     }
 
@@ -203,24 +185,6 @@ class ArchitectureRulesTest {
             noClasses()
                 .should().callMethod(Runtime::class.java, "exec")
         )
-    }
-
-    @Test
-    fun `derived plugin class whitelist for the root package is non-empty`() {
-        assertTrue(
-            "root package must contain plugin classes",
-            pluginClassesIn("com.submodule.branchswitcher").isNotEmpty(),
-        )
-    }
-
-    @Test
-    fun `derived whitelist includes known root plugin classes and excludes core classes`() {
-        val rootClasses = pluginClassesIn("com.submodule.branchswitcher")
-        assertTrue(rootClasses.contains("com.submodule.branchswitcher.TaskBridge"))
-        assertFalse(rootClasses.contains("com.submodule.branchswitcher.PresetLoader"))
-        // resideInAPackage must be exact-package matching: a subpackage class must not
-        // leak into the root package's plugin set, or the whitelists would over-match.
-        assertFalse(rootClasses.contains("com.submodule.branchswitcher.git.GitCommandClient"))
     }
 
     @Test

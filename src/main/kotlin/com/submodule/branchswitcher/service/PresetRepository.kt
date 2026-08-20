@@ -1,8 +1,8 @@
 package com.submodule.branchswitcher.service
 
 import com.intellij.openapi.project.Project
-import com.submodule.branchswitcher.PresetLoadResult
-import com.submodule.branchswitcher.PresetLoader
+import com.submodule.branchswitcher.config.PresetLoadResult
+import com.submodule.branchswitcher.config.PresetLoader
 import com.submodule.branchswitcher.model.Preset
 import com.submodule.branchswitcher.model.PresetFile
 import kotlinx.coroutines.Dispatchers

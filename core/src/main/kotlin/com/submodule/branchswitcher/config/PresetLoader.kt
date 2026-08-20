@@ -1,4 +1,4 @@
-package com.submodule.branchswitcher
+package com.submodule.branchswitcher.config
 
 import com.google.gson.Gson
 import com.google.gson.GsonBuilder

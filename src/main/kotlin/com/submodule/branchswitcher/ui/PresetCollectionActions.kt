@@ -5,7 +5,7 @@ import com.intellij.openapi.ui.InputValidator
 import com.intellij.openapi.ui.Messages
 import com.submodule.branchswitcher.Bundle
 import com.submodule.branchswitcher.Notifier
-import com.submodule.branchswitcher.PresetLoader
+import com.submodule.branchswitcher.config.PresetLoader
 import com.submodule.branchswitcher.showPresetDropWarning
 import com.submodule.branchswitcher.model.Preset
 import com.submodule.branchswitcher.model.isValidBranchName
