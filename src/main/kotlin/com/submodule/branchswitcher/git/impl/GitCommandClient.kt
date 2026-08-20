@@ -248,6 +248,23 @@ internal class GitCommandClient(
         }
     }
 
+    override fun untrackedFiles(workDir: File): List<String> {
+        val result = run(workDir, "--no-optional-locks", "ls-files", "--others", "--exclude-standard")
+        if (!result.ok) throw GitQueryException(result)
+        return result.stdout.lineSequence().map(String::trim).filter(String::isNotEmpty).toList()
+    }
+
+    override fun targetBranchMatches(workDir: File, branch: String, paths: List<String>): List<String> {
+        if (paths.isEmpty()) return emptyList()
+        // Match BranchCheckout's selection: a local branch wins, else the remote-tracking ref.
+        val ref = if (localBranchExists(workDir, branch)) branch else "${remoteName(workDir)}/$branch"
+        return paths.chunked(PATHSPEC_CHUNK_SIZE).flatMap { chunk ->
+            val result = run(workDir, listOf("ls-tree", "-r", "--name-only", ref, "--") + chunk)
+            if (!result.ok) throw GitQueryException(result)
+            result.stdout.lineSequence().map(String::trim).filter(String::isNotEmpty).toList()
+        }
+    }
+
     override fun checkoutExisting(workDir: File, branch: String): GitResult =
         run(workDir, "checkout", branch)
 
@@ -467,6 +484,8 @@ internal class GitCommandClient(
     }
 
     companion object {
+        /** Bounds `ls-tree` pathspec lists so exec arg size stays well under ARG_MAX. */
+        private const val PATHSPEC_CHUNK_SIZE = 400
         private const val MAX_SUBMODULE_DEPTH = 10
         private const val SUBMODULE_ENTRY_KEY_REGEX = "^submodule\\..*\\.(path|url)$"
         private const val SUBMODULE_KEY_PREFIX = "submodule."

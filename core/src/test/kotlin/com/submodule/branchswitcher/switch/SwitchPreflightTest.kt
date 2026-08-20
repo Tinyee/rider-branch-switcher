@@ -11,6 +11,7 @@ import org.junit.Test
 import java.io.File
 import java.nio.file.Files
 import java.nio.file.Path
+import java.util.concurrent.atomic.AtomicInteger
 
 class SwitchPreflightTest {
 
@@ -187,6 +188,77 @@ class SwitchPreflightTest {
         }
         val preflight = SwitchPreflight(cancelGit)
         preflight.probe(projectRoot, Preset("test", "main"))
+    }
+
+    @Test
+    fun `probe computes untracked collisions for a repo being switched`() {
+        val collisionGit = object : GitClient by fakeGit {
+            override fun untrackedFiles(workDir: File): List<String> = listOf("Assets/Foo.meta", "src/dirty.kt")
+            override fun targetBranchMatches(workDir: File, branch: String, paths: List<String>): List<String> =
+                listOf("Assets/Foo.meta") // only the meta is tracked on the target branch
+        }
+        val rows = SwitchPreflight(collisionGit).probe(projectRoot, Preset("test", "dev"))
+        assertEquals(setOf("Assets/Foo.meta"), rows.single().untrackedCollisions)
+    }
+
+    @Test
+    fun `no untracked files skips the target-branch query`() {
+        val matches = AtomicInteger(0)
+        val collisionGit = object : GitClient by fakeGit {
+            override fun untrackedFiles(workDir: File): List<String> = emptyList()
+            override fun targetBranchMatches(workDir: File, branch: String, paths: List<String>): List<String> {
+                matches.incrementAndGet()
+                return emptyList()
+            }
+        }
+        val rows = SwitchPreflight(collisionGit).probe(projectRoot, Preset("test", "dev"))
+        assertEquals(emptySet<String>(), rows.single().untrackedCollisions)
+        assertEquals(0, matches.get())
+    }
+
+    @Test
+    fun `already-on-target repo does not run the collision query`() {
+        val matches = AtomicInteger(0)
+        val collisionGit = object : GitClient by fakeGit {
+            override fun untrackedFiles(workDir: File): List<String> = listOf("Assets/Foo.meta")
+            override fun targetBranchMatches(workDir: File, branch: String, paths: List<String>): List<String> {
+                matches.incrementAndGet()
+                return emptyList()
+            }
+        }
+        // target main == current main → needsSwitch false
+        val rows = SwitchPreflight(collisionGit).probe(projectRoot, Preset("test", "main"))
+        assertEquals(emptySet<String>(), rows.single().untrackedCollisions)
+        assertEquals(0, matches.get())
+    }
+
+    @Test
+    fun `missing branch does not run the collision query`() {
+        val matches = AtomicInteger(0)
+        val collisionGit = object : GitClient by fakeGit {
+            override fun localBranchExists(workDir: File, branch: String): Boolean = false
+            override fun remoteBranchExists(workDir: File, branch: String): Boolean = false
+            override fun untrackedFiles(workDir: File): List<String> = listOf("Assets/Foo.meta")
+            override fun targetBranchMatches(workDir: File, branch: String, paths: List<String>): List<String> {
+                matches.incrementAndGet()
+                return emptyList()
+            }
+        }
+        val rows = SwitchPreflight(collisionGit).probe(projectRoot, Preset("test", "no-branch"))
+        assertEquals(emptySet<String>(), rows.single().untrackedCollisions)
+        assertEquals(0, matches.get())
+    }
+
+    @Test
+    fun `collision query failure degrades the row to fail-closed`() {
+        val failingGit = object : GitClient by fakeGit {
+            override fun untrackedFiles(workDir: File): List<String> = listOf("Assets/Foo.meta")
+            override fun targetBranchMatches(workDir: File, branch: String, paths: List<String>): List<String> =
+                throw java.io.IOException("ls-tree failed")
+        }
+        val rows = SwitchPreflight(failingGit).probe(projectRoot, Preset("test", "dev"))
+        assertEquals(-1, rows.single().dirtyCount)
+        assertTrue(rows.single().probeError!!.startsWith("IOException: ls-tree failed"))
     }
 
     // Simulates IntelliJ ProcessCanceledException without importing the type

@@ -5,6 +5,7 @@ import com.submodule.branchswitcher.git.SwitchPreflightBatchGitClient
 import com.submodule.branchswitcher.model.PreflightRow
 import com.submodule.branchswitcher.model.Preset
 import com.submodule.branchswitcher.model.RepoTarget
+import java.io.File
 import java.nio.file.Path
 
 /**
@@ -51,7 +52,7 @@ class SwitchPreflight(
             if (inspection?.isGitRepository == false || (inspection == null && !git.isGitRepo(dir))) {
                 return notGitRepoRow(label, target)
             }
-            PreflightRow(
+            val row = PreflightRow(
                 label = label,
                 path = target.path,
                 target = target.branch,
@@ -63,6 +64,14 @@ class SwitchPreflight(
                 hasRemote = inspection?.remoteBranches?.contains(target.branch)
                     ?: git.remoteBranchExists(dir, target.branch),
             )
+            // Only a repo being switched can collide, and a missing branch never reaches a
+            // checkout, so both gates keep the extra queries off the common (clean/on-target)
+            // preflight path.
+            if (row.needsSwitch && (row.hasLocal || row.hasRemote)) {
+                row.copy(untrackedCollisions = computeCollisions(dir, target.branch))
+            } else {
+                row
+            }
         } catch (e: Exception) {
             classifier.rethrowIfCancellation(e)
             onProbeFailure(target.path, e)
@@ -71,6 +80,13 @@ class SwitchPreflight(
             // All flags default to blocking/unknown so the user sees this repo as a warning.
             probeErrorRow(label, target, e)
         }
+    }
+
+    /** Untracked ∩ target-branch-tracked = files git checkout would refuse to overwrite. */
+    private fun computeCollisions(dir: File, branch: String): Set<String> {
+        val untracked = git.untrackedFiles(dir)
+        if (untracked.isEmpty()) return emptySet()
+        return git.targetBranchMatches(dir, branch, untracked).toSet()
     }
 
     /** Row for a target that is missing or is not a git repository: absent, every state flag unknown. */

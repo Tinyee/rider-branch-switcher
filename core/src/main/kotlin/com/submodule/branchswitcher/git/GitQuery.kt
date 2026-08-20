@@ -72,6 +72,19 @@ interface SwitchPreflightGitClient : GitRepositoryQuery {
     fun dirtyFileCount(workDir: File): Int
     fun localBranchExists(workDir: File, branch: String): Boolean
     fun remoteBranchExists(workDir: File, branch: String): Boolean
+
+    /**
+     * Repo-relative untracked file paths via `git ls-files --others --exclude-standard`.
+     * The default reports none so clients without the capability skip collision detection.
+     */
+    fun untrackedFiles(workDir: File): List<String> = emptyList()
+
+    /**
+     * Returns which of [paths] exist as tracked files in the tree of [branch]
+     * (= the untracked-files that `git checkout` would refuse to overwrite).
+     * The implementation resolves the ref: local branch when it exists, else `<remote>/<branch>`.
+     */
+    fun targetBranchMatches(workDir: File, branch: String, paths: List<String>): List<String> = emptyList()
 }
 
 /** Optional optimized capability; callers retain a compatible per-query fallback. */

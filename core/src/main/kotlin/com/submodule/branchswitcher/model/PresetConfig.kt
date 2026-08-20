@@ -112,6 +112,8 @@ data class PreflightRow(
     val hasRemote: Boolean,
     /** Non-null when an existing repository could not be fully inspected. */
     val probeError: String? = null,
+    /** Repo-relative untracked file paths that are tracked on the target branch (the checkout-collision set). */
+    val untrackedCollisions: Set<String> = emptySet(),
 ) {
     val isMain: Boolean get() = path == "."
     val needsSwitch: Boolean get() = exists && current != target
