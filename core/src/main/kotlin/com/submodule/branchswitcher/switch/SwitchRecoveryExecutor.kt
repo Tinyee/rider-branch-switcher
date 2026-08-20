@@ -6,36 +6,36 @@ import com.submodule.branchswitcher.log.logFailure
 import java.io.File
 import java.nio.file.Path
 
-data class RepositoryRecoveryAction(
+internal data class RepositoryRecoveryAction(
     val repositoryPath: String,
     val targetSha: String,
     val targetBranch: String?,
     val expectedRepositoryId: String?,
 )
 
-data class StashRecoveryAction(
+internal data class StashRecoveryAction(
     val repositoryPath: String,
     val message: String,
     val oid: String?,
 )
 
 /** Immutable description of every side effect a recovery attempt may perform. */
-data class SwitchRecoveryPlan(
+internal data class SwitchRecoveryPlan(
     val repositories: List<RepositoryRecoveryAction>,
     val stashes: List<StashRecoveryAction>,
     val retainedInitializedSubmodules: Set<String>,
     val issues: List<OperationIssue> = emptyList(),
 )
 
-enum class RecoveryActionStatus { RESTORED, ALREADY_RESTORED, FAILED }
+internal enum class RecoveryActionStatus { RESTORED, ALREADY_RESTORED, FAILED }
 
-data class RepositoryRecoveryOutcome(
+internal data class RepositoryRecoveryOutcome(
     val action: RepositoryRecoveryAction,
     val status: RecoveryActionStatus,
     val issue: OperationIssue? = null,
 )
 
-data class RecoveryExecutionResult(
+internal data class RecoveryExecutionResult(
     val outcomes: List<RepositoryRecoveryOutcome>,
     val planIssues: List<OperationIssue> = emptyList(),
 ) {
@@ -43,9 +43,14 @@ data class RecoveryExecutionResult(
     val ok: Boolean get() = issues.isEmpty()
 }
 
-data class SwitchRecoveryOutcome(
-    val plan: SwitchRecoveryPlan,
-    val rollback: RecoveryExecutionResult,
+/**
+ * Summary of one completed recovery attempt. The plan/rollback internals stay
+ * core-internal: callers only read the outcome summary ([ok], [issues], [rollbackOk])
+ * and the final stash-restore state, so a plain class (no value semantics needed).
+ */
+class SwitchRecoveryOutcome internal constructor(
+    internal val plan: SwitchRecoveryPlan,
+    internal val rollback: RecoveryExecutionResult,
     val stashRestore: StashRestoreResult,
 ) {
     val rollbackOk: Boolean get() = rollback.ok
@@ -61,7 +66,7 @@ class SwitchRecoveryExecutor(
     /** Polled between repository actions so a user cancel stops a long rollback. */
     private val cancelled: (() -> Boolean)? = null,
 ) {
-    fun plan(result: SwitchExecutionResult): SwitchRecoveryPlan {
+    internal fun plan(result: SwitchExecutionResult): SwitchRecoveryPlan {
         val checkpoint = result.checkpoint
         val planIssues = if (checkpoint == null) {
             listOf(recoveryIssue(".", OperationIssueCode.CHECKPOINT_UNAVAILABLE))
@@ -81,7 +86,7 @@ class SwitchRecoveryExecutor(
     }
 
     /** Retries the stash actions captured by [plan] and keeps failed entries in state. */
-    fun restoreTrackedStashes(
+    internal fun restoreTrackedStashes(
         plan: SwitchRecoveryPlan,
         state: SwitchState,
     ): StashRestoreResult = restoreTrackedStashes(
@@ -117,8 +122,16 @@ class SwitchRecoveryExecutor(
         return SwitchRecoveryOutcome(recoveryPlan, rollback, stashRestore)
     }
 
+    /**
+     * Builds the recovery plan for [result] and retries only the stash-restore step.
+     * Used by the caller to recover WIP after an interrupted restore; the plan model
+     * stays core-internal behind this single entry point.
+     */
+    fun retryStashRestore(result: SwitchExecutionResult): StashRestoreResult =
+        restoreTrackedStashes(plan(result), result.state)
+
     /** Executes a previously inspected plan; each write is guarded by fresh repository checks. */
-    fun execute(plan: SwitchRecoveryPlan): RecoveryExecutionResult {
+    internal fun execute(plan: SwitchRecoveryPlan): RecoveryExecutionResult {
         plan.retainedInitializedSubmodules.forEach { path ->
             // Retention is intentional (the switch may have initialized a submodule the
             // rolled-back superproject no longer registers). Warn with the cleanup path

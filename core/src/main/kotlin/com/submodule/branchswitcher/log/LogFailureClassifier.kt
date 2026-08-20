@@ -21,7 +21,7 @@ fun AppLogger.logFailure(message: String, error: Throwable) {
  * I/O / permission exceptions anywhere in the cause chain, guarding against cycles by
  * reference so a self-referencing cause cannot loop forever.
  */
-fun isEnvironmentFailure(error: Throwable): Boolean {
+private fun isEnvironmentFailure(error: Throwable): Boolean {
     val visited = java.util.IdentityHashMap<Throwable, Boolean>()
     var cause: Throwable? = error
     while (cause != null && !visited.containsKey(cause)) {

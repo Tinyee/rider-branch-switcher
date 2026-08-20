@@ -268,7 +268,7 @@ class SwitchRunner(
                 operation,
                 cancelled = { indicator.isCanceled },
             )
-            executor.restoreTrackedStashes(executor.plan(execution), execution.state)
+            executor.retryStashRestore(execution)
         }
         return when (retryResult) {
             is GitOperationResult.Completed -> {
