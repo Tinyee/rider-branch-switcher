@@ -94,12 +94,18 @@ object Notifier {
  * Warns that preset entries were skipped as invalid on load. Those entries will be
  * removed on the next save; the repository also keeps a `.bak` recovery copy, so this
  * is user education rather than the only line of defense.
+ *
+ * [onReload] offers a "reload presets" balloon action when provided (the preset
+ * collection panel reloads its list in place); a transient flow that immediately shows
+ * the preset chooser warns without the action.
  */
-internal fun showPresetDropWarning(project: Project?, droppedNames: List<String>) {
+internal fun showPresetDropWarning(project: Project?, droppedNames: List<String>, onReload: (() -> Unit)? = null) {
     if (droppedNames.isEmpty()) return
-    Notifier.warn(
-        project,
-        Bundle.msg("preset.drop.title"),
-        Bundle.msg("preset.drop.msg", droppedNames.size, droppedNames.joinToString(", ")),
-    )
+    val title = Bundle.msg("preset.drop.title")
+    val content = Bundle.msg("preset.drop.msg", droppedNames.size, droppedNames.joinToString(", "))
+    if (onReload != null) {
+        Notifier.warnAction(project, title, content, Bundle.msg("action.reload"), onReload)
+    } else {
+        Notifier.warn(project, title, content)
+    }
 }

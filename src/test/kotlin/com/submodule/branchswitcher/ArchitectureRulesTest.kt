@@ -58,6 +58,23 @@ class ArchitectureRulesTest {
          */
         private val PLUGIN_ROOT_CLASSES = pluginClassesRegex("com.submodule.branchswitcher")
 
+        /**
+         * Every package the JDK's `java.desktop` module exports. Core must stay off all
+         * of them: unlike `com.intellij.*`, `java.desktop` sits on core's compile
+         * classpath (`jvmToolchain` compiles against the full JDK), so a desktop import
+         * would compile silently — this bytecode rule is the only gate.
+         */
+        private val DESKTOP_UI_PACKAGES = arrayOf(
+            "java..applet..",
+            "java..awt..",
+            "java..beans..",
+            "javax..accessibility..",
+            "javax..imageio..",
+            "javax..print..",
+            "javax..sound..",
+            "javax..swing..",
+        )
+
         /** Classes in [pkg] provided by the plugin module only (present in MAIN, absent from CORE). */
         private fun pluginClassesIn(pkg: String): Set<String> {
             fun inPackage(classes: JavaClasses) = classes.that(resideInAPackage(pkg)).map { it.name }.toSet()
@@ -140,19 +157,17 @@ class ArchitectureRulesTest {
     }
 
     /**
-     * Core must stay free of desktop UI. Unlike `com.intellij.*` (a Maven dependency
-     * the module boundary excludes), `java.awt`/`javax.swing` live in the JDK's
-     * `java.desktop` module, which `jvmToolchain(21)` puts on every compile classpath,
-     * so a Swing import in core would compile silently. The quickCheck text rule that
-     * used to trip on it was removed when the text checks were consolidated, and this
-     * bytecode rule is what keeps the pure-JVM contract enforceable.
+     * Core must stay free of desktop UI: every `java.desktop` module package is banned
+     * (see [DESKTOP_UI_PACKAGES]). The quickCheck text rule that used to trip on these
+     * was removed when the text checks were consolidated, and this bytecode rule is what
+     * keeps the pure-JVM contract enforceable.
      */
     @Test
     fun `core does not depend on desktop UI`() {
         checkCore(
             noClasses()
                 .that().resideInAPackage("com.submodule.branchswitcher..")
-                .should().dependOnClassesThat().resideInAnyPackage("java..awt..", "javax..swing..")
+                .should().dependOnClassesThat().resideInAnyPackage(*DESKTOP_UI_PACKAGES)
         )
     }
 

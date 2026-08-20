@@ -6,6 +6,7 @@ import com.intellij.openapi.ui.Messages
 import com.submodule.branchswitcher.Bundle
 import com.submodule.branchswitcher.Notifier
 import com.submodule.branchswitcher.PresetLoader
+import com.submodule.branchswitcher.showPresetDropWarning
 import com.submodule.branchswitcher.model.Preset
 import com.submodule.branchswitcher.model.isValidBranchName
 import com.submodule.branchswitcher.log.AppLogger
@@ -80,17 +81,7 @@ internal class PresetCollectionActions(
                     log.debug("loaded ${outcome.presets.presets.size} preset(s) from ${outcome.file}")
                     host.refreshList()
                     host.notifyStateChanged()
-                    if (outcome.droppedNames.isNotEmpty()) {
-                        // Invalid entries are skipped so the file still loads, but the next
-                        // save removes them permanently: tell the user and offer a reload.
-                        Notifier.warnAction(
-                            project,
-                            Bundle.msg("preset.drop.title"),
-                            Bundle.msg("preset.drop.msg", outcome.droppedNames.size, outcome.droppedNames.joinToString(", ")),
-                            Bundle.msg("action.reload"),
-                            ::reload,
-                        )
-                    }
+                    showPresetDropWarning(project, outcome.droppedNames, onReload = ::reload)
                 }.onFailure { error ->
                     log.logFailure("preset load failed", error)
                     Notifier.error(
