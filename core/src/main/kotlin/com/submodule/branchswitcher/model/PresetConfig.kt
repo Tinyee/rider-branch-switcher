@@ -80,6 +80,8 @@ data class SwitchOptions(
     val pull: Boolean = true,
     val fetchFirst: Boolean = true,
     val confirmBeforeInit: Boolean = false,
+    /** When true, untracked .meta collisions are discarded automatically without confirmation. */
+    val autoDiscardMeta: Boolean = false,
 )
 
 /**

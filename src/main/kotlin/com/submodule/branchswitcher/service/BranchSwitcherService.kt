@@ -68,6 +68,7 @@ class BranchSwitcherService(
         var pullAfterSwitch: Boolean = true,
         var timeoutSeconds: Int = 60,
         var confirmBeforeInit: Boolean = false,
+        var autoDiscardMeta: Boolean = false,
         var history: MutableList<SwitchHistoryEntry> = mutableListOf(),
     )
 
@@ -112,6 +113,11 @@ class BranchSwitcherService(
     var confirmBeforeInit: Boolean
         get() = synchronized(stateLock) { options.confirmBeforeInit }
         set(value) { synchronized(stateLock) { options.confirmBeforeInit = value } }
+
+    /** When true, untracked .meta collisions are discarded automatically without confirmation. */
+    var autoDiscardMeta: Boolean
+        get() = synchronized(stateLock) { options.autoDiscardMeta }
+        set(value) { synchronized(stateLock) { options.autoDiscardMeta = value } }
 
     /** Cached [GitOps] instance, recreated only when timeout changes. */
     private var _gitClient: GitClient? = null
@@ -169,6 +175,7 @@ class BranchSwitcherService(
                 pull = options.pullAfterSwitch,
                 fetchFirst = options.fetchFirst,
                 confirmBeforeInit = options.confirmBeforeInit,
+                autoDiscardMeta = options.autoDiscardMeta,
             )
         }
         return ResolvedSwitchRequest.resolve(preset, switchOptions)
