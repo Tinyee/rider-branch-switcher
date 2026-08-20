@@ -16,6 +16,7 @@ import com.intellij.util.ui.UIUtil
 import com.submodule.branchswitcher.BranchSwitchListener
 import com.submodule.branchswitcher.Bundle
 import com.submodule.branchswitcher.Notifier
+import com.submodule.branchswitcher.showPresetDropWarning
 import com.submodule.branchswitcher.log.AppLogger
 import com.submodule.branchswitcher.log.logFailure
 import com.submodule.branchswitcher.log.newOperationContext
@@ -50,6 +51,7 @@ class SwitchPresetAction : AnAction() {
         val service = project.service<BranchSwitcherService>()
         service.scope.launch {
             val loadResult = service.loadPresets()
+            loadResult.onSuccess { outcome -> showPresetDropWarning(project, outcome.droppedNames) }
             val presets = service.presets.toList()
             project.invokeLaterIfAlive {
                 choosePreset(project, service, loadResult, presets, dataContext)

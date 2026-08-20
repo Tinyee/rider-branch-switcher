@@ -7,6 +7,7 @@ import com.tngtech.archunit.core.importer.Location
 import com.tngtech.archunit.lang.ArchRule
 import com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.nio.file.Path
 
@@ -44,20 +45,30 @@ class ArchitectureRulesTest {
         /**
          * Plugin-implemented classes that live in the mixed `com.submodule.branchswitcher.git`
          * package (core interfaces share that package, so it cannot be forbidden wholesale).
-         * Top-level functions compile to `<File>Kt` classes. Kept in one place so the
-         * workflow-isolation and core-purity rules stay in sync.
+         * Derived from the compiled classpath rather than hand-maintained: every plugin
+         * class in the shared package is covered automatically, so adding a new
+         * implementation can never silently weaken the rules below.
          */
-        private const val PLUGIN_GIT_IMPLS =
-            "com\\.submodule\\.branchswitcher\\.git\\.(?:GitCommandClient|GitOps|GitOutputDrainer|" +
-                "GitProcessResources|GitProcessRunner|GitProcessShutdown|GitCommandClientKt|GitStatusParserKt)"
+        private val PLUGIN_GIT_IMPLS = pluginClassesRegex("com.submodule.branchswitcher.git")
 
         /**
          * Plugin-only classes in the mixed root package `com.submodule.branchswitcher`
          * (core classes like EnvironmentFailure and PresetLoader live there too, so the
-         * package itself cannot be forbidden).
+         * package itself cannot be forbidden). Derived like [PLUGIN_GIT_IMPLS].
          */
-        private const val PLUGIN_ROOT_CLASSES =
-            "com\\.submodule\\.branchswitcher\\.(?:TaskBridge|Bundle|Notifier|BranchSwitchListener)"
+        private val PLUGIN_ROOT_CLASSES = pluginClassesRegex("com.submodule.branchswitcher")
+
+        /** Classes in [pkg] provided by the plugin module only (present in MAIN, absent from CORE). */
+        private fun pluginClassesIn(pkg: String): Set<String> {
+            fun inPackage(classes: JavaClasses) = classes.that(resideInAPackage(pkg)).map { it.name }.toSet()
+            return inPackage(MAIN_CLASSES) - inPackage(CORE_CLASSES)
+        }
+
+        /** `^pkg\.(?:name1|name2|...)$` over the plugin classes in [pkg], for ArchUnit FQN matching. */
+        private fun pluginClassesRegex(pkg: String): String {
+            val escaped = pluginClassesIn(pkg).sorted().joinToString("|") { Regex.escape(it.substringAfterLast('.')) }
+            return "^${pkg.replace(".", "\\.")}\\.(?:$escaped)$"
+        }
     }
 
     private fun check(rule: ArchRule) = rule.check(MAIN_CLASSES)
@@ -170,6 +181,34 @@ class ArchitectureRulesTest {
             noClasses()
                 .should().callMethod(Runtime::class.java, "exec")
         )
+    }
+
+    @Test
+    fun `derived plugin class whitelists are non-empty`() {
+        assertTrue(
+            "git package must contain plugin classes",
+            pluginClassesIn("com.submodule.branchswitcher.git").isNotEmpty(),
+        )
+        assertTrue(
+            "root package must contain plugin classes",
+            pluginClassesIn("com.submodule.branchswitcher").isNotEmpty(),
+        )
+    }
+
+    @Test
+    fun `derived whitelist includes known plugin classes and excludes core classes`() {
+        val gitClasses = pluginClassesIn("com.submodule.branchswitcher.git")
+        assertTrue(gitClasses.contains("com.submodule.branchswitcher.git.GitProcessRunner"))
+        assertTrue(gitClasses.contains("com.submodule.branchswitcher.git.GitOutputDrainerKt"))
+        assertFalse(gitClasses.contains("com.submodule.branchswitcher.git.GitQueryKt"))
+        assertFalse(gitClasses.contains("com.submodule.branchswitcher.git.GitResult"))
+
+        val rootClasses = pluginClassesIn("com.submodule.branchswitcher")
+        assertTrue(rootClasses.contains("com.submodule.branchswitcher.TaskBridge"))
+        assertFalse(rootClasses.contains("com.submodule.branchswitcher.PresetLoader"))
+        // resideInAPackage must be exact-package matching: a subpackage class must not
+        // leak into the root package's plugin set, or the whitelists would over-match.
+        assertFalse(rootClasses.contains("com.submodule.branchswitcher.git.GitCommandClient"))
     }
 
     @Test

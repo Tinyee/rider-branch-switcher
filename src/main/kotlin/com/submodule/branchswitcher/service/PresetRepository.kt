@@ -9,6 +9,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import java.nio.file.Files
 import java.nio.file.Path
 
 /**
@@ -42,11 +43,15 @@ class PresetRepository internal constructor(
     @Volatile
     private var recordedDigest: ByteArray? = null
 
+    /** Load saw invalid entries that were dropped; the next save must back up the original first. */
+    private var dropBackupPending = false
+
     val presets: List<Preset> get() = presetFile.presets
 
-    suspend fun load(): Result<Pair<Path, PresetFile>> = access.withLock {
+    suspend fun load(): Result<PresetLoadOutcome> = access.withLock {
         synchronizedWithDisk = false
         recordedDigest = null
+        dropBackupPending = false
         val base = basePath()
             ?: return@withLock Result.failure(IllegalStateException("project base path is null"))
         withContext(Dispatchers.IO) { loader(base) }.onSuccess { loaded ->
@@ -55,6 +60,7 @@ class PresetRepository internal constructor(
             // The loader derives the digest from the same bytes it parsed, so the
             // recorded digest can never describe different content than presetFile.
             recordedDigest = loaded.digest
+            dropBackupPending = loaded.droppedNames.isNotEmpty()
             if (loaded.droppedNames.isNotEmpty()) {
                 LOG.warn(
                     "preset file $loaded.file: skipped ${loaded.droppedNames.size} invalid preset(s): " +
@@ -62,7 +68,7 @@ class PresetRepository internal constructor(
                 )
             }
             synchronizedWithDisk = true
-        }.map { it.file to it.presetFile }
+        }.map { PresetLoadOutcome(it.file, it.presetFile, it.droppedNames) }
     }
 
     suspend fun save(newPresets: List<Preset>) = access.withLock {
@@ -74,6 +80,12 @@ class PresetRepository internal constructor(
         }
         val currentDigest = withContext(Dispatchers.IO) { digester(file) }
         if (digestChanged(currentDigest, recordedDigest)) throw PresetFileChangedException(file)
+        // The load dropped invalid entries; the write below permanently removes them
+        // from the file, so preserve the original bytes once as a recovery copy.
+        if (dropBackupPending) {
+            withContext(Dispatchers.IO) { backupOriginal(file) }
+            dropBackupPending = false
+        }
         val updated = presetFile.copy(presets = newPresets)
         // The saver returns the digest of the exact bytes it wrote, so memory and disk
         // stay consistent even if a re-read of the file would fail after the write.
@@ -88,7 +100,30 @@ class PresetRepository internal constructor(
         else if (current == null || recorded == null) true
         else !current.contentEquals(recorded)
 
+    /**
+     * Best-effort copy of the pre-filtered file so entries dropped as invalid at load
+     * are recoverable after the next save rewrites the file without them. A backup
+     * failure must not block the user's save, so it only warns.
+     */
+    @Suppress("TooGenericExceptionCaught") // backup is best-effort; any IO failure only warns
+    private fun backupOriginal(file: Path) {
+        if (!Files.exists(file)) return
+        val backup = file.resolveSibling(file.fileName.toString() + ".bak")
+        try {
+            Files.copy(file, backup, java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+        } catch (e: Exception) {
+            LOG.warn("preset backup to $backup failed: ${e.message}", e)
+        }
+    }
+
     private companion object {
         private val LOG = com.intellij.openapi.diagnostic.Logger.getInstance("SubmoduleBranchSwitcher")
     }
 }
+
+/** Successful preset load: the parsed collection plus any entries dropped as invalid. */
+data class PresetLoadOutcome(
+    val file: Path,
+    val presets: PresetFile,
+    val droppedNames: List<String>,
+)

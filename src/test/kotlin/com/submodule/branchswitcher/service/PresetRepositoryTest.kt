@@ -7,6 +7,7 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeoutOrNull
+import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -203,6 +204,121 @@ class PresetRepositoryTest {
         assertTrue(exception is PresetFileChangedException)
         assertEquals(0, saveAttempts)
     }
+
+    @Test
+    fun `load surfaces dropped preset names to the caller`() = runBlocking {
+        val root = Files.createTempDirectory("preset-repository")
+        val file = root.resolve(".idea/branch-presets.json")
+        val repository = PresetRepository(
+            basePath = { root },
+            loader = {
+                Result.success(
+                    PresetLoadResult(
+                        file,
+                        PresetFile(listOf(Preset("main", "main"))),
+                        null,
+                        droppedNames = listOf("bad A", "bad B"),
+                    )
+                )
+            },
+            saver = { _, _ -> byteArrayOf() },
+        )
+
+        val outcome = repository.load().getOrThrow()
+
+        assertEquals(listOf("bad A", "bad B"), outcome.droppedNames)
+        assertEquals(file, outcome.file)
+        // Preset carries a random id, so compare by name rather than whole-value equality.
+        assertEquals(listOf("main"), outcome.presets.presets.map { it.name })
+    }
+
+    @Test
+    fun `first save after a drop-load writes a backup of the exact on-disk bytes once`() = runBlocking {
+        val root = Files.createTempDirectory("preset-repository")
+        val file = root.resolve(".idea/branch-presets.json")
+        Files.createDirectories(file.parent)
+        val onDiskBytes = """{"presets":[{"name":"bad"}]}""".toByteArray()
+        Files.write(file, onDiskBytes)
+        val diskDigest = sha256(onDiskBytes)
+        var saveAttempts = 0
+        val repository = PresetRepository(
+            basePath = { root },
+            loader = {
+                Result.success(
+                    PresetLoadResult(file, PresetFile(listOf(Preset("main", "main"))), diskDigest, droppedNames = listOf("bad"))
+                )
+            },
+            // Real-ish saver: writes new bytes and reports their digest, so a second save
+            // sees a consistent on-disk digest instead of a spurious conflict.
+            saver = { path, _ ->
+                saveAttempts++
+                val written = """{"presets":[]}""".toByteArray()
+                Files.write(path, written)
+                sha256(written)
+            },
+            digester = { path -> if (Files.exists(path)) sha256(Files.readAllBytes(path)) else null },
+        )
+        repository.load().getOrThrow()
+        val backup = file.resolveSibling("branch-presets.json.bak")
+        assertFalse(Files.exists(backup))
+
+        repository.save(listOf(Preset("dev", "dev")))
+
+        assertTrue(Files.exists(backup))
+        assertArrayEquals(onDiskBytes, Files.readAllBytes(backup))
+        assertEquals(1, saveAttempts)
+        // A later save must not overwrite the recovery copy again.
+        repository.save(listOf(Preset("release", "release")))
+        assertArrayEquals(onDiskBytes, Files.readAllBytes(backup))
+    }
+
+    @Test
+    fun `save after a clean load does not write a backup`() = runBlocking {
+        val root = Files.createTempDirectory("preset-repository")
+        val file = root.resolve(".idea/branch-presets.json")
+        Files.createDirectories(file.parent)
+        val onDiskBytes = """{"presets":[]}""".toByteArray()
+        Files.write(file, onDiskBytes)
+        val diskDigest = sha256(onDiskBytes)
+        val repository = PresetRepository(
+            basePath = { root },
+            loader = { Result.success(PresetLoadResult(file, PresetFile(listOf(Preset("main", "main"))), diskDigest)) },
+            saver = { _, _ -> byteArrayOf() },
+            digester = { diskDigest },
+        )
+        repository.load().getOrThrow()
+
+        repository.save(listOf(Preset("dev", "dev")))
+
+        assertFalse(Files.exists(file.resolveSibling("branch-presets.json.bak")))
+    }
+
+    @Test
+    fun `save refused on digest conflict does not write a backup`() = runBlocking {
+        val root = Files.createTempDirectory("preset-repository")
+        val file = root.resolve(".idea/branch-presets.json")
+        Files.createDirectories(file.parent)
+        Files.write(file, """{"presets":[]}""".toByteArray())
+        val repository = PresetRepository(
+            basePath = { root },
+            loader = {
+                Result.success(
+                    PresetLoadResult(file, PresetFile(listOf(Preset("main", "main"))), byteArrayOf(1), droppedNames = listOf("bad"))
+                )
+            },
+            saver = { _, _ -> byteArrayOf() },
+            digester = { byteArrayOf(2) },
+        )
+        repository.load().getOrThrow()
+
+        val exception = runCatching { repository.save(listOf(Preset("dev", "dev"))) }.exceptionOrNull()
+
+        assertTrue(exception is PresetFileChangedException)
+        assertFalse(Files.exists(file.resolveSibling("branch-presets.json.bak")))
+    }
+
+    private fun sha256(bytes: ByteArray): ByteArray =
+        java.security.MessageDigest.getInstance("SHA-256").digest(bytes)
 
     /** A fresh temp preset file path for one test. */
     private val tempFile: Path

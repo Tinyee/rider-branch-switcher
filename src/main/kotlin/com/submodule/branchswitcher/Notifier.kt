@@ -89,3 +89,17 @@ object Notifier {
             .notify(project)
     }
 }
+
+/**
+ * Warns that preset entries were skipped as invalid on load. Those entries will be
+ * removed on the next save; the repository also keeps a `.bak` recovery copy, so this
+ * is user education rather than the only line of defense.
+ */
+internal fun showPresetDropWarning(project: Project?, droppedNames: List<String>) {
+    if (droppedNames.isEmpty()) return
+    Notifier.warn(
+        project,
+        Bundle.msg("preset.drop.title"),
+        Bundle.msg("preset.drop.msg", droppedNames.size, droppedNames.joinToString(", ")),
+    )
+}

@@ -5,9 +5,11 @@ import org.junit.Test
 import java.io.File
 import java.io.InputStream
 import java.util.concurrent.CompletableFuture
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Semaphore
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
 
 /**
  * [GitOps] process-lifecycle and stream tests: operation sessions, cancellation,
@@ -246,6 +248,42 @@ class GitOpsProcessTest : GitOpsTestBase() {
         assertEquals(GitFailureKind.PROCESS_CAPACITY, result.failureKind)
         assertEquals("process capacity unavailable after 1s", result.stderr)
         assertEquals(0, starts)
+    }
+
+    @Test
+    fun `permit wait and process execution share a single timeout budget`() {
+        val permits = Semaphore(1)
+        val runningProcess = ControllableProcess(finished = false, stopAfterDestroy = true)
+        val processStarted = CountDownLatch(1)
+        val processStartNanos = AtomicLong()
+        val runner = GitProcessRunner(timeoutSeconds = 2, processPermits = permits) {
+            processStartNanos.set(System.nanoTime())
+            processStarted.countDown()
+            runningProcess
+        }
+
+        // Hold the only permit for ~half the budget: permit acquisition must eat into
+        // the process deadline instead of getting a fresh full budget of its own.
+        permits.acquire()
+        val resultFuture = CompletableFuture.supplyAsync {
+            runner.run(tmpDir.toFile(), AtomicBoolean(false), "fetch")
+        }
+        Thread.sleep(1000)
+        permits.release()
+        assertTrue(
+            "process should start after the permit is released",
+            processStarted.await(5, TimeUnit.SECONDS),
+        )
+
+        val result = resultFuture.get(5, TimeUnit.SECONDS)
+
+        assertEquals(GitFailureKind.TIMEOUT, result.failureKind)
+        assertEquals("timeout after 2s", result.stderr)
+        val processRuntimeMillis = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - processStartNanos.get())
+        assertTrue(
+            "process ran ~1s (2s deadline minus ~1s permit wait), not a fresh ~2s budget; was ${processRuntimeMillis}ms",
+            processRuntimeMillis in 500..1500,
+        )
     }
 
     @Test

@@ -42,13 +42,17 @@ internal class GitProcessRunner(
         if (cancellation.get()) {
             return GitResult(commandLabel, -1, "", "cancelled")
         }
-        val permitFailure = acquireProcessPermit(cancellation)
+        // One budget for the whole command: permit acquisition and process execution
+        // share a single deadline, so the configured timeout is an end-to-end cap
+        // rather than being doubled when the process pool is saturated.
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(effectiveTimeoutSeconds.toLong())
+        val permitFailure = acquireProcessPermit(cancellation, deadline)
         if (permitFailure != null) {
             return GitResult(commandLabel, -1, "", permitFailure)
         }
         var releasePermit = true
         return try {
-            val outcome = runWithPermit(workDir, cancellation, commandLabel, args)
+            val outcome = runWithPermit(workDir, cancellation, commandLabel, args, deadline)
             releasePermit = outcome.resourcesStopped
             outcome.result
         } finally {
@@ -67,18 +71,17 @@ internal class GitProcessRunner(
         val interrupted: Boolean,
     )
 
-    /** Polls [process] until it exits, is cancelled, times out, or exceeds the stdout cap. */
+    /** Polls [process] until it exits, is cancelled, reaches [deadline], or exceeds the stdout cap. */
     private fun awaitProcessExit(
         process: Process,
         cancellation: AtomicBoolean,
         stdoutLimitExceeded: AtomicBoolean,
-        timeoutSeconds: Int,
+        deadline: Long,
         observedDescendants: MutableMap<Long, ProcessHandle>,
     ): ProcessWait {
         var exitCode = -1
         var terminationReason: String? = null
         var interrupted = false
-        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(timeoutSeconds.toLong())
         while (true) {
             observeDescendants(process, observedDescendants)
             val finished = try {
@@ -97,7 +100,7 @@ internal class GitProcessRunner(
                 break
             }
             if (System.nanoTime() - deadline >= 0) {
-                terminationReason = "timeout after ${timeoutSeconds}s"
+                terminationReason = "timeout after ${effectiveTimeoutSeconds}s"
                 break
             }
             if (stdoutLimitExceeded.get()) {
@@ -114,6 +117,7 @@ internal class GitProcessRunner(
         cancellation: AtomicBoolean,
         commandLabel: String,
         args: List<String>,
+        deadline: Long,
     ): ProcessRunOutcome {
         val builder = ProcessBuilder(listOf("git") + args)
             .directory(workDir)
@@ -144,7 +148,7 @@ internal class GitProcessRunner(
             process,
             cancellation,
             stdoutLimitExceeded,
-            effectiveTimeoutSeconds,
+            deadline,
             observedDescendants,
         )
         val exitCode = wait.exitCode
@@ -311,9 +315,7 @@ internal class GitProcessRunner(
         return ProcessRunOutcome(result, resourcesStopped = true)
     }
 
-    private fun acquireProcessPermit(cancellation: AtomicBoolean): String? {
-        val deadline = System.nanoTime() +
-            TimeUnit.SECONDS.toNanos(effectiveTimeoutSeconds.toLong())
+    private fun acquireProcessPermit(cancellation: AtomicBoolean, deadline: Long): String? {
         while (System.nanoTime() - deadline < 0) {
             if (cancellation.get()) return "cancelled"
             try {

@@ -64,7 +64,7 @@ internal class PresetCollectionActions(
             val result = service.loadPresets()
             project.invokeLaterIfAlive {
                 collectionOperationInProgress.set(false)
-                result.onSuccess { (file, parsed) ->
+                result.onSuccess { outcome ->
                     val root = gitRoot()
                     if (root == null) {
                         log.error("git root not found")
@@ -72,14 +72,25 @@ internal class PresetCollectionActions(
                         return@onSuccess
                     }
                     host.clearEditors()
-                    if (parsed.presets.isEmpty()) {
+                    if (outcome.presets.presets.isEmpty()) {
                         host.showEmptyState()
                     } else {
-                        parsed.presets.forEach { host.addEditor(root, it) }
+                        outcome.presets.presets.forEach { host.addEditor(root, it) }
                     }
-                    log.debug("loaded ${parsed.presets.size} preset(s) from $file")
+                    log.debug("loaded ${outcome.presets.presets.size} preset(s) from ${outcome.file}")
                     host.refreshList()
                     host.notifyStateChanged()
+                    if (outcome.droppedNames.isNotEmpty()) {
+                        // Invalid entries are skipped so the file still loads, but the next
+                        // save removes them permanently: tell the user and offer a reload.
+                        Notifier.warnAction(
+                            project,
+                            Bundle.msg("preset.drop.title"),
+                            Bundle.msg("preset.drop.msg", outcome.droppedNames.size, outcome.droppedNames.joinToString(", ")),
+                            Bundle.msg("action.reload"),
+                            ::reload,
+                        )
+                    }
                 }.onFailure { error ->
                     log.logFailure("preset load failed", error)
                     Notifier.error(

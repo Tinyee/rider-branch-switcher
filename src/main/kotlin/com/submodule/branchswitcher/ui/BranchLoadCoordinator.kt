@@ -64,7 +64,7 @@ internal class BranchLoadCoordinator(
     private val openOperation: () -> GitOperationSession,
 ) {
     private val permits = Semaphore(maxConcurrentLoads.coerceAtLeast(1))
-    private val activeJobs = ConcurrentLinkedQueue<Job>()
+    private val activeLoads = ConcurrentLinkedQueue<BranchLoadHandle>()
     private val closed = AtomicBoolean(false)
 
     fun launch(block: suspend (PresetDiscoveryGitClient) -> Unit): BranchLoadHandle {
@@ -83,9 +83,10 @@ internal class BranchLoadCoordinator(
                 }
             }
         }
-        activeJobs.add(job)
-        job.invokeOnCompletion { activeJobs.remove(job) }
-        return BranchLoadHandle(job, state::cancel)
+        val handle = BranchLoadHandle(job, state::cancel)
+        activeLoads.add(handle)
+        job.invokeOnCompletion { activeLoads.remove(handle) }
+        return handle
     }
 
     /**
@@ -121,9 +122,10 @@ internal class BranchLoadCoordinator(
                 }
             }
         }
-        activeJobs.add(job)
-        job.invokeOnCompletion { activeJobs.remove(job) }
-        return BranchLoadHandle(job, state::cancel)
+        val handle = BranchLoadHandle(job, state::cancel)
+        activeLoads.add(handle)
+        job.invokeOnCompletion { activeLoads.remove(handle) }
+        return handle
     }
 
     /**
@@ -133,8 +135,8 @@ internal class BranchLoadCoordinator(
      */
     fun close() {
         closed.set(true)
-        activeJobs.forEach(Job::cancel)
-        activeJobs.clear()
+        activeLoads.forEach(BranchLoadHandle::cancel)
+        activeLoads.clear()
     }
 
     companion object {

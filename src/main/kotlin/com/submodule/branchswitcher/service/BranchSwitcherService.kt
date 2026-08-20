@@ -14,8 +14,6 @@ import com.submodule.branchswitcher.model.ResolvedSwitchRequest
 import com.submodule.branchswitcher.model.SwitchOptions
 import kotlinx.coroutines.CoroutineScope
 import com.submodule.branchswitcher.model.Preset
-import com.submodule.branchswitcher.model.PresetFile
-import java.nio.file.Path
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
@@ -138,7 +136,7 @@ class BranchSwitcherService(
 
     val presets: List<Preset> get() = presetRepo.presets
 
-    suspend fun loadPresets(): Result<Pair<Path, PresetFile>> = presetRepo.load()
+    suspend fun loadPresets(): Result<PresetLoadOutcome> = presetRepo.load()
 
     suspend fun savePresets(presets: List<Preset>) = presetRepo.save(presets)
 
