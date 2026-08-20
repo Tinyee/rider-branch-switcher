@@ -137,7 +137,11 @@ internal class PresetCollectionActions(
             main = name,
             submodules = template?.submodules ?: emptyMap(),
         )
-        val root = gitRoot() ?: return
+        val root = gitRoot() ?: run {
+            log.error("git root not found")
+            Notifier.error(project, Bundle.msg("plugin.title"), Bundle.msg("git.root.not.found"))
+            return
+        }
         persistOrReport(host.editors.map { it.currentPreset() } + newPreset) { saved ->
             if (!saved) return@persistOrReport
             host.addEditor(root, newPreset)

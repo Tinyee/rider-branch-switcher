@@ -40,7 +40,11 @@ internal class CurrentStatePresetCreator(
     private val nameValidator: () -> InputValidator,
 ) {
     fun create() {
-        val root = gitRoot() ?: return
+        val root = gitRoot() ?: run {
+            log.error("git root not found")
+            Notifier.error(project, Bundle.msg("plugin.title"), Bundle.msg("git.root.not.found"))
+            return
+        }
         service.scope.launch(Dispatchers.Default) {
             val currentState = probeCurrentState(root) ?: return@launch
             project.invokeLaterIfAlive {

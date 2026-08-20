@@ -191,6 +191,7 @@ class SwitchFlowCoordinator(
         val completion = SwitchUiCompletion(::uiLater, onFinished)
         val job = writeOperations.launch(
             onBusy = {
+                log.withContext(operationContext).warn("operation rejected: another repository write is already running")
                 uiLater {
                     completion.completeAfter {
                         resultPresenter.showWriteBusy()
@@ -242,7 +243,10 @@ class SwitchFlowCoordinator(
     ) {
         val recoveryLog = log.withContext(operationContext.inPhase("recovery"))
         val job = writeOperations.launch(
-            onBusy = { uiLater { resultPresenter.showWriteBusy() } },
+            onBusy = {
+                log.withContext(operationContext).warn("operation rejected: another repository write is already running")
+                uiLater { resultPresenter.showWriteBusy() }
+            },
             afterRelease = { recoveryOutcome ->
                 val checkpointPaths = execution.checkpoint.orEmpty().keys.filterTo(mutableSetOf()) { it != "." }
                 val refreshLog = log.withContext(operationContext.inPhase("recovery-refresh"))

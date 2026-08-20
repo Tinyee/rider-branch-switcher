@@ -45,7 +45,11 @@ internal class SwitchController(
     private var switchInProgress = false
 
     fun runSwitch(preset: Preset) {
-        val root = gitRoot() ?: return
+        val root = gitRoot() ?: run {
+            log.error("git root not found")
+            Notifier.error(project, Bundle.msg("plugin.title"), Bundle.msg("git.root.not.found"))
+            return
+        }
         coordinator.runSwitchFlow(
             root,
             preset,
@@ -58,8 +62,12 @@ internal class SwitchController(
 
     fun derivePresetBranch(root: Path, preset: Preset, branchName: String) {
         setSwitchInProgress(true)
+        // Correlate the write-gate rejection under a derive operation id; the accepted
+        // run logs under DeriveBranchRunner's own context once it starts.
+        val operationLog = log.withContext(newOperationContext("derive"))
         val job = writeOperations.launch(
             onBusy = {
+                operationLog.warn("operation rejected: another repository write is already running")
                 // The lease was already held, so no mutation will start; clear the state.
                 setSwitchInProgress(false)
                 Notifier.warn(project, Bundle.msg("notify.write.busy"), Bundle.msg("notify.write.busy.msg"))

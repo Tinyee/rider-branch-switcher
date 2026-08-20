@@ -81,7 +81,11 @@ internal class PresetTransferActions(
                         result.conflictingNames.joinToString(", "),
                 )
             }
-            val root = gitRoot() ?: return
+            val root = gitRoot() ?: run {
+                log.error("git root not found")
+                Notifier.error(project, Bundle.msg("plugin.title"), Bundle.msg("git.root.not.found"))
+                return
+            }
             val combined = host.editors.map { it.currentPreset() } + result.presets
             persist(combined) persisted@{ saved ->
                 if (!saved) return@persisted
