@@ -193,26 +193,26 @@ class SwitchFlowCoordinator(
             },
         ) {
             val rollbackBackgroundResult = GitBackgroundRunner(project, service.gitClient).run(
-                    Bundle.msg("progress.rollback"),
-                ) { indicator, operation ->
-                    indicator.isIndeterminate = true
-                    indicator.text = Bundle.msg("progress.rollback")
-                    val recovery = SwitchRecoveryExecutor(
-                        root,
-                        recoveryLog,
-                        operation,
-                        cancelled = { indicator.isCanceled },
-                    )
-                    recovery.recover(execution)
-                }
+                Bundle.msg("progress.rollback"),
+            ) { indicator, operation ->
+                indicator.isIndeterminate = true
+                indicator.text = Bundle.msg("progress.rollback")
+                val recovery = SwitchRecoveryExecutor(
+                    root,
+                    recoveryLog,
+                    operation,
+                    cancelled = { indicator.isCanceled },
+                )
+                recovery.recover(execution)
+            }
             when (rollbackBackgroundResult) {
-                    is GitOperationResult.Completed -> rollbackBackgroundResult.value
-                    is GitOperationResult.Cancelled -> rollbackBackgroundResult.value
-                    is GitOperationResult.Failed -> {
-                        val error = rollbackBackgroundResult.error
-                        recoveryLog.logFailure("notification rollback failed", error)
-                        null
-                    }
+                is GitOperationResult.Completed -> rollbackBackgroundResult.value
+                is GitOperationResult.Cancelled -> rollbackBackgroundResult.value
+                is GitOperationResult.Failed -> {
+                    val error = rollbackBackgroundResult.error
+                    recoveryLog.logFailure("notification rollback failed", error)
+                    null
+                }
             }
         }
         if (job == null) {

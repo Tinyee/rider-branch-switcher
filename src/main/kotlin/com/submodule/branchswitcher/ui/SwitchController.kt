@@ -101,15 +101,15 @@ internal class SwitchController(
             },
         ) {
             DeriveBranchRunner(
-                    projectRoot = root,
-                    operations = GitBackgroundRunner(project, service.gitClient),
-                    cancellationClassifier = platformCancellationClassifier,
-                ).execute(
-                    title = Bundle.msg("progress.derive", branchName),
-                    preset = preset,
-                    branchName = branchName,
-                    log = log,
-                )
+                projectRoot = root,
+                operations = GitBackgroundRunner(project, service.gitClient),
+                cancellationClassifier = platformCancellationClassifier,
+            ).execute(
+                title = Bundle.msg("progress.derive", branchName),
+                preset = preset,
+                branchName = branchName,
+                log = log,
+            )
         }
         job?.invokeOnCompletion {
             invokeLaterIfProjectAlive { setSwitchInProgress(false) }
