@@ -5,6 +5,9 @@ import java.io.File
 
 /** Selects a local or remote branch and records the completed checkout. */
 internal object BranchCheckout {
+    /** Git's exact refusal message when untracked files would be overwritten by a checkout. */
+    private const val UNTRACKED_OVERWRITE_HINT = "untracked working tree files would be overwritten"
+
     data class Result(
         val state: SwitchState,
         val succeeded: Boolean,
@@ -12,6 +15,30 @@ internal object BranchCheckout {
     )
 
     fun execute(
+        context: SwitchContext,
+        target: RepoTarget,
+        directory: File,
+        state: SwitchState,
+    ): Result {
+        val result = executeOnce(context, target, directory, state)
+        if (!result.succeeded && shouldRetryAfterDiscard(context, target, result)) {
+            // The approved collision files reappeared since the discard step (Unity
+            // regenerates .meta files mid-switch). Delete them again just-in-time and
+            // retry once so the regeneration race cannot block the checkout.
+            context.log.warn("[retry] untracked collision, discarding approved files - ${directory.path}")
+            discardApprovedFiles(
+                directory,
+                context.approvedCollisionDiscards[target.path].orEmpty(),
+                context.log,
+                OperationStage.CHECKOUT,
+                target.path,
+            )
+            return executeOnce(context, target, directory, state)
+        }
+        return result
+    }
+
+    private fun executeOnce(
         context: SwitchContext,
         target: RepoTarget,
         directory: File,
@@ -68,6 +95,15 @@ internal object BranchCheckout {
             state = state.withSuccessfulCheckout(target.path),
             succeeded = true,
         )
+    }
+
+    /** True when the checkout failed on untracked-file overwrite AND this repo has approved discards. */
+    private fun shouldRetryAfterDiscard(context: SwitchContext, target: RepoTarget, result: Result): Boolean {
+        if (context.approvedCollisionDiscards[target.path].orEmpty().isEmpty()) return false
+        return result.issues.any {
+            it.code == OperationIssueCode.CHECKOUT_FAILED &&
+                it.diagnostic.orEmpty().contains(UNTRACKED_OVERWRITE_HINT)
+        }
     }
 
     /** Records the structured failure for a target whose branch exists neither locally nor on origin. */

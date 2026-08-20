@@ -142,6 +142,23 @@ class SwitchIntegrationTest {
         return ok to log.toList()
     }
 
+    private fun runSwitchWithDiscards(
+        root: File,
+        preset: Preset,
+        opts: SwitchOptions,
+        discards: Map<String, Set<String>>,
+    ): Pair<Boolean, List<String>> {
+        log.clear()
+        val executor = SwitchExecutor(
+            root.toPath(),
+            createStringAppender { log += it },
+            git,
+            collisionDiscards = discards,
+        )
+        val ok = executor.executeTest(preset, opts)
+        return ok to log.toList()
+    }
+
     // ========================================================================
     // Tests
     // ========================================================================
@@ -197,6 +214,47 @@ class SwitchIntegrationTest {
         assertTrue("Dirty+Force should succeed", ok)
         assertEquals("dev", git.currentBranch(root))
         assertTrue("Dirty file should still exist", File(root, "dirty.txt").exists())
+    }
+
+    @Test
+    fun `untracked collision is discarded so checkout succeeds`() {
+        val root = createRepo(tmpDir, "project")
+        // dev branch tracks Assets/Foo.meta; main has it only as an untracked local file.
+        gitOk(root, "checkout", "-b", "dev")
+        File(root, "Assets/Foo.meta").apply { parentFile.mkdirs(); writeText("tracked-version\n") }
+        gitOk(root, "add", "Assets/Foo.meta")
+        gitOk(root, "commit", "-m", "tracked meta on dev")
+        gitOk(root, "checkout", "main")
+        File(root, "Assets/Foo.meta").apply { parentFile.mkdirs(); writeText("local-untracked\n") }
+
+        val (ok, _) = runSwitchWithDiscards(
+            root,
+            Preset("collision", "dev"),
+            SwitchOptions(DirtyAction.Force, pull = false, fetchFirst = false),
+            mapOf("." to setOf("Assets/Foo.meta")),
+        )
+        assertTrue("collision must be discarded so the switch succeeds", ok)
+        assertEquals("dev", git.currentBranch(root))
+        assertEquals("untracked copy must be replaced by the tracked version", "tracked-version",
+            File(root, "Assets/Foo.meta").readText().trim())
+    }
+
+    @Test
+    fun `untracked collision without approval still fails`() {
+        val root = createRepo(tmpDir, "project")
+        gitOk(root, "checkout", "-b", "dev")
+        File(root, "Assets/Foo.meta").apply { parentFile.mkdirs(); writeText("tracked-version\n") }
+        gitOk(root, "add", "Assets/Foo.meta")
+        gitOk(root, "commit", "-m", "tracked meta on dev")
+        gitOk(root, "checkout", "main")
+        File(root, "Assets/Foo.meta").apply { parentFile.mkdirs(); writeText("local-untracked\n") }
+
+        val (ok, _) = runSwitch(root, Preset("collision", "dev"),
+            SwitchOptions(DirtyAction.Force, pull = false, fetchFirst = false))
+        assertFalse("a collision without approval must keep the switch failed", ok)
+        assertEquals("main", git.currentBranch(root))
+        assertEquals("untracked file must survive without approval", "local-untracked",
+            File(root, "Assets/Foo.meta").readText().trim())
     }
 
     @Test

@@ -141,6 +141,8 @@ data class SwitchContext(
     val confirmBeforeInit: Boolean = false,
     /** Submodule paths the user approved for initialization before execution (no worker-time dialogs). */
     val preApprovedSubmoduleInit: Set<String> = emptySet(),
+    /** File paths (per repo path, "." = main) the user approved for discard before switching. Empty when none. */
+    val approvedCollisionDiscards: Map<String, Set<String>> = emptyMap(),
     /** Pre-switch repository identities used by later topology safety gates. */
     val checkpoint: Map<String, CheckpointEntry> = emptyMap(),
 )

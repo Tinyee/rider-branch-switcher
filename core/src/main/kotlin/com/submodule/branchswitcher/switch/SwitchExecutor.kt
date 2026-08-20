@@ -73,6 +73,7 @@ class SwitchExecutor @JvmOverloads constructor(
     private val cancelled: (() -> Boolean)? = null,
     private val cancellationClassifier: CancellationClassifier = CancellationClassifier.DEFAULT,
     private val preApprovedSubmoduleInit: Set<String> = emptySet(),
+    private val collisionDiscards: Map<String, Set<String>> = emptyMap(),
     private val steps: List<SwitchStep> = listOf(
         DirtyHandlingStep(),
         FetchStep(SwitchTargetScope.MAIN),
@@ -185,7 +186,11 @@ class SwitchExecutor @JvmOverloads constructor(
         var switchState = initialState
         var stashRestoreInterrupted = false
         val issues = mutableListOf<OperationIssue>()
-        for (step in steps) {
+        // The discard step is prepended only when the user approved discards; otherwise it
+        // would log a no-op step name on every switch.
+        val effectiveSteps =
+            if (collisionDiscards.isEmpty()) steps else listOf(DiscardUntrackedCollisionStep()) + steps
+        for (step in effectiveSteps) {
             context.progressHandle?.text = step.name
             try {
                 cancellationHandle?.checkCanceled()
@@ -346,6 +351,7 @@ class SwitchExecutor @JvmOverloads constructor(
             cancelled = { cancelled?.invoke() == true || cancellationHandle?.isCanceled == true },
             confirmBeforeInit = options.confirmBeforeInit,
             preApprovedSubmoduleInit = preApprovedSubmoduleInit,
+            approvedCollisionDiscards = collisionDiscards,
             checkpoint = checkpoint,
         )
     }

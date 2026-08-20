@@ -47,6 +47,7 @@ enum class OperationIssueCode {
     BRANCH_CREATE_FAILED,
     RECOVERY_FAILED,
     STEP_FAILED,
+    UNTRACKED_DISCARD_FAILED,
 }
 
 enum class OperationIssueSeverity { WARNING, ERROR }
