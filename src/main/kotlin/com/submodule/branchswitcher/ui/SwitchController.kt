@@ -153,46 +153,39 @@ internal class SwitchController(
                 )
             }
             is DeriveNotification.Blocked -> {
-                val blockedReasons = mutableListOf<String>()
-                if (notification.branchExistsCount > 0) {
-                    blockedReasons.add(
-                        Bundle.msg("notify.derive.blocked.exists", notification.branchExistsCount),
-                    )
-                }
-                if (notification.skippedCount > 0) {
-                    blockedReasons.add(Bundle.msg("notify.derive.blocked.skipped", notification.skippedCount))
-                }
-                if (notification.dirtyCount > 0) {
-                    blockedReasons.add(Bundle.msg("notify.derive.blocked.dirty", notification.dirtyCount))
-                }
-                if (notification.branchMismatchCount > 0) {
-                    blockedReasons.add(
-                        Bundle.msg("notify.derive.blocked.mismatch", notification.branchMismatchCount),
-                    )
-                }
-                if (notification.preflightErrorCount > 0) {
-                    blockedReasons.add(
-                        Bundle.msg("notify.derive.blocked.error", notification.preflightErrorCount),
-                    )
-                }
-                if (notification.checkpointFailedCount > 0) {
-                    blockedReasons.add(
-                        Bundle.msg("notify.derive.blocked.checkpoint", notification.checkpointFailedCount),
-                    )
-                }
-                if (notification.indexLockBlockedCount > 0) {
-                    blockedReasons.add(
-                        Bundle.msg("notify.derive.blocked.indexLock", notification.indexLockBlockedCount),
-                    )
-                }
                 Notifier.warn(
                     project,
                     Bundle.msg("notify.derive.blocked"),
-                    blockedReasons.joinToString("\n"),
+                    blockedReasonLines(notification).joinToString("\n"),
                     operationId,
                 )
             }
             is DeriveNotification.Silent -> Unit
+        }
+    }
+
+    /** One localized line per blocking condition counted in [notification]. */
+    private fun blockedReasonLines(notification: DeriveNotification.Blocked): List<String> = buildList {
+        if (notification.branchExistsCount > 0) {
+            add(Bundle.msg("notify.derive.blocked.exists", notification.branchExistsCount))
+        }
+        if (notification.skippedCount > 0) {
+            add(Bundle.msg("notify.derive.blocked.skipped", notification.skippedCount))
+        }
+        if (notification.dirtyCount > 0) {
+            add(Bundle.msg("notify.derive.blocked.dirty", notification.dirtyCount))
+        }
+        if (notification.branchMismatchCount > 0) {
+            add(Bundle.msg("notify.derive.blocked.mismatch", notification.branchMismatchCount))
+        }
+        if (notification.preflightErrorCount > 0) {
+            add(Bundle.msg("notify.derive.blocked.error", notification.preflightErrorCount))
+        }
+        if (notification.checkpointFailedCount > 0) {
+            add(Bundle.msg("notify.derive.blocked.checkpoint", notification.checkpointFailedCount))
+        }
+        if (notification.indexLockBlockedCount > 0) {
+            add(Bundle.msg("notify.derive.blocked.indexLock", notification.indexLockBlockedCount))
         }
     }
 

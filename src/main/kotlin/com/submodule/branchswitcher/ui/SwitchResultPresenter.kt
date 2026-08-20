@@ -57,17 +57,7 @@ internal class SwitchResultPresenter(
             return
         }
         val message = Bundle.msg("notify.switch.partial.msg", preset.name) + retainedStateNotice(execution)
-        if (execution?.checkpoint == null) {
-            Notifier.error(project, Bundle.msg("switch.failed"), message, operationId)
-            return
-        }
-        Notifier.rollbackAction(
-            project,
-            Bundle.msg("switch.failed"),
-            message + Bundle.msg("notify.switch.rollback.hint"),
-            onRollback = { onRollback(execution) },
-            operationId = operationId,
-        )
+        presentRollbackOrError(execution, message, onRollback, operationId)
     }
 
     fun presentRollbackResult(
@@ -173,6 +163,19 @@ internal class SwitchResultPresenter(
         }
         val message = Bundle.msg("notify.switch.partial.msg", preset.name) +
             retainedStateNotice(execution)
+        presentRollbackOrError(execution, message, onRollback, operationId)
+    }
+
+    /**
+     * Presents a FAILED switch that still has a checkpoint: offer a manual rollback,
+     * or a plain error when the checkpoint was never recorded (nothing to roll back).
+     */
+    private fun presentRollbackOrError(
+        execution: SwitchExecutionResult?,
+        message: String,
+        onRollback: (SwitchExecutionResult) -> Unit,
+        operationId: String,
+    ) {
         if (execution?.checkpoint == null) {
             Notifier.error(project, Bundle.msg("switch.failed"), message, operationId)
             return
