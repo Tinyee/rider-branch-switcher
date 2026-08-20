@@ -19,9 +19,6 @@ import com.submodule.branchswitcher.switch.deriveNotification
 import com.submodule.branchswitcher.workflow.DeriveBranchRunner
 import com.submodule.branchswitcher.workflow.WriteOperationLauncher
 import com.submodule.branchswitcher.workflow.DeriveRunResult
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
 import java.nio.file.Path
 
 /**
@@ -47,41 +44,16 @@ internal class SwitchController(
     var onInProgressChange: ((Boolean) -> Unit)? = null
     private var switchInProgress = false
 
-    @Suppress("TooGenericExceptionCaught") // platform preflight adapters report unrelated failures through one UI boundary
     fun runSwitch(preset: Preset) {
         val root = gitRoot() ?: return
-        val operationContext = newOperationContext("switch")
-        service.scope.launch(Dispatchers.Default) {
-            val probeResult = try {
-                coordinator.preflight(root, preset, log, operationContext)
-            } catch (_: CancellationException) {
-                return@launch
-            } catch (_: com.intellij.openapi.progress.ProcessCanceledException) {
-                return@launch
-            } catch (e: Exception) {
-                log.withContext(operationContext).logFailure("preflight probe failed", e)
-                invokeLaterIfProjectAlive {
-                    Notifier.error(
-                        project,
-                        Bundle.msg("notify.preflight.failed"),
-                        Bundle.msg("notify.preflight.failed.msg", e.javaClass.simpleName, e.message ?: ""),
-                        operationContext.id,
-                    )
-                }
-                return@launch
-            }
-            invokeLaterIfProjectAlive {
-                val request = service.resolveSwitchRequest(preset)
-                if (SwitchPreviewDialog.showAndConfirm(project, request, probeResult)) {
-                    val preApproved = coordinator.resolvePreApprovedSubmoduleInit(request, probeResult)
-                        ?: return@invokeLaterIfProjectAlive
-                    setSwitchInProgress(true)
-                    coordinator.executeAndNotify(root, request, log, operationContext,
-                        preApprovedSubmoduleInit = preApproved,
-                        onFinished = { setSwitchInProgress(false) })
-                }
-            }
-        }
+        coordinator.runSwitchFlow(
+            root,
+            preset,
+            log,
+            newOperationContext("switch"),
+            onSwitchStart = { setSwitchInProgress(true) },
+            onFinished = { setSwitchInProgress(false) },
+        )
     }
 
     fun derivePresetBranch(root: Path, preset: Preset, branchName: String) {

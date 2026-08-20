@@ -6,7 +6,6 @@ import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.DataContext
 import com.intellij.openapi.components.service
 import com.intellij.openapi.project.Project
-import com.intellij.openapi.progress.ProcessCanceledException
 import com.intellij.openapi.ui.Messages
 import com.intellij.openapi.ui.popup.PopupChooserBuilder
 import com.intellij.ui.components.JBLabel
@@ -27,10 +26,7 @@ import com.submodule.branchswitcher.presentation.ShortcutPresetLoadDecision
 import com.submodule.branchswitcher.presentation.shortcutPresetLoadDecision
 import com.submodule.branchswitcher.service.BranchSwitcherService
 import com.submodule.branchswitcher.ui.SwitchFlowCoordinator
-import com.submodule.branchswitcher.ui.SwitchPreviewDialog
 import com.submodule.branchswitcher.ui.invokeLaterIfAlive
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import java.awt.Component
 import javax.swing.BoxLayout
@@ -98,49 +94,22 @@ class SwitchPresetAction : AnAction() {
             .showInBestPositionFor(dataContext)
     }
 
-    @Suppress("TooGenericExceptionCaught") // shortcut entry reports all non-cancellation workflow failures consistently
     private fun executeSwitch(project: Project, service: BranchSwitcherService, preset: Preset) {
         val root = project.gitRootPath() ?: run {
             Notifier.error(project, Bundle.msg("plugin.title"), Bundle.msg("git.root.not.found"))
             return
         }
         val collector = actionLogger(project)
-        val coordinator = SwitchFlowCoordinator(project, service)
-        val operationContext = newOperationContext("switch")
-        service.scope.launch(Dispatchers.Default) {
-            val probeResult = try {
-                coordinator.preflight(root, preset, collector, operationContext)
-            } catch (_: CancellationException) {
-                return@launch
-            } catch (_: ProcessCanceledException) {
-                return@launch
-            } catch (e: Exception) {
-                collector.logFailure("preflight probe failed", e)
-                project.invokeLaterIfAlive {
-                    Notifier.error(project, Bundle.msg("notify.preflight.failed"),
-                        Bundle.msg("notify.preflight.failed.msg", e.javaClass.simpleName, e.message ?: ""))
-                }
-                return@launch
-            }
-            project.invokeLaterIfAlive {
-                // Same rich preview confirmation as the sidebar entry, so both
-                // switch paths share one confirmation UI.
-                val request = service.resolveSwitchRequest(preset)
-                if (!SwitchPreviewDialog.showAndConfirm(project, request, probeResult)) {
-                    collector.warn("switch cancelled by user - preview declined")
-                    return@invokeLaterIfAlive
-                }
-                val preApproved = coordinator.resolvePreApprovedSubmoduleInit(request, probeResult)
-                    ?: run {
-                        collector.warn("switch cancelled by user - submodule init declined")
-                        return@invokeLaterIfAlive
-                    }
-                coordinator.executeAndNotify(root, request, collector, operationContext,
-                    preApprovedSubmoduleInit = preApproved) {
-                    project.messageBus.syncPublisher(BranchSwitchListener.TOPIC).onBranchSwitched()
-                }
-            }
-        }
+        SwitchFlowCoordinator(project, service).runSwitchFlow(
+            root,
+            preset,
+            collector,
+            newOperationContext("switch"),
+            onDecline = collector::warn,
+            onSuccess = {
+                project.messageBus.syncPublisher(BranchSwitchListener.TOPIC).onBranchSwitched()
+            },
+        )
     }
 
     private fun actionLogger(project: Project): AppLogger = ToolWindowLogger { entry ->

@@ -2,6 +2,7 @@ package com.submodule.branchswitcher.ui
 
 import com.intellij.openapi.project.Project
 import com.submodule.branchswitcher.Bundle
+import com.submodule.branchswitcher.Notifier
 import com.submodule.branchswitcher.log.AppLogger
 import com.submodule.branchswitcher.log.OperationContext
 import com.submodule.branchswitcher.log.logFailure
@@ -18,7 +19,10 @@ import com.submodule.branchswitcher.switch.SwitchRecoveryExecutor
 import com.submodule.branchswitcher.switch.SwitchExecutionResult
 import com.submodule.branchswitcher.workflow.SwitchRunner
 import com.submodule.branchswitcher.workflow.WriteOperationLauncher
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
 import java.nio.file.Path
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -102,6 +106,69 @@ class SwitchFlowCoordinator(
             .map { it.path }
         if (missing.isEmpty()) return emptySet()
         return if (preflightUi.confirmSubmoduleInitializations(missing)) missing.toSet() else null
+    }
+
+    /**
+     * The shared preflight → preview-confirm → submodule-init approval → execute flow
+     * used by every switch entry point (tool window and keyboard shortcut), so both
+     * confirm through the same [SwitchPreviewDialog] and share one confirmation UI.
+     *
+     * Callers differ only in where the root comes from, how a declined confirmation is
+     * logged, and which busy/success/finish callbacks run.
+     */
+    @Suppress("TooGenericExceptionCaught") // platform preflight adapters report unrelated failures through one UI boundary
+    fun runSwitchFlow(
+        root: Path,
+        preset: Preset,
+        log: AppLogger,
+        operationContext: OperationContext,
+        onDecline: (String) -> Unit = {},
+        onSwitchStart: (() -> Unit)? = null,
+        onSuccess: (() -> Unit)? = null,
+        onFinished: (() -> Unit)? = null,
+    ) {
+        service.scope.launch(Dispatchers.Default) {
+            val probeResult = try {
+                preflight(root, preset, log, operationContext)
+            } catch (_: CancellationException) {
+                return@launch
+            } catch (_: com.intellij.openapi.progress.ProcessCanceledException) {
+                return@launch
+            } catch (e: Exception) {
+                log.withContext(operationContext).logFailure("preflight probe failed", e)
+                uiLater {
+                    Notifier.error(
+                        project,
+                        Bundle.msg("notify.preflight.failed"),
+                        Bundle.msg("notify.preflight.failed.msg", e.javaClass.simpleName, e.message ?: ""),
+                        operationContext.id,
+                    )
+                }
+                return@launch
+            }
+            uiLater {
+                val request = service.resolveSwitchRequest(preset)
+                if (!SwitchPreviewDialog.showAndConfirm(project, request, probeResult)) {
+                    onDecline("switch cancelled by user - preview declined")
+                    return@uiLater
+                }
+                val preApproved = resolvePreApprovedSubmoduleInit(request, probeResult)
+                    ?: run {
+                        onDecline("switch cancelled by user - submodule init declined")
+                        return@uiLater
+                    }
+                onSwitchStart?.invoke()
+                executeAndNotify(
+                    root,
+                    request,
+                    log,
+                    operationContext,
+                    preApprovedSubmoduleInit = preApproved,
+                    onSuccess = onSuccess,
+                    onFinished = onFinished,
+                )
+            }
+        }
     }
 
     /**
