@@ -61,15 +61,12 @@ internal class SwitchController(
     }
 
     fun derivePresetBranch(root: Path, preset: Preset, branchName: String) {
-        setSwitchInProgress(true)
         // Correlate the write-gate rejection under a derive operation id; the accepted
         // run logs under DeriveBranchRunner's own context once it starts.
         val operationLog = log.withContext(newOperationContext("derive"))
         val job = writeOperations.launch(
             onBusy = {
                 operationLog.warn("operation rejected: another repository write is already running")
-                // The lease was already held, so no mutation will start; clear the state.
-                setSwitchInProgress(false)
                 Notifier.warn(project, Bundle.msg("notify.write.busy"), Bundle.msg("notify.write.busy.msg"))
             },
             afterRelease = { runResult ->
@@ -91,7 +88,16 @@ internal class SwitchController(
                 log = log,
             )
         }
-        job?.invokeOnCompletion {
+        if (job == null) {
+            // The write lease is held by someone else, so no derive starts. Any
+            // in-progress state belongs to whoever holds the lease — never clear it
+            // here (a running forward switch would lose its busy indicator).
+            return
+        }
+        // Claim in-progress only once the derive owns the lease, so the rejection
+        // path above never touches state set by a concurrent operation.
+        setSwitchInProgress(true)
+        job.invokeOnCompletion {
             invokeLaterIfProjectAlive { setSwitchInProgress(false) }
         }
     }
