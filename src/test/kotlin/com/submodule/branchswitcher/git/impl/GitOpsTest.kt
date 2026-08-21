@@ -331,6 +331,38 @@ class GitOpsTest : GitOpsTestBase() {
     }
 
     @Test
+    fun `index lock path resolves a worktree gitdir file without spawning git`() {
+        val repository = tmpDir.resolve("worktree-lock").toFile().also { it.mkdirs() }
+        val gitDir = tmpDir.resolve("worktree-gitdir").toFile().also { it.mkdirs() }
+        val lock = File(gitDir, "index.lock").also { it.writeText("") }
+        File(repository, ".git").writeText("gitdir: $gitDir")
+        var starts = 0
+        val directGit = GitOps(timeoutSeconds = 10) { builder ->
+            starts++
+            builder.start()
+        }
+
+        assertEquals(lock.canonicalPath, directGit.indexLockFile(repository))
+        assertEquals("worktree lock check must not spawn git", 0, starts)
+    }
+
+    @Test
+    fun `index lock path falls back to rev-parse when gitdir line is malformed`() {
+        val repository = tmpDir.resolve("malformed-worktree").toFile().also { it.mkdirs() }
+        // A damaged `.git` file must not be treated as a path; the probe falls back to git.
+        File(repository, ".git").writeText("not a gitdir line")
+        val lock = File(repository, "index.lock").also { it.writeText("") }
+        val commands = mutableListOf<List<String>>()
+        val fallbackGit = GitOps(timeoutSeconds = 10) { builder ->
+            commands += builder.command()
+            ControllableProcess(finished = true, stdout = "index.lock\n".toByteArray())
+        }
+
+        assertEquals(lock.canonicalPath, fallbackGit.indexLockFile(repository))
+        assertTrue(commands.single().joinToString(" ").contains("rev-parse --git-path index.lock"))
+    }
+
+    @Test
     fun `submodule-only status uses bounded untracked enumeration`() {
         val commands = mutableListOf<List<String>>()
         val boundedGit = GitOps(timeoutSeconds = 10) { builder ->

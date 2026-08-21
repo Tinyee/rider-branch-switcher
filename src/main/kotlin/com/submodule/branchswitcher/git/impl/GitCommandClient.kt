@@ -158,9 +158,13 @@ internal class GitCommandClient(
         val dotGit = File(workDir, ".git")
         if (dotGit.isDirectory) return dotGit
         if (!dotGit.isFile) return null
+        // A worktree's `.git` is a single `gitdir: <path>` line; anything else is not
+        // resolvable, so fall through to null instead of treating the line as a path.
         val rawPath = runCatching {
             dotGit.useLines { lines ->
-                lines.firstOrNull()?.trim()?.removePrefix("gitdir:")?.trim()
+                lines.firstOrNull()?.trim()
+                    ?.takeIf { it.startsWith("gitdir: ") }
+                    ?.removePrefix("gitdir: ")?.trim()
             }
         }.getOrNull()?.takeIf { it.isNotEmpty() } ?: return null
         return runCatching {
