@@ -18,6 +18,9 @@
 
 ### Changed
 
+- The tool-window switch now refreshes repository state immediately on success,
+  matching the shortcut path, instead of waiting for the next reflog-watch tick
+  or a VCS file-status event.
 - The "Switch to Preset" shortcut now opens a filterable preset chooser
   (type-to-filter with a per-row branch summary) and confirms through the same
   rich `SwitchPreviewDialog` as the sidebar, replacing the wall-of-buttons
@@ -163,7 +166,9 @@
   with operation IDs, retain exception stack traces, and record bounded runtime,
   request, checkpoint, recovery, VCS refresh, and final-result diagnostics.
 - Keep preflight, execution, refresh, and recovery under one phased operation
-  context; sanitize Git remotes and credential-like diagnostic values.
+  context; sanitize Git remotes and credential-like diagnostic values, and log
+  only the project directory name (never the absolute path) in operation-start
+  messages.
 - Model recovery as an inspectable plan with per-repository outcomes,
   execution-time safety checks, and HEAD postcondition verification.
 - Give repository-state refresh an isolated cancellable Git session and reject
@@ -237,6 +242,12 @@
 
 ### Fixed
 
+- Approved untracked-collision discards are deleted at the last safe moment —
+  just before the target's own checkout — instead of up-front for every
+  repository, so a downstream skip (a failed main checkout or a topology change)
+  no longer leaves a switched-to repository's approved files already gone.
+- The collision-discard preview's OK button label now tracks the live checkbox
+  decision instead of a snapshot taken when the dialog opened.
 - Preserve the latest stash and checkout state when cancellation or a Git query
   fails in the middle of a switch step.
 - A stale `index.lock` created after the initial guard now blocks derive branch

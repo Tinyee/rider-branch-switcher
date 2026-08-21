@@ -143,3 +143,28 @@ by `SwitchGitClient`) is merged into `SwitchGitClient`, reducing the count from
 separate brittle spot to watch: `DirtyHandlingStep` detects the concrete
 `WriteGuardGitClient` wrapper with `is`; revisit when the wrapper is next
 touched.
+
+### P3-15: Deferred Maintainability Backlog
+
+Quality and style findings deliberately deferred from the 2026-08-21 fix
+rounds, recorded in `review-history.md` so the decisions survive. These remain
+open and are good first-pass maintenance work; each is small and
+behavior-neutral:
+
+- Bound the `remoteName` / `checkedProjects` caches (`GitCommandClient`,
+  `GitOps`) with eviction, or document the practical cap.
+- Split the nine types out of `core/model/PresetConfig.kt` into one-type-per-file.
+- Replace `AppLoggerTest`'s ~20-method anonymous git fake with a shared fake.
+- Remove the dead `changed` computation in
+  `PresetLoader.normalizePresetIds` (it is written but never returned).
+- Unify the `SettingsRules` timeout list with its settings-UI twin (one source).
+- Return a defensive copy from `PresetRepository.presets`.
+- Replace the magic indices in `BranchSwitcherConfigurable` with named constants.
+- Deduplicate consecutive `addHistory` entries (switching to the same preset
+  twice currently appends two rows).
+- Normalize unknown persisted strings (`dirtyActionFromName`, unknown timeouts)
+  instead of silently remapping.
+- Stop persisting unknown state strings verbatim in `getState`.
+- Drop the 2 s no-op log line the reflog watcher emits on quiet panels.
+- Reword the misleading "rollback-skipped" warning (it is not a failure).
+- Collapse the duplicate per-path WARN for a single repository.
