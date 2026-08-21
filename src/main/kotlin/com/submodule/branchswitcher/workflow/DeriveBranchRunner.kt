@@ -60,7 +60,10 @@ class DeriveBranchRunner(
         val operationId = newOperationId("derive")
         val operationLog = log.withContext(operationId)
         operationLog.activity(
-            "operation started: root=${projectRoot.toAbsolutePath().normalize()}, " +
+            // The tool-window log is copyable/exportable: only the directory name (not the
+            // absolute filesystem layout) reaches it, matching SwitchRunner and the other
+            // operation-start logs.
+            "operation started: root=${projectRoot.fileName?.toString() ?: projectRoot.toString()}, " +
                 "preset='${preset.name}', branch=$branchName, targets=${preset.targets().size}",
         )
         preset.targets().forEach { target ->

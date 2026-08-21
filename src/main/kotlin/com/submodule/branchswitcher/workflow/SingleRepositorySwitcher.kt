@@ -113,7 +113,9 @@ class SingleRepositorySwitcher(
                         SingleRepositorySwitchResult.Skipped(SingleRepositorySkipReason.NOT_REGISTERED)
                     }
                     !dir.exists() || !operation.isGitRepo(dir) -> {
-                        operationLog.warn("safety gate: repository is not initialized at ${dir.absolutePath}")
+                        // Relative target path only: the tool-window log is copyable/exportable
+                        // and must not expose the absolute filesystem layout (M15).
+                        operationLog.warn("safety gate: repository is not initialized at $path")
                         SingleRepositorySwitchResult.Skipped(SingleRepositorySkipReason.NOT_INITIALIZED)
                     }
                     else -> switchInitializedRepository(

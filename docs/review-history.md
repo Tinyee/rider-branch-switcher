@@ -728,6 +728,25 @@ post-write presentation (the write is already done, matching the accepted
 gate-release window), and the icon flash `Timer` is not cancelled on dispose (a
 bounded one-shot with no side effects on a detached button).
 
+## 2026-08-21 - Module Review Round: src/workflow
+
+An exhaustive per-file pass over `src/workflow` (7 files) found no hard defects —
+the write-lease lifecycle, recovery/session-freshness, and the refresh
+coordinator's generation-based supersession all held under re-verification. Two
+path-hygiene gaps from the M15 scope were closed.
+
+Durable decisions from the fixes:
+
+- **The derive operation-start log no longer exposes the absolute project
+  path.** Every other `operation started: root=` site was already basenamed
+  (SwitchPreflightUi, SwitchRunner, SingleRepositorySwitcher); `DeriveBranchRunner`
+  was the only one logging `projectRoot.toAbsolutePath()`. The tool-window log
+  is copyable/exportable, so only the directory name reaches it.
+- **The single-repo safety gate logs the relative target path, not the absolute
+  directory.** `repository is not initialized at <absolutePath>` now uses the
+  relative `path`, the same shape as the sibling gates in this file and the
+  switch target line.
+
 ## Maintenance
 
 Record temporary findings in the relevant issue or pull request. Add to this
