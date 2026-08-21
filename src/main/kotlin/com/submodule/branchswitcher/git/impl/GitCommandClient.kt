@@ -260,7 +260,9 @@ internal class GitCommandClient(
     override fun untrackedFiles(workDir: File): List<String> {
         val result = run(workDir, "--no-optional-locks", "ls-files", "--others", "--exclude-standard")
         if (!result.ok) throw GitQueryException(result)
-        return result.stdout.lineSequence().map(String::trim).filter(String::isNotEmpty).toList()
+        // Paths must not be trimmed: a file literally named " leading.txt" would lose its
+        // leading space and escape collision detection before checkout silently overwrites it.
+        return result.stdout.lineSequence().filter { it.isNotEmpty() }.toList()
     }
 
     override fun targetBranchMatches(workDir: File, branch: String, paths: List<String>): List<String> {
@@ -270,7 +272,7 @@ internal class GitCommandClient(
         return paths.chunked(PATHSPEC_CHUNK_SIZE).flatMap { chunk ->
             val result = run(workDir, listOf("ls-tree", "-r", "--name-only", ref, "--") + chunk)
             if (!result.ok) throw GitQueryException(result)
-            result.stdout.lineSequence().map(String::trim).filter(String::isNotEmpty).toList()
+            result.stdout.lineSequence().filter { it.isNotEmpty() }.toList()
         }
     }
 

@@ -102,13 +102,17 @@ internal class GitOutputDrainer(
         val output = ByteArrayOutputStream(minOf(STREAM_BUFFER_BYTES, limitBytes))
         val buffer = ByteArray(STREAM_BUFFER_BYTES)
         var truncated = false
+        var totalBytes = 0L
         stream.use { input ->
             while (true) {
                 val read = input.read(buffer)
                 if (read < 0) break
+                totalBytes += read
                 val remaining = limitBytes - output.size()
                 if (remaining > 0) output.write(buffer, 0, minOf(read, remaining))
-                if (read > remaining) {
+                // Only a genuine overflow beyond the cap is "exceeded": a read that
+                // exactly fills the remaining quota must not be flagged as truncated.
+                if (totalBytes > limitBytes) {
                     truncated = true
                     limitExceeded.set(true)
                 }

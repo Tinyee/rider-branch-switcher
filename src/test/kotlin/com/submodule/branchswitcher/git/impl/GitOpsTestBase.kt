@@ -51,7 +51,7 @@ abstract class GitOpsTestBase {
         assertEquals("git ${args.joinToString(" ")}: $output", 0, process.waitFor())
     }
 
-    protected class ControllableProcess(
+    protected open class ControllableProcess(
         private val finished: Boolean,
         private val stopAfterDestroy: Boolean = true,
         private val onExitUnsupported: Boolean = false,

@@ -360,4 +360,61 @@ class GitOpsProcessTest : GitOpsTestBase() {
         assertEquals(GitFailureKind.OUTPUT_CAPTURE, result.failureKind)
         assertTrue(result.stderr.contains("java.io.IOException: stream unavailable"))
     }
+
+    @Test
+    fun `permit is released even when a live process never exits`() {
+        val permits = Semaphore(1)
+        val runner = GitProcessRunner(
+            timeoutSeconds = 2,
+            processPermits = permits,
+            pollDeadlineSeconds = 1,
+        ) {
+            // Never exits, and destroying it does not stop it: onExit() never completes,
+            // so the onExit-based deferral would hold the permit forever without the deadline.
+            ControllableProcess(finished = false, stopAfterDestroy = false)
+        }
+
+        val result = runner.run(tmpDir.toFile(), AtomicBoolean(false), "stuck")
+
+        assertTrue("the stuck command must report a timeout", result.stderr.startsWith("timeout after"))
+        assertTrue(
+            "the permit must come back after the bounded deferral, not leak forever",
+            permits.tryAcquire(5, TimeUnit.SECONDS),
+        )
+    }
+
+    @Test
+    @Suppress("TooGenericExceptionThrown") // simulating an arbitrary probe failure
+    fun `probe failure during process wait does not leak the pool slot`() {
+        val permits = Semaphore(1)
+        val runner = GitProcessRunner(
+            timeoutSeconds = 2,
+            processPermits = permits,
+        ) {
+            object : ControllableProcess(finished = false, stopAfterDestroy = true) {
+                override fun waitFor(timeout: Long, unit: TimeUnit): Boolean =
+                    throw RuntimeException("probe boom")
+            }
+        }
+
+        try {
+            runner.run(tmpDir.toFile(), AtomicBoolean(false), "stuck")
+        } catch (_: RuntimeException) {
+            // The probe failure may surface as a result or as an escape; either way the
+            // pool slot must come back rather than leaking forever.
+        }
+        assertTrue("capacity must be released after a probe failure", permits.tryAcquire(2, TimeUnit.SECONDS))
+    }
+
+    @Test
+    fun `stdout exactly at the limit is not treated as exceeded`() {
+        val exact = ByteArray(GIT_STDOUT_LIMIT_BYTES) { 'x'.code.toByte() }
+        val process = ControllableProcess(finished = true, stdout = exact)
+        val runner = GitProcessRunner(timeoutSeconds = 10) { process }
+
+        val result = runner.run(tmpDir.toFile(), AtomicBoolean(false), "status")
+
+        assertEquals("exactly-at-limit output is not truncated", GIT_STDOUT_LIMIT_BYTES, result.stdout.length)
+        assertFalse(result.stderr.contains("stdout exceeded"))
+    }
 }

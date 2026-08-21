@@ -29,6 +29,7 @@ internal class GitProcessRunner(
     private val outputDrainer: GitOutputDrainer = GitOutputDrainer(),
     private val processPermits: Semaphore = GitProcessResources.processPermits,
     private val gracefulTerminationSupported: Boolean = !isWindowsRuntime(),
+    private val pollDeadlineSeconds: Long = POLL_DEADLINE_SECONDS,
     private val processStarter: (ProcessBuilder) -> Process,
 ) {
     val effectiveTimeoutSeconds: Int = safeTimeoutSeconds(timeoutSeconds)
@@ -152,13 +153,23 @@ internal class GitProcessRunner(
         }
 
         val observedDescendants = linkedMapOf<Long, ProcessHandle>()
-        val wait = awaitProcessExit(
-            process,
-            cancellation,
-            stdoutLimitExceeded,
-            deadline,
-            observedDescendants,
-        )
+        val wait = try {
+            awaitProcessExit(
+                process,
+                cancellation,
+                stdoutLimitExceeded,
+                deadline,
+                observedDescendants,
+            )
+        } catch (error: RuntimeException) {
+            // An unexpected probe failure while the process may still be running must not
+            // hand the pool slot back for an orphaned process: stop it first.
+            val termination = terminateProcess(process, observedDescendants)
+            return ProcessRunOutcome(
+                GitResult(commandLabel, -1, "", "process probe failed: ${error.javaClass.name}: ${error.message}"),
+                termination.resourcesStopped,
+            )
+        }
         val exitCode = wait.exitCode
         val terminationReason = wait.terminationReason
         var interrupted = wait.interrupted
@@ -224,8 +235,11 @@ internal class GitProcessRunner(
         // The drain threads already closed stdout/stderr via `use {}`; close stdin too
         // so a long-lived process never leaks its input pipe to GC (macOS FD limit).
         closeProcessStreams(process)
+        // Trim only the tail: a leading blank could belong to the first output line
+        // (e.g. a file literally named " leading.txt"), while the trailing newline is
+        // always command noise.
         return completedOutcome(
-            GitResult(commandLabel, exitCode, stdout.capture.text.trim(), stderrText.trim()),
+            GitResult(commandLabel, exitCode, stdout.capture.text.trimEnd(), stderrText.trim()),
             resourcesStopped,
             process,
             observedDescendants,
@@ -264,10 +278,20 @@ internal class GitProcessRunner(
     ): ProcessRunOutcome {
         if (resourcesStopped) return ProcessRunOutcome(result, resourcesStopped = true)
 
+        // Bound the deferral exactly like the polling fallback: a process that never
+        // exits (e.g. stuck in an uninterruptible D-state) must not hold a pool slot
+        // forever, or four such processes deadlock the whole pool. Each onExit future
+        // races the deadline and the permit is released either way.
         val pendingExits = try {
             observedDescendants.values.filter(::isAlive)
-                .mapTo(mutableListOf<CompletableFuture<*>>()) { it.onExit().toCompletableFuture() }
-                .also { exits -> if (process.isAlive) exits += process.onExit() }
+                .mapTo(mutableListOf<CompletableFuture<*>>()) {
+                    it.onExit().toCompletableFuture().orTimeout(pollDeadlineSeconds, TimeUnit.SECONDS)
+                }
+                .also { exits ->
+                    if (process.isAlive) {
+                        exits += process.onExit().toCompletableFuture().orTimeout(pollDeadlineSeconds, TimeUnit.SECONDS)
+                    }
+                }
         } catch (_: UnsupportedOperationException) {
             return deferPermitReleaseByPolling(result, process, observedDescendants)
         } catch (_: SecurityException) {
@@ -298,7 +322,7 @@ internal class GitProcessRunner(
                 // isAlive() reports true for handles that cannot be queried, so the
                 // loop must be bounded: an unqueryable handle must not hold a permit
                 // (and a watcher thread) forever.
-                val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(POLL_DEADLINE_SECONDS)
+                val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(pollDeadlineSeconds)
                 while (System.nanoTime() - deadline < 0 &&
                     (isProcessAlive(process) || observedDescendants.values.any(::isAlive))
                 ) {
@@ -353,8 +377,12 @@ internal class GitProcessRunner(
             try {
                 // A value recovered on the retry is complete and trustworthy: do not
                 // carry a transient interrupt flag that would make the caller discard
-                // the real capture and report the command as "interrupted".
-                return AwaitedCapture(future.get(5, TimeUnit.SECONDS), interrupted = false)
+                // the real capture and report the command as "interrupted". But the
+                // interrupt state must still be restored on the calling thread so the
+                // cancellation is not silently lost.
+                val capture = future.get(5, TimeUnit.SECONDS)
+                if (interrupted) Thread.currentThread().interrupt()
+                return AwaitedCapture(capture, interrupted = false)
             } catch (_: InterruptedException) {
                 interrupted = true
             } catch (error: ExecutionException) {

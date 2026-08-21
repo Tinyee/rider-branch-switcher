@@ -455,4 +455,19 @@ class GitOpsTest : GitOpsTestBase() {
 
         assertNull(emptyStashGit.stashOidByMessage(tmpDir.toFile(), "branch-switcher: before -> "))
     }
+
+    @Test
+    fun `untracked paths preserve leading and trailing whitespace in names`() {
+        val whitespaceGit = GitOps(timeoutSeconds = 10) { _ ->
+            ControllableProcess(
+                finished = true,
+                stdout = " leading.txt\ntrailing.txt \nplain.txt\n".toByteArray(),
+            )
+        }
+
+        assertEquals(
+            listOf(" leading.txt", "trailing.txt ", "plain.txt"),
+            whitespaceGit.untrackedFiles(tmpDir.toFile()),
+        )
+    }
 }
