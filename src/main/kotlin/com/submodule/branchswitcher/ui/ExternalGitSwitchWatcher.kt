@@ -1,6 +1,7 @@
 package com.submodule.branchswitcher.ui
 
 import com.intellij.util.Alarm
+import com.submodule.branchswitcher.log.AppLogger
 import java.io.File
 import java.nio.file.Path
 
@@ -19,11 +20,14 @@ private const val REFLOG_WATCH_INTERVAL_MS = 2000L
  */
 internal class ExternalGitSwitchWatcher(
     private val alarm: Alarm,
+    private val log: AppLogger,
     private val gitRoot: () -> Path?,
     private val shouldWatch: () -> Boolean,
     private val onExternalChange: () -> Unit,
 ) {
     private var lastReflogStamp: Long = -1L
+    /** Last unresolved root already warned about, so a persistent 2s-per-poll failure stays visible but quiet. */
+    private var lastUnresolvedWarning: String? = null
 
     /** Cancels any pending request, then re-queues when [shouldWatch] is still true. */
     fun restart() {
@@ -42,17 +46,39 @@ internal class ExternalGitSwitchWatcher(
             alarm.cancelAllRequests()
             return
         }
-        val reflog = gitRoot()?.let(::mainReflogPath)
+        val root = gitRoot()
+        val reflog = root?.let(::mainReflogPath)
         if (reflog == null) {
             // `.git` is not resolvable yet (root temporarily unavailable, worktree
             // gitdir file transiently unreadable). Re-queue the watch instead of
             // returning, which would stop it permanently until a hide/show cycle.
+            logUnresolved(root)
             restart()
             return
         }
-        val stamp = runCatching { reflog.lastModified() }.getOrElse { -1L }
-        lastReflogStamp = reflogStampUpdate(lastReflogStamp, stamp, onExternalChange)
+        val stamp = runCatching { reflog.lastModified() }.getOrElse {
+            log.warn(
+                "reflog lastModified failed: ${it.javaClass.simpleName}: ${it.message}; " +
+                    "stamp reset to -1 (may fire a spurious external switch)",
+            )
+            -1L
+        }
+        val previous = lastReflogStamp
+        lastReflogStamp = reflogStampUpdate(previous, stamp, onExternalChange)
+        when {
+            previous < 0 -> log.debug("watcher initial stamp captured: $stamp")
+            stamp != previous -> log.info("external switch detected: reflog stamp $previous -> $stamp")
+            else -> log.debug("watcher noop: stamp=$stamp")
+        }
         restart()
+    }
+
+    /** Warns at most once per unresolved root, so a persistent 2s-per-poll failure stays visible but quiet. */
+    private fun logUnresolved(root: Path?) {
+        val detail = root?.toString() ?: "<root unavailable>"
+        if (lastUnresolvedWarning == detail) return
+        lastUnresolvedWarning = detail
+        log.warn("reflog path unresolved (root=$detail); re-queueing watcher")
     }
 }
 

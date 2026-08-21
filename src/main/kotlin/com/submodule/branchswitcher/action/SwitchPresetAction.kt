@@ -65,8 +65,12 @@ class SwitchPresetAction : AnAction() {
     ) {
         when (shortcutPresetLoadDecision(loadResult.isSuccess, presets.size)) {
             ShortcutPresetLoadDecision.LoadFailed -> {
+                val error = loadResult.exceptionOrNull()
+                if (error != null) {
+                    actionLogger(project).logFailure("preset load failed", error)
+                }
                 Notifier.error(project, Bundle.msg("preset.load.failed"),
-                    loadResult.exceptionOrNull()?.message ?: Bundle.msg("dialog.import.failed"))
+                    error?.message ?: Bundle.msg("dialog.import.failed"))
                 return
             }
             ShortcutPresetLoadDecision.NoPresets -> {
@@ -96,11 +100,12 @@ class SwitchPresetAction : AnAction() {
     }
 
     private fun executeSwitch(project: Project, service: BranchSwitcherService, preset: Preset) {
+        val collector = actionLogger(project)
         val root = project.gitRootPath() ?: run {
+            collector.error("git root not found")
             Notifier.error(project, Bundle.msg("plugin.title"), Bundle.msg("git.root.not.found"))
             return
         }
-        val collector = actionLogger(project)
         SwitchFlowCoordinator(
             project,
             service,

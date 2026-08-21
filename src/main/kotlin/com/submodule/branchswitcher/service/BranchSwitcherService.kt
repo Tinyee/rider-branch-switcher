@@ -14,8 +14,10 @@ import com.submodule.branchswitcher.model.ResolvedSwitchRequest
 import com.submodule.branchswitcher.model.SwitchOptions
 import com.submodule.branchswitcher.settings.dirtyActionFromName
 import kotlinx.coroutines.CoroutineScope
+import com.submodule.branchswitcher.log.newOperationId
 import com.submodule.branchswitcher.model.Preset
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
 
 /**
  * Central project-level service for the Branch Switcher plugin.
@@ -41,6 +43,8 @@ class BranchSwitcherService(
 
     /** Prevents overlapping write operations (switch, derive, rollback). */
     private val writeGate = AtomicBoolean(false)
+    /** Diagnostic: the operation id currently owning the write gate, so busy rejections can name the holder. */
+    private val writeHolder = AtomicReference<String?>(null)
 
     /**
      * Idempotent ownership token for the project write gate.
@@ -49,19 +53,29 @@ class BranchSwitcherService(
      */
     class WriteLease internal constructor(
         private val gate: AtomicBoolean,
+        private val holder: AtomicReference<String?>,
+        private val acquiredBy: String,
     ) : AutoCloseable {
         private val closed = AtomicBoolean(false)
 
         override fun close() {
             if (closed.compareAndSet(false, true)) {
                 gate.set(false)
+                holder.compareAndSet(acquiredBy, null)
             }
         }
     }
 
     /** Acquires the write gate, returning an idempotent scoped lease on success. */
-    fun tryAcquireWrite(): WriteLease? =
-        if (writeGate.compareAndSet(false, true)) WriteLease(writeGate) else null
+    fun tryAcquireWrite(): WriteLease? {
+        if (!writeGate.compareAndSet(false, true)) return null
+        val acquiredBy = newOperationId("write")
+        writeHolder.set(acquiredBy)
+        return WriteLease(writeGate, writeHolder, acquiredBy)
+    }
+
+    /** Diagnostic: the operation id currently holding the write gate, or null when free. */
+    val currentWriteHolder: String? get() = writeHolder.get()
 
     data class OptionsState(
         var dirtyAction: String = "Stash",

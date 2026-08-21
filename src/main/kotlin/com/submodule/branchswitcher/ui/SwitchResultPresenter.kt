@@ -8,6 +8,7 @@ import com.submodule.branchswitcher.service.BranchSwitcherService
 import com.submodule.branchswitcher.switch.OperationIssue
 import com.submodule.branchswitcher.switch.SwitchExecutionResult
 import com.submodule.branchswitcher.switch.lockBlockedPresentations
+import com.submodule.branchswitcher.log.AppLogger
 import com.submodule.branchswitcher.workflow.SingleRepositorySwitchResult
 import com.submodule.branchswitcher.workflow.SwitchRunResult
 
@@ -30,6 +31,7 @@ internal class SwitchResultPresenter(
         target: String,
         result: SingleRepositorySwitchResult,
         operationId: String,
+        log: AppLogger,
     ) {
         when (result) {
             is SingleRepositorySwitchResult.Success ->
@@ -55,9 +57,12 @@ internal class SwitchResultPresenter(
                     operationId,
                 )
             }
-            is SingleRepositorySwitchResult.Skipped -> Unit
-            SingleRepositorySwitchResult.Cancelled -> Unit
-            is SingleRepositorySwitchResult.Unexpected -> Unit
+            is SingleRepositorySwitchResult.Skipped ->
+                log.info("single switch skipped: path=$path target=$target")
+            SingleRepositorySwitchResult.Cancelled ->
+                log.debug("single switch cancelled: path=$path target=$target")
+            is SingleRepositorySwitchResult.Unexpected ->
+                log.warn("unexpected single-switch result: $result")
         }
     }
 

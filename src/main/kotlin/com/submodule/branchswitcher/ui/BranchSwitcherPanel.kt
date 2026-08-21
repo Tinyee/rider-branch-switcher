@@ -83,15 +83,17 @@ class BranchSwitcherPanel(
     private val logPanel = ToolWindowLogPanel()
     private val stateRefreshAlarm = Alarm(Alarm.ThreadToUse.SWING_THREAD, this)
     private val reflogWatchAlarm = Alarm(Alarm.ThreadToUse.SWING_THREAD, this)
+
+    // ── Logger ──────────────────────────────────────────────────
+    // Declared before the watcher: the watcher needs it at construction.
+    private val logger: AppLogger = ToolWindowLogger(logPanel::append)
     private val reflogWatcher = ExternalGitSwitchWatcher(
         alarm = reflogWatchAlarm,
+        log = logger,
         gitRoot = ::gitRoot,
         shouldWatch = { shouldRunReflogWatch(isShowing, project.isDisposed) },
         onExternalChange = ::scheduleStateRefresh,
     )
-
-    // ── Logger ──────────────────────────────────────────────────
-    private val logger: AppLogger = ToolWindowLogger(logPanel::append)
     private val stateDetector = RepositoryStateDetector(
         logger,
         platformCancellationClassifier,
@@ -289,7 +291,11 @@ class BranchSwitcherPanel(
     }
 
     private fun gitRoot(): Path? {
-        val root = project.gitRootPath() ?: return null
+        val root = project.gitRootPath()
+        if (root == null) {
+            logger.debug("git root not resolved: basePath=${project.basePath}")
+            return null
+        }
         val dotGit = root.resolve(".git")
         if (!java.nio.file.Files.isDirectory(dotGit) && !worktreeInfoLogged) {
             worktreeInfoLogged = true

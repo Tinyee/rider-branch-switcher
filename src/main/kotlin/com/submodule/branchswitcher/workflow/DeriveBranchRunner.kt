@@ -84,6 +84,11 @@ class DeriveBranchRunner(
                 operationLog.activity("[derive] rolling back ${deriveResult.succeeded.size} succeeded repo(s)...")
                 executor.rollbackSucceeded(deriveResult, branchName)
             } else {
+                if (operationCancelled && deriveResult.succeeded.isNotEmpty()) {
+                    operationLog.warn(
+                        "rollback skipped: ${deriveResult.succeeded.size} succeeded repo(s) left (operation cancelled)",
+                    )
+                }
                 null
             }
             BackgroundDeriveOutcome(deriveResult, rollback)
@@ -156,7 +161,10 @@ class DeriveBranchRunner(
         }
         return when (rollbackResult) {
             is GitOperationResult.Completed -> rollbackResult.value
-            is GitOperationResult.Cancelled -> rollbackResult.value ?: listOf("(cancelled)")
+            is GitOperationResult.Cancelled -> {
+                log.warn("rollback after cancel was itself cancelled")
+                rollbackResult.value ?: listOf("(cancelled)")
+            }
             is GitOperationResult.Failed -> {
                 log.logFailure("derive rollback after cancel failed", rollbackResult.error)
                 listOf("(failed)")

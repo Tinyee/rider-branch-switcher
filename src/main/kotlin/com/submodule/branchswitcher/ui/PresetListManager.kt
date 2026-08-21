@@ -150,7 +150,7 @@ internal class PresetListManager(
         ) { outcome ->
             val operationLog = log.withContext(outcome.operationId)
             refreshVcsTail(project, root, setOf(path), operationLog, project::invokeLaterIfAlive) {
-                resultPresenter.presentSingleSwitch(path, target, outcome.result, outcome.operationId)
+                resultPresenter.presentSingleSwitch(path, target, outcome.result, outcome.operationId, operationLog)
                 notifyStateChanged()
             }
         }

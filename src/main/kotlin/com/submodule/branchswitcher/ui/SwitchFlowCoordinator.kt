@@ -132,8 +132,10 @@ class SwitchFlowCoordinator(
             val probeResult = try {
                 preflight(root, preset, log, operationContext)
             } catch (_: CancellationException) {
+                log.withContext(operationContext).info("preflight cancelled by user")
                 return@launch
             } catch (_: com.intellij.openapi.progress.ProcessCanceledException) {
+                log.withContext(operationContext).info("preflight cancelled by user")
                 return@launch
             } catch (e: Exception) {
                 log.withContext(operationContext).logFailure("preflight probe failed", e)
@@ -151,11 +153,13 @@ class SwitchFlowCoordinator(
                 val request = service.resolveSwitchRequest(preset)
                 val preview = SwitchPreviewDialog(project, request, probeResult)
                 if (!preview.showAndGet()) {
+                    log.withContext(operationContext).info("switch declined by user: preview cancelled")
                     onDecline("switch cancelled by user - preview declined")
                     return@uiLater
                 }
                 val preApproved = resolvePreApprovedSubmoduleInit(request, probeResult)
                     ?: run {
+                        log.withContext(operationContext).info("switch declined by user: submodule init not approved")
                         onDecline("switch cancelled by user - submodule init declined")
                         return@uiLater
                     }
@@ -196,7 +200,10 @@ class SwitchFlowCoordinator(
         val completion = SwitchUiCompletion(::uiLater, onFinished)
         val job = writeOperations.launch(
             onBusy = {
-                log.withContext(operationContext).warn("operation rejected: another repository write is already running")
+                log.withContext(operationContext).warn(
+                    "operation rejected: another repository write is already running" +
+                        service.currentWriteHolder?.let { " (held by $it)" }.orEmpty(),
+                )
                 uiLater {
                     completion.completeAfter {
                         resultPresenter.showWriteBusy()
@@ -250,7 +257,10 @@ class SwitchFlowCoordinator(
         val recoveryLog = log.withContext(operationContext.inPhase("recovery"))
         val job = writeOperations.launch(
             onBusy = {
-                log.withContext(operationContext).warn("operation rejected: another repository write is already running")
+                log.withContext(operationContext).warn(
+                    "operation rejected: another repository write is already running" +
+                        service.currentWriteHolder?.let { " (held by $it)" }.orEmpty(),
+                )
                 uiLater { resultPresenter.showWriteBusy() }
             },
             afterRelease = { recoveryOutcome ->

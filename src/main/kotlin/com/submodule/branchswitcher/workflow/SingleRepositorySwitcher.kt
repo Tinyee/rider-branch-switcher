@@ -185,9 +185,12 @@ class SingleRepositorySwitcher(
                 switchWithLockGuard(root, path, operation, operationLog) {
                     operation.checkoutFromRemote(directory, target)
                 }
-            else -> SingleRepositorySwitchResult.GitFailure(
-                GitResult("checkout", 1, "", "branch $target not found"),
-            )
+            else -> {
+                operationLog.warn("branch \"$target\" not found in $path (local and remote both missing)")
+                SingleRepositorySwitchResult.GitFailure(
+                    GitResult("checkout", 1, "", "branch $target not found"),
+                )
+            }
         }
     }
 

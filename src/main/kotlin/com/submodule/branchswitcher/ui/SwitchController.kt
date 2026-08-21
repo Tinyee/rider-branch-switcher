@@ -67,7 +67,10 @@ internal class SwitchController(
         val operationLog = log.withContext(newOperationContext("derive"))
         val job = writeOperations.launch(
             onBusy = {
-                operationLog.warn("operation rejected: another repository write is already running")
+                operationLog.warn(
+                    "operation rejected: another repository write is already running" +
+                        service.currentWriteHolder?.let { " (held by $it)" }.orEmpty(),
+                )
                 Notifier.warn(project, Bundle.msg("notify.write.busy"), Bundle.msg("notify.write.busy.msg"))
             },
             afterRelease = { runResult ->
@@ -99,7 +102,10 @@ internal class SwitchController(
         // Claim in-progress only once the derive owns the lease, so the rejection
         // path above never touches state set by a concurrent operation.
         setSwitchInProgress(true)
-        job.invokeOnCompletion {
+        job.invokeOnCompletion { failure ->
+            if (failure != null && !platformCancellationClassifier.isCancellation(failure)) {
+                log.error("derive operation failed", failure)
+            }
             invokeLaterIfProjectAlive { setSwitchInProgress(false) }
         }
     }
