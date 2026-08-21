@@ -72,7 +72,11 @@ class SwitchPreviewDialog(
 
     /** True when a collision that is not auto-approved exists, so OK must confirm a discard. */
     private val needsDiscardConfirm: Boolean
-        get() = collisionDiscardNeedsConfirm(rows.flatMap { it.untrackedCollisions }, request.options.autoDiscardMeta)
+        get() = collisionDecision(
+            rows.flatMap { it.untrackedCollisions },
+            onlyMeta = false,
+            autoMeta = request.options.autoDiscardMeta,
+        ).needsConfirm
 
     init {
         title = Bundle.msg("dialog.switch.preset.title", request.preset.name)
@@ -201,18 +205,21 @@ class SwitchPreviewDialog(
     private fun createCollisionSection(): JPanel? {
         val collisionRows = rows.filter { it.untrackedCollisions.isNotEmpty() }
         if (collisionRows.isEmpty()) return null
-        val autoMeta = request.options.autoDiscardMeta
-        val total = collisionRows.sumOf { it.untrackedCollisions.size }
-        val metaCount = collisionRows.sumOf { row -> row.untrackedCollisions.count { isCollisionFileMeta(it) } }
+
+        // One decision object drives the header counts, the summary, and every file-row note,
+        // so a single recompute per checkbox toggle keeps them all on the same options. (The
+        // init-time confirm gate is computed separately, see [needsDiscardConfirm].)
+        val collisions = collisionRows.flatMap { it.untrackedCollisions }
+        var decision = collisionDecision(collisions, onlyMeta = false, autoMeta = request.options.autoDiscardMeta)
 
         // The file rows keep their labels so the decision row can restyle them live as the
         // user toggles the discard options (see refreshCollisionFileRows).
         val fileRows = mutableListOf<CollisionFileRow>()
         val fileList = createCollisionFileList(collisionRows, fileRows)
-        refreshCollisionFileRows(fileRows, onlyMeta = false, autoMeta = autoMeta)
+        refreshCollisionFileRows(fileRows, decision)
 
         val card = createCollisionCard(
-            createCollisionHeader(total, metaCount, total - metaCount),
+            createCollisionHeader(decision.total, decision.metaCount, decision.total - decision.metaCount),
             fileList,
         )
 
@@ -220,8 +227,9 @@ class SwitchPreviewDialog(
             isOpaque = false
             add(card, BorderLayout.NORTH)
             add(
-                createDecisionRow(autoMeta, metaCount, total) { onlyMeta, auto ->
-                    refreshCollisionFileRows(fileRows, onlyMeta, auto)
+                createDecisionRow(collisions, decision) { newDecision ->
+                    decision = newDecision
+                    refreshCollisionFileRows(fileRows, newDecision)
                 },
                 BorderLayout.SOUTH,
             )
@@ -323,28 +331,28 @@ class SwitchPreviewDialog(
         val rowPanel = TrailingControlRowPanel(pathLabel, noteLabel, JBUI.scale(8)).apply {
             border = JBUI.Borders.empty(1, 8, 1, 8)
         }
-        return CollisionFileRow(isCollisionFileMeta(file), rowPanel, pathLabel, noteLabel)
+        return CollisionFileRow(file, rowPanel, pathLabel, noteLabel)
     }
 
     /**
-     * Recomputes a file row's note and colors for the current discard options. A meta file is
+     * Recomputes a file row's note and colors for the current discard decision. A meta file is
      * always discarded; only its confirmation level changes (safe vs. auto). A non-meta file
-     * is kept when [onlyMeta] is set — then it is dimmed and the note warns that this repo's
+     * is kept when only-meta is chosen — then it is dimmed and the note warns that this repo's
      * checkout will fail.
      */
-    private fun refreshCollisionFileRows(rows: List<CollisionFileRow>, onlyMeta: Boolean, autoMeta: Boolean) {
-        rows.forEach { applyDiscardState(it, onlyMeta, autoMeta) }
+    private fun refreshCollisionFileRows(rows: List<CollisionFileRow>, decision: CollisionDecision) {
+        rows.forEach { applyDiscardState(it, decision) }
     }
 
-    private fun applyDiscardState(row: CollisionFileRow, onlyMeta: Boolean, autoMeta: Boolean) {
+    private fun applyDiscardState(row: CollisionFileRow, decision: CollisionDecision) {
         // The note text is a pure decision (UiRules); the dialog only maps it to colors.
-        row.noteLabel.text = collisionFileNote(row.isMeta, onlyMeta, autoMeta)
-        if (row.isMeta) {
-            row.noteLabel.foreground = if (autoMeta) autoColor else safeColor
+        row.noteLabel.text = decision.noteFor(row.file)
+        if (isCollisionFileMeta(row.file)) {
+            row.noteLabel.foreground = if (decision.autoMeta) autoColor else safeColor
             row.noteLabel.font = row.noteLabel.font.deriveFont(Font.PLAIN)
             row.pathLabel.foreground = JBColor.foreground()
         } else {
-            val discarded = !onlyMeta
+            val discarded = !decision.onlyMeta
             row.noteLabel.foreground = if (discarded) warnColor else mutedColor
             row.noteLabel.font = row.noteLabel.font.deriveFont(if (discarded) Font.BOLD else Font.PLAIN)
             row.pathLabel.foreground = if (discarded) JBColor.foreground() else mutedColor
@@ -352,7 +360,7 @@ class SwitchPreviewDialog(
     }
 
     private class CollisionFileRow(
-        val isMeta: Boolean,
+        val file: String,
         val rowPanel: JPanel,
         val pathLabel: JLabel,
         val noteLabel: JLabel,
@@ -364,30 +372,22 @@ class SwitchPreviewDialog(
      * list's scroll area so it never goes below the fold.
      */
     private fun createDecisionRow(
-        autoMeta: Boolean,
-        metaCount: Int,
-        total: Int,
-        onOptionChange: (onlyMeta: Boolean, autoMeta: Boolean) -> Unit,
+        collisions: List<String>,
+        initialDecision: CollisionDecision,
+        onDecisionChange: (CollisionDecision) -> Unit,
     ): JPanel {
         val onlyMetaCheck = JCheckBox(Bundle.msg("dialog.collision.discard.only.meta"))
         val autoMetaCheck = JCheckBox(Bundle.msg("dialog.collision.discard.remember")).apply {
-            isSelected = autoMeta
+            isSelected = initialDecision.autoMeta
         }
         val summaryLabel = JLabel().apply { foreground = mutedColor }
 
-        fun refreshSummary() {
-            summaryLabel.text = collisionDiscardSummary(
-                onlyMetaCheck.isSelected,
-                autoMetaCheck.isSelected,
-                metaCount,
-                total,
-            )
-        }
-        // Each checkbox persists its own state; both then re-render the summary and the file
-        // list, which read the live state of both checkboxes.
+        // Each checkbox persists its own state; both then recompute one CollisionDecision from
+        // the live state of both checkboxes, and the summary plus the file list read it.
         fun applyChange() {
-            refreshSummary()
-            onOptionChange(onlyMetaCheck.isSelected, autoMetaCheck.isSelected)
+            val decision = collisionDecision(collisions, onlyMetaCheck.isSelected, autoMetaCheck.isSelected)
+            summaryLabel.text = decision.summary
+            onDecisionChange(decision)
         }
         onlyMetaCheck.addActionListener {
             onlyMetaDiscard = onlyMetaCheck.isSelected
@@ -397,7 +397,7 @@ class SwitchPreviewDialog(
             project.service<BranchSwitcherService>().autoDiscardMeta = autoMetaCheck.isSelected
             applyChange()
         }
-        refreshSummary()
+        summaryLabel.text = initialDecision.summary
 
         // BoxLayout, not FlowLayout: FlowLayout hardcodes a 5px left inset that would push
         // the first checkbox off the left edge; BoxLayout has no insets, so the row is flush.

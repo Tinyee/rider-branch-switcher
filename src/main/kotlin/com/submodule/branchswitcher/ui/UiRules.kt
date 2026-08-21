@@ -59,32 +59,53 @@ fun strategySummary(dirty: DirtyAction, fetch: Boolean, pull: Boolean, timeoutSe
 fun isCollisionFileMeta(file: String): Boolean = file.endsWith(".meta")
 
 /**
- * Summary line for the collision-discard decision. Always reflects "auto" while it is on, so
- * the text is a pure function of the checkbox state — toggling the two options in any order
- * lands on the same summary for the same end state.
+ * Every derived output of the collision-discard decision for one [onlyMeta]/[autoMeta] state.
+ * The dialog recomputes a single [CollisionDecision] per checkbox toggle and reads these
+ * fields, so the summary, the confirm gate, the counts, and [noteFor] can never disagree
+ * about which options were in effect.
  */
-fun collisionDiscardSummary(onlyMeta: Boolean, autoMeta: Boolean, metaCount: Int, total: Int): String {
-    val approved = if (onlyMeta) metaCount else total
-    return when {
+data class CollisionDecision(
+    val onlyMeta: Boolean,
+    val autoMeta: Boolean,
+    val summary: String,
+    val needsConfirm: Boolean,
+    val total: Int,
+    val metaCount: Int,
+) {
+    /** Note shown next to one colliding file under the options this decision was computed for. */
+    fun noteFor(file: String): String = when {
+        isCollisionFileMeta(file) && autoMeta -> Bundle.msg("dialog.collision.discard.meta.auto")
+        isCollisionFileMeta(file) -> Bundle.msg("dialog.collision.discard.meta.safe")
+        onlyMeta -> Bundle.msg("dialog.collision.discard.kept")
+        else -> Bundle.msg("dialog.collision.discard.deleted")
+    }
+}
+
+/**
+ * Derives all collision-discard outputs from one [onlyMeta]/[autoMeta] state. The summary
+ * always reflects "auto" while it is on, so toggling the two options in any order lands on
+ * the same decision for the same end state. [collisions] is the full flattened list and the
+ * counts are derived from it, so callers cannot pass counts that disagree with the files.
+ */
+fun collisionDecision(
+    collisions: List<String>,
+    onlyMeta: Boolean,
+    autoMeta: Boolean,
+): CollisionDecision {
+    val metaCount = collisions.count { isCollisionFileMeta(it) }
+    val approved = if (onlyMeta) metaCount else collisions.size
+    val summary = when {
         onlyMeta && autoMeta -> Bundle.msg("dialog.collision.discard.summary.meta.auto", approved)
         onlyMeta -> Bundle.msg("dialog.collision.discard.summary.meta", approved)
         autoMeta -> Bundle.msg("dialog.collision.discard.summary.auto", approved, metaCount)
         else -> Bundle.msg("dialog.collision.discard.summary.all", approved)
     }
+    return CollisionDecision(
+        onlyMeta = onlyMeta,
+        autoMeta = autoMeta,
+        summary = summary,
+        needsConfirm = collisions.any { !(autoMeta && isCollisionFileMeta(it)) },
+        total = collisions.size,
+        metaCount = metaCount,
+    )
 }
-
-/**
- * Note shown next to one colliding file for the current discard options. Meta files are
- * always discarded — the note only reflects whether they are auto-approved; a non-meta file
- * is kept when only-meta is chosen, which leaves that repo's checkout to fail.
- */
-fun collisionFileNote(isMeta: Boolean, onlyMeta: Boolean, autoMeta: Boolean): String = when {
-    isMeta && autoMeta -> Bundle.msg("dialog.collision.discard.meta.auto")
-    isMeta -> Bundle.msg("dialog.collision.discard.meta.safe")
-    onlyMeta -> Bundle.msg("dialog.collision.discard.kept")
-    else -> Bundle.msg("dialog.collision.discard.deleted")
-}
-
-/** True when the switch must carry a discard confirmation (a non-auto-approved file will be removed). */
-fun collisionDiscardNeedsConfirm(files: Iterable<String>, autoMeta: Boolean): Boolean =
-    files.any { file -> !(autoMeta && isCollisionFileMeta(file)) }

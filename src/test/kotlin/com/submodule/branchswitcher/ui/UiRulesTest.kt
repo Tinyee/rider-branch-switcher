@@ -76,43 +76,53 @@ class UiRulesTest {
     }
 
     @Test
-    fun `collision discard summary is a pure function of the checkbox state`() {
+    fun `collision decision summary is a pure function of the checkbox state`() {
         val all = Bundle.msg("dialog.collision.discard.summary.all", 3)
         val auto = Bundle.msg("dialog.collision.discard.summary.auto", 3, 2)
         val meta = Bundle.msg("dialog.collision.discard.summary.meta", 2)
         val metaAuto = Bundle.msg("dialog.collision.discard.summary.meta.auto", 2)
+        val collisions = listOf("Assets/A.prefab.meta", "Assets/A.prefab", "Assets/B.unity.meta")
 
-        assertEquals(all, collisionDiscardSummary(onlyMeta = false, autoMeta = false, metaCount = 2, total = 3))
-        assertEquals(auto, collisionDiscardSummary(onlyMeta = false, autoMeta = true, metaCount = 2, total = 3))
-        assertEquals(meta, collisionDiscardSummary(onlyMeta = true, autoMeta = false, metaCount = 2, total = 3))
+        assertEquals(all, collisionDecision(collisions, onlyMeta = false, autoMeta = false).summary)
+        assertEquals(auto, collisionDecision(collisions, onlyMeta = false, autoMeta = true).summary)
+        assertEquals(meta, collisionDecision(collisions, onlyMeta = true, autoMeta = false).summary)
         // Both on: "auto" stays visible no matter which checkbox was clicked last.
-        assertEquals(metaAuto, collisionDiscardSummary(onlyMeta = true, autoMeta = true, metaCount = 2, total = 3))
+        assertEquals(metaAuto, collisionDecision(collisions, onlyMeta = true, autoMeta = true).summary)
     }
 
     @Test
-    fun `collision file note covers every discard state`() {
+    fun `collision decision note covers every discard state`() {
         val auto = Bundle.msg("dialog.collision.discard.meta.auto")
         val safe = Bundle.msg("dialog.collision.discard.meta.safe")
         val kept = Bundle.msg("dialog.collision.discard.kept")
         val deleted = Bundle.msg("dialog.collision.discard.deleted")
+        val meta = "Assets/A.prefab.meta"
+        val other = "Assets/A.prefab"
+        val collisions = listOf(meta, other)
 
-        assertEquals(auto, collisionFileNote(isMeta = true, onlyMeta = true, autoMeta = true))
-        assertEquals(auto, collisionFileNote(isMeta = true, onlyMeta = false, autoMeta = true))
-        assertEquals(safe, collisionFileNote(isMeta = true, onlyMeta = true, autoMeta = false))
-        assertEquals(safe, collisionFileNote(isMeta = true, onlyMeta = false, autoMeta = false))
-        assertEquals(kept, collisionFileNote(isMeta = false, onlyMeta = true, autoMeta = true))
-        assertEquals(kept, collisionFileNote(isMeta = false, onlyMeta = true, autoMeta = false))
-        assertEquals(deleted, collisionFileNote(isMeta = false, onlyMeta = false, autoMeta = true))
-        assertEquals(deleted, collisionFileNote(isMeta = false, onlyMeta = false, autoMeta = false))
+        fun note(isMeta: Boolean, onlyMeta: Boolean, autoMeta: Boolean) =
+            collisionDecision(collisions, onlyMeta, autoMeta).noteFor(if (isMeta) meta else other)
+
+        assertEquals(auto, note(isMeta = true, onlyMeta = true, autoMeta = true))
+        assertEquals(auto, note(isMeta = true, onlyMeta = false, autoMeta = true))
+        assertEquals(safe, note(isMeta = true, onlyMeta = true, autoMeta = false))
+        assertEquals(safe, note(isMeta = true, onlyMeta = false, autoMeta = false))
+        assertEquals(kept, note(isMeta = false, onlyMeta = true, autoMeta = true))
+        assertEquals(kept, note(isMeta = false, onlyMeta = true, autoMeta = false))
+        assertEquals(deleted, note(isMeta = false, onlyMeta = false, autoMeta = true))
+        assertEquals(deleted, note(isMeta = false, onlyMeta = false, autoMeta = false))
     }
 
     @Test
     fun `collision confirmation is needed while a non-auto-approved file remains`() {
-        assertTrue(collisionDiscardNeedsConfirm(listOf("Assets/A.prefab.meta", "Assets/A.prefab"), autoMeta = false))
-        assertTrue(collisionDiscardNeedsConfirm(listOf("Assets/A.prefab.meta", "Assets/A.prefab"), autoMeta = true))
-        assertTrue(collisionDiscardNeedsConfirm(listOf("Assets/A.prefab"), autoMeta = true))
-        assertFalse(collisionDiscardNeedsConfirm(listOf("Assets/A.prefab.meta", "Assets/B.unity.meta"), autoMeta = true))
-        assertTrue(collisionDiscardNeedsConfirm(listOf("Assets/A.prefab.meta"), autoMeta = false))
+        val mixed = listOf("Assets/A.prefab.meta", "Assets/A.prefab")
+        assertTrue(collisionDecision(mixed, onlyMeta = false, autoMeta = false).needsConfirm)
+        assertTrue(collisionDecision(mixed, onlyMeta = false, autoMeta = true).needsConfirm)
+        assertTrue(collisionDecision(listOf("Assets/A.prefab"), onlyMeta = false, autoMeta = true).needsConfirm)
+        assertFalse(collisionDecision(
+            listOf("Assets/A.prefab.meta", "Assets/B.unity.meta"), onlyMeta = false, autoMeta = true,
+        ).needsConfirm)
+        assertTrue(collisionDecision(listOf("Assets/A.prefab.meta"), onlyMeta = false, autoMeta = false).needsConfirm)
     }
 
     @Test
