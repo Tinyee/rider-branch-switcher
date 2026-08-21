@@ -110,8 +110,10 @@ internal class GitOutputDrainer(
                 totalBytes += read
                 val remaining = limitBytes - output.size()
                 if (remaining > 0) output.write(buffer, 0, minOf(read, remaining))
-                // Only a genuine overflow beyond the cap is "exceeded": a read that
-                // exactly fills the remaining quota must not be flagged as truncated.
+                // "Exceeded" means a cumulative overflow beyond the cap. The cumulative
+                // count is the self-documenting form of the overflow test (a read that
+                // exactly fills the remaining quota was never flagged, per-read either)
+                // and matches captureTail's accounting.
                 if (totalBytes > limitBytes) {
                     truncated = true
                     limitExceeded.set(true)
