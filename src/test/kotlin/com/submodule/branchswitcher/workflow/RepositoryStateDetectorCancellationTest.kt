@@ -30,6 +30,8 @@ class RepositoryStateDetectorCancellationTest {
             override fun currentBranch(workDir: File): String? = null
             override fun revParseHead(workDir: File): String? = null
             override fun isDirty(workDir: File): Boolean = false
+            override fun localBranchExists(workDir: File, branch: String): Boolean = false
+            override fun remoteBranchExists(workDir: File, branch: String): Boolean = false
         }
         val detector = RepositoryStateDetector(
             log = createStringAppender { logs += it },

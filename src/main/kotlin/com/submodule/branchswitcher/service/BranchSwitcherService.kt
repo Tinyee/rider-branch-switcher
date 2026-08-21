@@ -12,6 +12,7 @@ import com.submodule.branchswitcher.git.impl.GitProcessShutdown
 import com.submodule.branchswitcher.model.DirtyAction
 import com.submodule.branchswitcher.model.ResolvedSwitchRequest
 import com.submodule.branchswitcher.model.SwitchOptions
+import com.submodule.branchswitcher.settings.dirtyActionFromName
 import kotlinx.coroutines.CoroutineScope
 import com.submodule.branchswitcher.model.Preset
 import java.util.concurrent.atomic.AtomicBoolean
@@ -75,6 +76,13 @@ class BranchSwitcherService(
     private var options = OptionsState()
     private val stateLock = Any()
 
+    /**
+     * IntelliJ persistence contract. [getState] returns a snapshot (history copied)
+     * and [loadState] replaces the whole state under the same lock, so a concurrent
+     * read never observes a partially swapped state. [loadState] also drops the cached
+     * GitOps so the recreated runner picks up the newly persisted timeout. Both run on
+     * the serialization thread; all other option access goes through [stateLock] too.
+     */
     override fun getState(): OptionsState = synchronized(stateLock) { options.snapshot() }
     override fun loadState(state: OptionsState) {
         synchronized(stateLock) {
@@ -88,7 +96,7 @@ class BranchSwitcherService(
     val presetRepo = PresetRepository(project)
 
     var dirtyAction: DirtyAction
-        get() = synchronized(stateLock) { options.dirtyAction.toDirtyAction() }
+        get() = synchronized(stateLock) { dirtyActionFromName(options.dirtyAction) }
         set(value) { synchronized(stateLock) { options.dirtyAction = value.name } }
 
     var fetchFirst: Boolean
@@ -119,9 +127,14 @@ class BranchSwitcherService(
         get() = synchronized(stateLock) { options.autoDiscardMeta }
         set(value) { synchronized(stateLock) { options.autoDiscardMeta = value } }
 
-    /** Cached [GitOps] instance, recreated only when timeout changes. */
     private var _gitClient: GitClient? = null
 
+    /**
+     * The project's single [GitOps]: its process runner applies the configured
+     * timeout against the shared git-process pool, and direct calls through it share
+     * one cancellation scope. Cached here and recreated only when the persisted
+     * timeout changes ([loadState] resets the cache); callers never build their own.
+     */
     val gitClient: GitClient
         get() = synchronized(stateLock) {
             _gitClient ?: GitOps(options.timeoutSeconds).also {
@@ -171,22 +184,15 @@ class BranchSwitcherService(
     fun resolveSwitchRequest(preset: Preset): ResolvedSwitchRequest {
         val switchOptions = synchronized(stateLock) {
             SwitchOptions(
-                dirty = options.dirtyAction.toDirtyAction(),
+                dirty = dirtyActionFromName(options.dirtyAction),
                 pull = options.pullAfterSwitch,
                 fetchFirst = options.fetchFirst,
                 confirmBeforeInit = options.confirmBeforeInit,
                 autoDiscardMeta = options.autoDiscardMeta,
             )
         }
-        return ResolvedSwitchRequest.resolve(preset, switchOptions)
+        return ResolvedSwitchRequest.from(preset, switchOptions)
     }
 
     private fun OptionsState.snapshot(): OptionsState = copy(history = history.toMutableList())
-
-    private fun String.toDirtyAction(): DirtyAction = when (this) {
-        "Skip" -> DirtyAction.Skip
-        "Force" -> DirtyAction.Force
-        else -> DirtyAction.Stash
-    }
-
 }

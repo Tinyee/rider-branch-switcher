@@ -57,7 +57,7 @@ internal class ToolWindowLogPanel : JPanel(BorderLayout()) {
             override fun mouseClicked(event: MouseEvent) = toggleExpanded()
         })
     }
-    private val currentOperationFilter = FeedbackIconToggleButton(AllIcons.General.Filter).apply {
+    private val currentOperationFilter = FeedbackIconButton(AllIcons.General.Filter, selectionAware = true).apply {
         toolTipText = Bundle.msg("log.filter.current")
         addActionListener { renderAll() }
     }
@@ -188,7 +188,7 @@ internal class ToolWindowLogPanel : JPanel(BorderLayout()) {
     private fun attributesFor(level: LogEntry.Level): SimpleAttributeSet {
         val color = when (level) {
             LogEntry.Level.ERROR -> JBColor.RED
-            LogEntry.Level.WARN -> JBColor(0xE07B00, 0xFFA726)
+            LogEntry.Level.WARN -> WARN_AMBER
             LogEntry.Level.DEBUG -> JBColor.GRAY
             LogEntry.Level.ACTIVITY -> JBColor(0x1565C0, 0x42A5F5)
             LogEntry.Level.INFO -> logTextPane.foreground

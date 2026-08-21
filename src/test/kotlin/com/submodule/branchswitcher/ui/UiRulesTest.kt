@@ -2,6 +2,7 @@ package com.submodule.branchswitcher.ui
 
 import com.submodule.branchswitcher.Bundle
 import com.submodule.branchswitcher.model.DirtyAction
+import com.submodule.branchswitcher.model.PreflightRow
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -132,6 +133,83 @@ class UiRulesTest {
         assertFalse(isCollisionFileMeta("Assets/A.prefab"))
         assertFalse(isCollisionFileMeta("Assets/meta"))
     }
+
+    @Test
+    fun `merge branch choices dedups and keeps the current branch selectable`() {
+        assertEquals(
+            listOf("main", "dev", "feature"),
+            mergeBranchChoices("dev", listOf("main", "dev", "feature", "dev")),
+        )
+        assertEquals(listOf("dev", "main", "feature"), mergeBranchChoices("dev", listOf("main", "feature")))
+        assertEquals(listOf("main"), mergeBranchChoices("", listOf("main", " ", LOADING_BRANCH)))
+    }
+
+    @Test
+    fun `current state preset block reason covers missing main and incomplete repos`() {
+        assertEquals(CurrentStatePresetBlockReason.MAIN_BRANCH_UNAVAILABLE, currentStatePresetBlockReason(null, emptyList()))
+        assertEquals(CurrentStatePresetBlockReason.MAIN_BRANCH_UNAVAILABLE, currentStatePresetBlockReason("", emptyList()))
+        assertEquals(CurrentStatePresetBlockReason.INCOMPLETE_REPOSITORIES, currentStatePresetBlockReason("main", listOf("SubA")))
+        assertNull(currentStatePresetBlockReason("main", emptyList()))
+    }
+
+    @Test
+    fun `main branch status text appends the dirty suffix only when dirty`() {
+        assertFalse(mainBranchStatusText("dev", false).contains(Bundle.msg("status.tooltip.dirty")))
+        assertTrue(mainBranchStatusText("dev", true).contains(Bundle.msg("status.tooltip.dirty")))
+    }
+
+    @Test
+    fun `preview current cell text covers detached missing and probe error`() {
+        assertEquals(Bundle.msg("status.detached"), currentBranchCellText(row(current = null)))
+        assertEquals(Bundle.msg("status.missing.dir"), currentBranchCellText(row(exists = false)))
+        assertEquals("boom", currentBranchCellText(row(probeError = "boom")))
+        assertEquals("dev", currentBranchCellText(row(current = "dev")))
+    }
+
+    @Test
+    fun `preview dirty cell text covers clean unknown and collision counts`() {
+        assertEquals(Bundle.msg("status.clean"), dirtyCellText(row(dirtyCount = 0)))
+        assertEquals("?", dirtyCellText(row(dirtyCount = -1)))
+        assertEquals(Bundle.msg("status.file.count", 3), dirtyCellText(row(dirtyCount = 3)))
+        assertEquals(
+            Bundle.msg("status.file.count.collision", 3, 2),
+            dirtyCellText(row(dirtyCount = 3, untrackedCollisions = setOf("a", "b"))),
+        )
+        assertEquals("—", dirtyCellText(row(exists = false)))
+    }
+
+    @Test
+    fun `preview source cell text covers both local remote and none`() {
+        assertEquals(Bundle.msg("status.both"), sourceCellText(row()))
+        assertEquals(Bundle.msg("status.local.only"), sourceCellText(row(hasRemote = false)))
+        assertEquals(Bundle.msg("status.remote.only"), sourceCellText(row(hasLocal = false)))
+        assertEquals(Bundle.msg("status.none"), sourceCellText(row(hasLocal = false, hasRemote = false)))
+        assertEquals("—", sourceCellText(row(exists = false)))
+    }
+
+    @Test
+    fun `preview tones map missing dirty and switching states to the right tone`() {
+        assertEquals(PreviewCellTone.WARN, currentBranchCellTone(row(exists = false)))
+        assertEquals(PreviewCellTone.MUTED, currentBranchCellTone(row(current = "main", target = "main")))
+        assertEquals(PreviewCellTone.NORMAL, currentBranchCellTone(row()))
+        assertEquals(PreviewCellTone.ACCENT, targetCellTone(row()))
+        assertEquals(PreviewCellTone.WARN, targetCellTone(row(hasLocal = false, hasRemote = false)))
+        assertEquals(PreviewCellTone.MUTED, dirtyCellTone(row(dirtyCount = 0)))
+        assertEquals(PreviewCellTone.WARN, dirtyCellTone(row(dirtyCount = 3)))
+        assertEquals(PreviewCellTone.MUTED, sourceCellTone(row(exists = false)))
+        assertEquals(PreviewCellTone.NORMAL, sourceCellTone(row()))
+    }
+
+    private fun row(
+        exists: Boolean = true,
+        current: String? = "dev",
+        target: String = "main",
+        dirtyCount: Int = 0,
+        hasLocal: Boolean = true,
+        hasRemote: Boolean = true,
+        probeError: String? = null,
+        untrackedCollisions: Set<String> = emptySet(),
+    ) = PreflightRow("repo", "path", target, exists, current, dirtyCount, hasLocal, hasRemote, probeError, untrackedCollisions)
 
     private object NonTextTransferable : Transferable {
         override fun getTransferDataFlavors(): Array<DataFlavor> = arrayOf(DataFlavor.imageFlavor)

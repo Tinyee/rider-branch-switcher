@@ -11,14 +11,12 @@ import com.submodule.branchswitcher.model.DirtyAction
 import com.submodule.branchswitcher.model.Preset
 import com.submodule.branchswitcher.model.SwitchOptions
 import com.submodule.branchswitcher.switch.StepExecution
-import com.submodule.branchswitcher.switch.StepResult
-import com.submodule.branchswitcher.switch.OperationIssue
-import com.submodule.branchswitcher.switch.OperationIssueCode
 import com.submodule.branchswitcher.switch.OperationStage
 import com.submodule.branchswitcher.switch.SwitchContext
 import com.submodule.branchswitcher.switch.SwitchExecutor
 import com.submodule.branchswitcher.switch.SwitchState
 import com.submodule.branchswitcher.switch.SwitchStep
+import com.submodule.branchswitcher.switch.SwitchStepException
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -56,8 +54,6 @@ class AppLoggerTest {
         override fun registeredSubmodules(gitRoot: File): List<SubmoduleRegistration> = emptyList()
         override fun resetHard(workDir: File, revision: String) = GitResult("reset", 0, "", "")
         override fun cancel() = Unit
-        override fun localBranchProbe(workDir: File, branch: String): Boolean = false
-        override fun dirtyProbe(workDir: File): Boolean = false
     }
 
     @Before
@@ -158,27 +154,18 @@ class AppLoggerTest {
     }
 
     @Test
-    fun `fatal step is logged as error`() {
-        val fatalStep = object : SwitchStep {
+    fun `aborting step failure is logged as error`() {
+        val failingStep = object : SwitchStep {
             override val name = "always-fatal"
             override val stage = OperationStage.CHECKOUT
-            override fun execute(context: SwitchContext, state: SwitchState) =
-                StepExecution(
-                    StepResult.Fatal(
-                        OperationIssue(
-                            stage = stage,
-                            code = OperationIssueCode.STEP_FAILED,
-                            diagnostic = "simulated fatal",
-                        ),
-                    ),
-                    state,
-                )
+            override fun execute(context: SwitchContext, state: SwitchState): StepExecution =
+                throw SwitchStepException(state, IllegalStateException("simulated fatal"))
         }
         val executor = SwitchExecutor(
             projectRoot,
             createStringAppender(messages::add),
             okGit,
-            steps = listOf(fatalStep),
+            steps = listOf(failingStep),
         )
 
         executor.executeTest(

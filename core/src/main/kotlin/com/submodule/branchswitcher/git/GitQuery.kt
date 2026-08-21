@@ -10,6 +10,10 @@ interface GitRepositoryQuery {
     fun currentBranch(workDir: File): String?
     /** Returns the SHA of HEAD, or null if the repo has no commits. */
     fun revParseHead(workDir: File): String?
+    /** True when refs/heads/<branch> exists (plumbing: show-ref --verify). */
+    fun localBranchExists(workDir: File, branch: String): Boolean
+    /** True when refs/remotes/<remote>/<branch> exists (plumbing: show-ref --verify). */
+    fun remoteBranchExists(workDir: File, branch: String): Boolean
 
     /**
      * Atomically reads HEAD and the current branch from one git invocation so a
@@ -56,22 +60,21 @@ interface SubmoduleRegistrationQuery {
 }
 
 /** Read-only Git operations used while editing and discovering preset targets. */
-interface PresetDiscoveryGitClient : GitRepositoryQuery {
+interface PresetDiscoveryGitClient : GitRepositoryQuery, SubmoduleRegistrationQuery {
     /**
      * Lists all branches (local + remote), deduplicated and sorted.
      * Filters out the remote HEAD entry and strips the remote prefix.
      */
     fun listAllBranches(workDir: File): List<String>
     /** Recursively parses .gitmodules to list all submodule paths, including nested ones. */
-    fun listSubmodulePaths(gitRoot: File): List<String>
+    fun listSubmodulePaths(gitRoot: File): List<String> =
+        registeredSubmodules(gitRoot).map(SubmoduleRegistration::path)
 }
 
 /** Read-only Git operations used by the pre-switch preview. */
 interface SwitchPreflightGitClient : GitRepositoryQuery {
     /** Number of dirty files (0 = clean). Uses `git status --porcelain`. */
     fun dirtyFileCount(workDir: File): Int
-    fun localBranchExists(workDir: File, branch: String): Boolean
-    fun remoteBranchExists(workDir: File, branch: String): Boolean
 
     /**
      * Repo-relative untracked file paths via `git ls-files --others --exclude-standard`.

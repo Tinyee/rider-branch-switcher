@@ -3,6 +3,20 @@ package com.submodule.branchswitcher.git
 import com.submodule.branchswitcher.log.EnvironmentFailure
 import com.submodule.branchswitcher.log.sanitizeDiagnosticText
 
+/**
+ * Cross-layer stderr sentinels: the plugin-layer [GitProcessRunner] emits these as
+ * `stderr` and [GitResult.failureKind] classifies them back into a [GitFailureKind].
+ * They are the one string contract between the two modules — never change a value
+ * without updating the emitter and the locking tests (GitResultTest / GitProcessRunnerTest).
+ */
+const val GIT_STDERR_CANCELLED = "cancelled"
+const val GIT_STDERR_INTERRUPTED = "interrupted"
+const val GIT_STDERR_TIMEOUT_PREFIX = "timeout after "
+const val GIT_STDERR_CAPACITY_PREFIX = "process capacity unavailable after "
+const val GIT_STDERR_START_FAILED_PREFIX = "failed to start: "
+const val GIT_STDERR_OUTPUT_LIMIT_PREFIX = "output limit exceeded: "
+const val GIT_STDERR_OUTPUT_CAPTURE_PREFIX = "output capture "
+
 /** Result of a git CLI command. [ok] is true when exitCode == 0. */
 data class GitResult(
     val cmd: String,
@@ -14,13 +28,13 @@ data class GitResult(
     val failureKind: GitFailureKind
         get() = when {
             ok -> GitFailureKind.NONE
-            stderr == "cancelled" -> GitFailureKind.CANCELLED
-            stderr == "interrupted" -> GitFailureKind.INTERRUPTED
-            stderr.startsWith("timeout after ") -> GitFailureKind.TIMEOUT
-            stderr.startsWith("process capacity unavailable after ") -> GitFailureKind.PROCESS_CAPACITY
-            stderr.startsWith("failed to start: ") -> GitFailureKind.START_FAILED
-            stderr.startsWith("output limit exceeded: ") -> GitFailureKind.OUTPUT_LIMIT
-            stderr.startsWith("output capture ") -> GitFailureKind.OUTPUT_CAPTURE
+            stderr == GIT_STDERR_CANCELLED -> GitFailureKind.CANCELLED
+            stderr == GIT_STDERR_INTERRUPTED -> GitFailureKind.INTERRUPTED
+            stderr.startsWith(GIT_STDERR_TIMEOUT_PREFIX) -> GitFailureKind.TIMEOUT
+            stderr.startsWith(GIT_STDERR_CAPACITY_PREFIX) -> GitFailureKind.PROCESS_CAPACITY
+            stderr.startsWith(GIT_STDERR_START_FAILED_PREFIX) -> GitFailureKind.START_FAILED
+            stderr.startsWith(GIT_STDERR_OUTPUT_LIMIT_PREFIX) -> GitFailureKind.OUTPUT_LIMIT
+            stderr.startsWith(GIT_STDERR_OUTPUT_CAPTURE_PREFIX) -> GitFailureKind.OUTPUT_CAPTURE
             else -> GitFailureKind.GIT_FAILED
         }
 

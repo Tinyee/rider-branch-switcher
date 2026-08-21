@@ -13,7 +13,7 @@ class SwitchPreviewRulesTest {
 
     private fun makeRequest(
         dirty: DirtyAction = DirtyAction.Stash,
-    ): ResolvedSwitchRequest = ResolvedSwitchRequest.resolve(
+    ): ResolvedSwitchRequest = ResolvedSwitchRequest.from(
         Preset("test", "main"),
         SwitchOptions(dirty = dirty, pull = true, fetchFirst = true),
     )

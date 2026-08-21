@@ -488,21 +488,24 @@ class SwitchPreviewDialog(
         }
     }
 
+    /**
+     * Maps a cell tone decided in [UiRules] to its theme color. NORMAL uses the
+     * table foreground so a sparse row stays on the default text color.
+     */
+    private fun toneColor(tone: PreviewCellTone, table: JTable): java.awt.Color = when (tone) {
+        PreviewCellTone.NORMAL -> table.foreground
+        PreviewCellTone.MUTED -> mutedColor
+        PreviewCellTone.WARN -> warnColor
+        PreviewCellTone.ACCENT -> accentColor
+    }
+
     private inner class MutedIfNoChangeRenderer : CenteredCellRenderer() {
         override fun getTableCellRendererComponent(
             table: JTable, value: Any?, isSelected: Boolean, hasFocus: Boolean,
             row: Int, column: Int,
         ): Component {
             val preflightRow = value as PreflightRow
-            val text = when (column) {
-                0 -> preflightRow.label
-                1 -> when {
-                    preflightRow.probeError != null -> preflightRow.probeError
-                    !preflightRow.exists -> Bundle.msg("status.missing.dir")
-                    else -> preflightRow.current ?: Bundle.msg("status.detached")
-                }
-                else -> ""
-            }
+            val text = if (column == 0) preflightRow.label else currentBranchCellText(preflightRow)
             super.getTableCellRendererComponent(table, text, isSelected, hasFocus, row, column)
             toolTipText = when {
                 column == 1 && preflightRow.probeError != null -> preflightRow.probeError
@@ -515,11 +518,7 @@ class SwitchPreviewDialog(
                 font.deriveFont(Font.PLAIN)
             }
             if (!isSelected) {
-                foreground = when {
-                    !preflightRow.exists || preflightRow.probeError != null -> warnColor
-                    !preflightRow.needsSwitch -> mutedColor
-                    else -> table.foreground
-                }
+                foreground = toneColor(currentBranchCellTone(preflightRow), table)
             }
             return this
         }
@@ -541,11 +540,7 @@ class SwitchPreviewDialog(
             )
             toolTipText = preflightRow.target
             if (!isSelected) {
-                foreground = when {
-                    preflightRow.branchMissing -> warnColor
-                    preflightRow.needsSwitch -> accentColor
-                    else -> mutedColor
-                }
+                foreground = toneColor(targetCellTone(preflightRow), table)
             }
             font = if (preflightRow.needsSwitch) {
                 font.deriveFont(Font.BOLD)
@@ -562,24 +557,11 @@ class SwitchPreviewDialog(
             row: Int, column: Int,
         ): Component {
             val preflightRow = value as PreflightRow
-            val text = when {
-                !preflightRow.exists -> "—"
-                preflightRow.dirtyCount < 0 -> "?"
-                preflightRow.dirtyCount == 0 -> Bundle.msg("status.clean")
-                preflightRow.untrackedCollisions.isNotEmpty() -> Bundle.msg(
-                    "status.file.count.collision",
-                    preflightRow.dirtyCount,
-                    preflightRow.untrackedCollisions.size,
-                )
-                else -> Bundle.msg("status.file.count", preflightRow.dirtyCount)
-            }
-            super.getTableCellRendererComponent(table, text, isSelected, hasFocus, row, column)
+            super.getTableCellRendererComponent(
+                table, dirtyCellText(preflightRow), isSelected, hasFocus, row, column,
+            )
             if (!isSelected) {
-                foreground = when {
-                    !preflightRow.exists || preflightRow.dirtyCount < 0 -> mutedColor
-                    preflightRow.dirtyCount == 0 -> mutedColor
-                    else -> warnColor
-                }
+                foreground = toneColor(dirtyCellTone(preflightRow), table)
             }
             return this
         }
@@ -591,20 +573,11 @@ class SwitchPreviewDialog(
             row: Int, column: Int,
         ): Component {
             val preflightRow = value as PreflightRow
-            val text = when {
-                !preflightRow.exists -> "—"
-                preflightRow.hasLocal && preflightRow.hasRemote -> Bundle.msg("status.both")
-                preflightRow.hasLocal -> Bundle.msg("status.local.only")
-                preflightRow.hasRemote -> Bundle.msg("status.remote.only")
-                else -> Bundle.msg("status.none")
-            }
-            super.getTableCellRendererComponent(table, text, isSelected, hasFocus, row, column)
+            super.getTableCellRendererComponent(
+                table, sourceCellText(preflightRow), isSelected, hasFocus, row, column,
+            )
             if (!isSelected) {
-                foreground = when {
-                    !preflightRow.exists -> mutedColor
-                    preflightRow.branchMissing -> warnColor
-                    else -> table.foreground
-                }
+                foreground = toneColor(sourceCellTone(preflightRow), table)
             }
             return this
         }

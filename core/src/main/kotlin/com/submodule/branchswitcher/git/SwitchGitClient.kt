@@ -10,12 +10,13 @@ interface SwitchGitClient : RepositoryStateGitClient, SubmoduleRegistrationQuery
      */
     fun cancel()
 
-    /** Write safety requires implementations to identify the repository backing an existing worktree. */
+    /**
+     * Write safety requires implementations to identify the repository backing an
+     * existing worktree. Re-declared without a body (deliberately abstract) so a
+     * write-path implementation cannot inherit the base default and silently run
+     * without repository identity — the checkpoint would then fail closed.
+     */
     override fun repositoryIdentity(workDir: File): RepositoryIdentity?
-    /** Checks whether refs/heads/<branch> exists (plumbing: show-ref --verify). */
-    fun localBranchExists(workDir: File, branch: String): Boolean
-    /** Checks whether refs/remotes/origin/<branch> exists (plumbing: show-ref --verify). */
-    fun remoteBranchExists(workDir: File, branch: String): Boolean
     /** Stashes all changes including untracked files (-u). */
     fun stash(workDir: File, message: String): GitResult
     /** Returns the immutable object id currently referenced by refs/stash. */

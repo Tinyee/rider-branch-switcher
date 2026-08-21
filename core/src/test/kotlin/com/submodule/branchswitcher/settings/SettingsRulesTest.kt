@@ -20,6 +20,14 @@ class SettingsRulesTest {
     }
 
     @Test
+    fun `dirty action name mapping round trips and falls back to stash on unknown names`() {
+        assertEquals(DirtyAction.Stash, dirtyActionFromName("Stash"))
+        assertEquals(DirtyAction.Skip, dirtyActionFromName("Skip"))
+        assertEquals(DirtyAction.Force, dirtyActionFromName("Force"))
+        assertEquals(DirtyAction.Stash, dirtyActionFromName("corrupted-value"))
+    }
+
+    @Test
     fun `timeout mapping round trips supported values and defaults to 60 seconds`() {
         listOf(30, 60, 120, 300).forEach { timeout ->
             assertEquals(timeout, indexToTimeout(timeoutToIndex(timeout)))

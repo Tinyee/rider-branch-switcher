@@ -1,7 +1,7 @@
 package com.submodule.branchswitcher.ui
 
 import com.submodule.branchswitcher.git.GitOperationSession
-import com.submodule.branchswitcher.git.impl.MAX_CONCURRENT_GIT_PROCESSES
+import com.submodule.branchswitcher.git.impl.GIT_PROCESS_BACKGROUND_BUDGET
 import com.submodule.branchswitcher.git.PresetDiscoveryGitClient
 import com.submodule.branchswitcher.operation.SessionCancelGuard
 import kotlinx.coroutines.CancellationException
@@ -41,7 +41,7 @@ internal class BranchLoadHandle(
  */
 internal class BranchLoadCoordinator(
     private val scope: CoroutineScope,
-    maxConcurrentLoads: Int = DEFAULT_MAX_CONCURRENT_LOADS,
+    maxConcurrentLoads: Int = GIT_PROCESS_BACKGROUND_BUDGET,
     private val openOperation: () -> GitOperationSession,
 ) {
     private val permits = Semaphore(maxConcurrentLoads.coerceAtLeast(1))
@@ -110,14 +110,5 @@ internal class BranchLoadCoordinator(
         closed.set(true)
         activeLoads.forEach(BranchLoadHandle::cancel)
         activeLoads.clear()
-    }
-
-    companion object {
-        // Leave one global Git-process permit free for a foreground switch or
-        // recovery. The shared process pool is capped at MAX_CONCURRENT_GIT_PROCESSES;
-        // if branch discovery claimed every slot, a concurrent switch would have to
-        // wait for a permit until a discovery command finishes or times out.
-        // RepositoryStateRefreshCoordinator makes the same reservation.
-        private const val DEFAULT_MAX_CONCURRENT_LOADS = MAX_CONCURRENT_GIT_PROCESSES - 1
     }
 }

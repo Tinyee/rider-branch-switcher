@@ -54,8 +54,6 @@ abstract class SwitchExecutorTestBase {
         )
         override fun resetHard(workDir: File, revision: String): GitResult = GitResult("reset", 0, "", "")
         override fun cancel() = Unit
-        override fun localBranchProbe(workDir: File, branch: String): Boolean = localBranchExists(workDir, branch)
-        override fun dirtyProbe(workDir: File): Boolean = isDirty(workDir)
     }
 
     protected val projectRoot = java.nio.file.Files.createTempDirectory("test-executor")

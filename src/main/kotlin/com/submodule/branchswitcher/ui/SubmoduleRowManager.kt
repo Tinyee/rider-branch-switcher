@@ -31,9 +31,7 @@ internal class SubmoduleRowManager(
     private val log: AppLogger,
     private val onDirty: () -> Unit,
     private val onSwitchOnly: (path: String, target: String) -> Unit = { _, _ -> },
-    private val scheduleUi: ((() -> Unit) -> Unit) = { action ->
-        com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater(action)
-    },
+    private val scheduleUi: ((() -> Unit) -> Unit) = edtSchedule,
 ) {
     /** One submodule row: path, branch combo, panel, and tracking state. */
     class SubRow(

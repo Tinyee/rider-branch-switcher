@@ -378,7 +378,7 @@ class SwitchRunnerTest {
         target: String = "main",
         fetchFirst: Boolean = true,
         pull: Boolean = true,
-    ) = ResolvedSwitchRequest.resolve(
+    ) = ResolvedSwitchRequest.from(
         Preset("dev", target),
         SwitchOptions(fetchFirst = fetchFirst, pull = pull),
     )
@@ -429,8 +429,6 @@ class SwitchRunnerTest {
             RepositoryIdentity(File(workDir, ".git").absolutePath, null)
         override fun registeredSubmodules(gitRoot: File): List<SubmoduleRegistration> = emptyList()
         override fun resetHard(workDir: File, revision: String): GitResult = ok("reset")
-        override fun localBranchProbe(workDir: File, branch: String): Boolean = true
-        override fun dirtyProbe(workDir: File): Boolean = false
         override fun isDirty(workDir: File): Boolean = false
         override fun dirtyFileCount(workDir: File): Int = 0
         override fun stash(workDir: File, message: String): GitResult = ok("stash")

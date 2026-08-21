@@ -120,6 +120,8 @@ class SubmoduleWorktreeStatusTest {
             override fun revParseHead(workDir: File): String? = null
             override fun repositoryIdentity(workDir: File): RepositoryIdentity =
                 RepositoryIdentity(File(root, ".git").absolutePath, null)
+            override fun localBranchExists(workDir: File, branch: String): Boolean = false
+            override fun remoteBranchExists(workDir: File, branch: String): Boolean = false
         }
 
         val expected = expectedSubmoduleGitDirectory(root, SubmoduleRegistration("SubA", "SubA", "."), git)
@@ -135,6 +137,8 @@ class SubmoduleWorktreeStatusTest {
             override fun revParseHead(workDir: File): String? = null
             override fun repositoryIdentity(workDir: File): RepositoryIdentity =
                 RepositoryIdentity(File(parentDir, ".git").absolutePath, root.absolutePath)
+            override fun localBranchExists(workDir: File, branch: String): Boolean = false
+            override fun remoteBranchExists(workDir: File, branch: String): Boolean = false
         }
 
         val expected = expectedSubmoduleGitDirectory(root, SubmoduleRegistration("Parent/Nested", "Nested", "Parent"), git)
@@ -148,6 +152,8 @@ class SubmoduleWorktreeStatusTest {
             override fun currentBranch(workDir: File): String? = null
             override fun revParseHead(workDir: File): String? = null
             override fun repositoryIdentity(workDir: File): RepositoryIdentity? = null
+            override fun localBranchExists(workDir: File, branch: String): Boolean = false
+            override fun remoteBranchExists(workDir: File, branch: String): Boolean = false
         }
 
         assertNull(expectedSubmoduleGitDirectory(root, null, git))

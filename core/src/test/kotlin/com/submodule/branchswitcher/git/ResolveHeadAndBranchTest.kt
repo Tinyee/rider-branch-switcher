@@ -21,6 +21,9 @@ class ResolveHeadAndBranchTest {
                 revParseCalls++
                 return "abc123"
             }
+
+            override fun localBranchExists(workDir: File, branch: String): Boolean = false
+            override fun remoteBranchExists(workDir: File, branch: String): Boolean = false
         }
 
         val resolved = git.resolveHeadAndBranch(File("."))
@@ -48,6 +51,9 @@ class ResolveHeadAndBranchTest {
                 revParseCalls++
                 return "abc123"
             }
+
+            override fun localBranchExists(workDir: File, branch: String): Boolean = false
+            override fun remoteBranchExists(workDir: File, branch: String): Boolean = false
         }
 
         val resolved = git.resolveHeadAndBranch(File("."))
@@ -68,6 +74,9 @@ class ResolveHeadAndBranchTest {
             }
 
             override fun revParseHead(workDir: File): String? = null
+
+            override fun localBranchExists(workDir: File, branch: String): Boolean = false
+            override fun remoteBranchExists(workDir: File, branch: String): Boolean = false
         }
 
         assertNull(git.resolveHeadAndBranch(File(".")))
@@ -83,6 +92,8 @@ class ResolveHeadAndBranchTest {
         val fakeGit = object : GitRepositoryQuery {
             override fun currentBranch(workDir: File): String? = "main"
             override fun revParseHead(workDir: File): String? = "abc123"
+            override fun localBranchExists(workDir: File, branch: String): Boolean = false
+            override fun remoteBranchExists(workDir: File, branch: String): Boolean = false
         }
         val missingHeadGit = object : GitRepositoryQuery by fakeGit {
             override fun revParseHead(workDir: File): String? = null

@@ -12,13 +12,13 @@ import java.nio.file.Paths
  * Control-flow result returned by one pipeline step.
  *
  * A partial result records per-repository failures but allows later repositories
- * and cleanup steps to run. A fatal result stops the whole pipeline.
+ * and cleanup steps to run. Pipeline-aborting failures are not modeled as a
+ * step result: they surface as thrown [SwitchStepException]s, which the executor
+ * catches and folds into a failed execution.
  */
 sealed class StepResult {
     /** Step completed successfully, continue pipeline. */
     object Success : StepResult()
-    /** Step failed fatally - pipeline must abort. */
-    data class Fatal(val issue: OperationIssue) : StepResult()
     /** Step completed with partial failures - continue but mark overall as warning. */
     data class Partial(val issues: List<OperationIssue>) : StepResult()
 }

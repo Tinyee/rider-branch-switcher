@@ -112,7 +112,7 @@ class SingleRepositorySwitcherTest {
             unregistered,
         )
         assertEquals(
-            SingleRepositorySwitchResult.Skipped(SingleRepositorySkipReason.NOT_REGISTERED),
+            SingleRepositorySwitchResult.Skipped(SingleRepositorySkipReason.UNASSOCIATED),
             unassociated,
         )
         assertEquals(0, git.checkoutExistingCount)

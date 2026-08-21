@@ -41,7 +41,11 @@ class RepositoryStateDetector(
             paths = paths.distinct(),
         )
 
-    /** Probes every requested path in order, stopping as soon as [request] is superseded. */
+    /**
+     * Probes every requested path in order, stopping as soon as [request] is superseded.
+     * Sequential reference path used by tests; production callers probe per path via
+     * [probe] (concurrently) and assemble with [assembleSnapshot].
+     */
     internal fun detect(
         request: RepositoryStateRequest,
         git: RepositoryStateGitClient,

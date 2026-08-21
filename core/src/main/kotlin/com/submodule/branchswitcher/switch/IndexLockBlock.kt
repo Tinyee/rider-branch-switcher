@@ -17,8 +17,11 @@ data class IndexLockBlock(
  * with exit 1 and no stderr. Write workflows surface the result before the first
  * mutation so the user sees exactly which repository is blocked instead of a
  * checkout/stash mystery failure. Read-only commands are unaffected by a lock.
+ *
+ * Shared by the core executor preflight and the workflow-module single-repository
+ * switch, so the check-then-act lock gate stays in one place.
  */
-internal fun findBlockingIndexLocks(
+fun findBlockingIndexLocks(
     projectRoot: Path,
     git: GitRepositoryQuery,
     paths: Collection<String>,

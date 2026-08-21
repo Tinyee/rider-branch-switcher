@@ -41,8 +41,6 @@ class SwitchPreflightTest {
             listSubmodulePaths(gitRoot).map { SubmoduleRegistration(it, it, ".") }
         override fun resetHard(workDir: File, revision: String) = GitResult("reset", 0, "", "")
         override fun cancel() = Unit
-        override fun localBranchProbe(workDir: File, branch: String): Boolean = localBranchExists(workDir, branch)
-        override fun dirtyProbe(workDir: File): Boolean = isDirty(workDir)
     }
 
     private val projectRoot: Path = Files.createTempDirectory("test-preflight")

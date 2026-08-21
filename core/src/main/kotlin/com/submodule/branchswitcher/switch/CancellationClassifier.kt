@@ -6,6 +6,10 @@ package com.submodule.branchswitcher.switch
  * The default implementation only recognizes [java.util.concurrent.CancellationException].
  * Platform modules should inject a classifier that also recognizes
  * platform cancellation exceptions (e.g. IDE progress cancellation).
+ *
+ * Part of the workflow-level cancellation trio (handle + cancelled lambda + classifier).
+ * For session-owned cancellation — cancelling a live Git process even when the request
+ * arrived before the session was attached — use `SessionCancelGuard` (operation package).
  */
 fun interface CancellationClassifier {
     fun isCancellation(e: Throwable): Boolean

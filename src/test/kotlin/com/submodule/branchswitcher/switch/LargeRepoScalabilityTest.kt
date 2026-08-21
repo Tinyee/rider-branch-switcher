@@ -133,8 +133,6 @@ class LargeRepoScalabilityTest {
             (1..submoduleCount).map { SubmoduleRegistration("sub-$it", "sub-$it", ".") }
         override fun resetHard(workDir: File, revision: String): GitResult = GitResult("reset", 0, "", "")
         override fun cancel() = Unit
-        override fun localBranchProbe(workDir: File, branch: String): Boolean = true
-        override fun dirtyProbe(workDir: File): Boolean = false
         override fun stashApply(workDir: File, oid: String): GitResult {
             count("stashApply"); return GitResult("pop", 0, "", "")
         }

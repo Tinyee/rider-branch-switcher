@@ -60,6 +60,8 @@ class PathIdentityTest {
             override fun revParseHead(workDir: File): String? = null
             override fun repositoryIdentity(workDir: File): RepositoryIdentity? =
                 RepositoryIdentity(File(root, ".git").path, superprojectRoot = null)
+            override fun localBranchExists(workDir: File, branch: String): Boolean = false
+            override fun remoteBranchExists(workDir: File, branch: String): Boolean = false
         }
         val registration = SubmoduleRegistration(path = "SubA", sectionName = "SubA", parentPath = ".")
         val expected = expectedSubmoduleGitDirectory(root, registration, git)

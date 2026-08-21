@@ -10,6 +10,7 @@ import com.submodule.branchswitcher.operation.GitOperationResult
 import com.submodule.branchswitcher.operation.GitOperationRunner
 import com.submodule.branchswitcher.switch.CancellationClassifier
 import com.submodule.branchswitcher.switch.expectedSubmoduleGitDirectory
+import com.submodule.branchswitcher.switch.findBlockingIndexLocks
 import com.submodule.branchswitcher.switch.indexLockBlockedDiagnostic
 import com.submodule.branchswitcher.switch.unassociatedSubmoduleBlockReason
 import com.submodule.branchswitcher.switch.loadSubmoduleTopology
@@ -20,7 +21,10 @@ import java.io.File
 import java.nio.file.Path
 
 enum class SingleRepositorySkipReason {
+    /** The path is not a registered submodule of the current .gitmodules graph. */
     NOT_REGISTERED,
+    /** The path is registered but its git directory is not the superproject's (moved/misplaced/unassociated). */
+    UNASSOCIATED,
     NOT_INITIALIZED,
     DIRTY,
     ALREADY_ON_TARGET,
@@ -163,7 +167,7 @@ class SingleRepositorySwitcher(
         )
         if (blockReason != null) {
             operationLog.warn("safety gate: $blockReason")
-            return SingleRepositorySwitchResult.Skipped(SingleRepositorySkipReason.NOT_REGISTERED)
+            return SingleRepositorySwitchResult.Skipped(SingleRepositorySkipReason.UNASSOCIATED)
         }
         if (operation.isDirty(directory)) {
             return SingleRepositorySwitchResult.Skipped(SingleRepositorySkipReason.DIRTY)
@@ -171,19 +175,14 @@ class SingleRepositorySwitcher(
         if (operation.currentBranch(directory) == target) {
             return SingleRepositorySwitchResult.Skipped(SingleRepositorySkipReason.ALREADY_ON_TARGET)
         }
-        operation.indexLockFile(directory)?.let { lock ->
-            operationLog.error(
-                "stale index.lock blocks checkout of $path - delete it and retry: $lock",
-            )
-            return SingleRepositorySwitchResult.LockBlocked(lock)
-        }
+        blockingIndexLock(root, path, operation, operationLog)?.let { return it }
         return when {
             operation.localBranchExists(directory, target) ->
-                checkoutWithLockGuard(operation, directory, path, operationLog) {
+                switchWithLockGuard(root, path, operation, operationLog) {
                     operation.checkoutExisting(directory, target)
                 }
             operation.remoteBranchExists(directory, target) ->
-                checkoutWithLockGuard(operation, directory, path, operationLog) {
+                switchWithLockGuard(root, path, operation, operationLog) {
                     operation.checkoutFromRemote(directory, target)
                 }
             else -> SingleRepositorySwitchResult.GitFailure(
@@ -192,24 +191,33 @@ class SingleRepositorySwitcher(
         }
     }
 
+    /** Returns [SingleRepositorySwitchResult.LockBlocked] when a stale index.lock already blocks writes. */
+    private fun blockingIndexLock(
+        root: Path,
+        path: String,
+        operation: GitOperationSession,
+        operationLog: AppLogger,
+    ): SingleRepositorySwitchResult? {
+        val block = findBlockingIndexLocks(root, operation, listOf(path)).firstOrNull() ?: return null
+        operationLog.error(
+            "stale index.lock blocks checkout of $path - delete it and retry: ${block.lockPath}",
+        )
+        return SingleRepositorySwitchResult.LockBlocked(block.lockPath)
+    }
+
     /**
      * Re-checks the index lock immediately before the checkout write, closing the
      * gap between the earlier gate and this command (local/remote existence probes
      * run in between and may take milliseconds).
      */
-    private fun checkoutWithLockGuard(
-        operation: GitOperationSession,
-        directory: File,
+    private fun switchWithLockGuard(
+        root: Path,
         path: String,
+        operation: GitOperationSession,
         operationLog: AppLogger,
         action: () -> GitResult,
     ): SingleRepositorySwitchResult {
-        operation.indexLockFile(directory)?.let { lock ->
-            operationLog.error(
-                "stale index.lock blocks checkout of $path - delete it and retry: $lock",
-            )
-            return SingleRepositorySwitchResult.LockBlocked(lock)
-        }
+        blockingIndexLock(root, path, operation, operationLog)?.let { return it }
         return action().toSwitchResult()
     }
 

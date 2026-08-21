@@ -8,19 +8,24 @@ import java.awt.Graphics2D
 import java.awt.RenderingHints
 import javax.swing.AbstractButton
 import javax.swing.Icon
-import javax.swing.JButton
 import javax.swing.JToggleButton
 import javax.swing.Timer
 
 /**
- * Toolbar icon button with hover and pressed feedback.
+ * Toolbar icon button with hover and pressed feedback, optionally keeping the pressed
+ * fill while selected for a toggle-style active state.
  *
  * Plain [JButton]s in the IntelliJ LAF show no pressed state for borderless
  * buttons, so feedback is drawn here: a translucent rounded fill on hover,
- * a deeper fill while pressed. Rollover tracking must be enabled explicitly,
- * otherwise [javax.swing.ButtonModel.isRollover] never updates.
+ * a deeper fill while pressed (and, when [selectionAware], while selected).
+ * Rollover tracking must be enabled explicitly, otherwise
+ * [javax.swing.ButtonModel.isRollover] never updates.
  */
-internal class FeedbackIconButton(icon: Icon) : JButton(icon) {
+internal class FeedbackIconButton(
+    icon: Icon,
+    /** Keeps the pressed fill while the button is selected (toggle-style active state). */
+    private val selectionAware: Boolean = false,
+) : JToggleButton(icon) {
     private var flashTimer: Timer? = null
     private var flashOriginalIcon: Icon? = null
     private var flashOriginalToolTip: String? = null
@@ -31,7 +36,7 @@ internal class FeedbackIconButton(icon: Icon) : JButton(icon) {
 
     override fun paintComponent(g: Graphics) {
         val feedback = when {
-            model.isPressed -> PRESSED_COLOR
+            model.isPressed || (selectionAware && model.isSelected) -> PRESSED_COLOR
             model.isRollover -> HOVER_COLOR
             else -> null
         }
@@ -72,23 +77,6 @@ internal class FeedbackIconButton(icon: Icon) : JButton(icon) {
 
     companion object {
         private const val FLASH_DURATION_MS = 1_200L
-    }
-}
-
-/** Same feedback as [FeedbackIconButton], with a persistent fill while selected. */
-internal class FeedbackIconToggleButton(icon: Icon) : JToggleButton(icon) {
-    init {
-        applyToolbarButtonStyle(this)
-    }
-
-    override fun paintComponent(g: Graphics) {
-        val feedback = when {
-            model.isPressed || model.isSelected -> PRESSED_COLOR
-            model.isRollover -> HOVER_COLOR
-            else -> null
-        }
-        if (feedback != null) paintFeedbackBackground(g, feedback, width, height)
-        super.paintComponent(g)
     }
 }
 

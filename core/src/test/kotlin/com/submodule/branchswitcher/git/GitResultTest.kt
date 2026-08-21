@@ -22,6 +22,23 @@ class GitResultTest {
     }
 
     @Test
+    fun `classifies every sentinel stderr via the shared constants`() {
+        // Locks the cross-layer string contract: GitProcessRunner emits these exact
+        // sentinels and core classifies them here. Changing a value on either side
+        // breaks this test, so cancellation/timeout classification cannot silently drift.
+        fun classified(stderr: String) = GitResult("git x", 1, "", stderr).failureKind
+        assertEquals(GitFailureKind.NONE, GitResult("git x", 0, "", "").failureKind)
+        assertEquals(GitFailureKind.CANCELLED, classified(GIT_STDERR_CANCELLED))
+        assertEquals(GitFailureKind.INTERRUPTED, classified(GIT_STDERR_INTERRUPTED))
+        assertEquals(GitFailureKind.TIMEOUT, classified(GIT_STDERR_TIMEOUT_PREFIX + "60s"))
+        assertEquals(GitFailureKind.PROCESS_CAPACITY, classified(GIT_STDERR_CAPACITY_PREFIX + "30s"))
+        assertEquals(GitFailureKind.START_FAILED, classified(GIT_STDERR_START_FAILED_PREFIX + "boom"))
+        assertEquals(GitFailureKind.OUTPUT_LIMIT, classified(GIT_STDERR_OUTPUT_LIMIT_PREFIX + "cap"))
+        assertEquals(GitFailureKind.OUTPUT_CAPTURE, classified(GIT_STDERR_OUTPUT_CAPTURE_PREFIX + "failed: x"))
+        assertEquals(GitFailureKind.GIT_FAILED, classified("fatal: repo not found"))
+    }
+
+    @Test
     fun `diagnostic bounds multi-line stderr`() {
         val result = GitResult("git checkout dev", 1, "", "first\nsecond\nthird")
 

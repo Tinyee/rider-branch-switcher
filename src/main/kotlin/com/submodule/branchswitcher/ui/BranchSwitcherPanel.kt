@@ -13,7 +13,7 @@ import com.intellij.util.Alarm
 import com.intellij.util.ui.JBUI
 import com.submodule.branchswitcher.BranchSwitchListener
 import com.submodule.branchswitcher.Bundle
-import com.submodule.branchswitcher.git.impl.MAX_CONCURRENT_GIT_PROCESSES
+import com.submodule.branchswitcher.git.impl.GIT_PROCESS_BACKGROUND_BUDGET
 import com.submodule.branchswitcher.log.AppLogger
 import com.submodule.branchswitcher.log.LogEntry
 import com.submodule.branchswitcher.log.ToolWindowLogger
@@ -26,7 +26,6 @@ import com.submodule.branchswitcher.settings.BranchSwitcherConfigurable
 import java.awt.BorderLayout
 import java.awt.Dimension
 import java.awt.Font
-import java.io.File
 import java.nio.file.Path
 import javax.swing.BorderFactory
 import javax.swing.Box
@@ -84,7 +83,12 @@ class BranchSwitcherPanel(
     private val logPanel = ToolWindowLogPanel()
     private val stateRefreshAlarm = Alarm(Alarm.ThreadToUse.SWING_THREAD, this)
     private val reflogWatchAlarm = Alarm(Alarm.ThreadToUse.SWING_THREAD, this)
-    private var lastReflogStamp: Long = -1L
+    private val reflogWatcher = ExternalGitSwitchWatcher(
+        alarm = reflogWatchAlarm,
+        gitRoot = ::gitRoot,
+        shouldWatch = { shouldRunReflogWatch(isShowing, project.isDisposed) },
+        onExternalChange = ::scheduleStateRefresh,
+    )
 
     // ── Logger ──────────────────────────────────────────────────
     private val logger: AppLogger = ToolWindowLogger(logPanel::append)
@@ -98,7 +102,7 @@ class BranchSwitcherPanel(
         detector = stateDetector,
         log = logger,
         deliver = project::invokeLaterIfAlive,
-        gitProcessBound = MAX_CONCURRENT_GIT_PROCESSES,
+        gitProcessBudget = GIT_PROCESS_BACKGROUND_BUDGET,
         cancellationClassifier = platformCancellationClassifier,
     )
 
@@ -133,7 +137,7 @@ class BranchSwitcherPanel(
         detectCurrentState()
         refreshStrategySummary()
         wireEventSubscriptions()
-        startReflogWatch()
+        reflogWatcher.restart()
     }
 
     // ── Top block: header + action row ────────────────
@@ -149,7 +153,7 @@ class BranchSwitcherPanel(
     }
 
     private fun createHeaderRow(): JPanel {
-        return TrailingControlRowPanel(currentBranchLabel, createMoreActionsButton())
+        return TrailingControlRowPanel(currentBranchLabel, moreIconButton { showMoreActions(it) })
     }
 
     private fun createActionRow(): JPanel {
@@ -165,17 +169,6 @@ class BranchSwitcherPanel(
             isOpaque = false
             add(primaryActions, BorderLayout.CENTER)
             add(strategyLabel, BorderLayout.SOUTH)
-        }
-    }
-
-    private fun createMoreActionsButton(): JButton {
-        return jButton(icon = AllIcons.Actions.MoreHorizontal) {
-            margin = JBUI.insets(0, 4, 0, 4)
-            preferredSize = Dimension(JBUI.scale(32), preferredSize.height)
-            maximumSize = preferredSize
-            minimumSize = preferredSize
-            toolTipText = Bundle.msg("action.more.tip")
-            addActionListener { showMoreActions(this) }
         }
     }
 
@@ -259,14 +252,14 @@ class BranchSwitcherPanel(
         addHierarchyListener { e ->
             if ((e.changeFlags and java.awt.event.HierarchyEvent.SHOWING_CHANGED.toLong()) == 0L) return@addHierarchyListener
             if (isShowing) {
-                startReflogWatch()
+                reflogWatcher.restart()
                 project.invokeLaterIfAlive {
                     detectCurrentState()
                     refreshStrategySummary()
                 }
             } else {
                 stateRefreshAlarm.cancelAllRequests()
-                reflogWatchAlarm.cancelAllRequests()
+                reflogWatcher.stop()
             }
         }
         addAncestorListener(object : javax.swing.event.AncestorListener {
@@ -288,55 +281,6 @@ class BranchSwitcherPanel(
         if (!isShowing || project.isDisposed) return
         stateRefreshAlarm.cancelAllRequests()
         stateRefreshAlarm.addRequest({ detectCurrentState() }, 750)
-    }
-
-    /**
-     * Detects external git operations (terminal checkout / pull / rebase) that move HEAD
-     * without going through the plugin. The IntelliJ VFS does not watch `.git`, and the
-     * Git4Idea repository listener is not on this project's compile classpath, so we poll
-     * the main reflog's file stamp instead — a filesystem stat with no git process. Only a
-     * stamp change schedules a refresh; plain file edits never trigger detection.
-     */
-    private fun startReflogWatch() {
-        reflogWatchAlarm.cancelAllRequests()
-        if (!shouldRunReflogWatch(isShowing, project.isDisposed)) return
-        reflogWatchAlarm.addRequest({ checkExternalGitSwitch() }, REFLOG_WATCH_INTERVAL_MS)
-    }
-
-    private fun checkExternalGitSwitch() {
-        if (!shouldRunReflogWatch(isShowing, project.isDisposed)) {
-            reflogWatchAlarm.cancelAllRequests()
-            return
-        }
-        val reflog = mainReflogPath()
-        if (reflog == null) {
-            // `.git` is not resolvable yet (root temporarily unavailable, worktree
-            // gitdir file transiently unreadable). Re-queue the watch instead of
-            // returning, which would stop it permanently until a hide/show cycle.
-            startReflogWatch()
-            return
-        }
-        val stamp = runCatching { reflog.lastModified() }.getOrElse { -1L }
-        if (lastReflogStamp >= 0 && stamp != lastReflogStamp) {
-            scheduleStateRefresh()
-        }
-        lastReflogStamp = stamp
-        startReflogWatch()
-    }
-
-    private fun mainReflogPath(): File? {
-        val root = gitRoot() ?: return null
-        val git = root.resolve(".git").toFile()
-        val gitDir = if (git.isDirectory) {
-            git
-        } else if (git.isFile) {
-            // Worktree: .git is a file pointing at the real git directory.
-            runCatching { git.readLines().firstOrNull()?.removePrefix("gitdir: ")?.trim() }
-                .getOrNull()?.let { root.resolve(it).toFile() }
-        } else {
-            null
-        } ?: return null
-        return File(gitDir, "logs/HEAD")
     }
 
     override fun dispose() {
@@ -383,20 +327,12 @@ class BranchSwitcherPanel(
         val main = branches["."] ?: Bundle.msg("status.detached")
         val mainDirty = dirtyRepos["."] == true
         val matched = editors.firstOrNull { it.matchesState(branches) }?.currentPreset()?.name
-        currentBranchLabel.text = "${Bundle.msg("label.main.branch")} $main"
-        if (mainDirty) {
-            currentBranchLabel.text += " · ${Bundle.msg("status.tooltip.dirty")}"
-            currentBranchLabel.foreground = JBColor(0xE07B00, 0xFFA726)
-        } else {
-            currentBranchLabel.foreground = JBUI.CurrentTheme.Link.Foreground.ENABLED
-        }
+        currentBranchLabel.text = mainBranchStatusText(main, mainDirty)
+        currentBranchLabel.foreground = if (mainDirty) WARN_AMBER else JBUI.CurrentTheme.Link.Foreground.ENABLED
         currentBranchLabel.toolTipText = currentBranchLabel.text
         logger.debug("[detect] main=$main${if (mainDirty) " (dirty)" else ""}, matched=${matched ?: "<none>"}")
     }
 
-    private companion object {
-        private const val REFLOG_WATCH_INTERVAL_MS = 2000L
-    }
 }
 
 internal fun shouldRunReflogWatch(isShowing: Boolean, projectDisposed: Boolean): Boolean =

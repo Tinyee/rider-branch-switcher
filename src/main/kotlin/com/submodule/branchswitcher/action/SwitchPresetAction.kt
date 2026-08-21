@@ -27,6 +27,7 @@ import com.submodule.branchswitcher.presentation.shortcutPresetLoadDecision
 import com.submodule.branchswitcher.service.BranchSwitcherService
 import com.submodule.branchswitcher.ui.SwitchFlowCoordinator
 import com.submodule.branchswitcher.ui.invokeLaterIfAlive
+import com.submodule.branchswitcher.workflow.WriteOperationLauncher
 import kotlinx.coroutines.launch
 import java.awt.Component
 import javax.swing.BoxLayout
@@ -100,7 +101,11 @@ class SwitchPresetAction : AnAction() {
             return
         }
         val collector = actionLogger(project)
-        SwitchFlowCoordinator(project, service).runSwitchFlow(
+        SwitchFlowCoordinator(
+            project,
+            service,
+            WriteOperationLauncher(service.scope, service::tryAcquireWrite),
+        ).runSwitchFlow(
             root,
             preset,
             collector,

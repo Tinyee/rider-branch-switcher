@@ -85,8 +85,9 @@ private fun logVcsRefresh(log: AppLogger, result: VcsRefreshResult) {
 }
 
 /**
- * Runs the shared post-mutation VCS refresh tail: queries the touched repositories in
- * the background, then on the UI thread logs the result and runs [onUi]. Every
+ * Runs the shared post-mutation VCS refresh tail: queries the touched repositories
+ * synchronously on the caller's thread (callers run on a background worker), then
+ * schedules the log and [onUi] on the UI thread via [uiLater]. Every
  * repository-mutation entry point uses this so the tail cannot drift between them.
  */
 fun refreshVcsTail(

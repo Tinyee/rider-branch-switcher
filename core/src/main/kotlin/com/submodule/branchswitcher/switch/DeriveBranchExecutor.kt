@@ -136,7 +136,7 @@ class DeriveBranchExecutor(
             }
         }?.let { return it }
 
-        probeOrBlock(target, label, "branch existence", { git.localBranchProbe(directory, branchName) }) { exists ->
+        probeOrBlock(target, label, "branch existence", { git.localBranchExists(directory, branchName) }) { exists ->
             if (exists == true) {
                 log.warn("[derive] $label: branch '$branchName' already exists - blocked")
                 target.outcome(DeriveRepositoryStatus.BRANCH_EXISTS, OperationIssueCode.BRANCH_ALREADY_EXISTS)
@@ -146,7 +146,7 @@ class DeriveBranchExecutor(
         }?.let { return it }
 
         if (requireClean) {
-            probeOrBlock(target, label, "dirty state", { git.dirtyProbe(directory) }) { dirty ->
+            probeOrBlock(target, label, "dirty state", { git.isDirty(directory) }) { dirty ->
                 if (dirty == true) {
                     log.warn("[derive] $label: working tree is dirty - blocked")
                     target.outcome(DeriveRepositoryStatus.DIRTY, OperationIssueCode.WORKTREE_DIRTY)

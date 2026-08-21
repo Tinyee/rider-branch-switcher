@@ -30,6 +30,7 @@ class BranchSwitcherConfigurable(private val project: Project) : Configurable {
     private var fetchCheck: JCheckBox? = null
     private var pullCheck: JCheckBox? = null
     private var confirmInitCheck: JCheckBox? = null
+    private var autoMetaCheck: JCheckBox? = null
 
     private val service get() = project.service<BranchSwitcherService>()
 
@@ -45,6 +46,7 @@ class BranchSwitcherConfigurable(private val project: Project) : Configurable {
         fetchCheck = JCheckBox(Bundle.msg("option.fetch.before"))
         pullCheck = JCheckBox(Bundle.msg("option.pull.after"))
         confirmInitCheck = JCheckBox(Bundle.msg("option.confirm.init"))
+        autoMetaCheck = JCheckBox(Bundle.msg("option.discard.meta.auto"))
         dirtyDescription = createDescriptionLabel()
         dirtyCombo?.addActionListener { updateDirtyDescription() }
 
@@ -81,6 +83,11 @@ class BranchSwitcherConfigurable(private val project: Project) : Configurable {
             "settings.confirm.init.description",
             leftInset = CHECKBOX_DESCRIPTION_INDENT,
         ))
+        form.add(prepareCheckBox(autoMetaCheck!!, topInset = 8))
+        form.add(createDescriptionLabel(
+            "settings.discard.meta.auto.description",
+            leftInset = CHECKBOX_DESCRIPTION_INDENT,
+        ))
 
         updateDirtyDescription()
 
@@ -98,7 +105,8 @@ class BranchSwitcherConfigurable(private val project: Project) : Configurable {
             timeoutComboIndex() != timeoutToIndex(s.timeoutSeconds) ||
             fetchCheck?.isSelected != s.fetchFirst ||
             pullCheck?.isSelected != s.pullAfterSwitch ||
-            confirmInitCheck?.isSelected != s.confirmBeforeInit
+            confirmInitCheck?.isSelected != s.confirmBeforeInit ||
+            autoMetaCheck?.isSelected != s.autoDiscardMeta
     }
 
     override fun apply() {
@@ -108,6 +116,7 @@ class BranchSwitcherConfigurable(private val project: Project) : Configurable {
         fetchCheck?.let { s.fetchFirst = it.isSelected }
         pullCheck?.let { s.pullAfterSwitch = it.isSelected }
         confirmInitCheck?.let { s.confirmBeforeInit = it.isSelected }
+        autoMetaCheck?.let { s.autoDiscardMeta = it.isSelected }
     }
 
     override fun reset() {
@@ -118,6 +127,7 @@ class BranchSwitcherConfigurable(private val project: Project) : Configurable {
         fetchCheck?.isSelected = s.fetchFirst
         pullCheck?.isSelected = s.pullAfterSwitch
         confirmInitCheck?.isSelected = s.confirmBeforeInit
+        autoMetaCheck?.isSelected = s.autoDiscardMeta
     }
 
     override fun disposeUIResources() {
@@ -128,6 +138,7 @@ class BranchSwitcherConfigurable(private val project: Project) : Configurable {
         fetchCheck = null
         pullCheck = null
         confirmInitCheck = null
+        autoMetaCheck = null
     }
 
     private fun dirtyComboIndex(): Int = dirtyCombo?.selectedIndex ?: 0

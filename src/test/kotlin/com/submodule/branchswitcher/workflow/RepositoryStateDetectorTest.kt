@@ -97,6 +97,8 @@ class RepositoryStateDetectorTest {
 
             override fun revParseHead(workDir: File): String = "sha"
             override fun isDirty(workDir: File): Boolean = false
+            override fun localBranchExists(workDir: File, branch: String): Boolean = false
+            override fun remoteBranchExists(workDir: File, branch: String): Boolean = false
         }
         detector = detector()
         val request = detector.begin(root.toPath(), listOf(".", "module-a", "module-b"))
@@ -130,5 +132,8 @@ class RepositoryStateDetectorTest {
         override fun revParseHead(workDir: File): String? = "sha"
 
         override fun isDirty(workDir: File): Boolean = dirty[workDir] == true
+
+        override fun localBranchExists(workDir: File, branch: String): Boolean = false
+        override fun remoteBranchExists(workDir: File, branch: String): Boolean = false
     }
 }

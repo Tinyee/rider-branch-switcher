@@ -42,15 +42,17 @@ class DeriveBranchRunner(
 ) {
     suspend fun execute(
         title: String,
+        rollbackTitle: String,
         preset: Preset,
         branchName: String,
         log: AppLogger,
     ): DeriveRunResult = withContext(Dispatchers.IO) {
-        executeOnWorker(title, preset, branchName, log)
+        executeOnWorker(title, rollbackTitle, preset, branchName, log)
     }
 
     private suspend fun executeOnWorker(
         title: String,
+        rollbackTitle: String,
         preset: Preset,
         branchName: String,
         log: AppLogger,
@@ -107,6 +109,7 @@ class DeriveBranchRunner(
                         branchName,
                         operationLog,
                         backgroundOutcome?.rollback?.pendingPaths,
+                        rollbackTitle,
                     ),
                 )
             }
@@ -126,40 +129,38 @@ class DeriveBranchRunner(
     }
 
     @Suppress("TooGenericExceptionCaught") // cancellation recovery returns a report instead of escaping
-    private fun rollbackAfterCancellation(
+    private suspend fun rollbackAfterCancellation(
         execution: DeriveResult?,
         branchName: String,
         log: AppLogger,
         pendingPaths: List<String>? = null,
+        rollbackTitle: String,
     ): List<String> {
         val pathsToRestore = pendingPaths ?: execution?.succeeded.orEmpty()
         if (execution == null || pathsToRestore.isEmpty()) {
             return emptyList()
         }
-
-        // The cancelled background session cannot run rollback commands. Open a
-        // fresh session after GitBackgroundRunner has closed the cancelled one.
-        val rollbackOperation = try {
-            operations.openOperation()
-        } catch (e: RuntimeException) {
-            log.logFailure("derive rollback session could not be opened", e)
-            return listOf("(session)")
-        }
-        return try {
-            log.activity(
-                "[derive] rolling back ${pathsToRestore.size} pending repo(s) after cancel...",
-            )
+        log.activity(
+            "[derive] rolling back ${pathsToRestore.size} pending repo(s) after cancel...",
+        )
+        // The cancelled background session cannot run rollback commands. Open a fresh
+        // session after the runner has closed the cancelled one — the runner owns
+        // open/cancel/close, the same recovery idiom as SwitchRunner.recoverSwitch.
+        val rollbackResult = operations.run(rollbackTitle) { _, rollbackOperation ->
             DeriveBranchExecutor(
                 projectRoot = projectRoot,
                 log = log,
                 git = rollbackOperation,
                 classifier = cancellationClassifier,
             ).rollbackSucceeded(execution, branchName, pathsToRestore).pendingPaths
-        } catch (e: Exception) {
-            log.logFailure("derive rollback after cancel failed", e)
-            listOf("(exception)")
-        } finally {
-            rollbackOperation.close()
+        }
+        return when (rollbackResult) {
+            is GitOperationResult.Completed -> rollbackResult.value
+            is GitOperationResult.Cancelled -> rollbackResult.value ?: listOf("(cancelled)")
+            is GitOperationResult.Failed -> {
+                log.logFailure("derive rollback after cancel failed", rollbackResult.error)
+                listOf("(failed)")
+            }
         }
     }
 }

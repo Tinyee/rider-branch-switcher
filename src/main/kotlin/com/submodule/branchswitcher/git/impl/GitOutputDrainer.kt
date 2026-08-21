@@ -18,6 +18,13 @@ internal const val GIT_EXIT_WATCHER_THREAD_PREFIX = "branch-switcher-git-exit-"
 
 /** Bound on simultaneously running git processes; also bounds concurrent state probes. */
 internal const val MAX_CONCURRENT_GIT_PROCESSES = 4
+
+/**
+ * Concurrent background probe budget: the shared process pool's cap minus one slot
+ * kept free for a foreground switch or recovery. Every background throttle
+ * (state refresh, branch discovery) reads this single value.
+ */
+internal val GIT_PROCESS_BACKGROUND_BUDGET = (MAX_CONCURRENT_GIT_PROCESSES - 1).coerceAtLeast(1)
 private const val STREAM_BUFFER_BYTES = 8 * 1024
 
 /** Upper bound on the plugin-unload wait for drain threads to finish their current read. */

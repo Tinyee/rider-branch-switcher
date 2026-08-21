@@ -93,8 +93,9 @@ class ResolvedSwitchRequest private constructor(
     val options: SwitchOptions,
 ) {
     companion object {
-        fun resolve(preset: Preset, global: SwitchOptions): ResolvedSwitchRequest =
-            ResolvedSwitchRequest(preset, options = global)
+        /** Pairs [preset] with its effective options; see the class doc for why this is the only way in. */
+        fun from(preset: Preset, options: SwitchOptions): ResolvedSwitchRequest =
+            ResolvedSwitchRequest(preset, options = options)
     }
 }
 

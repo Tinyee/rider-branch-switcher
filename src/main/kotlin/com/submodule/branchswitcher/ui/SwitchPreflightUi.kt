@@ -1,9 +1,11 @@
 package com.submodule.branchswitcher.ui
 
+import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.progress.ProgressIndicator
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.Messages
+import com.intellij.util.Alarm
 import com.submodule.branchswitcher.Bundle
 import com.submodule.branchswitcher.TaskBridge
 import com.submodule.branchswitcher.log.AppLogger
@@ -56,7 +58,7 @@ internal class SwitchPreflightUi(
                             indicator.fraction = index.toDouble() / total
                         }
                 } finally {
-                    cancelWatcher.stop()
+                    cancelWatcher.dispose()
                 }
             }
         } catch (error: Exception) {
@@ -88,26 +90,26 @@ internal class SwitchPreflightUi(
     private class ModalCancelWatcher(
         private val indicator: ProgressIndicator,
         private val onCancel: () -> Unit,
-    ) {
+    ) : Disposable {
+        private val alarm = Alarm(Alarm.ThreadToUse.POOLED_THREAD, this)
         private val stopped = AtomicBoolean(false)
-        private val thread = Thread {
-            try {
-                while (!stopped.get() && !indicator.isCanceled) {
-                    Thread.sleep(POLL_INTERVAL_MS)
-                }
-            } catch (_: InterruptedException) {
-                // stop() interrupts the sleep to end the watch promptly.
-            }
-            if (!stopped.get()) onCancel()
-        }.apply {
-            isDaemon = true
-            name = "branch-switcher-preflight-cancel-watcher"
-            start()
+
+        init {
+            poll()
         }
 
-        fun stop() {
+        private fun poll() {
+            if (stopped.get()) return
+            if (indicator.isCanceled) {
+                onCancel()
+                return
+            }
+            alarm.addRequest({ poll() }, POLL_INTERVAL_MS)
+        }
+
+        override fun dispose() {
             stopped.set(true)
-            thread.interrupt()
+            alarm.cancelAllRequests()
         }
 
         private companion object {

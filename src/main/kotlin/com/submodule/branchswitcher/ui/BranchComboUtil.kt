@@ -1,7 +1,4 @@
 package com.submodule.branchswitcher.ui
-
-import com.intellij.openapi.application.ApplicationManager
-import com.submodule.branchswitcher.Bundle
 import com.submodule.branchswitcher.git.GitFailureKind
 import com.submodule.branchswitcher.git.GitQueryException
 import com.submodule.branchswitcher.git.PresetDiscoveryGitClient
@@ -24,19 +21,6 @@ import javax.swing.event.DocumentListener
 const val KEY_ALL_BRANCHES = "submodule.branchswitcher.allBranches"
 private const val KEY_BRANCH_LOAD = "submodule.branchswitcher.branchLoad"
 private const val KEY_BRANCH_LOAD_TOKEN = "submodule.branchswitcher.branchLoadToken"
-val LOADING_BRANCH: String = Bundle.msg("status.loading")
-
-/** Normalizes loaded branches and ensures the current branch remains selectable. */
-fun mergeBranchChoices(current: String, branches: List<String>): List<String> {
-    val normalized = branches
-        .filter { it.isNotBlank() && it != LOADING_BRANCH }
-        .distinct()
-    return if (current.isNotBlank() && current != LOADING_BRANCH && current !in normalized) {
-        listOf(current) + normalized
-    } else {
-        normalized
-    }
-}
 
 /**
  * Creates an editable branch-name combo with real-time filtering.
@@ -126,9 +110,7 @@ internal fun loadComboBranches(
     onLoadEnd: (succeeded: Boolean, superseded: Boolean) -> Unit,
     discoverCurrent: Boolean = false,
     loadChoices: Boolean = true,
-    scheduleUi: ((() -> Unit) -> Unit) = { action ->
-        ApplicationManager.getApplication().invokeLater(action)
-    },
+    scheduleUi: ((() -> Unit) -> Unit) = edtSchedule,
 ): BranchLoadHandle {
     val previousLoad = combo.getClientProperty(KEY_BRANCH_LOAD) as? BranchLoadHandle
     val loadToken = Any()

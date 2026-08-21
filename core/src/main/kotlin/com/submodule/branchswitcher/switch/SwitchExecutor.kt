@@ -243,12 +243,6 @@ class SwitchExecutor @JvmOverloads constructor(
             }
             switchState = stepExecution.state
             when (val stepResult = stepExecution.result) {
-                is StepResult.Fatal -> {
-                    log.error("${stepResult.issue.code}: ${stepResult.issue.diagnostic.orEmpty()}")
-                    issues += stepResult.issue
-                    executionStatus = SwitchExecutionStatus.FAILED
-                    break
-                }
                 is StepResult.Partial -> {
                     stepResult.issues.forEach { issue ->
                         log.warn("${issue.repositoryPath ?: step.name}: ${issue.code}")
@@ -427,7 +421,7 @@ class SwitchExecutor @JvmOverloads constructor(
         }
         return blockedLocks.map { block ->
             OperationIssue(
-                stage = OperationStage.CHECKPOINT,
+                stage = OperationStage.PRE_MUTATION,
                 code = OperationIssueCode.INDEX_LOCK_BLOCKING,
                 repositoryPath = block.repositoryPath,
                 severity = OperationIssueSeverity.ERROR,
@@ -444,7 +438,7 @@ class SwitchExecutor @JvmOverloads constructor(
             // A cancelled/interrupted lock probe is a user cancel, not a query failure.
             if (cancellationClassifier.isCancellation(e)) throw e
             val issue = OperationIssue(
-                stage = OperationStage.CHECKPOINT,
+                stage = OperationStage.PRE_MUTATION,
                 code = OperationIssueCode.GIT_QUERY_FAILED,
                 repositoryPath = ".",
                 severity = OperationIssueSeverity.ERROR,

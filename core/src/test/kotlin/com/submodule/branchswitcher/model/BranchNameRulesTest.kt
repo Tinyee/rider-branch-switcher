@@ -1,4 +1,4 @@
-package com.submodule.branchswitcher.switch
+package com.submodule.branchswitcher.model
 
 import com.submodule.branchswitcher.model.isValidBranchName
 import com.submodule.branchswitcher.model.isValidSubmodulePath

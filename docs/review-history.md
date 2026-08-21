@@ -479,6 +479,147 @@ The former pure Boolean width rule and its synthetic test were removed. Swing
 layout tests now verify viewport width adoption, hidden-row reopening, stacked
 component bounds, and overflow-action priority directly.
 
+## 2026-08-21 - Module Design Review
+
+A module-by-module design review of all five package groups (core small
+packages, `core/switch`, plugin integration, `ui`, `workflow`). The overall
+categorization of the two-module layout held up; findings cluster in four
+families: cross-layer string contracts, the same logic implemented twice,
+duplicated interface declarations, and dead or falsely-flexible API surface.
+Line anchors below are against `main` as of `1e5fdce`.
+
+### Verdicts per package group
+
+- **core small packages** — healthy, with `git` the densest package.
+  `GitQuery.kt` is misnamed (its eight interfaces are mostly `*Client`), and
+  the Query/Client suffixes carry no read-vs-write meaning. Interfaces are
+  redeclared: `localBranchExists`/`remoteBranchExists` on both `SwitchGitClient`
+  and `SwitchPreflightGitClient`; `DeriveGitClient`'s `localBranchProbe`/
+  `dirtyProbe` are semantic copies of `localBranchExists`/`isDirty`;
+  `repositoryIdentity` is overridden identically across three layers.
+  `PresetConfig.kt` packs nine types into one file, and the per-entry
+  drop/conflict policy exists twice (`PresetLoader.normalizePresetIds` and
+  `parsePresetImport`). `BranchNameRulesTest` tests model validation but lives
+  in the `switch` test package.
+- **`core/switch`** — the pipeline design is strong: Step protocol, immutable
+  `SwitchState` accumulator, checkpoint/recovery separation, and the
+  at-most-once stash-restore cancellation semantics. Three warts:
+  `StepResult.Fatal` (`SwitchStep.kt:21`) has no producer in any of the 29
+  files; `SubmoduleTreeStep` (343 lines) is a self-contained sub-pipeline
+  (fetch/init/checkout/pull/sync/topology) masked as a single
+  `stage = CHECKOUT` step; lock handling is fragmented across
+  `IndexLockBlock`, `WriteGuardGitClient`, and `LockBlockedPresentation`, and
+  the disable-submodules logic is implemented twice (`SubmoduleSyncStep.kt:48`
+  vs `SubmoduleTreeStep.kt:308`).
+- **plugin integration** (`git.impl`/`platform`/`service`) — clean boundaries;
+  `GitOps` is the facade, `GitCommandClient` the sole CLI implementation of the
+  core interfaces, and process ownership holds (`ProcessBuilder` appears only
+  here, enforced by ArchUnit). Two P2 items: `GitOps.isGitOnPath()` does an
+  unbounded `waitFor()` outside the process runner on the tool-window creation
+  path; and `BranchSwitcherService` is a quasi-composition-root (state, write
+  gate, git-cache, preset delegation, history) with an asymmetric
+  load-`Result`/save-throws error contract.
+- **`ui`** — the decision-layer pattern is established but not applied
+  consistently. The four preview-table cell renderers inline all
+  `PreflightRow -> text/color` decisions (the same class of decision
+  `CollisionDecision` now owns), pure decision functions live in three homes
+  (`UiRules`, `core/presentation`, and component files such as
+  `currentStatePresetBlockReason` and `mergeBranchChoices`), and
+  `BranchSwitcherPanel.logDetected` duplicates `UiRules.mainStatusText`.
+  Two verified duplications worth fixing: the `createMoreActionsButton` factory
+  appears verbatim in two files, and the amber warning color is repeated four
+  times. The strongest parts (token-guarded async loads, dual-entry
+  `SwitchFlowCoordinator`, EDT discipline) were confirmed good.
+- **`workflow`** — the highest-quality package: no god object, dependency
+  inversion through constructor injection, four orthogonal concurrency layers.
+  `SingleRepositorySwitcher` re-implements the `core/switch` safety gates
+  (index.lock checks twice plus dirty/identity gates) instead of reusing
+  `findBlockingIndexLocks`, and folds two distinct failure reasons into one
+  `NOT_REGISTERED` value. `RepositoryStateDetector.detect()` is production dead
+  code (tests only), and `WriteOperationLauncher.afterRelease` is not invoked
+  on the exception path.
+
+### Additional findings
+
+The first pass above captured the headline items. These medium and lower
+findings from the same review also stand, for completeness:
+
+- **Medium**: the single-repository switch path inlines its result-to-notification
+  mapping in `PresetListManager.switchSubmodule` (143-193) instead of going
+  through a presenter like the full-preset path's `SwitchResultPresenter`, so
+  the two switch paths present results differently.
+- **Medium**: reflog-based external-switch polling lives inside
+  `BranchSwitcherPanel` (300-340) as self-contained logic whose predicate is
+  already extracted (`shouldRunReflogWatch`) — it could be its own watcher.
+- **Medium**: `GitOps.inspectPreflight` builds a fresh `GitCommandClient` per
+  call (49-55), losing the shared remote cache and escaping `GitOps.cancel()`'s
+  scope, contradicting the class comment that direct calls share one
+  cancellation scope.
+- **Medium**: `BranchSwitcherConfigurable` exposes a subset of the service
+  options and omits `autoDiscardMeta` (which the service carries).
+- **Medium**: the "reserve one git-process slot for foreground switches" budget
+  is duplicated across modules (`RepositoryStateRefreshCoordinator.kt:68` and
+  `BranchLoadCoordinator.kt:121`), both keyed to `MAX_CONCURRENT_GIT_PROCESSES`.
+- **Medium**: `WriteOperationLauncher` is constructed twice with identical
+  configuration (`SwitchController:41`, `SwitchFlowCoordinator:78`).
+- **Medium**: cancellation recovery opens a fresh session two different ways
+  (`SwitchRunner.recoverSwitch` via `operations.run` vs
+  `DeriveBranchRunner.rollbackAfterCancellation` hand-rolled open/close).
+- **Medium**: `DeriveNotification.Blocked` derives `indexLockBlockedCount` by
+  subtracting it from `skipped` (`DeriveNotification.kt:52-55`), relying on the
+  invariant that preflight lock blocks are always `SKIPPED`.
+- **Lower**: `toDirtyAction()` silently maps an unknown persisted string to
+  `Stash`; `scheduleUi`'s default lambda is duplicated (`BranchComboUtil` vs
+  `SubmoduleRowManager`); `listSubmodulePaths` is a projection of
+  `registeredSubmodules`; `ResolvedSwitchRequest.resolve` merely forwards
+  options; `AppLoggerTest` builds a ~20-method anonymous git fake (a shared
+  fake would help); `refreshVcsTail`'s doc says background but it runs
+  synchronously; `UiLayout.kt` holds only a subset of the layout primitives.
+- **Cosmetic (style-level, recorded for completeness)**: the
+  `ModalCancelWatcher` hand-rolled 100 ms polling daemon thread could be an
+  `Alarm` or a coroutine loop; `FeedbackIconButton` and
+  `FeedbackIconToggleButton` differ only by a `model.isSelected` condition and
+  could merge; `GitCommandClient.close()` is identical to `cancel()` while the
+  `GitOperationSession` contract promises a distinct resource release;
+  `OperationStage.CHECKPOINT` is reused for the index.lock precheck that runs
+  after the checkpoint; the cancellation idiom splits between the
+  handle+lambda+classifier trio and `SessionCancelGuard` without cross-links.
+
+### Cross-layer finding (highest confidence)
+
+`GitResult.failureKind` (`core/GitTypes.kt:14-25`) classifies failures by
+prefix-matching stderr strings emitted by the plugin layer's
+`GitProcessRunner` ("cancelled", "timeout after ...", ...). This is the only
+cross-layer semantic contract ArchUnit cannot enforce: changing a message
+silently degrades cancellation/timeout classification. Two independent review
+passes flagged the same defect.
+
+### Durable decisions
+
+- **Fix (high)**: give `GitResult` a structured failure reason (or at minimum
+  pin the sentinel prefixes as constants with a locking test); bound
+  `isGitOnPath()`; converge the four renderer decisions into `UiRules` with
+  tests, matching the `CollisionDecision` refactor.
+- **Fix (medium)**: deduplicate the `core/git` interface surface
+  (`DeriveGitClient` reusing existing probes); have `SingleRepositorySwitcher`
+  reuse `findBlockingIndexLocks` instead of re-checking locks by hand; unify
+  the single-repo result presentation with `SwitchResultPresenter`; give
+  `GitOps` one shared direct-call scope; add the missing `autoDiscardMeta`
+  setting; converge the process-slot budget to one value; share the
+  `WriteOperationLauncher` instance.
+- **Cheap cleanup**: annotate or remove `StepResult.Fatal`; annotate or remove
+  `RepositoryStateDetector.detect()`; make `SwitchFlowCoordinator`'s internal
+  steps private; move `BranchNameRulesTest` to the model test package; collect
+  the amber warning into a shared color constant and the more-button factory
+  into `UiUtil`.
+- **Deliberate, no change**: `SubmoduleTreeStep` as a documented sub-pipeline
+  (topology traversal does not fit the `StepExecution(state)` protocol); the
+  `operation` bridge package; one-interface-per-file in `switch`; the
+  `FetchStep`/`PullStep` `ALL` default (production passes only `MAIN` — worth a
+  clarifying comment, not a refactor).
+
+These fixes are active work and belong on the roadmap, not tracked here.
+
 ## Maintenance
 
 Record temporary findings in the relevant issue or pull request. Add to this

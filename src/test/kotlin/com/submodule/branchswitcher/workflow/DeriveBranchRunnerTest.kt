@@ -28,6 +28,7 @@ class DeriveBranchRunnerTest {
 
         val result = runner.execute(
             title = "Deriving",
+            rollbackTitle = "Rolling back",
             preset = Preset("main", "main"),
             branchName = "feature",
             log = createStringAppender(logs::add),
@@ -38,7 +39,9 @@ class DeriveBranchRunnerTest {
         assertEquals("main", git.currentBranch)
         assertEquals(2, git.openCount)
         assertEquals(2, git.closeCount)
-        assertEquals(1, git.cancelCount)
+        // The fake cancels after every run: the cancelled derive task and the fresh
+        // rollback task both own a session, so both sessions see a cancel.
+        assertEquals(2, git.cancelCount)
         assertTrue(result.operationId.matches(Regex("derive-[0-9a-f]{8}")))
         assertTrue(logs.any { it.contains("[${result.operationId}] operation started: root=") })
         assertTrue(logs.any { it.contains("[${result.operationId}] baseline target: path=., branch=main") })
@@ -58,6 +61,7 @@ class DeriveBranchRunnerTest {
 
         val result = runner.execute(
             title = "Deriving",
+            rollbackTitle = "Rolling back",
             preset = Preset("main", "main", mapOf("submodule" to "main")),
             branchName = "feature",
             log = createStringAppender(logs::add),
@@ -85,6 +89,7 @@ class DeriveBranchRunnerTest {
 
         val result = runner.execute(
             title = "Deriving",
+            rollbackTitle = "Rolling back",
             preset = Preset("main", "main", mapOf("submodule" to "main")),
             branchName = "feature",
             log = createStringAppender {},
@@ -144,8 +149,6 @@ class DeriveBranchRunnerTest {
             }
         override fun resetHard(workDir: File, revision: String): GitResult = ok("reset")
         override fun cancel() = Unit
-        override fun dirtyProbe(workDir: File): Boolean = false
-        override fun localBranchProbe(workDir: File, branch: String): Boolean = branch == currentBranch(workDir)
 
         override fun checkoutNewBranch(workDir: File, branch: String): GitResult {
             if (workDir.name == failNewBranchDirectoryName) return GitResult("checkout -b", 1, "", "failed")

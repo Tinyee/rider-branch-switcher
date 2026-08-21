@@ -1,5 +1,12 @@
 package com.submodule.branchswitcher.git.impl
 
+import com.submodule.branchswitcher.git.GIT_STDERR_CANCELLED
+import com.submodule.branchswitcher.git.GIT_STDERR_CAPACITY_PREFIX
+import com.submodule.branchswitcher.git.GIT_STDERR_INTERRUPTED
+import com.submodule.branchswitcher.git.GIT_STDERR_OUTPUT_CAPTURE_PREFIX
+import com.submodule.branchswitcher.git.GIT_STDERR_OUTPUT_LIMIT_PREFIX
+import com.submodule.branchswitcher.git.GIT_STDERR_START_FAILED_PREFIX
+import com.submodule.branchswitcher.git.GIT_STDERR_TIMEOUT_PREFIX
 import com.submodule.branchswitcher.git.GitResult
 import java.io.File
 import java.util.concurrent.CompletableFuture
@@ -41,7 +48,7 @@ internal class GitProcessRunner(
     ): GitResult {
         val commandLabel = "git ${args.joinToString(" ")}"
         if (cancellation.get()) {
-            return GitResult(commandLabel, -1, "", "cancelled")
+            return GitResult(commandLabel, -1, "", GIT_STDERR_CANCELLED)
         }
         // One budget for the whole command: permit acquisition and process execution
         // share a single deadline, so the configured timeout is an end-to-end cap
@@ -89,7 +96,7 @@ internal class GitProcessRunner(
                 process.waitFor(100, TimeUnit.MILLISECONDS)
             } catch (_: InterruptedException) {
                 interrupted = true
-                terminationReason = "interrupted"
+                terminationReason = GIT_STDERR_INTERRUPTED
                 break
             }
             if (finished) {
@@ -97,11 +104,11 @@ internal class GitProcessRunner(
                 break
             }
             if (cancellation.get()) {
-                terminationReason = "cancelled"
+                terminationReason = GIT_STDERR_CANCELLED
                 break
             }
             if (System.nanoTime() - deadline >= 0) {
-                terminationReason = "timeout after ${effectiveTimeoutSeconds}s"
+                terminationReason = GIT_STDERR_TIMEOUT_PREFIX + "${effectiveTimeoutSeconds}s"
                 break
             }
             if (stdoutLimitExceeded.get()) {
@@ -127,7 +134,7 @@ internal class GitProcessRunner(
             processStarter(builder)
         } catch (e: Exception) {
             return ProcessRunOutcome(
-                GitResult(commandLabel, -1, "", "failed to start: ${e.javaClass.name}: ${e.message}"),
+                GitResult(commandLabel, -1, "", GIT_STDERR_START_FAILED_PREFIX + "${e.javaClass.name}: ${e.message}"),
                 resourcesStopped = true,
             )
         }
@@ -178,7 +185,7 @@ internal class GitProcessRunner(
         if (interrupted) {
             Thread.currentThread().interrupt()
             return completedOutcome(
-                GitResult(commandLabel, -1, "", "interrupted"),
+                GitResult(commandLabel, -1, "", GIT_STDERR_INTERRUPTED),
                 resourcesStopped,
                 process,
                 observedDescendants,
@@ -240,7 +247,7 @@ internal class GitProcessRunner(
         val observedDescendants = linkedMapOf<Long, ProcessHandle>()
         val termination = terminateProcess(process, observedDescendants)
         return completedOutcome(
-            GitResult(commandLabel, -1, "", "output capture failed: $drain: ${error.javaClass.name}: ${error.message}"),
+            GitResult(commandLabel, -1, "", GIT_STDERR_OUTPUT_CAPTURE_PREFIX + "failed: $drain: ${error.javaClass.name}: ${error.message}"),
             termination.resourcesStopped,
             process,
             observedDescendants,
@@ -318,17 +325,17 @@ internal class GitProcessRunner(
 
     private fun acquireProcessPermit(cancellation: AtomicBoolean, deadline: Long): String? {
         while (System.nanoTime() - deadline < 0) {
-            if (cancellation.get()) return "cancelled"
+            if (cancellation.get()) return GIT_STDERR_CANCELLED
             try {
                 val remainingNanos = deadline - System.nanoTime()
                 val waitNanos = minOf(TimeUnit.MILLISECONDS.toNanos(100), remainingNanos)
                 if (waitNanos > 0 && processPermits.tryAcquire(waitNanos, TimeUnit.NANOSECONDS)) return null
             } catch (_: InterruptedException) {
                 Thread.currentThread().interrupt()
-                return "interrupted"
+                return GIT_STDERR_INTERRUPTED
             }
         }
-        return "process capacity unavailable after ${effectiveTimeoutSeconds}s"
+        return GIT_STDERR_CAPACITY_PREFIX + "${effectiveTimeoutSeconds}s"
     }
 
     private data class AwaitedCapture(
@@ -355,7 +362,7 @@ internal class GitProcessRunner(
                 return AwaitedCapture(
                     GitCapturedOutput("", truncated = false),
                     interrupted,
-                    "output capture failed: ${cause.javaClass.name}: ${cause.message}",
+                    GIT_STDERR_OUTPUT_CAPTURE_PREFIX + "failed: ${cause.javaClass.name}: ${cause.message}",
                 )
             } catch (_: TimeoutException) {
                 cleanupBlockedCapture()
@@ -363,7 +370,7 @@ internal class GitProcessRunner(
                 return AwaitedCapture(
                     GitCapturedOutput("", truncated = false),
                     interrupted,
-                    "output capture timed out after 5s",
+                    GIT_STDERR_OUTPUT_CAPTURE_PREFIX + "timed out after 5s",
                 )
             }
         }
@@ -372,7 +379,7 @@ internal class GitProcessRunner(
     }
 
     private fun stdoutLimitMessage(): String =
-        "output limit exceeded: stdout exceeded $GIT_STDOUT_LIMIT_BYTES bytes"
+        GIT_STDERR_OUTPUT_LIMIT_PREFIX + "stdout exceeded $GIT_STDOUT_LIMIT_BYTES bytes"
 
     private data class ProcessTermination(
         val interrupted: Boolean,

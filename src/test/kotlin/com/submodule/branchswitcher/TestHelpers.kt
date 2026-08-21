@@ -11,4 +11,4 @@ fun SwitchExecutor.executeTest(preset: Preset, options: SwitchOptions): Boolean 
     executeResultTest(preset, options).ok
 
 fun SwitchExecutor.executeResultTest(preset: Preset, options: SwitchOptions): SwitchExecutionResult =
-    execute(ResolvedSwitchRequest.resolve(preset, options))
+    execute(ResolvedSwitchRequest.from(preset, options))

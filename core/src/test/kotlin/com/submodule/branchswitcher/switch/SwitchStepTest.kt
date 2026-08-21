@@ -58,8 +58,6 @@ class SwitchStepTest {
         )
         override fun resetHard(workDir: File, revision: String): GitResult = GitResult("reset", 0, "", "")
         override fun cancel() = Unit
-        override fun localBranchProbe(workDir: File, branch: String): Boolean = localBranchExists(workDir, branch)
-        override fun dirtyProbe(workDir: File): Boolean = isDirty(workDir)
     }
 
     private fun context(opts: SwitchOptions = SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false)) =

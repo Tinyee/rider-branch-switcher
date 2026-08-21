@@ -2,6 +2,8 @@ package com.submodule.branchswitcher.switch
 
 enum class OperationStage {
     CHECKPOINT,
+    /** Pre-mutation gate checked after the checkpoint: nothing is written before it passes. */
+    PRE_MUTATION,
     DIRTY_HANDLING,
     FETCH,
     CHECKOUT,

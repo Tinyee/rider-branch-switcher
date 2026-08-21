@@ -18,6 +18,8 @@ class IndexLockBlockTest {
             override fun currentBranch(workDir: File): String? = error("fast path must not query git")
             override fun revParseHead(workDir: File): String? = error("fast path must not query git")
             override fun indexLockFile(workDir: File): String? = error("fast path must not query git")
+            override fun localBranchExists(workDir: File, branch: String): Boolean = error("fast path must not query git")
+            override fun remoteBranchExists(workDir: File, branch: String): Boolean = error("fast path must not query git")
         }
 
         val blocked = findBlockingIndexLocks(projectRoot, git, listOf("."), checkpoint)

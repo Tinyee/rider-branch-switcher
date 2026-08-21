@@ -22,8 +22,9 @@ class DeriveBranchExecutorTest {
         val lockedGit = object : DeriveGitClient {
             override fun currentBranch(workDir: File): String? = "main"
             override fun revParseHead(workDir: File): String? = "abc123"
-            override fun localBranchProbe(workDir: File, branch: String): Boolean = false
-            override fun dirtyProbe(workDir: File): Boolean = false
+            override fun localBranchExists(workDir: File, branch: String): Boolean = false
+            override fun remoteBranchExists(workDir: File, branch: String): Boolean = false
+            override fun isDirty(workDir: File): Boolean = false
             override fun checkoutNewBranch(workDir: File, branch: String): GitResult = GitResult("checkout", 0, "", "")
             override fun checkoutExisting(workDir: File, branch: String): GitResult = GitResult("checkout", 0, "", "")
             override fun deleteBranch(workDir: File, branch: String): GitResult = GitResult("branch", 0, "", "")
@@ -56,8 +57,9 @@ class DeriveBranchExecutorTest {
         val lateLockGit = object : DeriveGitClient {
             override fun currentBranch(workDir: File): String? = "dev"
             override fun revParseHead(workDir: File): String? = "abc123"
-            override fun localBranchProbe(workDir: File, branch: String): Boolean = false
-            override fun dirtyProbe(workDir: File): Boolean = false
+            override fun localBranchExists(workDir: File, branch: String): Boolean = false
+            override fun remoteBranchExists(workDir: File, branch: String): Boolean = false
+            override fun isDirty(workDir: File): Boolean = false
             override fun checkoutNewBranch(workDir: File, branch: String): GitResult {
                 error("checkoutNewBranch must not run behind a stale index lock")
             }
@@ -93,8 +95,9 @@ class DeriveBranchExecutorTest {
         val failingLockGit = object : DeriveGitClient {
             override fun currentBranch(workDir: File): String? = "dev"
             override fun revParseHead(workDir: File): String? = "abc123"
-            override fun localBranchProbe(workDir: File, branch: String): Boolean = false
-            override fun dirtyProbe(workDir: File): Boolean = false
+            override fun localBranchExists(workDir: File, branch: String): Boolean = false
+            override fun remoteBranchExists(workDir: File, branch: String): Boolean = false
+            override fun isDirty(workDir: File): Boolean = false
             override fun checkoutNewBranch(workDir: File, branch: String): GitResult = GitResult("checkout", 0, "", "")
             override fun checkoutExisting(workDir: File, branch: String): GitResult = GitResult("checkout", 0, "", "")
             override fun deleteBranch(workDir: File, branch: String): GitResult = GitResult("branch", 0, "", "")

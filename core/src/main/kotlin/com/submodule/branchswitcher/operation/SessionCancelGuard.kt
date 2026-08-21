@@ -8,6 +8,11 @@ import java.util.concurrent.atomic.AtomicReference
  * Tracks one cancellable Git operation session so a cancellation requested before the
  * session was attached still reaches it. Shared by branch discovery and repository-state
  * refresh, which both attach a session only after cancellation may already be pending.
+ *
+ * This is the session-owned cancellation idiom. For workflow-level cancellation — deciding
+ * whether a thrown exception is a user cancel or threading a check-cancel predicate through
+ * executors — use the `CancellationHandle` / `cancelled` lambda / `CancellationClassifier`
+ * trio in the `switch` package instead.
  */
 class SessionCancelGuard {
     private val cancelled = AtomicBoolean(false)

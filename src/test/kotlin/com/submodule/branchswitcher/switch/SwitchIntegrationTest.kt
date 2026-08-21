@@ -677,7 +677,7 @@ class SwitchIntegrationTest {
     fun `derive blocks when branch existence probe throws`() {
         assertProbeFailureBlocks(
             object : GitClient by git {
-                override fun localBranchProbe(workDir: java.io.File, branch: String): Boolean =
+                override fun localBranchExists(workDir: java.io.File, branch: String): Boolean =
                     throw RuntimeException("branch probe failed")
             },
         )
@@ -688,7 +688,7 @@ class SwitchIntegrationTest {
     fun `derive blocks when dirty probe throws`() {
         assertProbeFailureBlocks(
             object : GitClient by git {
-                override fun dirtyProbe(workDir: java.io.File): Boolean =
+                override fun isDirty(workDir: java.io.File): Boolean =
                     throw RuntimeException("dirty probe failed")
             },
         )

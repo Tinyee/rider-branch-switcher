@@ -28,8 +28,8 @@ class RepositoryStateRefreshCoordinator(
     private val detector: RepositoryStateDetector,
     private val log: AppLogger,
     private val deliver: ((() -> Unit) -> Unit),
-    /** Max concurrently running Git processes; the probe throttle reserves one slot for a foreground switch or recovery. */
-    private val gitProcessBound: Int,
+    /** Concurrent background probe budget; one git-process slot is already reserved for a foreground switch or recovery. */
+    private val gitProcessBudget: Int,
     private val worker: CoroutineDispatcher = Dispatchers.IO,
     private val cancellationClassifier: CancellationClassifier = CancellationClassifier.DEFAULT,
 ) : AutoCloseable {
@@ -63,9 +63,8 @@ class RepositoryStateRefreshCoordinator(
                     // Probe repositories concurrently so a multi-submodule project does not
                     // pay one process-spawn latency per repository in sequence. The git-process
                     // pool's shared semaphore is the real cap; this local throttle reuses the
-                    // same bound so we never even start coroutines beyond it.
-                    // Keep one process slot available for a foreground switch or recovery.
-                    val probePermits = Semaphore((gitProcessBound - 1).coerceAtLeast(1))
+                    // same reserved budget so we never even start coroutines beyond it.
+                    val probePermits = Semaphore(gitProcessBudget.coerceAtLeast(1))
                     coroutineScope {
                         val probes = request.paths.map { path ->
                             async { probePermits.withPermit { detector.probe(request, path, openedOperation) } }

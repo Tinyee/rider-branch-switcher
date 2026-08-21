@@ -33,12 +33,13 @@ internal class SwitchController(
     private val onStateChanged: () -> Unit,
 ) {
 
+    private val writeOperations = WriteOperationLauncher(service.scope, service::tryAcquireWrite)
     private val coordinator = SwitchFlowCoordinator(
         project,
         service,
+        writeOperations,
         onRollbackInProgress = ::setSwitchInProgress,
     )
-    private val writeOperations = WriteOperationLauncher(service.scope, service::tryAcquireWrite)
 
     /** Notified on the UI thread whenever an in-flight mutation starts or ends. */
     var onInProgressChange: ((Boolean) -> Unit)? = null
@@ -83,6 +84,7 @@ internal class SwitchController(
                 cancellationClassifier = platformCancellationClassifier,
             ).execute(
                 title = Bundle.msg("progress.derive", branchName),
+                rollbackTitle = Bundle.msg("progress.derive.rollback"),
                 preset = preset,
                 branchName = branchName,
                 log = log,

@@ -229,7 +229,7 @@ class SwitchExecutorPreflightTest : SwitchExecutorTestBase() {
 
         assertEquals(SwitchExecutionStatus.FAILED, result.status)
         val issue = result.issues.single()
-        assertEquals(OperationStage.CHECKPOINT, issue.stage)
+        assertEquals(OperationStage.PRE_MUTATION, issue.stage)
         assertEquals(OperationIssueCode.GIT_QUERY_FAILED, issue.code)
         assertTrue(issue.diagnostic.orEmpty().contains(GitFailureKind.PROCESS_CAPACITY.name))
     }

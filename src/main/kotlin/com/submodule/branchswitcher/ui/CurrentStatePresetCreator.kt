@@ -15,20 +15,6 @@ import kotlinx.coroutines.launch
 import java.io.File
 import java.nio.file.Path
 
-internal enum class CurrentStatePresetBlockReason {
-    MAIN_BRANCH_UNAVAILABLE,
-    INCOMPLETE_REPOSITORIES,
-}
-
-internal fun currentStatePresetBlockReason(
-    mainBranch: String?,
-    skippedRepositories: List<String>,
-): CurrentStatePresetBlockReason? = when {
-    mainBranch.isNullOrEmpty() -> CurrentStatePresetBlockReason.MAIN_BRANCH_UNAVAILABLE
-    skippedRepositories.isNotEmpty() -> CurrentStatePresetBlockReason.INCOMPLETE_REPOSITORIES
-    else -> null
-}
-
 /** Creates a complete preset by probing the branches currently checked out in every repository. */
 internal class CurrentStatePresetCreator(
     private val project: Project,

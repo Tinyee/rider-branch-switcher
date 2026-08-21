@@ -13,6 +13,17 @@ fun dirtyActionToIndex(action: DirtyAction): Int =
 fun indexToDirtyAction(index: Int): DirtyAction =
     DIRTY_ACTIONS.getOrElse(index) { DirtyAction.Stash }
 
+/**
+ * Maps a persisted dirty-action name back to its enum. Unknown names (hand-edited
+ * or corrupted state files) fall back to the safe [DirtyAction.Stash], never
+ * silently selecting a more destructive action.
+ */
+fun dirtyActionFromName(name: String): DirtyAction = when (name) {
+    "Skip" -> DirtyAction.Skip
+    "Force" -> DirtyAction.Force
+    else -> DirtyAction.Stash
+}
+
 fun timeoutToIndex(timeoutSeconds: Int): Int =
     TIMEOUTS.indexOf(timeoutSeconds).takeIf { it >= 0 } ?: 1
 

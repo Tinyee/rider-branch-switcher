@@ -36,6 +36,13 @@ internal class GitCommandClient(
 ) : GitOperationSession, RepositoryStateBatchGitClient, SwitchPreflightBatchGitClient, RepositoryStateBatchInspection {
     private val cancellation = AtomicBoolean(false)
 
+    /**
+     * Cancels this session's commands (idempotent). The session's command scope is
+     * this client's only resource, so [close] is deliberately identical to [cancel] —
+     * both set the flag; there is no separate process ownership to release. The
+     * [GitOperationSession] contract treats cancel and close as independent because
+     * other implementations hold ownership beyond the cancellation flag.
+     */
     override fun cancel() {
         cancellation.set(true)
     }
@@ -220,13 +227,6 @@ internal class GitCommandClient(
         }
     }
 
-    /** Same command as [localBranchExists]; exposed for the DeriveGitClient split. */
-    override fun localBranchProbe(workDir: File, branch: String): Boolean =
-        localBranchExists(workDir, branch)
-
-    /** Same command as [isDirty]; exposed for the DeriveGitClient split. */
-    override fun dirtyProbe(workDir: File): Boolean = isDirty(workDir)
-
     private fun remoteName(workDir: File): String {
         val key = workDir.absolutePath
         return remoteCache[key] ?: run {
@@ -285,10 +285,6 @@ internal class GitCommandClient(
 
     override fun registeredSubmodules(gitRoot: File): List<SubmoduleRegistration> =
         listSubmoduleRegistrations(gitRoot)
-
-    override fun listSubmodulePaths(gitRoot: File): List<String> {
-        return listSubmoduleRegistrations(gitRoot).map(SubmoduleRegistration::path)
-    }
 
     private fun listSubmoduleRegistrations(gitRoot: File): List<SubmoduleRegistration> {
         val result = mutableListOf<SubmoduleRegistration>()

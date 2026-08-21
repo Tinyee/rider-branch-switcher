@@ -86,7 +86,7 @@ internal class PresetEditor(
         toolTipText = Bundle.msg("action.derive.tip")
         addActionListener { deriveBranch() }
     }
-    private val moreButton = createPresetMoreButton()
+    private val moreButton = moreIconButton { showPresetMoreMenu(it) }
     private val headerActions = createHeaderActions()
     private var isCurrentPreset = false
 
@@ -241,18 +241,6 @@ internal class PresetEditor(
         return responsiveFormRow(mainRepositoryLabel, mainCombo)
     }
 
-    /** Creates the "..." more-actions button for this preset card. */
-    private fun createPresetMoreButton(): JButton {
-        return jButton(icon = AllIcons.Actions.MoreHorizontal) {
-            margin = JBUI.insets(0, 4, 0, 4)
-            preferredSize = Dimension(JBUI.scale(32), preferredSize.height)
-            maximumSize = preferredSize
-            minimumSize = preferredSize
-            toolTipText = Bundle.msg("action.more.tip")
-            addActionListener { showPresetMoreMenu(this) }
-        }
-    }
-
     private fun showPresetMoreMenu(anchor: JButton) {
         val overflowActions = if (deriveBtn.isVisible) {
             emptyList()
@@ -350,7 +338,7 @@ internal class PresetEditor(
         mainDiffLabel.text = mainStatus
         mainDiffLabel.toolTipText = mainStatus
         mainDiffLabel.isVisible = mainStatus != null
-        mainDiffLabel.foreground = JBColor(0xE07B00, 0xFFA726)
+        mainDiffLabel.foreground = WARN_AMBER
         // Update submodule status dots
         savedPreset.submodules.forEach { (path, targetBranch) ->
             val row = submoduleRows[path] ?: return@forEach
@@ -361,7 +349,7 @@ internal class PresetEditor(
             row.statusDot.foreground = when (presentation.tone) {
                 RepoStatusTone.NOT_INITIALIZED -> JBColor(0x9E9E9E, 0x757575)
                 RepoStatusTone.MATCHED -> JBColor(0x4CAF50, 0x66BB6A)
-                RepoStatusTone.MISMATCHED -> JBColor(0xE07B00, 0xFFA726)
+                RepoStatusTone.MISMATCHED -> WARN_AMBER
             }
             row.statusDot.toolTipText = presentation.tooltip
         }

@@ -1,7 +1,7 @@
 package com.submodule.branchswitcher.workflow
 
 import com.submodule.branchswitcher.git.GitOperationSession
-import com.submodule.branchswitcher.git.impl.MAX_CONCURRENT_GIT_PROCESSES
+import com.submodule.branchswitcher.git.impl.GIT_PROCESS_BACKGROUND_BUDGET
 import com.submodule.branchswitcher.log.createStringAppender
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -51,7 +51,7 @@ class RepositoryStateRefreshCoordinatorTest {
             detector = RepositoryStateDetector(createStringAppender {}),
             log = createStringAppender {},
             deliver = { it() },
-            gitProcessBound = MAX_CONCURRENT_GIT_PROCESSES,
+            gitProcessBudget = GIT_PROCESS_BACKGROUND_BUDGET,
         )
 
         coordinator.refresh(root.toPath(), listOf(".")) { snapshot ->
@@ -93,7 +93,7 @@ class RepositoryStateRefreshCoordinatorTest {
             detector = RepositoryStateDetector(createStringAppender {}),
             log = createStringAppender {},
             deliver = { it() },
-            gitProcessBound = MAX_CONCURRENT_GIT_PROCESSES,
+            gitProcessBudget = GIT_PROCESS_BACKGROUND_BUDGET,
         )
 
         coordinator.refresh(root.toPath(), listOf("a", "b")) { delivered.countDown() }
@@ -130,7 +130,7 @@ class RepositoryStateRefreshCoordinatorTest {
             detector = RepositoryStateDetector(createStringAppender {}),
             log = createStringAppender {},
             deliver = { it() },
-            gitProcessBound = MAX_CONCURRENT_GIT_PROCESSES,
+            gitProcessBudget = GIT_PROCESS_BACKGROUND_BUDGET,
         )
 
         coordinator.refresh(root.toPath(), listOf("a", "b", "c", "d")) { delivered.countDown() }
