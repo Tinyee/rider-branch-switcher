@@ -163,11 +163,17 @@ internal class GitProcessRunner(
             )
         } catch (error: RuntimeException) {
             // An unexpected probe failure while the process may still be running must not
-            // hand the pool slot back for an orphaned process: stop it first.
+            // hand the pool slot back for an orphaned process: stop it first, then route
+            // through completedOutcome so a process that cannot be confirmed stopped still
+            // returns its slot once it actually exits (bounded), exactly like the other
+            // error outcomes. Releasing synchronously here would leak the permit for an
+            // unstoppable process, deadlocking the pool after a few such failures.
             val termination = terminateProcess(process, observedDescendants)
-            return ProcessRunOutcome(
+            return completedOutcome(
                 GitResult(commandLabel, -1, "", "process probe failed: ${error.javaClass.name}: ${error.message}"),
                 termination.resourcesStopped,
+                process,
+                observedDescendants,
             )
         }
         val exitCode = wait.exitCode

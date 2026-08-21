@@ -385,25 +385,36 @@ class GitOpsProcessTest : GitOpsTestBase() {
 
     @Test
     @Suppress("TooGenericExceptionThrown") // simulating an arbitrary probe failure
-    fun `probe failure during process wait does not leak the pool slot`() {
+    fun `probe failure with an unstoppable process still returns the pool slot`() {
         val permits = Semaphore(1)
         val runner = GitProcessRunner(
             timeoutSeconds = 2,
             processPermits = permits,
+            pollDeadlineSeconds = 1,
         ) {
-            object : ControllableProcess(finished = false, stopAfterDestroy = true) {
-                override fun waitFor(timeout: Long, unit: TimeUnit): Boolean =
-                    throw RuntimeException("probe boom")
+            // Unstoppable process: destroy() cannot confirm it stopped, so terminateProcess
+            // reports resourcesStopped=false and the probe-failure path must defer the
+            // release through completedOutcome (bounded), never hand the slot back to an
+            // orphaned process and never leak it. An immediate synchronous release would
+            // both leave the orphan running and drain the pool.
+            object : ControllableProcess(finished = false, stopAfterDestroy = false) {
+                private var probed = false
+                override fun waitFor(timeout: Long, unit: TimeUnit): Boolean {
+                    // Only the initial probe fails (as an unqueryable handle would); the
+                    // calls terminateProcess makes during its bounded wait stay normal.
+                    if (!probed) {
+                        probed = true
+                        throw RuntimeException("probe boom")
+                    }
+                    return super.waitFor(timeout, unit)
+                }
             }
         }
 
-        try {
-            runner.run(tmpDir.toFile(), AtomicBoolean(false), "stuck")
-        } catch (_: RuntimeException) {
-            // The probe failure may surface as a result or as an escape; either way the
-            // pool slot must come back rather than leaking forever.
-        }
-        assertTrue("capacity must be released after a probe failure", permits.tryAcquire(2, TimeUnit.SECONDS))
+        val result = runner.run(tmpDir.toFile(), AtomicBoolean(false), "stuck")
+
+        assertTrue("the probe failure must surface as a result", result.stderr.startsWith("process probe failed"))
+        assertTrue("capacity must be released after a probe failure", permits.tryAcquire(5, TimeUnit.SECONDS))
     }
 
     @Test
