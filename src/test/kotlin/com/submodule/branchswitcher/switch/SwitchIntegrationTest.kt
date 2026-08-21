@@ -725,7 +725,6 @@ class SwitchIntegrationTest {
         gitOk(root, "submodule", "update", "--init", "--recursive")
 
         val subADir = File(root, "SubA")
-        val rootBranch = git.currentBranch(root)
 
         val executor = DeriveBranchExecutor(root.toPath(), deriveLog(), git)
         val preset = Preset("test", "main", mapOf("SubA" to "main"))
@@ -733,19 +732,25 @@ class SwitchIntegrationTest {
 
         assertTrue("derive should succeed", result.allOk)
 
-        // Delete the derived branch on root BEFORE rollback, so root rollback fails
-        gitOk(root, "checkout", rootBranch!!)
-        gitOk(root, "branch", "-D", "derived")
+        // A stale index.lock on root blocks its rollback, so root stays pending while
+        // SubA still rolls back.
+        val rootLock = File(File(root, ".git"), "index.lock")
+        rootLock.parentFile.mkdirs()
+        rootLock.writeText("")
 
-        // Rollback — root has no "derived" branch to delete, SubA succeeds
         val rollback = executor.rollbackSucceeded(result, "derived")
-        // Root: checkout to main should work, but delete "derived" fails (already gone)
-        // SubA: both checkout and delete should work
         assertFalse("rollback should have some failures", rollback.allCompleted)
+        assertTrue("root must be pending behind its lock", rollback.pendingPaths.contains("."))
 
         // SubA should still be restored
         assertEquals("main", git.currentBranch(subADir))
         assertFalse("derived branch should be deleted on SubA", git.localBranchExists(subADir, "derived"))
+
+        // With the lock gone, a retry completes root's rollback instead of deferring forever.
+        rootLock.delete()
+        val retry = executor.rollbackSucceeded(result, "derived")
+        assertTrue("retry after lock removal must complete", retry.allCompleted)
+        assertFalse("root derived branch deleted on retry", git.localBranchExists(root, "derived"))
     }
 
     @Test

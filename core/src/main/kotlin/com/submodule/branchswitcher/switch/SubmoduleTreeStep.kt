@@ -22,21 +22,31 @@ class SubmoduleTreeStep : SwitchStep {
         if (targets.isEmpty()) return StepExecution(StepResult.Success, state)
 
         val issues = mutableListOf<OperationIssue>()
-        var traversal = SubmoduleTraversal(state, loadTopology(context, state))
+        val traversal = try {
+            SubmoduleTraversal(state, loadTopology(context, state))
+        } catch (error: SwitchStepException) {
+            throw error
+        } catch (error: RuntimeException) {
+            // Entry topology failure is still a step failure, wrapped consistently with
+            // processTarget's error path; nothing has run yet, so the initial state is
+            // the recovery state.
+            throw SwitchStepException(state, error)
+        }
+        var current = traversal
         try {
             for ((index, target) in targets.withIndex()) {
                 updateProgress(context, index, targets.size, target.path)
                 context.cancellationHandle?.checkCanceled()
-                traversal = processTarget(context, targets, target, traversal, issues)
+                current = processTarget(context, targets, target, current, issues)
             }
         } catch (error: SwitchStepException) {
             throw error
         } catch (error: RuntimeException) {
-            throw SwitchStepException(traversal.state, error)
+            throw SwitchStepException(current.state, error)
         }
 
         val result = issues.toStepResult()
-        return StepExecution(result, traversal.state)
+        return StepExecution(result, current.state)
     }
 
     private fun processTarget(

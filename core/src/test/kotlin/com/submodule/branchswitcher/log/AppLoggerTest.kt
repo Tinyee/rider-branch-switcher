@@ -1,5 +1,6 @@
 package com.submodule.branchswitcher.log
 
+import com.google.gson.JsonSyntaxException
 import com.submodule.branchswitcher.executeTest
 import com.submodule.branchswitcher.git.GitClient
 import com.submodule.branchswitcher.git.GitQueryException
@@ -117,6 +118,22 @@ class AppLoggerTest {
         assertTrue(messages.any { it.startsWith("[warn]") && it.contains("wrapped git") && it.contains("RuntimeException") })
         assertTrue(messages.any { it.startsWith("[warn]") && it.contains("wrapped io") && it.contains("RuntimeException") })
         assertTrue(messages.any { it.startsWith("[error]") && it.contains("wrapped defect") && it.contains("RuntimeException") })
+    }
+
+    @Test
+    fun `logFailure treats malformed user preset JSON as an environment failure`() {
+        val messages = mutableListOf<String>()
+        val log = createStringAppender(messages::add)
+
+        log.logFailure(
+            "preset load",
+            IllegalStateException("preset file parse error", JsonSyntaxException("bad json")),
+        )
+
+        assertTrue(
+            "a user-editable file parse error must not reach the IDE fatal-error reporter",
+            messages.any { it.startsWith("[warn]") && it.contains("preset load") },
+        )
     }
 
     @Test

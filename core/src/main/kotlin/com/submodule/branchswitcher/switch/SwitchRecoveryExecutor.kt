@@ -1,6 +1,7 @@
 package com.submodule.branchswitcher.switch
 
 import com.submodule.branchswitcher.git.SwitchGitClient
+import com.submodule.branchswitcher.git.resolveHeadAndBranch
 import com.submodule.branchswitcher.log.AppLogger
 import com.submodule.branchswitcher.log.logFailure
 import java.io.File
@@ -178,8 +179,11 @@ class SwitchRecoveryExecutor(
         }
 
         val label = labelFor(action.repositoryPath)
-        val currentBranch = git.currentBranch(directory)
-        val currentSha = git.revParseHead(directory)
+        // One atomic read (with a separate-read fallback) so a concurrent HEAD move can
+        // never pair a SHA with the wrong branch name when judging "already restored".
+        val head = git.resolveHeadAndBranch(directory)
+        val currentBranch = head?.branch
+        val currentSha = head?.sha
         if (currentBranch == action.targetBranch && currentSha == action.targetSha) {
             log.debug("$label: already at ${action.targetBranch ?: "(detached)"} (${action.targetSha}), skip")
             return RepositoryRecoveryOutcome(action, RecoveryActionStatus.ALREADY_RESTORED)

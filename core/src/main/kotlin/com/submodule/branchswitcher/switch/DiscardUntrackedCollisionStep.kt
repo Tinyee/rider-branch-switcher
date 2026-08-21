@@ -1,6 +1,7 @@
 package com.submodule.branchswitcher.switch
 
 import com.submodule.branchswitcher.log.AppLogger
+import com.submodule.branchswitcher.model.DirtyAction
 import java.io.File
 import java.nio.file.Files
 
@@ -19,6 +20,10 @@ class DiscardUntrackedCollisionStep : SwitchStep {
     override fun execute(context: SwitchContext, state: SwitchState): StepExecution {
         val approved = context.approvedCollisionDiscards
         if (approved.isEmpty()) return StepExecution(StepResult.Success, state)
+        // Untracked collision files count toward the dirty count, so under the Skip
+        // strategy every repo with approved discards is skipped before checkout: deleting
+        // them would be unrecoverable loss with no switch happening.
+        if (context.options.dirty == DirtyAction.Skip) return StepExecution(StepResult.Success, state)
         val issues = mutableListOf<OperationIssue>()
         for ((repoPath, files) in approved) {
             if (files.isEmpty()) continue

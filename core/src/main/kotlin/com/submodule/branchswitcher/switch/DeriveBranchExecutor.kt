@@ -395,6 +395,11 @@ class DeriveBranchExecutor(
                     val deleteResult = git.deleteBranch(repositoryDirectory, branchName)
                     if (deleteResult.ok) {
                         log.activity("[derive] $repositoryLabel: deleted branch $branchName")
+                    } else if (!git.localBranchExists(repositoryDirectory, branchName)) {
+                        // The branch is already gone (a cancelled delete completed after all):
+                        // treat it as rolled back instead of deferring the path forever — a
+                        // retry would only fail again with "branch not found".
+                        log.activity("[derive] $repositoryLabel: branch $branchName already gone")
                     } else {
                         log.warn(
                             "[derive] $repositoryLabel: could not delete branch $branchName - " +

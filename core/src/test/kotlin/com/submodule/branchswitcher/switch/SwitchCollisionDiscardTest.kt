@@ -4,6 +4,7 @@ import com.submodule.branchswitcher.executeResultTest
 import com.submodule.branchswitcher.git.GitClient
 import com.submodule.branchswitcher.git.GitResult
 import com.submodule.branchswitcher.log.createStringAppender
+import com.submodule.branchswitcher.model.DirtyAction
 import com.submodule.branchswitcher.model.SwitchOptions
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -52,6 +53,29 @@ class SwitchCollisionDiscardTest : SwitchExecutorTestBase() {
 
         assertTrue(result.ok)
         assertTrue("file must survive when the repo is already on the target branch", collisionFile.exists())
+    }
+
+    @Test
+    fun `discard step skips deletion when the skip strategy blocks the switch`() {
+        val collisionFile = writeUntrackedFile("Assets/Foo.meta")
+        val dirtyGit = object : GitClient by fakeGit {
+            override fun isDirty(workDir: File): Boolean = true
+        }
+
+        val result = SwitchExecutor(
+            projectRoot,
+            createStringAppender { log += it },
+            dirtyGit,
+            collisionDiscards = mapOf("." to setOf("Assets/Foo.meta")),
+        ).executeResultTest(preset, SwitchOptions(dirty = DirtyAction.Skip))
+
+        // The Skip strategy reports the dirty repo as a (non-fatal) failure, but it must
+        // never reach checkout — so the approved collision files must survive the discard step.
+        assertFalse("Skip strategy reports dirty work", result.ok)
+        assertTrue(
+            "a Skip-strategy switch never reaches checkout, so approved files must survive",
+            collisionFile.exists(),
+        )
     }
 
     @Test

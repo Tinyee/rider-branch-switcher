@@ -51,6 +51,35 @@ class DeriveBranchExecutorTest {
     }
 
     @Test
+    fun `rollback treats an already-deleted branch as rolled back`() {
+        val log = mutableListOf<String>()
+        val git = object : DeriveGitClient {
+            override fun currentBranch(workDir: File): String? = "dev"
+            override fun revParseHead(workDir: File): String? = "abc123"
+            override fun localBranchExists(workDir: File, branch: String): Boolean = false
+            override fun remoteBranchExists(workDir: File, branch: String): Boolean = false
+            override fun isDirty(workDir: File): Boolean = false
+            override fun checkoutNewBranch(workDir: File, branch: String): GitResult = GitResult("checkout", 0, "", "")
+            override fun checkoutExisting(workDir: File, branch: String): GitResult = GitResult("checkout", 0, "", "")
+            override fun deleteBranch(workDir: File, branch: String): GitResult =
+                GitResult("branch", 1, "", "fatal: branch 'feature-x' not found")
+            override fun registeredSubmodules(gitRoot: File): List<SubmoduleRegistration> = emptyList()
+            override fun repositoryIdentity(workDir: File): RepositoryIdentity? = null
+            override fun isGitRepo(workDir: File): Boolean = true
+            override fun indexLockFile(workDir: File): String? = null
+        }
+        val executor = DeriveBranchExecutor(projectRoot, createStringAppender { log += it }, git)
+        val deriveResult = DeriveResult(
+            outcomes = listOf(DeriveRepositoryOutcome("SubA", DeriveRepositoryStatus.SUCCEEDED, null)),
+            checkpoint = mapOf("SubA" to DeriveCheckpointEntry("base-sha", "dev")),
+        )
+
+        val rollback = executor.rollbackSucceeded(deriveResult, "feature-x")
+
+        assertTrue("an already-deleted branch is not a pending path", rollback.pendingPaths.isEmpty())
+    }
+
+    @Test
     fun `index lock created after preflight blocks branch creation`() {
         val log = mutableListOf<String>()
         var lockChecks = 0

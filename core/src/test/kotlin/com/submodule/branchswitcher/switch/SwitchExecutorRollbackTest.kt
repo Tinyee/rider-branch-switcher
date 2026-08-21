@@ -3,6 +3,7 @@ package com.submodule.branchswitcher.switch
 import com.submodule.branchswitcher.executeResultTest
 import com.submodule.branchswitcher.git.GitClient
 import com.submodule.branchswitcher.git.GitResult
+import com.submodule.branchswitcher.git.HeadAndBranch
 import com.submodule.branchswitcher.git.RepositoryIdentity
 import com.submodule.branchswitcher.log.createStringAppender
 import com.submodule.branchswitcher.model.DirtyAction
@@ -23,6 +24,37 @@ class SwitchExecutorRollbackTest : SwitchExecutorTestBase() {
             SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false),
         ).copy(checkpoint = null)
         assertFalse("Rollback without checkpoint should return false", recovery().recover(result).rollbackOk)
+    }
+
+    @Test
+    fun `recovery judges already-restored from one atomic head read`() {
+        var atomicReads = 0
+        var separateReads = 0
+        val atomicGit = object : GitClient by fakeGit {
+            override fun headAndBranch(workDir: File): HeadAndBranch? {
+                atomicReads++
+                return HeadAndBranch("main-sha", "main")
+            }
+            override fun currentBranch(workDir: File): String? {
+                separateReads++
+                return "other-branch"
+            }
+            override fun revParseHead(workDir: File): String? {
+                separateReads++
+                return "other-sha"
+            }
+        }
+        val execution = SwitchExecutionResult(
+            status = SwitchExecutionStatus.FAILED,
+            checkpoint = linkedMapOf("." to CheckpointEntry("main-sha", "main")),
+            state = SwitchState(),
+        )
+
+        val outcome = recovery(atomicGit).recover(execution)
+
+        assertTrue("an already-restored repo must not fail recovery", outcome.ok)
+        assertEquals("HEAD and branch must be judged from one atomic read", 1, atomicReads)
+        assertEquals("separate reads must not be consulted when the atomic read works", 0, separateReads)
     }
 
     @Test
