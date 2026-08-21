@@ -35,6 +35,8 @@ internal class PresetListManager(
     private val onSwitch: (Preset) -> Unit,
     private val onDerive: (Path, Preset, String) -> Unit,
     private val onStateChanged: () -> Unit,
+    /** Claimed/released on the UI thread while the single-repository switch path runs a write. */
+    private val onBusyChange: ((Boolean) -> Unit)? = null,
 ) : PresetCollectionHost {
     private val mutableEditors = mutableListOf<PresetEditor>()
     override val editors: List<PresetEditor> get() = mutableEditors
@@ -141,7 +143,7 @@ internal class PresetListManager(
     }
 
     private fun switchSubmodule(root: Path, path: String, target: String) {
-        val started = singleRepositorySwitcher.start(
+        val job = singleRepositorySwitcher.start(
             scope = service.scope,
             root = root,
             path = path,
@@ -154,13 +156,18 @@ internal class PresetListManager(
                 notifyStateChanged()
             }
         }
-        if (!started) {
+        if (job == null) {
             Notifier.warn(
                 project,
                 Bundle.msg("notify.write.busy"),
                 Bundle.msg("notify.write.busy.msg"),
             )
+            return
         }
+        // Claim the tool-window busy state only once this switch owns the write lease,
+        // so a rejected switch never leaves the window stuck (mirrors the derive path).
+        onBusyChange?.invoke(true)
+        job.invokeOnCompletion { project.invokeLaterIfAlive { onBusyChange?.invoke(false) } }
     }
 
     private fun createEmptyState(): JPanel {

@@ -119,6 +119,7 @@ class BranchSwitcherPanel(
         onSwitch = switchController::runSwitch,
         onDerive = switchController::derivePresetBranch,
         onStateChanged = ::detectCurrentState,
+        onBusyChange = switchController::setSwitchInProgress,
     )
     private var worktreeInfoLogged = false
 

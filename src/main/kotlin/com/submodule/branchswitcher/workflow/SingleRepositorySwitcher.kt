@@ -17,6 +17,7 @@ import com.submodule.branchswitcher.switch.loadSubmoduleTopology
 import com.submodule.branchswitcher.switch.resolveGitDir
 import com.submodule.branchswitcher.switch.SubmoduleTopology
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
 import java.io.File
 import java.nio.file.Path
 
@@ -52,8 +53,10 @@ class SingleRepositorySwitcher(
     private val cancellationClassifier: CancellationClassifier = CancellationClassifier.DEFAULT,
 ) {
     /**
-     * Acquires the write gate synchronously, then runs Git on [scope].
-     * Returns false without launching when another write already owns the gate.
+     * Acquires the write gate synchronously, then runs Git on [scope]. Returns the
+     * launched job, or null without launching when another write already owns the gate.
+     * The returned job lets the caller observe completion (e.g. to release a busy
+     * indicator once the operation is fully done, on success or failure).
      */
     fun start(
         scope: CoroutineScope,
@@ -62,7 +65,7 @@ class SingleRepositorySwitcher(
         target: String,
         title: String,
         onResult: (SingleRepositorySwitchOutcome) -> Unit,
-    ): Boolean {
+    ): Job? {
         val operationId = newOperationId("single-switch")
         val operationLog = log.withContext(operationId)
         val job = WriteOperationLauncher(scope, tryAcquireWrite).launch(
@@ -76,7 +79,7 @@ class SingleRepositorySwitcher(
                 result = execute(root, path, target, title, operationLog),
             )
         }
-        if (job == null) return false
+        if (job == null) return null
         // execute() maps failures to results, but an unexpected escape (or a throwing
         // result callback) would otherwise surface as an unobserved job failure.
         job.invokeOnCompletion { failure ->
@@ -84,7 +87,7 @@ class SingleRepositorySwitcher(
                 log.error("single-repository switch failed", failure)
             }
         }
-        return true
+        return job
     }
 
     @Suppress("TooGenericExceptionCaught") // path, provider, and platform adapters share this result boundary

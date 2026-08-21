@@ -15,6 +15,8 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -32,7 +34,7 @@ class SingleRepositorySwitcherTest {
         val switcher = switcher(git, tryAcquireWrite = { null })
 
         var callbackInvoked = false
-        val started = switcher.start(
+        val job = switcher.start(
             this,
             temp.newFolder("root").toPath(),
             "module",
@@ -40,7 +42,7 @@ class SingleRepositorySwitcherTest {
             "Switching",
         ) { callbackInvoked = true }
 
-        assertFalse(started)
+        assertNull(job)
         assertFalse(callbackInvoked)
         assertEquals(0, git.openCount)
     }
@@ -213,9 +215,11 @@ class SingleRepositorySwitcherTest {
             tryAcquireWrite = { countingLease { leaseHeld = false } },
         )
 
-        check(switcher.start(this, root.toPath(), "module", "dev", "Switching") {
-            callbackObservedReleasedLease.complete(!leaseHeld)
-        })
+        check(
+            switcher.start(this, root.toPath(), "module", "dev", "Switching") {
+                callbackObservedReleasedLease.complete(!leaseHeld)
+            } != null,
+        )
 
         assertTrue(callbackObservedReleasedLease.await())
     }
@@ -229,8 +233,8 @@ class SingleRepositorySwitcherTest {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         val switcher = switcher(git, logs = logs)
 
-        val started = switcher.start(scope, root.toPath(), "module", "dev", "Switching") { error("callback boom") }
-        assertTrue(started)
+        val job = switcher.start(scope, root.toPath(), "module", "dev", "Switching") { error("callback boom") }
+        assertNotNull(job)
 
         withTimeout(5_000) {
             while (logs.none { it.contains("single-repository switch failed") }) delay(10)
@@ -244,7 +248,7 @@ class SingleRepositorySwitcherTest {
         target: String,
     ): SingleRepositorySwitchResult {
         val result = CompletableDeferred<SingleRepositorySwitchResult>()
-        check(switcher.start(this, root, path, target, "Switching") { result.complete(it.result) })
+        check(switcher.start(this, root, path, target, "Switching") { result.complete(it.result) } != null)
         return result.await()
     }
 

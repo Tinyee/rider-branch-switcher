@@ -213,7 +213,7 @@ internal class SwitchController(
 
     private fun invokeLaterIfProjectAlive(action: () -> Unit) = project.invokeLaterIfAlive(action)
 
-    private fun setSwitchInProgress(inProgress: Boolean) {
+    internal fun setSwitchInProgress(inProgress: Boolean) {
         if (switchInProgress == inProgress) return
         switchInProgress = inProgress
         onInProgressChange?.invoke(inProgress)
