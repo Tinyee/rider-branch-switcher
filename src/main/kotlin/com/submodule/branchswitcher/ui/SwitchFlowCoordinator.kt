@@ -315,7 +315,7 @@ fun resolveCollisionDiscards(probeResult: List<PreflightRow>, onlyMeta: Boolean)
         .filter { it.untrackedCollisions.isNotEmpty() }
         .associate { row ->
             row.path to if (onlyMeta) {
-                row.untrackedCollisions.filter { it.endsWith(".meta") }.toSet()
+                row.untrackedCollisions.filter { isCollisionFileMeta(it) }.toSet()
             } else {
                 row.untrackedCollisions
             }

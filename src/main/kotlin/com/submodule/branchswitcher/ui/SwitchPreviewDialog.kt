@@ -70,13 +70,9 @@ class SwitchPreviewDialog(
      */
     private val tableFillWidth get() = dialogWidth - JBUI.scale(4)
 
-    private fun isMeta(file: String): Boolean = file.endsWith(".meta")
-
     /** True when a collision that is not auto-approved exists, so OK must confirm a discard. */
     private val needsDiscardConfirm: Boolean
-        get() = rows.any { row ->
-            row.untrackedCollisions.any { file -> !(request.options.autoDiscardMeta && isMeta(file)) }
-        }
+        get() = collisionDiscardNeedsConfirm(rows.flatMap { it.untrackedCollisions }, request.options.autoDiscardMeta)
 
     init {
         title = Bundle.msg("dialog.switch.preset.title", request.preset.name)
@@ -207,7 +203,7 @@ class SwitchPreviewDialog(
         if (collisionRows.isEmpty()) return null
         val autoMeta = request.options.autoDiscardMeta
         val total = collisionRows.sumOf { it.untrackedCollisions.size }
-        val metaCount = collisionRows.sumOf { row -> row.untrackedCollisions.count { isMeta(it) } }
+        val metaCount = collisionRows.sumOf { row -> row.untrackedCollisions.count { isCollisionFileMeta(it) } }
 
         // The file rows keep their labels so the decision row can restyle them live as the
         // user toggles the discard options (see refreshCollisionFileRows).
@@ -327,7 +323,7 @@ class SwitchPreviewDialog(
         val rowPanel = TrailingControlRowPanel(pathLabel, noteLabel, JBUI.scale(8)).apply {
             border = JBUI.Borders.empty(1, 8, 1, 8)
         }
-        return CollisionFileRow(isMeta(file), rowPanel, pathLabel, noteLabel)
+        return CollisionFileRow(isCollisionFileMeta(file), rowPanel, pathLabel, noteLabel)
     }
 
     /**
@@ -341,22 +337,14 @@ class SwitchPreviewDialog(
     }
 
     private fun applyDiscardState(row: CollisionFileRow, onlyMeta: Boolean, autoMeta: Boolean) {
+        // The note text is a pure decision (UiRules); the dialog only maps it to colors.
+        row.noteLabel.text = collisionFileNote(row.isMeta, onlyMeta, autoMeta)
         if (row.isMeta) {
-            row.noteLabel.text = if (autoMeta) {
-                Bundle.msg("dialog.collision.discard.meta.auto")
-            } else {
-                Bundle.msg("dialog.collision.discard.meta.safe")
-            }
             row.noteLabel.foreground = if (autoMeta) autoColor else safeColor
             row.noteLabel.font = row.noteLabel.font.deriveFont(Font.PLAIN)
             row.pathLabel.foreground = JBColor.foreground()
         } else {
             val discarded = !onlyMeta
-            row.noteLabel.text = if (discarded) {
-                Bundle.msg("dialog.collision.discard.deleted")
-            } else {
-                Bundle.msg("dialog.collision.discard.kept")
-            }
             row.noteLabel.foreground = if (discarded) warnColor else mutedColor
             row.noteLabel.font = row.noteLabel.font.deriveFont(if (discarded) Font.BOLD else Font.PLAIN)
             row.pathLabel.foreground = if (discarded) JBColor.foreground() else mutedColor
@@ -388,13 +376,12 @@ class SwitchPreviewDialog(
         val summaryLabel = JLabel().apply { foreground = mutedColor }
 
         fun refreshSummary() {
-            val only = onlyMetaCheck.isSelected
-            val approved = if (only) metaCount else total
-            summaryLabel.text = when {
-                only -> Bundle.msg("dialog.collision.discard.summary.meta", approved)
-                autoMetaCheck.isSelected -> Bundle.msg("dialog.collision.discard.summary.auto", approved, metaCount)
-                else -> Bundle.msg("dialog.collision.discard.summary.all", approved)
-            }
+            summaryLabel.text = collisionDiscardSummary(
+                onlyMetaCheck.isSelected,
+                autoMetaCheck.isSelected,
+                metaCount,
+                total,
+            )
         }
         // Each checkbox persists its own state; both then re-render the summary and the file
         // list, which read the live state of both checkboxes.
@@ -414,11 +401,13 @@ class SwitchPreviewDialog(
 
         // BoxLayout, not FlowLayout: FlowLayout hardcodes a 5px left inset that would push
         // the first checkbox off the left edge; BoxLayout has no insets, so the row is flush.
+        // Both checkboxes are always shown: "仅丢弃 .meta" still governs whether non-.meta
+        // collisions are approved, so it stays reachable even when auto-discard is on.
         val options = JPanel().apply {
             layout = BoxLayout(this, BoxLayout.X_AXIS)
             isOpaque = false
         }
-        if (!autoMeta) options.add(onlyMetaCheck)
+        options.add(onlyMetaCheck)
         options.add(Box.createHorizontalStrut(JBUI.scale(18)))
         options.add(autoMetaCheck)
 
