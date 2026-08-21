@@ -164,7 +164,6 @@ class SwitchFlowCoordinator(
                         return@uiLater
                     }
                 val collisionDiscards = resolveCollisionDiscards(probeResult, preview.onlyMetaDiscard)
-                onSwitchStart?.invoke()
                 executeAndNotify(
                     root,
                     request,
@@ -172,6 +171,7 @@ class SwitchFlowCoordinator(
                     operationContext,
                     preApprovedSubmoduleInit = preApproved,
                     collisionDiscards = collisionDiscards,
+                    onSwitchStart = onSwitchStart,
                     onSuccess = onSuccess,
                     onFinished = onFinished,
                 )
@@ -193,6 +193,13 @@ class SwitchFlowCoordinator(
         operationContext: OperationContext,
         preApprovedSubmoduleInit: Set<String> = emptySet(),
         collisionDiscards: Map<String, Set<String>> = emptyMap(),
+        /**
+         * Claimed (on the UI thread) only once this switch owns the write lease, matching
+         * the derive and rollback paths. A rejected switch therefore never claims the busy
+         * state — it must not, or a rejection while a single-repository switch (which
+         * never touches the busy state) holds the gate would leave the tool window stuck.
+         */
+        onSwitchStart: (() -> Unit)? = null,
         onSuccess: (() -> Unit)? = null,
         onFinished: (() -> Unit)? = null,
     ) {
@@ -240,6 +247,10 @@ class SwitchFlowCoordinator(
             )
         }
         if (job == null) return
+        // Claim in-progress only once the lease is owned, so the busy-rejection path
+        // (job == null) never touches state that belongs to whoever actually holds the
+        // lease — and never leaves busy claimed by a switch that was never accepted.
+        onSwitchStart?.invoke()
         completion.completeWhenFailed(job) { failure ->
             if (!platformCancellationClassifier.isCancellation(failure)) {
                 log.logFailure("switch completion failed", failure)
