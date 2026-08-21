@@ -13,7 +13,9 @@ private const val REFLOG_WATCH_INTERVAL_MS = 2000L
  * IDE), so the panel can refresh its state.
  *
  * The panel owns the [Alarm] (and its dispose lifecycle); this class only queues
- * and cancels requests on it and keeps the last-seen reflog stamp.
+ * and cancels requests on it and keeps the last-seen reflog stamp. The pure
+ * decisions it makes per poll — [mainReflogPath] and [reflogStampUpdate] — are
+ * extracted as internal functions so they are unit-testable without an Alarm.
  */
 internal class ExternalGitSwitchWatcher(
     private val alarm: Alarm,
@@ -27,7 +29,7 @@ internal class ExternalGitSwitchWatcher(
     fun restart() {
         alarm.cancelAllRequests()
         if (!shouldWatch()) return
-        alarm.addRequest({ check() }, REFLOG_WATCH_INTERVAL_MS)
+        alarm.addRequest({ poll() }, REFLOG_WATCH_INTERVAL_MS)
     }
 
     /** Cancels the poll without re-queuing (tool window hidden). */
@@ -35,12 +37,12 @@ internal class ExternalGitSwitchWatcher(
         alarm.cancelAllRequests()
     }
 
-    private fun check() {
+    private fun poll() {
         if (!shouldWatch()) {
             alarm.cancelAllRequests()
             return
         }
-        val reflog = mainReflogPath()
+        val reflog = gitRoot()?.let(::mainReflogPath)
         if (reflog == null) {
             // `.git` is not resolvable yet (root temporarily unavailable, worktree
             // gitdir file transiently unreadable). Re-queue the watch instead of
@@ -49,25 +51,39 @@ internal class ExternalGitSwitchWatcher(
             return
         }
         val stamp = runCatching { reflog.lastModified() }.getOrElse { -1L }
-        if (lastReflogStamp >= 0 && stamp != lastReflogStamp) {
-            onExternalChange()
-        }
-        lastReflogStamp = stamp
+        lastReflogStamp = reflogStampUpdate(lastReflogStamp, stamp, onExternalChange)
         restart()
     }
+}
 
-    private fun mainReflogPath(): File? {
-        val root = gitRoot() ?: return null
-        val git = root.resolve(".git").toFile()
-        val gitDir = if (git.isDirectory) {
-            git
-        } else if (git.isFile) {
-            // Worktree: .git is a file pointing at the real git directory.
-            runCatching { git.readLines().firstOrNull()?.removePrefix("gitdir: ")?.trim() }
-                .getOrNull()?.let { root.resolve(it).toFile() }
-        } else {
-            null
-        } ?: return null
-        return File(gitDir, "logs/HEAD")
-    }
+/**
+ * Resolves the main repository's `git logs/HEAD` path. For a worktree the `.git`
+ * entry is a file whose `gitdir: <path>` line points at the real git directory;
+ * any other layout returns null so the caller re-queues instead of stopping.
+ */
+internal fun mainReflogPath(root: Path): File? {
+    val git = root.resolve(".git").toFile()
+    val gitDir = if (git.isDirectory) {
+        git
+    } else if (git.isFile) {
+        // A worktree's `.git` is a single `gitdir: <path>` line; anything else is not
+        // resolvable, so fall through to null instead of treating the line as a path.
+        val gitDirLine = runCatching { git.readLines().firstOrNull() }.getOrNull()
+        gitDirLine?.takeIf { it.startsWith("gitdir: ") }?.removePrefix("gitdir: ")?.trim()
+            ?.takeIf(String::isNotEmpty)
+            ?.let { root.resolve(it).toFile() }
+    } else {
+        null
+    } ?: return null
+    return File(gitDir, "logs/HEAD")
+}
+
+/**
+ * Returns the next stamp to remember, invoking [onChange] when the reflog moved since
+ * [lastStamp]. Extracted from the watcher so the first poll (initializing the stamp)
+ * and subsequent moves are unit-testable decisions without an Alarm.
+ */
+internal fun reflogStampUpdate(lastStamp: Long, newStamp: Long, onChange: () -> Unit): Long {
+    if (lastStamp >= 0 && newStamp != lastStamp) onChange()
+    return newStamp
 }
