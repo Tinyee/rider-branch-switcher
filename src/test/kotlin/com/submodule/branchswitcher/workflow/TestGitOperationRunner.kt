@@ -14,7 +14,7 @@ internal enum class TestOperationCompletion {
 }
 
 internal class TestOperationProgress(
-    override val isCanceled: Boolean = false,
+    override var isCanceled: Boolean = false,
     private val onCheckCanceled: () -> Unit = {},
 ) : OperationProgress {
     override fun checkCanceled() = onCheckCanceled()

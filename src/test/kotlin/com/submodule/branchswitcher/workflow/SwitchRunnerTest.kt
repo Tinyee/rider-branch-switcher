@@ -240,6 +240,40 @@ class SwitchRunnerTest {
     }
 
     @Test
+    fun `user-cancelled stash restore suppresses the automatic retry`() = runBlocking {
+        val root = Files.createTempDirectory("switch-runner-stash-interrupted")
+        initGitRepo(root.toFile())
+        var applyCount = 0
+        val progress = TestOperationProgress()
+        val git = object : RecordingGit() {
+            override fun isDirty(workDir: File): Boolean = true
+            override fun stashApply(workDir: File, oid: String): GitResult {
+                applyCount++
+                // The user cancels while git is applying the stash; the restore must be
+                // marked interrupted so the automatic stash-only retry stays suppressed.
+                progress.isCanceled = true
+                return GitResult("stash apply", -1, "", "cancelled")
+            }
+        }
+        val runner = runner(root, git, progress = progress)
+
+        val result = runner.execute(
+            title = "Switching",
+            request = request(target = "dev", fetchFirst = false, pull = false),
+            log = createStringAppender {},
+            recoveryTitle = "Rolling back",
+            stashRestoreTitle = "Restoring stash",
+        )
+
+        assertTrue("a user-cancelled restore must mark the switch interrupted", result.execution?.stashRestoreInterrupted == true)
+        assertEquals("a user-cancelled restore must not auto-retry", 1, applyCount)
+        assertFalse(
+            "the WIP must stay tracked for a later explicit retry",
+            result.execution?.state?.stashesSnapshot().isNullOrEmpty(),
+        )
+    }
+
+    @Test
     fun `auto recovery runs in its own cancellable background operation`() = runBlocking {
         val root = Files.createTempDirectory("switch-runner-recovery-task")
         initGitRepo(root.toFile())

@@ -54,4 +54,17 @@ class ExternalGitSwitchWatcherTest {
         assertEquals(9L, updated(5L, 9L))
         assertEquals(1, fires)
     }
+
+    @Test
+    fun `reflog stamp failing to read is still a change and fires`() {
+        var fires = 0
+        fun updated(last: Long, next: Long) = reflogStampUpdate(last, next) { fires++ }
+
+        // First poll initializes.
+        assertEquals(7L, updated(-1L, 7L))
+        // A failed lastModified read surfaces as -1; it is a stamp change (the poll
+        // refreshes rather than silently staying on the old stamp).
+        assertEquals(-1L, updated(7L, -1L))
+        assertEquals(1, fires)
+    }
 }
