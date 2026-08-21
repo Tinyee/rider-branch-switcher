@@ -33,8 +33,13 @@ fun selectRemoteName(remotes: List<String>): String = when {
 internal class GitCommandClient(
     private val processRunner: GitProcessRunner,
     private val remoteCache: ConcurrentHashMap<String, String>,
+    /**
+     * Cancellation flag. Direct calls share one flag (GitOps's cancellation scope);
+     * operation sessions get an isolated flag so [cancel]/[close] affect only them.
+     */
+    cancellation: AtomicBoolean = AtomicBoolean(false),
 ) : GitOperationSession, RepositoryStateBatchGitClient, SwitchPreflightBatchGitClient, RepositoryStateBatchInspection {
-    private val cancellation = AtomicBoolean(false)
+    private val cancellation = cancellation
 
     /**
      * Cancels this session's commands (idempotent). The session's command scope is

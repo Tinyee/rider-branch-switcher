@@ -11,13 +11,16 @@ import com.submodule.branchswitcher.git.SwitchPreflightBatchGitClient
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 
 private class GitOpsComponents(
     timeoutSeconds: Int,
     processStarter: (ProcessBuilder) -> Process,
 ) {
     val processRunner = GitProcessRunner(timeoutSeconds, processStarter = processStarter)
-    val directClient = GitCommandClient(processRunner, ConcurrentHashMap())
+    /** Shared cancellation scope for every direct call; operation sessions get an isolated flag. */
+    val directCancellation = AtomicBoolean(false)
+    val directClient = GitCommandClient(processRunner, ConcurrentHashMap(), directCancellation)
 }
 
 /**
@@ -50,10 +53,16 @@ class GitOps private constructor(
     override fun inspectPreflight(
         workDir: File,
         targetBranches: Set<String>,
-    ): GitRepositoryInspection =
-        GitCommandClient(components.processRunner, ConcurrentHashMap()).use { operation ->
-            operation.inspectPreflight(workDir, targetBranches)
-        }
+    ): GitRepositoryInspection {
+        // Shares the direct-call cancellation scope (class contract) but keeps an
+        // isolated remote-name cache: a shared cache would go stale after a remote is
+        // renamed or removed, hiding the new remote's branches from preflight.
+        return GitCommandClient(
+            components.processRunner,
+            ConcurrentHashMap(),
+            components.directCancellation,
+        ).inspectPreflight(workDir, targetBranches)
+    }
 
     override fun openOperation(): GitOperationSession =
         GitCommandClient(components.processRunner, ConcurrentHashMap())

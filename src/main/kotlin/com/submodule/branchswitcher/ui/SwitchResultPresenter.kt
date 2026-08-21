@@ -8,6 +8,7 @@ import com.submodule.branchswitcher.service.BranchSwitcherService
 import com.submodule.branchswitcher.switch.OperationIssue
 import com.submodule.branchswitcher.switch.SwitchExecutionResult
 import com.submodule.branchswitcher.switch.lockBlockedPresentations
+import com.submodule.branchswitcher.workflow.SingleRepositorySwitchResult
 import com.submodule.branchswitcher.workflow.SwitchRunResult
 
 /** Maps structured switch and rollback outcomes to history and IDE notifications. */
@@ -17,6 +18,47 @@ internal class SwitchResultPresenter(
 ) {
     fun showWriteBusy() {
         Notifier.warn(project, Bundle.msg("notify.write.busy"), Bundle.msg("notify.write.busy.msg"))
+    }
+
+    /**
+     * Presents one single-repository switch outcome. Keeps the single-repo result
+     * mapping in this presenter alongside the full-preset path, so both switch paths
+     * present results from the same class instead of inlining it at the call site.
+     */
+    fun presentSingleSwitch(
+        path: String,
+        target: String,
+        result: SingleRepositorySwitchResult,
+        operationId: String,
+    ) {
+        when (result) {
+            is SingleRepositorySwitchResult.Success ->
+                Notifier.info(
+                    project,
+                    Bundle.msg("switch.complete"),
+                    Bundle.msg("notify.switch.only.complete", path, target),
+                    operationId,
+                )
+            is SingleRepositorySwitchResult.GitFailure ->
+                Notifier.warn(
+                    project,
+                    Bundle.msg("switch.failed"),
+                    Bundle.msg("notify.switch.only.failed", path, target),
+                    operationId,
+                )
+            is SingleRepositorySwitchResult.LockBlocked -> {
+                val label = if (path == ".") Bundle.msg("label.main.repo") else path
+                Notifier.warn(
+                    project,
+                    Bundle.msg("switch.failed"),
+                    Bundle.msg("index.lock.blocking", label, result.lockPath),
+                    operationId,
+                )
+            }
+            is SingleRepositorySwitchResult.Skipped -> Unit
+            SingleRepositorySwitchResult.Cancelled -> Unit
+            is SingleRepositorySwitchResult.Unexpected -> Unit
+        }
     }
 
     fun presentSwitchResult(

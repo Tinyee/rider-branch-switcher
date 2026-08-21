@@ -13,7 +13,6 @@ import com.submodule.branchswitcher.platform.GitBackgroundRunner
 import com.submodule.branchswitcher.platform.platformCancellationClassifier
 import com.submodule.branchswitcher.platform.refreshVcsTail
 import com.submodule.branchswitcher.service.BranchSwitcherService
-import com.submodule.branchswitcher.workflow.SingleRepositorySwitchResult
 import com.submodule.branchswitcher.workflow.SingleRepositorySwitcher
 import java.awt.BorderLayout
 import java.awt.Font
@@ -45,6 +44,7 @@ internal class PresetListManager(
         service.gitClient.openOperation()
     }
     private val actions = PresetCollectionActions(project, service, gitRoot, log, this)
+    private val resultPresenter = SwitchResultPresenter(project, service)
     private val singleRepositorySwitcher = SingleRepositorySwitcher(
         operations = GitBackgroundRunner(project, service.gitClient),
         tryAcquireWrite = service::tryAcquireWrite,
@@ -150,36 +150,7 @@ internal class PresetListManager(
         ) { outcome ->
             val operationLog = log.withContext(outcome.operationId)
             refreshVcsTail(project, root, setOf(path), operationLog, project::invokeLaterIfAlive) {
-                when (val switchResult = outcome.result) {
-                    is SingleRepositorySwitchResult.Success -> {
-                        Notifier.info(
-                            project,
-                            Bundle.msg("switch.complete"),
-                            Bundle.msg("notify.switch.only.complete", path, target),
-                            outcome.operationId,
-                        )
-                    }
-                    is SingleRepositorySwitchResult.GitFailure -> {
-                        Notifier.warn(
-                            project,
-                            Bundle.msg("switch.failed"),
-                            Bundle.msg("notify.switch.only.failed", path, target),
-                            outcome.operationId,
-                        )
-                    }
-                    is SingleRepositorySwitchResult.LockBlocked -> {
-                        val label = if (path == ".") Bundle.msg("label.main.repo") else path
-                        Notifier.warn(
-                            project,
-                            Bundle.msg("switch.failed"),
-                            Bundle.msg("index.lock.blocking", label, switchResult.lockPath),
-                            outcome.operationId,
-                        )
-                    }
-                    is SingleRepositorySwitchResult.Skipped -> Unit
-                    SingleRepositorySwitchResult.Cancelled -> Unit
-                    is SingleRepositorySwitchResult.Unexpected -> Unit
-                }
+                resultPresenter.presentSingleSwitch(path, target, outcome.result, outcome.operationId)
                 notifyStateChanged()
             }
         }
