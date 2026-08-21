@@ -98,6 +98,8 @@ internal class PresetEditor(
     private var branchesLoaded = false
     private var isInitializing = true
     private var persistenceInProgress = false
+    /** Global mutation gate: false while any write operation runs (set via [setActionsEnabled]). */
+    private var actionsEnabled = true
 
     private val submoduleManager = SubmoduleRowManager(
         gitRoot, branchLoads, body, log, ::updateUnsavedState, onSwitchOnly,
@@ -321,6 +323,20 @@ internal class PresetEditor(
 
     /** Enables or disables the mutation buttons (switch/derive) while another operation runs. */
     fun setActionsEnabled(enabled: Boolean) {
+        actionsEnabled = enabled
+        updateActionsEnabled()
+    }
+
+    /**
+     * Recomposes switch/derive enablement from both gates: the global mutation gate and
+     * the editor-local busy (init / branch load / persistence). Either alone disables
+     * both actions, and releasing one must not re-enable while the other still blocks —
+     * e.g. a mutation ending must not re-enable a still-loading editor whose combo holds
+     * the literal "Loading..." placeholder.
+     */
+    private fun updateActionsEnabled() {
+        val busy = isInitializing || loadingCount > 0 || persistenceInProgress
+        val enabled = actionsEnabled && !busy
         switchBtn.isEnabled = enabled
         deriveBtn.isEnabled = enabled
     }
@@ -407,9 +423,9 @@ internal class PresetEditor(
         revertBtn.isEnabled = hasUnsavedChanges
         // During a branch load the combo still holds the literal "Loading..." placeholder;
         // switching would build a preset targeting that placeholder, so disable both actions.
-        val busy = isInitializing || loadingCount > 0 || persistenceInProgress
-        switchBtn.isEnabled = !busy
-        deriveBtn.isEnabled = !busy
+        // Recomposed with the global mutation gate so a mutation ending never re-enables
+        // a still-loading editor (see updateActionsEnabled).
+        updateActionsEnabled()
     }
 
     fun currentPreset(): Preset = savedPreset
