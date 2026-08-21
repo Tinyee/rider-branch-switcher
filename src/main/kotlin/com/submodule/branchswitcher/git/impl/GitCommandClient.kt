@@ -420,9 +420,14 @@ internal class GitCommandClient(
         // %gs is the stash reflog subject ("On <branch>: <message>"), so matching is
         // scoped to stashes this plugin created rather than whatever sits on top of
         // refs/stash (a concurrent external `git stash push` must not be misapplied).
+        // `git stash list` exits 0 on an empty stash, so a non-zero exit is a genuine
+        // query failure, never a normal "no match". Failing open here (returning null)
+        // would defeat the message-prefix race guard: a transient failure would fall
+        // back to the stack top and could apply an external stash. This differs from
+        // revParseOptional's fail-open, where `--verify refs/stash` exit-1 is the
+        // normal negative.
         val result = run(workDir, "stash", "list", "--format=%H%x09%gs")
-        if (!result.ok && result.failureKind != GitFailureKind.GIT_FAILED) throw GitQueryException(result)
-        if (!result.ok) return null
+        if (!result.ok) throw GitQueryException(result)
         return result.stdout.lineSequence()
             .mapNotNull { line ->
                 val tab = line.indexOf('\t')

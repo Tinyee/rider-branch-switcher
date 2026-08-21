@@ -1,5 +1,7 @@
 package com.submodule.branchswitcher.model
 
+import kotlin.jvm.Transient
+
 /** A single repository target: its path (or "." for main) and desired branch. */
 data class RepoTarget(
     val path: String,
@@ -25,7 +27,13 @@ data class Preset(
      * All targets: main (".") first, then submodules. Main-first ordering is critical
      * for submodule init. The immutable preset caches the validated list so the whole
      * switch pipeline does not rebuild it (and re-validate) on every step.
+     *
+     * `@delegate:Transient` keeps Gson's reflective serializer from emitting the lazy
+     * delegate: without it, every save writes a `cachedTargets$delegate` blob whose
+     * content depends on whether targets() ran, and a direct deserialization into
+     * [Preset] would fail on the Lazy field.
      */
+    @delegate:Transient
     private val cachedTargets: List<RepoTarget> by lazy {
         requireValidPreset(this)
         buildList {

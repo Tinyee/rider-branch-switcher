@@ -589,6 +589,77 @@ class SwitchStepTest {
     }
 
     @Test
+    fun `terminated apply with a leftover lock is not treated as a lock race`() {
+        var lockChecks = 0
+        val terminatedGit = object : GitClient by fakeGit {
+            override fun indexLockFile(workDir: File): String? {
+                lockChecks++
+                return if (lockChecks == 1) null else "/repo/.git/index.lock"
+            }
+            override fun stashApply(workDir: File, oid: String): GitResult =
+                GitResult("pop", -1, "", "cancelled")
+        }
+        val state = SwitchState().withTrackedStash(".", "before -> dev", "stash-oid")
+        var cancelledCalls = 0
+        // Cancelled only mid-apply: the loop-top check must let the apply start, then
+        // the user cancels while git is applying the stash.
+        val cancelMidApply: () -> Boolean = {
+            cancelledCalls++
+            cancelledCalls > 1
+        }
+
+        val restore = restoreTrackedStashes(
+            projectRoot, terminatedGit, createStringAppender { log += it }, state,
+            cancelled = cancelMidApply,
+        )
+
+        // Termination must win over the raced-lock branch: the leftover lock is the
+        // terminated apply's own, so it must not surface as a lock race.
+        assertEquals(OperationIssueCode.STASH_RESTORE_FAILED, restore.issues.single().code)
+        assertTrue("a user-cancelled termination suppresses automatic retry", restore.interrupted)
+        assertFalse("WIP stays retryable (apply never completed)", restore.state.trackedStash(".")?.restoreAttempted ?: true)
+    }
+
+    @Test
+    fun `apply interrupted mid-restore by user cancel suppresses automatic retry`() {
+        val terminatedGit = object : GitClient by fakeGit {
+            override fun stashApply(workDir: File, oid: String): GitResult =
+                GitResult("pop", -1, "", "cancelled")
+        }
+        val state = SwitchState().withTrackedStash(".", "before -> dev", "stash-oid")
+        var cancelledCalls = 0
+        val cancelMidApply: () -> Boolean = {
+            cancelledCalls++
+            cancelledCalls > 1
+        }
+
+        val restore = restoreTrackedStashes(
+            projectRoot, terminatedGit, createStringAppender { log += it }, state,
+            cancelled = cancelMidApply,
+        )
+
+        assertTrue("an apply-time cancel must mark the restore interrupted", restore.interrupted)
+        assertEquals(OperationIssueCode.STASH_RESTORE_FAILED, restore.issues.single().code)
+    }
+
+    @Test
+    fun `timeout termination without user cancel stays retryable`() {
+        val timeoutGit = object : GitClient by fakeGit {
+            override fun stashApply(workDir: File, oid: String): GitResult =
+                GitResult("pop", -1, "", "timeout after 10s")
+        }
+        val state = SwitchState().withTrackedStash(".", "before -> dev", "stash-oid")
+
+        val restore = restoreTrackedStashes(
+            projectRoot, timeoutGit, createStringAppender { log += it }, state,
+            cancelled = { false },
+        )
+
+        assertFalse("a timeout is not an explicit user cancel", restore.interrupted)
+        assertFalse(restore.state.trackedStash(".")?.restoreAttempted ?: true)
+    }
+
+    @Test
     fun `skipping a parent disables its nested targets`() {
         projectRoot.resolve("Parent").toFile().mkdirs()
         val c = context(SwitchOptions(DirtyAction.Skip, pull = false)).copy(

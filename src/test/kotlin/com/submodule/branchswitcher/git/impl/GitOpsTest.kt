@@ -434,4 +434,25 @@ class GitOpsTest : GitOpsTestBase() {
         assertEquals("main", unborn?.branch)
         assertNull(unborn?.sha)
     }
+
+    @Test
+    fun `stash list query failure is not mistaken for a missing stash`() {
+        val failingStashGit = GitOps(timeoutSeconds = 10) { _ ->
+            ControllableProcess(finished = true, exitCode = 1, stderr = "fatal: bad config\n".toByteArray())
+        }
+
+        val failure = assertThrows(GitQueryException::class.java) {
+            failingStashGit.stashOidByMessage(tmpDir.toFile(), "branch-switcher: before -> ")
+        }
+        assertEquals("a non-zero stash list is a query failure", GitFailureKind.GIT_FAILED, failure.result.failureKind)
+    }
+
+    @Test
+    fun `empty stash list returns no match without throwing`() {
+        val emptyStashGit = GitOps(timeoutSeconds = 10) { _ ->
+            ControllableProcess(finished = true, stdout = ByteArray(0))
+        }
+
+        assertNull(emptyStashGit.stashOidByMessage(tmpDir.toFile(), "branch-switcher: before -> "))
+    }
 }

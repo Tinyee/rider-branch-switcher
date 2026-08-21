@@ -50,8 +50,10 @@ internal fun restoreTrackedStashes(
                 stash,
                 repositoryDirectory,
                 issues,
+                cancelled,
             )
             nextState = outcome.state
+            if (outcome.interrupted) interrupted = true
             if (outcome.stop) break
         }
     } catch (e: SwitchStepException) {
@@ -127,10 +129,15 @@ private fun restoreGuard(
     return null
 }
 
-/** Outcome of applying one stash entry: the updated state and whether to stop the loop. */
+/**
+ * Outcome of applying one stash entry: the updated state and whether to stop the loop.
+ * [interrupted] distinguishes a termination caused by an explicit user cancel (which
+ * must suppress the automatic retry) from a plain timeout termination.
+ */
 private data class RestoreApplyOutcome(
     val state: SwitchState,
     val stop: Boolean = false,
+    val interrupted: Boolean = false,
 )
 
 /**
@@ -147,6 +154,7 @@ private fun applyRestoredStash(
     stash: TrackedStash,
     repositoryDirectory: File,
     issues: MutableList<OperationIssue>,
+    cancelled: (() -> Boolean)?,
 ): RestoreApplyOutcome {
     // restoreGuard only lets this run when the stash has an identity.
     val oid = stash.oid!!
@@ -173,26 +181,11 @@ private fun applyRestoredStash(
             if (dropped) current.withStashRestored(path) else current.withRestoredStashBackup(path),
         )
     }
-    // A lock created between the earlier check and the apply must surface as
-    // the structured lock block, not a generic stash-apply failure.
-    val racedLock = git.indexLockFile(repositoryDirectory)
-    if (racedLock != null) {
-        // The preflight check proved the tree was unlocked, and the
-        // follow-up proved the failure was the lock race. No Git apply
-        // started, so this entry remains safe to retry.
-        current = current.withStashRestoreRetryable(path)
-        log.warn(
-            "[fail] stash apply blocked by stale index.lock at $racedLock; " +
-                "delete it and retry (${stash.message})",
-        )
-        issues += OperationIssue(
-            stage = OperationStage.STASH_RESTORE,
-            code = OperationIssueCode.INDEX_LOCK_BLOCKING,
-            repositoryPath = path,
-            diagnostic = indexLockBlockedDiagnostic(racedLock),
-            lockPath = racedLock,
-        )
-    } else if (applyResult.failureKind.isTermination) {
+    // Termination takes precedence over a raced lock: a terminated apply may have
+    // created its own index.lock before dying, and misreading that lock as "git never
+    // started" would mark the entry retryable and double-apply a partially-restored
+    // worktree. Only a non-terminated apply failure with a lock present is a true race.
+    if (applyResult.failureKind.isTermination) {
         // A cancelled/interrupted apply is a stop signal, not a failed
         // restore: the command died before completing, so the entry stays
         // tracked and retryable and the WIP is preserved in the stash.
@@ -208,7 +201,27 @@ private fun applyRestoredStash(
             diagnostic = "restore interrupted by cancellation; WIP preserved in stash " +
                 "(${stash.message}, oid=$oid)",
         )
-        return RestoreApplyOutcome(current, stop = true)
+        return RestoreApplyOutcome(current, stop = true, interrupted = cancelled?.invoke() == true)
+    }
+    // A lock created between the earlier check and the apply must surface as
+    // the structured lock block, not a generic stash-apply failure.
+    val racedLock = git.indexLockFile(repositoryDirectory)
+    if (racedLock != null) {
+        // The preflight check proved the tree was unlocked, the apply did not terminate,
+        // and the follow-up proved the failure was the lock race. No Git apply started,
+        // so this entry remains safe to retry.
+        current = current.withStashRestoreRetryable(path)
+        log.warn(
+            "[fail] stash apply blocked by stale index.lock at $racedLock; " +
+                "delete it and retry (${stash.message})",
+        )
+        issues += OperationIssue(
+            stage = OperationStage.STASH_RESTORE,
+            code = OperationIssueCode.INDEX_LOCK_BLOCKING,
+            repositoryPath = path,
+            diagnostic = indexLockBlockedDiagnostic(racedLock),
+            lockPath = racedLock,
+        )
     } else {
         current = current.withStashRestoreAttempted(path)
         log.warn("[fail] stash apply failed for $path (${repositoryDirectory.path}): ${applyResult.diagnostic()}")

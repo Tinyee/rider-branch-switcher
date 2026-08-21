@@ -196,6 +196,32 @@ class PresetLoaderTest {
     }
 
     @Test
+    fun `saved JSON contains no serialized lazy delegate fields`() {
+        val preset = Preset("a", "main", mapOf("SubA" to "dev"), "fixed-id")
+        preset.targets() // populate the lazy cache so any serialized delegate would carry data
+        val file = PresetLoader.defaultFile(tmpDir)
+
+        PresetLoader.save(file, PresetFile(listOf(preset)))
+
+        val content = Files.readString(file)
+        assertFalse("the lazy delegate must not leak into persisted JSON", content.contains("cachedTargets"))
+    }
+
+    @Test
+    fun `serialized preset is stable regardless of cache state`() {
+        val uncached = Preset("a", "main", mapOf("SubA" to "dev"), "fixed-id")
+        val cached = Preset("a", "main", mapOf("SubA" to "dev"), "fixed-id")
+        cached.targets()
+        val file1 = tmpDir.resolve("one.json")
+        val file2 = tmpDir.resolve("two.json")
+
+        PresetLoader.save(file1, PresetFile(listOf(uncached)))
+        PresetLoader.save(file2, PresetFile(listOf(cached)))
+
+        assertEquals("cache state must not change the persisted bytes", Files.readString(file1), Files.readString(file2))
+    }
+
+    @Test
     fun `save overwrites existing file`() {
         val file = PresetLoader.defaultFile(tmpDir)
         PresetLoader.save(file, PresetFile(listOf(Preset("old", "main"))))
