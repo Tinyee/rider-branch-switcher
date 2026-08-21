@@ -383,10 +383,19 @@ class SwitchPreviewDialog(
         val summaryLabel = JLabel().apply { foreground = mutedColor }
 
         // Each checkbox persists its own state; both then recompute one CollisionDecision from
-        // the live state of both checkboxes, and the summary plus the file list read it.
+        // the live state of both checkboxes, and the summary plus the file list read it. The OK
+        // button label follows the live decision too, so "确认丢弃" only shows while a non-auto
+        // discard is actually in effect — toggling to only-meta must not leave a confirm label.
         fun applyChange() {
             val decision = collisionDecision(collisions, onlyMetaCheck.isSelected, autoMetaCheck.isSelected)
             summaryLabel.text = decision.summary
+            setOKButtonText(
+                if (decision.needsConfirm) {
+                    Bundle.msg("dialog.collision.discard.ok")
+                } else {
+                    Bundle.msg("dialog.switch.title")
+                },
+            )
             onDecisionChange(decision)
         }
         onlyMetaCheck.addActionListener {

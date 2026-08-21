@@ -56,7 +56,12 @@ internal class SwitchController(
             preset,
             log,
             newOperationContext("switch"),
+            // The tool-window path refreshes state directly on success (the keyboard
+            // shortcut path publishes BranchSwitchListener.onBranchSwitched instead,
+            // because the action has no handle to the panel). Without this, the panel
+            // would only catch up via FileStatusManager events or the 2s reflog watch.
             onSwitchStart = { setSwitchInProgress(true) },
+            onSuccess = onStateChanged,
             onFinished = { setSwitchInProgress(false) },
         )
     }

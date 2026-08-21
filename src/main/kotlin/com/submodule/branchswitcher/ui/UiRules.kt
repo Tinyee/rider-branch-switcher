@@ -101,11 +101,14 @@ fun collisionDecision(
         autoMeta -> Bundle.msg("dialog.collision.discard.summary.auto", approved, metaCount)
         else -> Bundle.msg("dialog.collision.discard.summary.all", approved)
     }
+    // only-meta restricts the discard, so a kept (non-meta) file must not force the confirm
+    // gate; only files this decision actually discards are judged against the auto rule.
+    val discarded = if (onlyMeta) collisions.filter(::isCollisionFileMeta) else collisions
     return CollisionDecision(
         onlyMeta = onlyMeta,
         autoMeta = autoMeta,
         summary = summary,
-        needsConfirm = collisions.any { !(autoMeta && isCollisionFileMeta(it)) },
+        needsConfirm = discarded.any { !(autoMeta && isCollisionFileMeta(it)) },
         total = collisions.size,
         metaCount = metaCount,
     )

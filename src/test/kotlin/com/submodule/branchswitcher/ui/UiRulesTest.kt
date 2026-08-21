@@ -127,6 +127,17 @@ class UiRulesTest {
     }
 
     @Test
+    fun `only-meta drops kept files from the confirm gate`() {
+        val mixed = listOf("Assets/A.prefab.meta", "Assets/A.prefab")
+        // Only .meta is discarded under only-meta, so a non-auto-approved meta still
+        // requires confirmation...
+        assertTrue(collisionDecision(mixed, onlyMeta = true, autoMeta = false).needsConfirm)
+        // ...but once auto-meta is on, every discarded file is auto-approved and the
+        // kept non-meta file no longer forces the confirm label.
+        assertFalse(collisionDecision(mixed, onlyMeta = true, autoMeta = true).needsConfirm)
+    }
+
+    @Test
     fun `collision file meta detection matches only the meta suffix`() {
         assertTrue(isCollisionFileMeta("Assets/A.prefab.meta"))
         assertTrue(isCollisionFileMeta("Assets/.meta"))

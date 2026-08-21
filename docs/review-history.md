@@ -697,6 +697,37 @@ Durable decisions from the fixes:
   `SwitchRecoveryExecutor`: a user cancel stops the rollback and defers the
   remaining paths instead of relying on the next Git command to throw.
 
+## 2026-08-21 - Module Review Round: src/ui
+
+An exhaustive per-file pass over `src/ui` (26 files) found no hard defects —
+the busy-state machine (claim after lease, idempotent release), branch-load
+lifecycle, collision-decision purity, and EDT serialization all held up under
+re-verification. Two consistency gaps were fixed; four candidates were verified
+and deliberately left.
+
+Durable decisions from the fixes:
+
+- **The tool-window switch refreshes state on success.** The keyboard-shortcut
+  path publishes `BranchSwitchListener.onBranchSwitched`; the tool-window path
+  passed no `onSuccess`, so it refreshed only indirectly via FileStatusManager
+  events or the 2 s reflog watch. `SwitchController.runSwitch` now passes
+  `onSuccess = onStateChanged`, matching the derive path's explicit refresh.
+- **The collision preview's OK button tracks the live discard decision.**
+  The button label was computed once from the init-time options. Two fixes make
+  it accurate on every toggle: `collisionDecision.needsConfirm` now judges only
+  the files the decision actually discards (`only-meta` keeps non-meta files, so
+  they no longer force a confirm label), and `SwitchPreviewDialog` recomputes
+  the label from the live checkbox state instead of the init-time snapshot.
+
+Verified and not changed: the preflight `ModalCancelWatcher` builds an `Alarm`
+on a worker thread (works for `POOLED_THREAD`; a convention note only), the
+`PresetCollectionActions` in-progress flag is not reset when the project is
+disposed before the EDT callback runs (no further operations can start after
+disposal), the rollback busy clears when its job completes rather than after the
+post-write presentation (the write is already done, matching the accepted
+gate-release window), and the icon flash `Timer` is not cancelled on dispose (a
+bounded one-shot with no side effects on a detached button).
+
 ## Maintenance
 
 Record temporary findings in the relevant issue or pull request. Add to this
