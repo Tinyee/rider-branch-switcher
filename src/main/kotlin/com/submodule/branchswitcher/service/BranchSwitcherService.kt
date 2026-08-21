@@ -149,19 +149,24 @@ class BranchSwitcherService(
      * one cancellation scope. Cached here and recreated only when the persisted
      * timeout changes ([loadState] resets the cache); callers never build their own.
      */
+    private val shutdownServiceEnsured = AtomicBoolean(false)
+
     val gitClient: GitClient
-        get() = synchronized(stateLock) {
-            _gitClient ?: GitOps(options.timeoutSeconds).also {
-                // Eagerly instantiate the application-level shutdown service so the git
-                // thread pools are disposed on plugin unload whenever git work runs (the
-                // pools are created lazily on first Git process). Only the test
-                // environment (no application) degrades gracefully; inside the IDE a
-                // failure to instantiate the service must surface rather than silently
-                // dropping the unload cleanup.
-                if (com.intellij.openapi.application.ApplicationManager.getApplication() != null) {
-                    service<GitProcessShutdown>()
-                }
-                _gitClient = it
+        get() {
+            // Eagerly instantiate the application-level shutdown service so the git thread
+            // pools are disposed on plugin unload whenever git work runs (the pools are
+            // created lazily on first Git process). Only the test environment (no
+            // application) degrades gracefully; inside the IDE a failure to instantiate
+            // the service must surface rather than silently dropping the unload cleanup.
+            // Resolved outside the lock: a service lookup must never run while holding
+            // stateLock.
+            if (shutdownServiceEnsured.compareAndSet(false, true) &&
+                com.intellij.openapi.application.ApplicationManager.getApplication() != null
+            ) {
+                service<GitProcessShutdown>()
+            }
+            return synchronized(stateLock) {
+                _gitClient ?: GitOps(options.timeoutSeconds).also { _gitClient = it }
             }
         }
 

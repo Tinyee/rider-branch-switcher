@@ -85,7 +85,7 @@ class SwitchRunner(
         val preset = request.preset
         val options = request.options
         operationLog.activity(
-            "operation started: root=${projectRoot.toAbsolutePath().normalize()}, " +
+            "operation started: root=${projectRoot.fileName?.toString() ?: projectRoot.toString()}, " +
                 "preset='${preset.name}', targets=${preset.targets().size}",
         )
         operationLog.info(

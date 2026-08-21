@@ -96,7 +96,7 @@ class SingleRepositorySwitcher(
         operationLog: AppLogger,
     ): SingleRepositorySwitchResult {
         operationLog.activity(
-            "operation started: root=${root.toAbsolutePath().normalize()}, path=$path, branch=$target",
+            "operation started: root=${root.fileName?.toString() ?: root.toString()}, path=$path, branch=$target",
         )
         val result = try {
             val dir = resolveGitDir(root, path)

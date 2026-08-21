@@ -26,6 +26,7 @@ import com.submodule.branchswitcher.settings.BranchSwitcherConfigurable
 import java.awt.BorderLayout
 import java.awt.Dimension
 import java.awt.Font
+import java.io.File
 import java.nio.file.Path
 import javax.swing.BorderFactory
 import javax.swing.Box
@@ -293,7 +294,10 @@ class BranchSwitcherPanel(
     private fun gitRoot(): Path? {
         val root = project.gitRootPath()
         if (root == null) {
-            logger.debug("git root not resolved: basePath=${project.basePath}")
+            // Only the project directory name reaches the copyable log panel, not the
+            // user's absolute filesystem layout.
+            val baseName = project.basePath?.let { File(it).name }
+            logger.debug("git root not resolved: basePath=$baseName")
             return null
         }
         val dotGit = root.resolve(".git")

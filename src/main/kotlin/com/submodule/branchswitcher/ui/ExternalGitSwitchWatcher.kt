@@ -75,7 +75,9 @@ internal class ExternalGitSwitchWatcher(
 
     /** Warns at most once per unresolved root, so a persistent 2s-per-poll failure stays visible but quiet. */
     private fun logUnresolved(root: Path?) {
-        val detail = root?.toString() ?: "<root unavailable>"
+        // The tool window log is copyable/exportable, so only the directory name (not
+        // the full path) reaches the panel.
+        val detail = root?.fileName?.toString() ?: "<root unavailable>"
         if (lastUnresolvedWarning == detail) return
         lastUnresolvedWarning = detail
         log.warn("reflog path unresolved (root=$detail); re-queueing watcher")

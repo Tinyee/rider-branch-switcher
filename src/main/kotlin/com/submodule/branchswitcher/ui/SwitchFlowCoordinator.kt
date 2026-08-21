@@ -204,11 +204,10 @@ class SwitchFlowCoordinator(
                     "operation rejected: another repository write is already running" +
                         service.currentWriteHolder?.let { " (held by $it)" }.orEmpty(),
                 )
-                uiLater {
-                    completion.completeAfter {
-                        resultPresenter.showWriteBusy()
-                    }
-                }
+                // A rejected switch never owned the busy state: it must not run the
+                // completion's onFinished, or it would clear the in-progress indicator
+                // of the operation that actually holds the write lease.
+                uiLater { resultPresenter.showWriteBusy() }
             },
             afterRelease = { runResult ->
                 val operationLog = log.withContext(operationContext.inPhase("refresh"))

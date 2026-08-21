@@ -38,7 +38,7 @@ internal class SwitchPreflightUi(
         val operation = service.gitClient.openOperation()
         val operationLog = log.withContext(operationContext.inPhase("preflight"))
         operationLog.activity(
-            "operation started: root=${root.toAbsolutePath().normalize()}, " +
+            "operation started: root=${root.fileName?.toString() ?: root.toString()}, " +
                 "preset='${preset.name}', targets=${preset.targets().size}",
         )
         val rows = try {

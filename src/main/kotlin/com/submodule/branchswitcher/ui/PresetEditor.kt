@@ -405,6 +405,11 @@ internal class PresetEditor(
         )
         saveBtn.isEnabled = hasUnsavedChanges
         revertBtn.isEnabled = hasUnsavedChanges
+        // During a branch load the combo still holds the literal "Loading..." placeholder;
+        // switching would build a preset targeting that placeholder, so disable both actions.
+        val busy = isInitializing || loadingCount > 0 || persistenceInProgress
+        switchBtn.isEnabled = !busy
+        deriveBtn.isEnabled = !busy
     }
 
     fun currentPreset(): Preset = savedPreset
