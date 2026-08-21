@@ -747,6 +747,46 @@ Durable decisions from the fixes:
   relative `path`, the same shape as the sibling gates in this file and the
   switch target line.
 
+## 2026-08-21 - Module Review Rounds: src/git/impl, core leaves, src entry layer
+
+The final three rounds of the exhaustive per-file module pass found no hard
+defects. Each candidate defect was chased to a deliberate, tested behavior
+rather than fixed blindly; the deferred backlog is unchanged.
+
+Durable decisions from the pass:
+
+- **The Force-switch warning treats unknown dirtiness as dirty.**
+  `shouldShowForceWarning` counts `dirtyCount != 0`, and a failed probe reports
+  -1, so an unprobeable repository still triggers the "switching without
+  stashing" warning. Pinned by `SwitchPreviewRulesTest`. Force is destructive;
+  warning on unknown state is fail-closed, and narrowing the check to `> 0`
+  would let a Force switch run silent over a possibly-dirty repository.
+- **`SessionCancelGuard` is race-free by construction.** `attach` and `cancel`
+  both use set-then-check / set-then-get on atomics, so every interleaving ends
+  with the attached session cancelled; `detach` compare-and-sets so a stale
+  caller never detaches a newer session.
+- **`GitOperationResult.Failed` models business failures only.** The runner
+  catches cancellation and `RuntimeException`; an `Error` deliberately escapes
+  so a programming defect surfaces loudly instead of being downgraded to a
+  `Failed` result. The `TaskBridge` Throwable capture is the complementary half
+  of the same contract.
+- **The post-mutation VCS refresh tail never runs on the EDT.** All three
+  callers invoke `refreshVcsTail` from `WriteOperationLauncher.afterRelease`,
+  which runs on `Dispatchers.IO` after the write lease is released; the UI hop
+  goes through `uiLater`. The synchronous refresh is safe by construction.
+- **A preset save conflict refuses to clobber external edits.** Digest-based
+  change detection in `PresetRepository` throws `PresetFileChangedException`,
+  which the UI turns into a reload prompt; a best-effort `.bak` preserves
+  entries dropped as invalid at load.
+- **The cross-layer stderr contract is closed.** The sentinel prefixes are
+  pinned as constants in `GitTypes.kt` and locked by `GitResultTest`
+  ("classifies every sentinel stderr via the shared constants"), so
+  cancellation/timeout classification cannot silently drift on either side.
+
+Known deferred items (unbounded remote caches, the `PresetConfig` nine-type
+split, `addHistory` dedup, unknown-persisted-string normalization, and the
+recorded Lows) remain open on the roadmap, unchanged.
+
 ## Maintenance
 
 Record temporary findings in the relevant issue or pull request. Add to this
