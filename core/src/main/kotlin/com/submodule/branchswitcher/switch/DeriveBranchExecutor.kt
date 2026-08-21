@@ -350,6 +350,14 @@ class DeriveBranchExecutor(
         val paths = selectedPaths.filterTo(mutableListOf()) { it in succeededPaths }
 
         for ((index, path) in paths.withIndex()) {
+            if (isCancelled()) {
+                // Mirrors the cancellation handling in the catch below: a user cancel
+                // stops the rollback between repositories and defers the rest, so a
+                // cancelled rollback never leaves an untouched path unaccounted for.
+                log.warn("[derive] rollback cancelled at $path; remaining paths deferred")
+                pendingPaths += paths.drop(index)
+                break
+            }
             try {
                 val repositoryDirectory = resolveGitDir(projectRoot, path)
                 val repositoryLabel = labelFor(path)

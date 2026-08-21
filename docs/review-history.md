@@ -666,6 +666,37 @@ strings verbatim, the watcher's 2 s noop log line on quiet panels, the
 misleading "rollback-skipped" warning, the duplicate per-path WARN for a single
 repo, and every Low finding.
 
+## 2026-08-21 - Module Review Round: core/switch
+
+An exhaustive per-file pass over `core/switch` (29 main files) confirmed the
+previous rounds' state-machine hardening and found one remaining
+data-safety defect plus three robustness gaps. L4/L5 from the same pass were
+verified and deliberately not changed.
+
+Durable decisions from the fixes:
+
+- **Approved collision discards are deleted at the last safe moment, not
+  up-front for every repository.** `git stash push -u` sweeps untracked files,
+  so a dirty repository under the Stash strategy (the default, and the common
+  case for collision files) must have its approved files deleted before the
+  stash — otherwise they would be swept into the WIP backup and re-collide with
+  the freshly checked-out tracked versions on restore. That pre-delete is a
+  deliberate trade-off: if a later gate (a failed main checkout, a topology
+  change) skips such a repository, its approved files are already gone. The fix
+  moves every *other* approved repository — Force, or clean enough that it is
+  never stashed — to a just-in-time delete in `BranchCheckout` right before its
+  own checkout write, so a downstream skip preserves their approved files. The
+  earlier dirty==Skip guard covered only the Skip strategy; this closes the
+  remaining non-stashed skip paths.
+- **A lock-probe failure never escapes `execute()`.** `safeBlockingLockIssues`
+  now maps any probe failure (query or path-resolution) to a structured
+  pre-mutation issue, matching `recordCheckpoint`'s fail-closed catch, so a
+  single repository whose index.lock cannot be probed cannot collapse the whole
+  switch into a generic failure without recovery.
+- **Derive rollback polls cancellation between repositories**, mirroring
+  `SwitchRecoveryExecutor`: a user cancel stops the rollback and defers the
+  remaining paths instead of relying on the next Git command to throw.
+
 ## Maintenance
 
 Record temporary findings in the relevant issue or pull request. Add to this

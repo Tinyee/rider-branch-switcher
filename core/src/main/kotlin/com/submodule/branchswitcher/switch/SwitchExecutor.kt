@@ -431,21 +431,33 @@ class SwitchExecutor @JvmOverloads constructor(
         }
     }
 
+    @Suppress("TooGenericExceptionCaught") // a lock probe must never escape execute(): any failure maps to a structured result
     private fun safeBlockingLockIssues(context: SwitchContext, preset: Preset): List<OperationIssue>? =
         try {
             blockingLockIssues(context, preset)
         } catch (e: GitQueryException) {
             // A cancelled/interrupted lock probe is a user cancel, not a query failure.
             if (cancellationClassifier.isCancellation(e)) throw e
-            val issue = OperationIssue(
-                stage = OperationStage.PRE_MUTATION,
-                code = OperationIssueCode.GIT_QUERY_FAILED,
-                repositoryPath = ".",
-                severity = OperationIssueSeverity.ERROR,
-                diagnostic = e.result.diagnostic(),
-            )
-            log.error("[index.lock] preflight query failed: ${issue.diagnostic}")
-            listOf(issue)
+            preMutationLockProbeFailure(e.result.diagnostic())
+        } catch (e: RuntimeException) {
+            // Mirrors recordCheckpoint's broader catch: a lock probe that fails for a
+            // non-query reason (a path that cannot be resolved) must still surface as a
+            // structured pre-mutation result instead of escaping execute() and collapsing
+            // the whole switch into a generic failure without recovery.
+            if (cancellationClassifier.isCancellation(e)) throw e
+            preMutationLockProbeFailure("${e.javaClass.simpleName}: ${e.message}")
         }
+
+    private fun preMutationLockProbeFailure(diagnostic: String): List<OperationIssue> {
+        val issue = OperationIssue(
+            stage = OperationStage.PRE_MUTATION,
+            code = OperationIssueCode.GIT_QUERY_FAILED,
+            repositoryPath = ".",
+            severity = OperationIssueSeverity.ERROR,
+            diagnostic = diagnostic,
+        )
+        log.error("[index.lock] preflight query failed: ${issue.diagnostic}")
+        return listOf(issue)
+    }
 
 }

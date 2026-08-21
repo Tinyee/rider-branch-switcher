@@ -9,9 +9,12 @@ import java.nio.file.Files
  * Deletes untracked files the user approved for discard before the switch's checkout
  * attempts them, so git does not refuse to overwrite them.
  *
- * Runs before [DirtyHandlingStep]: files discarded here are never swept into the stash
- * (`git stash push -u` includes untracked), which would otherwise re-apply them into a
- * fresh collision with the newly checked-out tracked versions during restore.
+ * Runs before [DirtyHandlingStep] and only acts on repositories the Stash strategy will
+ * actually stash: files discarded here are never swept into that stash (`git stash push
+ * -u` includes untracked), which would otherwise re-apply them into a fresh collision
+ * with the newly checked-out tracked versions during restore. Every other approved
+ * repository is discarded just-in-time in [BranchCheckout], right before its checkout
+ * write.
  */
 class DiscardUntrackedCollisionStep : SwitchStep {
     override val name = "discard untracked collisions"
@@ -26,6 +29,7 @@ class DiscardUntrackedCollisionStep : SwitchStep {
         if (context.options.dirty == DirtyAction.Skip) return StepExecution(StepResult.Success, state)
         val issues = mutableListOf<OperationIssue>()
         for ((repoPath, files) in approved) {
+            context.cancellationHandle?.checkCanceled()
             if (files.isEmpty()) continue
             val targetBranch = context.preset.targets().find { it.path == repoPath }?.branch ?: continue
             // The repo is already on the target branch (the branch may have changed since
@@ -34,6 +38,16 @@ class DiscardUntrackedCollisionStep : SwitchStep {
             if (context.checkpoint[repoPath]?.branch == targetBranch) continue
             val dir = resolveGitDir(context.projectRoot, repoPath)
             if (!dir.exists()) continue
+            // Only delete now when the Stash strategy is about to sweep the files into a
+            // WIP backup (`git stash push -u` includes untracked): deleting here keeps the
+            // approved collision files out of the stash so the end-of-switch restore cannot
+            // re-apply them onto the freshly checked-out tracked versions. That ordering is
+            // a trade-off: a dirty+Stash repo is deleted up-front even if a later gate (a
+            // failed main checkout, a topology change) then skips it, and those files are
+            // gone without its checkout running. Repositories that are never stashed (Force,
+            // or clean enough) are instead deleted just-in-time in BranchCheckout, so a
+            // downstream skip preserves their approved files.
+            if (context.options.dirty != DirtyAction.Stash || !context.git.isDirty(dir)) continue
             issues += discardApprovedFiles(dir, files, context.log, stage, repoPath)
         }
         return StepExecution(issues.toStepResult(), state)

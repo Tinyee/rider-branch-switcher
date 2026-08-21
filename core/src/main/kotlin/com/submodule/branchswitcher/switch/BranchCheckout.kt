@@ -57,11 +57,15 @@ internal object BranchCheckout {
 
         val checkoutResult = when {
             context.git.localBranchExists(directory, target.branch) ->
-                context.git.checkoutExisting(directory, target.branch)
+                discardThenCheckout(context, target, directory) {
+                    context.git.checkoutExisting(directory, target.branch)
+                }
 
             context.git.remoteBranchExists(directory, target.branch) -> {
                 context.log.info("local branch missing, creating from origin/${target.branch}")
-                context.git.checkoutFromRemote(directory, target.branch)
+                discardThenCheckout(context, target, directory) {
+                    context.git.checkoutFromRemote(directory, target.branch)
+                }
             }
 
             else -> {
@@ -95,6 +99,37 @@ internal object BranchCheckout {
             state = state.withSuccessfulCheckout(target.path),
             succeeded = true,
         )
+    }
+
+    /**
+     * Deletes the approved collision files for [target] immediately before its checkout
+     * write. The up-front discard step only handles dirty+Stash repositories (where
+     * `git stash push -u` would sweep the files into the WIP backup); every other
+     * approved repository — Force, or clean enough that it is never stashed — is deleted
+     * here, right before the write, so a repository that is skipped downstream (a failed
+     * main checkout disabling submodules, a topology change unregistering the path)
+     * never loses approved files without its checkout actually running. (A dirty+Stash
+     * repo is still deleted up-front by design, and a later skip loses those files — the
+     * accepted cost of keeping them out of the `-u` stash.) A delete failure is logged
+     * and left to the checkout to surface: if the file still blocks, the write fails
+     * with the structured collision error.
+     */
+    private fun <T> discardThenCheckout(
+        context: SwitchContext,
+        target: RepoTarget,
+        directory: File,
+        action: () -> T,
+    ): T {
+        discardApprovedFiles(
+            directory,
+            context.approvedCollisionDiscards[target.path].orEmpty(),
+            context.log,
+            OperationStage.CHECKOUT,
+            target.path,
+        ).forEach { issue ->
+            context.log.warn("[discard] ${target.path}: ${issue.diagnostic}")
+        }
+        return action()
     }
 
     /** True when the checkout failed on untracked-file overwrite AND this repo has approved discards. */
