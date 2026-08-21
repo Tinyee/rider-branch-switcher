@@ -15,8 +15,9 @@ private const val REFLOG_WATCH_INTERVAL_MS = 2000L
  *
  * The panel owns the [Alarm] (and its dispose lifecycle); this class only queues
  * and cancels requests on it and keeps the last-seen reflog stamp. The pure
- * decisions it makes per poll — [mainReflogPath] and [reflogStampUpdate] — are
- * extracted as internal functions so they are unit-testable without an Alarm.
+ * decisions it makes per poll — [mainReflogPath], [reflogStampUpdate], and the
+ * [pollDecision] control flow — are extracted as internal functions so they are
+ * unit-testable without an Alarm.
  */
 internal class ExternalGitSwitchWatcher(
     private val alarm: Alarm,
@@ -42,35 +43,33 @@ internal class ExternalGitSwitchWatcher(
     }
 
     private fun poll() {
-        if (!shouldWatch()) {
-            alarm.cancelAllRequests()
-            return
-        }
         val root = gitRoot()
-        val reflog = root?.let(::mainReflogPath)
-        if (reflog == null) {
-            // `.git` is not resolvable yet (root temporarily unavailable, worktree
-            // gitdir file transiently unreadable). Re-queue the watch instead of
-            // returning, which would stop it permanently until a hide/show cycle.
-            logUnresolved(root)
-            restart()
-            return
+        when (val action = pollDecision(shouldWatch(), root?.let(::mainReflogPath), File::lastModified, lastReflogStamp)) {
+            WatchPollAction.Stop -> alarm.cancelAllRequests()
+            WatchPollAction.Requeue -> {
+                // `.git` is not resolvable yet (root temporarily unavailable, worktree
+                // gitdir file transiently unreadable). Re-queue the watch instead of
+                // stopping, which would end it permanently until a hide/show cycle.
+                logUnresolved(root)
+                restart()
+            }
+            is WatchPollAction.Observe -> {
+                action.readError?.let { error ->
+                    log.warn(
+                        "reflog lastModified failed: ${error.javaClass.simpleName}: ${error.message}; " +
+                            "stamp reset to -1 (may fire a spurious external switch)",
+                    )
+                }
+                lastReflogStamp = reflogStampUpdate(action.previous, action.stamp, onExternalChange)
+                when {
+                    action.previous < 0 -> log.debug("watcher initial stamp captured: ${action.stamp}")
+                    action.stamp != action.previous ->
+                        log.info("external switch detected: reflog stamp ${action.previous} -> ${action.stamp}")
+                    else -> log.debug("watcher noop: stamp=${action.stamp}")
+                }
+                restart()
+            }
         }
-        val stamp = runCatching { reflog.lastModified() }.getOrElse {
-            log.warn(
-                "reflog lastModified failed: ${it.javaClass.simpleName}: ${it.message}; " +
-                    "stamp reset to -1 (may fire a spurious external switch)",
-            )
-            -1L
-        }
-        val previous = lastReflogStamp
-        lastReflogStamp = reflogStampUpdate(previous, stamp, onExternalChange)
-        when {
-            previous < 0 -> log.debug("watcher initial stamp captured: $stamp")
-            stamp != previous -> log.info("external switch detected: reflog stamp $previous -> $stamp")
-            else -> log.debug("watcher noop: stamp=$stamp")
-        }
-        restart()
     }
 
     /** Warns at most once per unresolved root, so a persistent 2s-per-poll failure stays visible but quiet. */
@@ -114,4 +113,42 @@ internal fun mainReflogPath(root: Path): File? {
 internal fun reflogStampUpdate(lastStamp: Long, newStamp: Long, onChange: () -> Unit): Long {
     if (lastStamp >= 0 && newStamp != lastStamp) onChange()
     return newStamp
+}
+
+/** One poll tick's decision, produced by [pollDecision] and executed by the watcher's `poll()`. */
+internal sealed interface WatchPollAction {
+    /** The panel is hidden/disposed: cancel the watch without re-queuing. */
+    data object Stop : WatchPollAction
+    /** The reflog is not resolvable yet: re-queue on the next interval. */
+    data object Requeue : WatchPollAction
+    /**
+     * The reflog was readable: remember [stamp] ([reflogStampUpdate] decides whether to
+     * fire the external-change callback). [readError] is set when reading the stamp
+     * failed, in which case [stamp] is the -1 sentinel.
+     */
+    data class Observe(val stamp: Long, val previous: Long, val readError: Throwable? = null) : WatchPollAction
+}
+
+/**
+ * Decides what the watcher does after one poll tick, without touching the [Alarm] so the
+ * stop / re-queue / stamp-failure branches are unit-testable. [reflog] is the resolved
+ * `logs/HEAD` file (null when the root or git metadata is unavailable); [readStamp] is
+ * the `lastModified`-style read whose failure is mapped to the -1 stamp sentinel.
+ */
+@Suppress("TooGenericExceptionCaught") // any read failure must surface as the -1 sentinel, whatever its type
+internal fun pollDecision(
+    shouldWatch: Boolean,
+    reflog: File?,
+    readStamp: (File) -> Long,
+    previous: Long,
+): WatchPollAction {
+    if (!shouldWatch) return WatchPollAction.Stop
+    if (reflog == null) return WatchPollAction.Requeue
+    return try {
+        WatchPollAction.Observe(readStamp(reflog), previous)
+    } catch (error: Throwable) {
+        // A failed lastModified read is a stamp change (the poll refreshes rather than
+        // silently staying on the old stamp), so surface it as -1 with the error attached.
+        WatchPollAction.Observe(-1L, previous, error)
+    }
 }

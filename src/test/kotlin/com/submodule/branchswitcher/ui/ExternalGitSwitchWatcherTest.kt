@@ -67,4 +67,42 @@ class ExternalGitSwitchWatcherTest {
         assertEquals(-1L, updated(7L, -1L))
         assertEquals(1, fires)
     }
+
+    @Test
+    fun `poll stops instead of re-queuing when the watch should stop`() {
+        assertEquals(
+            WatchPollAction.Stop,
+            pollDecision(shouldWatch = false, reflog = File("head"), readStamp = { 1L }, previous = 0L),
+        )
+    }
+
+    @Test
+    fun `poll re-queues when the reflog is unresolvable`() {
+        assertEquals(
+            WatchPollAction.Requeue,
+            pollDecision(shouldWatch = true, reflog = null, readStamp = { 1L }, previous = 0L),
+        )
+    }
+
+    @Test
+    fun `poll observes the stamp when the reflog is readable`() {
+        assertEquals(
+            WatchPollAction.Observe(9L, 5L),
+            pollDecision(shouldWatch = true, reflog = File("head"), readStamp = { 9L }, previous = 5L),
+        )
+    }
+
+    @Test
+    fun `poll maps a stamp-read failure to a -1 observation`() {
+        val action = pollDecision(
+            shouldWatch = true,
+            reflog = File("head"),
+            readStamp = { throw IllegalStateException("boom") },
+            previous = 5L,
+        ) as WatchPollAction.Observe
+
+        assertEquals(-1L, action.stamp)
+        assertEquals(5L, action.previous)
+        assertEquals("boom", action.readError?.message)
+    }
 }
