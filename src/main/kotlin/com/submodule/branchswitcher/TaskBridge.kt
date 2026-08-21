@@ -162,6 +162,12 @@ object TaskBridge {
                             indicator.cancel()
                         } catch (e: Exception) {
                             blockFailure.compareAndSet(null, e)
+                        } catch (t: Throwable) {
+                            // A non-Exception Throwable must never masquerade as success:
+                            // record it and rethrow so the task framework reports the
+                            // failure and onFinished sees blockFailure != null.
+                            blockFailure.compareAndSet(null, t)
+                            throw t
                         }
                     },
                     onFinished = {

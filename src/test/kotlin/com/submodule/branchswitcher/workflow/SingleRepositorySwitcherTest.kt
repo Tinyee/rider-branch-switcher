@@ -8,7 +8,11 @@ import com.submodule.branchswitcher.git.SubmoduleRegistration
 import com.submodule.branchswitcher.log.createStringAppender
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -214,6 +218,23 @@ class SingleRepositorySwitcherTest {
         })
 
         assertTrue(callbackObservedReleasedLease.await())
+    }
+
+    @Test
+    fun `unexpected failure in the result callback is observed on the job`() = runBlocking {
+        val root = temp.newFolder("root")
+        root.resolve("module").mkdirs()
+        val git = RecordingGit().apply { localBranchExists = true }
+        val logs = mutableListOf<String>()
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val switcher = switcher(git, logs = logs)
+
+        val started = switcher.start(scope, root.toPath(), "module", "dev", "Switching") { error("callback boom") }
+        assertTrue(started)
+
+        withTimeout(5_000) {
+            while (logs.none { it.contains("single-repository switch failed") }) delay(10)
+        }
     }
 
     private suspend fun CoroutineScope.runSwitch(

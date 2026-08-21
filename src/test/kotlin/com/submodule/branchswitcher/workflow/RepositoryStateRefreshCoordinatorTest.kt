@@ -142,6 +142,42 @@ class RepositoryStateRefreshCoordinatorTest {
         coordinator.close()
     }
 
+    @Test
+    fun `onSnapshot exception is logged instead of escaping the EDT`() {
+        val root = temp.newFolder("root")
+        val logs = mutableListOf<String>()
+        val delivered = CountDownLatch(1)
+        val coordinator = RepositoryStateRefreshCoordinator(
+            scope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
+            openOperation = { stateOperation(branch = { "main" }) },
+            detector = RepositoryStateDetector(createStringAppender {}),
+            log = createStringAppender { logs += it },
+            deliver = { it() },
+            gitProcessBudget = GIT_PROCESS_BACKGROUND_BUDGET,
+        )
+
+        coordinator.refresh(root.toPath(), listOf(".")) {
+            delivered.countDown()
+            error("delivery boom")
+        }
+
+        assertTrue(delivered.await(5, TimeUnit.SECONDS))
+        // The failure is logged inside the same synchronous deliver call, but the test
+        // thread may be scheduled before the logging coroutine thread finishes; poll briefly.
+        val logged = (0 until 100).any {
+            if (logs.any { line -> line.contains("repository state delivery failed") }) true
+            else {
+                Thread.sleep(20)
+                false
+            }
+        }
+        assertTrue(
+            "the delivery failure must be logged against the operation; logs:\n" + logs.joinToString("\n"),
+            logged,
+        )
+        coordinator.close()
+    }
+
     private fun stateOperation(
         branch: () -> String,
         onCancel: () -> Unit = {},

@@ -76,7 +76,15 @@ class SingleRepositorySwitcher(
                 result = execute(root, path, target, title, operationLog),
             )
         }
-        return job != null
+        if (job == null) return false
+        // execute() maps failures to results, but an unexpected escape (or a throwing
+        // result callback) would otherwise surface as an unobserved job failure.
+        job.invokeOnCompletion { failure ->
+            if (failure != null && !cancellationClassifier.isCancellation(failure)) {
+                log.error("single-repository switch failed", failure)
+            }
+        }
+        return true
     }
 
     @Suppress("TooGenericExceptionCaught") // path, provider, and platform adapters share this result boundary

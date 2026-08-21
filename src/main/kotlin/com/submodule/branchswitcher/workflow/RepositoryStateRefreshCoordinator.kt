@@ -77,6 +77,11 @@ class RepositoryStateRefreshCoordinator(
                 deliver {
                     try {
                         if (isCurrent(state, snapshot)) onSnapshot(snapshot)
+                    } catch (t: Throwable) {
+                        // onSnapshot runs on the EDT inside the scheduled runnable; an
+                        // exception here would escape as an uncaught EDT error, so log it
+                        // against the refresh operation instead.
+                        operationLog.logFailure("repository state delivery failed", t)
                     } finally {
                         clearIfCurrent(state)
                     }

@@ -103,6 +103,31 @@ class DeriveBranchRunnerTest {
         assertEquals(2, git.closeCount)
     }
 
+    @Test
+    fun `progress-indicator cancellation is recognized without runner cancellation`() = runBlocking {
+        val root = Files.createTempDirectory("derive-runner-indicator")
+        val git = RecordingDeriveGit()
+        val runner = DeriveBranchRunner(
+            projectRoot = root,
+            operations = TestGitOperationRunner(
+                git,
+                TestOperationCompletion.COMPLETE,
+                TestOperationProgress(isCanceled = true),
+            ),
+        )
+        val logs = mutableListOf<String>()
+
+        val result = runner.execute(
+            title = "Deriving",
+            rollbackTitle = "Rolling back",
+            preset = Preset("main", "main"),
+            branchName = "feature",
+            log = createStringAppender(logs::add),
+        )
+
+        assertTrue("an indicator cancel must cancel the derive", result.execution?.cancelled == true)
+    }
+
     private class RecordingDeriveGit(
         private val failNewBranchDirectoryName: String? = null,
         private val cancelFirstRollbackCheckout: Boolean = false,

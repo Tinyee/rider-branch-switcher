@@ -151,6 +151,42 @@ class TaskBridgeLifecycleTest {
         assertTrue("exception must propagate to caller", error is IllegalStateException && error.message == "block failed")
     }
 
+    @Test
+    fun `block throwing an Error propagates failure instead of success`() = runBlocking {
+        var caught: Throwable? = null
+
+        val job = launch {
+            try {
+                TaskBridge.runBackground(
+                    runner, null, "test", true,
+                    onCancel = { cancelCallCount++ },
+                    onFinished = { finishCallCount++ },
+                ) {
+                    throw AssertionError("fatal defect")
+                }
+            } catch (e: Throwable) {
+                caught = e
+            }
+        }
+
+        yield() // let the launched coroutine enter suspendCancellableCoroutine
+        assertNotNull("onRun should be captured", runner.onRun)
+
+        try {
+            runner.simulateRun(FakeIndicator())
+        } catch (_: AssertionError) {
+            // The rethrown Error surfaces through onRun; the recorded failure is what
+            // onFinished delivers to the caller.
+        }
+        runner.simulateFinish()
+        job.join()
+
+        assertEquals("onFinished must fire once after failure", 1, finishCallCount)
+        assertEquals("onCancel must not fire", 0, cancelCallCount)
+        val error = caught
+        assertTrue("an Error must propagate as failure, never as success", error is AssertionError && error.message == "fatal defect")
+    }
+
     // -- Scenario 3: user cancel (dialog cancel button) --------------------
 
     @Test
