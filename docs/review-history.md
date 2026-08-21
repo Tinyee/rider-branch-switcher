@@ -620,6 +620,52 @@ passes flagged the same defect.
 
 These fixes are active work and belong on the roadmap, not tracked here.
 
+## 2026-08-21 - Behavior-Correctness Fix Round
+
+The design-review findings above were triaged by scope: the behavior-correctness
+defects (6 High + 16 Medium) plus the two test-coverage gaps were fixed across
+six commits, each carrying its regression test; the quality/style Mediums and
+all Lows were deliberately deferred rather than churned in the same pass. The
+full suite, Detekt, and the plugin ZIP build pass at the end of the round.
+
+Durable decisions from the fixes:
+
+- **Gson reflective serialization and lazy fields.** `@delegate:Transient` is
+  the only annotation that excludes a delegated-property lazy field from
+  reflection (`@Transient` and `@field:Transient` are both rejected for
+  delegates); without it every preset save embeds a `cachedTargets$delegate`
+  blob whose content depends on runtime call history.
+- **Stash-restore termination is not a lock race, and a user cancel is not a
+  timeout.** A terminated apply may have created its own index.lock before
+  dying, so termination is judged before the raced-lock branch; only a
+  non-terminated failure with a lock present is a true race. An explicit user
+  cancel marks the restore `interrupted` and suppresses the automatic
+  stash-only retry, while a timeout termination does not.
+- **`git stash list` exits 0 when empty**, so a non-zero exit is a genuine query
+  failure and fails closed (`GitQueryException`) rather than degrading to the
+  stack top and misapplying an external stash. This differs from
+  `revParseOptional`'s fail-open, where `--verify refs/stash` exit-1 is the
+  normal negative.
+- **Git process-slot release is always bounded.** Deferred releases (onExit
+  futures and the polling fallback) share one deadline, and every error outcome
+  routes through the same deferral: a slot is never held forever by an
+  uninterruptible process, and never handed back while that process may still be
+  running.
+- **Git output paths are not trimmed.** `untrackedFiles`/`targetBranchMatches`
+  drop only empty lines; a file literally named `" leading.txt"` must reach
+  collision detection intact, and the final stdout trim keeps leading whitespace.
+
+Deferred by explicit scope decision (recorded so the decision survives; these
+remain open on the roadmap): the `PresetConfig` nine-type file split,
+`AppLoggerTest`'s large anonymous git fake, `PresetLoader.normalizePresetIds`'s
+dead `changed` computation, the `SettingsRules` timeout dual-source, the
+`remoteName`/`checkedProjects` unbounded caches, `PresetRepository.presets`
+defensive copy, `BranchSwitcherConfigurable`'s magic indices, `addHistory`
+dedup, unknown-persisted-string normalization, `getState` persisting unknown
+strings verbatim, the watcher's 2 s noop log line on quiet panels, the
+misleading "rollback-skipped" warning, the duplicate per-path WARN for a single
+repo, and every Low finding.
+
 ## Maintenance
 
 Record temporary findings in the relevant issue or pull request. Add to this
