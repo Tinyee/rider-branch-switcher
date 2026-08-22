@@ -21,27 +21,23 @@ class SwitchExecutorCancelTest : SwitchExecutorTestBase() {
     fun `cancel after one step stops remaining pipeline and signals git`() {
         var cancelled = false
         var cancelCalls = 0
-        val executed = mutableListOf<String>()
+        var stashCalls = 0
+        var checkoutCalls = 0
         val trackingGit = object : GitClient by fakeGit {
+            override fun isDirty(workDir: File): Boolean = true
+            override fun stash(workDir: File, message: String): GitResult {
+                stashCalls++
+                cancelled = true // the cancel request lands while the first real step is working
+                return GitResult("stash", 0, "", "")
+            }
+
+            override fun checkoutExisting(workDir: File, branch: String): GitResult {
+                checkoutCalls++
+                return GitResult("checkout", 0, "", "")
+            }
+
             override fun cancel() {
                 cancelCalls++
-            }
-        }
-        val first = object : SwitchStep {
-            override val name = "first"
-            override val stage = OperationStage.CHECKOUT
-            override fun execute(context: SwitchContext, state: SwitchState): StepExecution {
-                executed += name
-                cancelled = true
-                return StepExecution(StepResult.Success, state)
-            }
-        }
-        val second = object : SwitchStep {
-            override val name = "second"
-            override val stage = OperationStage.CHECKOUT
-            override fun execute(context: SwitchContext, state: SwitchState): StepExecution {
-                executed += name
-                return StepExecution(StepResult.Success, state)
             }
         }
         val executor = SwitchExecutor(
@@ -49,7 +45,6 @@ class SwitchExecutorCancelTest : SwitchExecutorTestBase() {
             createStringAppender { log += it },
             trackingGit,
             cancelled = { cancelled },
-            steps = listOf(first, second),
         )
 
         val result = executor.executeResultTest(
@@ -59,44 +54,42 @@ class SwitchExecutorCancelTest : SwitchExecutorTestBase() {
 
         assertFalse(result.ok)
         assertTrue(result.cancelled)
-        assertEquals(listOf("first"), executed)
+        assertEquals("DirtyHandlingStep is the first real step and must run once", 1, stashCalls)
+        assertEquals("no step after the cancelled one may run", 0, checkoutCalls)
         assertEquals(1, cancelCalls)
-        assertTrue(log.any { it.contains("[cancelled] before step: second") })
+        assertTrue(log.any { it.contains("[cancelled] before step: checkout main") })
     }
 
     @Test
     fun `cancellation inside dirty step retains stash state for recovery`() {
         initGitRepo(File(projectRoot.toFile(), "SubA"))
-        var checks = 0
+        var stashRecorded = false
         var cancelCalls = 0
         val cancellation = object : CancellationHandle {
             override fun checkCanceled() {
-                checks++
-                if (checks == 3) throw CancellationException("cancel after first target")
+                // Event-driven: cancel on the first check after the WIP stash was recorded,
+                // so the test always covers the post-stash window rather than a check count.
+                if (stashRecorded) throw CancellationException("cancel after stash")
             }
 
             override val isCanceled = false
         }
         val dirtyGit = object : GitClient by fakeGit {
             override fun isDirty(workDir: File): Boolean = true
+            override fun stash(workDir: File, message: String): GitResult {
+                stashRecorded = true
+                return GitResult("stash", 0, "", "")
+            }
+
             override fun cancel() {
                 cancelCalls++
             }
-        }
-        // DirtyHandlingStep is MAIN-only now, so the third check cannot fire inside it; the
-        // trailing no-op step's pre-step check fires the cancel after `.` was already stashed.
-        val trailing = object : SwitchStep {
-            override val name = "trailing"
-            override val stage = OperationStage.CHECKOUT
-            override fun execute(context: SwitchContext, state: SwitchState): StepExecution =
-                StepExecution(StepResult.Success, state)
         }
         val executor = SwitchExecutor(
             projectRoot,
             createStringAppender { log += it },
             dirtyGit,
             cancellationHandle = cancellation,
-            steps = listOf(DirtyHandlingStep(), trailing),
         )
 
         val result = executor.executeResultTest(
@@ -114,22 +107,20 @@ class SwitchExecutorCancelTest : SwitchExecutorTestBase() {
         var stashApplyCalls = 0
         val dirtyGit = object : GitClient by fakeGit {
             override fun isDirty(workDir: File): Boolean = true
+            // The checkout query aborting is the failing step: a plain RuntimeException
+            // escaping the checkout, folded into a STEP_FAILED result by the executor.
+            override fun checkoutExisting(workDir: File, branch: String): GitResult =
+                error("checkout query failed")
+
             override fun stashApply(workDir: File, oid: String): GitResult {
                 stashApplyCalls++
                 return GitResult("stash pop", 0, "", "")
             }
         }
-        val failingStep = object : SwitchStep {
-            override val name = "failing step"
-            override val stage = OperationStage.CHECKOUT
-            override fun execute(context: SwitchContext, state: SwitchState): StepExecution =
-                error("checkout query failed")
-        }
         val executor = SwitchExecutor(
             projectRoot,
             createStringAppender { log += it },
             dirtyGit,
-            steps = listOf(DirtyHandlingStep(), failingStep),
         )
         val result = executor.executeResultTest(
             Preset("test", "dev", emptyMap()),

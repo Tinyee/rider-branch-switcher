@@ -183,21 +183,21 @@ class SwitchExecutorPreflightTest : SwitchExecutorTestBase() {
                 return null
             }
         }
-        val executor = SwitchExecutor(
-            projectRoot,
-            createStringAppender { log += it },
-            countingGit,
-            steps = emptyList(),
+        // The checkpoint already records "." as an existing repository with its git directory,
+        // so the lock preflight stats the index.lock path directly and never re-probes git.
+        val checkpoint = mapOf(
+            "." to CheckpointEntry(
+                sha = "abc123",
+                branch = "main",
+                repositoryId = File(projectRoot.toFile(), ".git").canonicalPath,
+            ),
         )
 
-        val result = executor.executeResultTest(
-            preset,
-            SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false),
-        )
+        val blocks = findBlockingIndexLocks(projectRoot, countingGit, listOf("."), checkpoint)
 
-        assertTrue(result.ok)
-        assertEquals("checkpoint should provide the existing-repository fact", 1, isGitRepoCalls)
-        assertEquals("known git directories should cover the common no-lock path", 0, indexLockFileCalls)
+        assertEquals(emptyList<IndexLockBlock>(), blocks)
+        assertEquals("a recorded checkpoint must make the git-existence probe unnecessary", 0, isGitRepoCalls)
+        assertEquals("a known git directory must cover the common no-lock path", 0, indexLockFileCalls)
     }
 
     @Test
@@ -219,7 +219,6 @@ class SwitchExecutorPreflightTest : SwitchExecutorTestBase() {
             projectRoot,
             createStringAppender { log += it },
             failingGit,
-            steps = emptyList(),
         )
 
         val result = executor.executeResultTest(
@@ -255,7 +254,6 @@ class SwitchExecutorPreflightTest : SwitchExecutorTestBase() {
             createStringAppender { log += it },
             cancelledGit,
             cancellationClassifier = classifier,
-            steps = emptyList(),
         )
 
         var thrown: Throwable? = null
@@ -290,7 +288,6 @@ class SwitchExecutorPreflightTest : SwitchExecutorTestBase() {
             projectRoot,
             createStringAppender { log += it },
             failingGit,
-            steps = emptyList(),
         )
 
         val result = executor.executeResultTest(
@@ -324,7 +321,6 @@ class SwitchExecutorPreflightTest : SwitchExecutorTestBase() {
             createStringAppender { log += it },
             cancelledGit,
             cancellationClassifier = classifier,
-            steps = emptyList(),
         )
 
         var thrown: Throwable? = null

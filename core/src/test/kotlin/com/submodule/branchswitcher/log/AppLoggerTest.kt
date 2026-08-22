@@ -11,13 +11,7 @@ import com.submodule.branchswitcher.git.SubmoduleRegistration
 import com.submodule.branchswitcher.model.DirtyAction
 import com.submodule.branchswitcher.model.Preset
 import com.submodule.branchswitcher.model.SwitchOptions
-import com.submodule.branchswitcher.switch.StepExecution
-import com.submodule.branchswitcher.switch.OperationStage
-import com.submodule.branchswitcher.switch.SwitchContext
 import com.submodule.branchswitcher.switch.SwitchExecutor
-import com.submodule.branchswitcher.switch.SwitchState
-import com.submodule.branchswitcher.switch.SwitchStep
-import com.submodule.branchswitcher.switch.SwitchStepException
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -172,17 +166,16 @@ class AppLoggerTest {
 
     @Test
     fun `aborting step failure is logged as error`() {
-        val failingStep = object : SwitchStep {
-            override val name = "always-fatal"
-            override val stage = OperationStage.CHECKOUT
-            override fun execute(context: SwitchContext, state: SwitchState): StepExecution =
-                throw SwitchStepException(state, IllegalStateException("simulated fatal"))
+        // A plain RuntimeException escaping a step (the checkout query) is an aborting step
+        // failure and must surface as an error, never as a partial warning.
+        val fatalGit = object : GitClient by okGit {
+            override fun checkoutExisting(workDir: File, branch: String): GitResult =
+                error("simulated fatal")
         }
         val executor = SwitchExecutor(
             projectRoot,
             createStringAppender(messages::add),
-            okGit,
-            steps = listOf(failingStep),
+            fatalGit,
         )
 
         executor.executeTest(

@@ -54,12 +54,13 @@ data class SwitchExecutionResult(
 }
 
 /**
- * Orchestrates a branch switch by running a pipeline of [SwitchStep]s.
+ * Orchestrates a branch switch by running a fixed pipeline of [SwitchStep]s.
  *
- * Pipeline order (intentional):
+ * Pipeline order (intentional, fixed):
  * 1. Fetch the main repo so collision revalidation sees a fresh target ref
- * 2. [DiscardUntrackedCollisionStep] (when discards are approved) - revalidate + delete main
- *    collision files after the fetch and before the stash, so the files are not swept into `-u`
+ * 2. [DiscardUntrackedCollisionStep] - always present at this position (Spec 4): a no-op
+ *    when no discards are approved; revalidates + isolates main collision files after the
+ *    fetch and before the WIP stash, so they are never swept into `-u`
  * 3. [DirtyHandlingStep] - stash/skip/force the main repo's dirty tree
  * 4. Update main (checkout, pull) so its .gitmodules and gitlinks are current
  * 5. [SubmoduleSyncStep] - align URLs from the updated .gitmodules
@@ -77,16 +78,25 @@ class SwitchExecutor @JvmOverloads constructor(
     private val cancellationClassifier: CancellationClassifier = CancellationClassifier.DEFAULT,
     private val preApprovedSubmoduleInit: Set<String> = emptySet(),
     private val collisionDiscards: Map<String, Set<String>> = emptyMap(),
-    private val steps: List<SwitchStep> = listOf(
+) {
+    private val checkpointRecorder = SwitchCheckpointRecorder(projectRoot, log, git)
+
+    /**
+     * The fixed production pipeline. The discard step is always present at this exact
+     * position (Spec 4): a no-op when no discards are approved, it runs only for the main
+     * repository after the fetch and before the WIP stash, and it never processes a
+     * submodule (submodule isolation happens inside [SubmoduleTreeStep] after the
+     * topology gate).
+     */
+    private val pipeline: List<SwitchStep> = listOf(
         FetchStep(SwitchTargetScope.MAIN),
+        DiscardUntrackedCollisionStep(),
         DirtyHandlingStep(),
         CheckoutStep(),
         PullStep(SwitchTargetScope.MAIN),
         SubmoduleSyncStep(),
         SubmoduleTreeStep(),
-    ),
-) {
-    private val checkpointRecorder = SwitchCheckpointRecorder(projectRoot, log, git)
+    )
 
     @Suppress("TooGenericExceptionCaught") // platform cancellation type is recognized through the injected classifier
     fun execute(request: ResolvedSwitchRequest): SwitchExecutionResult {
@@ -189,13 +199,7 @@ class SwitchExecutor @JvmOverloads constructor(
         var switchState = initialState
         var stashRestoreInterrupted = false
         val issues = mutableListOf<OperationIssue>()
-        // The discard step is inserted only when the user approved discards; otherwise it
-        // would log a no-op step name on every switch. It runs after the main fetch (so the
-        // revalidation sees a fresh ref) and before the main stash (so the deleted files are
-        // not swept into `git stash push -u`).
-        val effectiveSteps =
-            if (collisionDiscards.isEmpty()) steps else insertDiscardBeforeDirtyHandling(steps)
-        for (step in effectiveSteps) {
+        for (step in pipeline) {
             context.progressHandle?.text = step.name
             try {
                 cancellationHandle?.checkCanceled()
@@ -285,21 +289,6 @@ class SwitchExecutor @JvmOverloads constructor(
             issues,
             stashRestoreInterrupted,
         )
-    }
-
-    /**
-     * Places [DiscardUntrackedCollisionStep] after the main fetch and before the main stash:
-     * the fetch refreshes the target ref the revalidation runs against, and deletion must
-     * precede `git stash push -u` so approved files are not swept into the WIP backup. Custom
-     * step lists (tests) degrade to inserting before the first checkout step, or at the front.
-     */
-    private fun insertDiscardBeforeDirtyHandling(steps: List<SwitchStep>): List<SwitchStep> {
-        val insertAt = steps.indexOfFirst { it.stage == OperationStage.DIRTY_HANDLING }
-            .takeIf { it >= 0 }
-            ?: steps.indexOfFirst { it.stage == OperationStage.CHECKOUT }
-            .takeIf { it >= 0 }
-            ?: steps.size
-        return steps.toMutableList().apply { add(insertAt, DiscardUntrackedCollisionStep()) }
     }
 
     /**

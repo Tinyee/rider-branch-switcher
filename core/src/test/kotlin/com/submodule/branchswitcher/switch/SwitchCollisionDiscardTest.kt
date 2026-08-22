@@ -114,7 +114,6 @@ class SwitchCollisionDiscardTest : SwitchExecutorTestBase() {
             createStringAppender { log += it },
             git,
             collisionDiscards = mapOf("." to setOf("Assets/Foo.meta")),
-            steps = listOf(CheckoutStep()),
         ).executeResultTest(preset, SwitchOptions())
 
         assertTrue("retry must succeed", result.ok)
@@ -147,7 +146,6 @@ class SwitchCollisionDiscardTest : SwitchExecutorTestBase() {
             createStringAppender { log += it },
             collidingGit,
             collisionDiscards = emptyMap(),
-            steps = listOf(CheckoutStep()),
         ).executeResultTest(preset, SwitchOptions())
 
         assertFalse("a collision without approval must still fail", result.ok)
