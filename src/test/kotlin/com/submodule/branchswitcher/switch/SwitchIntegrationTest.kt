@@ -1006,4 +1006,60 @@ class SwitchIntegrationTest {
             assertTrue("Recovery stash should be retained in ${dir.name}: $list", list.isNotBlank())
         }
     }
+
+    // ---- Stash mechanics (Phase 0 characterization, lock git's contract) -------
+
+    @Test
+    fun `path-scoped stash isolates exactly the approved path`() {
+        val root = createRepo(tmpDir, "project")
+        File(root, "approved.meta").writeText("approved-content")
+        File(root, "unrelated.meta").writeText("unrelated-content")
+
+        gitOk(root, "stash", "push", "-u", "-m", "approved-discard:op1:repo1:round0", "--", "approved.meta")
+
+        assertFalse("the approved file must be stashed away", File(root, "approved.meta").exists())
+        assertTrue("an unrelated untracked file must not be swept", File(root, "unrelated.meta").exists())
+        val list = gitOk(root, "stash", "list")
+        assertTrue("the stash must carry the opaque message: $list", list.contains("approved-discard:op1:repo1:round0"))
+    }
+
+    @Test
+    fun `path-scoped stash lets a dir-to-file checkout succeed and keeps the original`() {
+        val root = createRepo(tmpDir, "project")
+        // Target branch tracks tracked-dir/file as a regular file.
+        gitOk(root, "checkout", "-b", "target")
+        File(root, "tracked-dir/file").apply { parentFile.mkdirs(); writeText("tracked-file") }
+        gitOk(root, "add", "tracked-dir/file")
+        gitOk(root, "commit", "-m", "track file")
+        gitOk(root, "checkout", "main")
+        // main has tracked-dir/file as a DIRECTORY holding an untracked local.meta.
+        File(root, "tracked-dir/file/local.meta").apply { parentFile.mkdirs(); writeText("local-meta-content") }
+
+        gitOk(root, "stash", "push", "-u", "-m", "approved-discard", "--", "tracked-dir/file/local.meta")
+        assertFalse("the collision must be stashed away", File(root, "tracked-dir/file/local.meta").exists())
+
+        gitOk(root, "checkout", "target")
+        assertEquals("tracked-file", File(root, "tracked-dir/file").readText().trim())
+
+        val stashed = gitOk(root, "stash", "show", "-p", "--include-untracked", "stash@{0}")
+        assertTrue(
+            "the original local.meta must remain recoverable in the stash object: $stashed",
+            stashed.contains("local-meta-content"),
+        )
+    }
+
+    @Test
+    fun `stash list format maps oid to selector and drop requires the selector`() {
+        val root = createRepo(tmpDir, "project")
+        File(root, "wip.txt").writeText("wip")
+        gitOk(root, "stash", "push", "-u", "-m", "selector-test")
+        val oid = gitOk(root, "rev-parse", "--verify", "refs/stash")
+        val list = gitOk(root, "stash", "list", "--format=%gd%x09%H")
+        assertTrue("the %gd selector must map to the oid: $list", list.contains("stash@{0}\t$oid"))
+
+        val (dropOidCode, dropOidOut) = runGit(root, "stash", "drop", oid)
+        assertTrue("git stash drop must reject a bare oid: $dropOidOut", dropOidCode != 0)
+        gitOk(root, "stash", "drop", "stash@{0}")
+        assertTrue("the stash must be gone after a selector drop", gitOk(root, "stash", "list").isBlank())
+    }
 }
