@@ -16,6 +16,15 @@ interface GitRepositoryQuery {
     fun remoteBranchExists(workDir: File, branch: String): Boolean
 
     /**
+     * Resolves the revision [branch] resolves to under the same ref selection
+     * [targetBranchMatches] and [BranchCheckout] use (local branch when it exists,
+     * else `<remote>/<branch>`). Returns the 40-hex SHA, or null when unsupported,
+     * unresolvable, or the target ref is missing. Callers use it to freeze the
+     * target commit so collision revalidation and checkout operate on the same tree.
+     */
+    fun resolveTargetRevision(workDir: File, branch: String): String? = null
+
+    /**
      * Atomically reads HEAD and the current branch from one git invocation so a
      * concurrent HEAD move can never pair a SHA with the wrong branch name.
      * Returns null when the implementation does not support the single-query read;

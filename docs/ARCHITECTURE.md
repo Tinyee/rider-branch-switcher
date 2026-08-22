@@ -157,7 +157,7 @@ flowchart TD
     Background -. implements .-> Boundary
     Background --> Session["Isolated GitOperationSession"]
     Runner --> Executor["SwitchExecutor"]
-    Executor --> Steps["Dirty -> main fetch/checkout/pull -> sync -> parent-first submodule tree"]
+    Executor --> Steps["main fetch -> discard -> dirty -> checkout/pull -> sync -> parent-first submodule tree (dirty+discard after topology gate)"]
     Steps --> Result["SwitchExecutionResult"]
     Result --> Notify["Refresh VCS and notify"]
     Result -->|failure or cancellation| Recovery["SwitchRecoveryExecutor"]
@@ -190,10 +190,21 @@ normally, while a stale preset path is skipped and its obsolete local worktree
 is retained. Nested initialization runs from the immediate parent repository,
 not from the project root.
 
+Submodule dirty handling and untracked-collision discard run inside that same
+per-submodule flow, after the topology gate: a registered submodule is stashed,
+its approved collision files deleted (revalidated against the frozen target
+revision, before the `-u` stash so they are not swept into it), and checked out.
+The main repository is fetched first, its approved collision set revalidated
+against the frozen target revision, and its dirty tree stashed after that
+revalidation; `BranchCheckout` re-verifies the checked-out HEAD still equals the
+frozen revision and emits a `HEAD_MOVED` warning when the target moved mid-switch.
+
 `SubmoduleTopology.isUnregistered` is the shared write gate for preset switching,
 single-repository switching, and derive operations. A retained worktree whose
-path is absent from the current `.gitmodules` graph remains on disk but cannot
-be modified through those workflows. Recovery deliberately does not use current
+path is absent from the current `.gitmodules` graph remains on disk and is
+never fetched, stashed, or deleted through those workflows — dirty handling and
+collision discard are deliberately gated behind this check, not run up-front
+over every target. Recovery deliberately does not use current
 registration because rolling the main repository back may legitimately make a
 checkpointed path obsolete.
 

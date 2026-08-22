@@ -1,20 +1,24 @@
 package com.submodule.branchswitcher.switch
 
+import com.submodule.branchswitcher.git.GitQueryException
 import com.submodule.branchswitcher.log.AppLogger
 import com.submodule.branchswitcher.model.DirtyAction
+import com.submodule.branchswitcher.model.RepoTarget
 import java.io.File
 import java.nio.file.Files
 
 /**
- * Deletes untracked files the user approved for discard before the switch's checkout
- * attempts them, so git does not refuse to overwrite them.
+ * Deletes the main repository's untracked files the user approved for discard before the
+ * switch's checkout attempts them, so git does not refuse to overwrite them.
  *
- * Runs before [DirtyHandlingStep] and only acts on repositories the Stash strategy will
- * actually stash: files discarded here are never swept into that stash (`git stash push
- * -u` includes untracked), which would otherwise re-apply them into a fresh collision
- * with the newly checked-out tracked versions during restore. Every other approved
- * repository is discarded just-in-time in [BranchCheckout], right before its checkout
- * write.
+ * Runs after [FetchStep] and before [DirtyHandlingStep]: the fetch refreshes the target ref,
+ * the discard revalidates the approved set against the frozen revision (so a target that
+ * moved after preflight keeps its files), and deletion precedes the main `git stash push -u`
+ * so the approved files are never swept into the WIP backup (which would otherwise re-apply
+ * them onto the freshly checked-out tracked versions during restore).
+ *
+ * Submodule discards are handled inside [SubmoduleTreeStep], after the topology write gate
+ * confirms each path is registered — never here, where the new topology is not yet known.
  */
 class DiscardUntrackedCollisionStep : SwitchStep {
     override val name = "discard untracked collisions"
@@ -27,30 +31,41 @@ class DiscardUntrackedCollisionStep : SwitchStep {
         // strategy every repo with approved discards is skipped before checkout: deleting
         // them would be unrecoverable loss with no switch happening.
         if (context.options.dirty == DirtyAction.Skip) return StepExecution(StepResult.Success, state)
+
+        val mainApproved = approved["."].orEmpty()
+        if (mainApproved.isEmpty()) return StepExecution(StepResult.Success, state)
+
         val issues = mutableListOf<OperationIssue>()
-        for ((repoPath, files) in approved) {
-            context.cancellationHandle?.checkCanceled()
-            if (files.isEmpty()) continue
-            val targetBranch = context.preset.targets().find { it.path == repoPath }?.branch ?: continue
-            // The repo is already on the target branch (the branch may have changed since
-            // the user approved the discard): checkout will not run, so deleting approved
-            // files would be needless data loss.
-            if (context.checkpoint[repoPath]?.branch == targetBranch) continue
-            val dir = resolveGitDir(context.projectRoot, repoPath)
-            if (!dir.exists()) continue
-            // Only delete now when the Stash strategy is about to sweep the files into a
-            // WIP backup (`git stash push -u` includes untracked): deleting here keeps the
-            // approved collision files out of the stash so the end-of-switch restore cannot
-            // re-apply them onto the freshly checked-out tracked versions. That ordering is
-            // a trade-off: a dirty+Stash repo is deleted up-front even if a later gate (a
-            // failed main checkout, a topology change) then skips it, and those files are
-            // gone without its checkout running. Repositories that are never stashed (Force,
-            // or clean enough) are instead deleted just-in-time in BranchCheckout, so a
-            // downstream skip preserves their approved files.
-            if (context.options.dirty != DirtyAction.Stash || !context.git.isDirty(dir)) continue
-            issues += discardApprovedFiles(dir, files, context.log, stage, repoPath)
+        context.cancellationHandle?.checkCanceled()
+        val target = RepoTarget(".", context.preset.main)
+        // The repo is already on the target branch (the branch may have changed since the
+        // user approved the discard): checkout will not run, so deleting approved files
+        // would be needless data loss.
+        if (context.checkpoint["."]?.branch == target.branch) {
+            return StepExecution(StepResult.Success, state)
         }
-        return StepExecution(issues.toStepResult(), state)
+        val dir = resolveGitDir(context.projectRoot, ".")
+        if (!dir.exists()) return StepExecution(StepResult.Success, state)
+
+        // Freeze the revision the checkout will operate on (resolved after the main fetch),
+        // so revalidation and checkout provably use the same tree.
+        val frozenSha = try {
+            context.git.resolveTargetRevision(dir, target.branch)
+        } catch (error: GitQueryException) {
+            context.log.warn("[discard] cannot resolve target revision for main: ${error.result.diagnostic()}")
+            null
+        }
+        var nextState = state
+        if (frozenSha != null) {
+            nextState = nextState.withFrozenTargetSha(".", frozenSha)
+            // Only delete now when the Stash strategy is about to sweep the worktree into a
+            // WIP backup (`git stash push -u` includes untracked); Force and clean repos are
+            // discarded just-in-time in BranchCheckout instead, so a downstream skip keeps them.
+            if (context.options.dirty == DirtyAction.Stash && context.git.isDirty(dir)) {
+                issues += discardCollidingApproved(context, target, dir, frozenSha, stage)
+            }
+        }
+        return StepExecution(issues.toStepResult(), nextState)
     }
 }
 

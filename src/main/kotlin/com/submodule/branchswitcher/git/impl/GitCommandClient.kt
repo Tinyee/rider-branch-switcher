@@ -268,12 +268,26 @@ internal class GitCommandClient(
     override fun targetBranchMatches(workDir: File, branch: String, paths: List<String>): List<String> {
         if (paths.isEmpty()) return emptyList()
         // Match BranchCheckout's selection: a local branch wins, else the remote-tracking ref.
-        val ref = if (localBranchExists(workDir, branch)) branch else "${remoteName(workDir)}/$branch"
+        // A 40-hex object id (a frozen revision resolved via resolveTargetRevision) is used
+        // verbatim, so collision revalidation can target the exact tree checkout will use.
+        val ref = when {
+            branch.matches(SHA_HEX) -> branch
+            localBranchExists(workDir, branch) -> branch
+            else -> "${remoteName(workDir)}/$branch"
+        }
         return paths.chunked(PATHSPEC_CHUNK_SIZE).flatMap { chunk ->
             val result = run(workDir, listOf("ls-tree", "-r", "--name-only", ref, "--") + chunk)
             if (!result.ok) throw GitQueryException(result)
             result.stdout.lineSequence().filter { it.isNotEmpty() }.toList()
         }
+    }
+
+    override fun resolveTargetRevision(workDir: File, branch: String): String? {
+        // Mirror BranchCheckout's ref selection: a local branch wins, else the remote-tracking ref.
+        if (localBranchExists(workDir, branch)) {
+            return revParseOptional(workDir, "--verify", "refs/heads/$branch")
+        }
+        return revParseOptional(workDir, "--verify", "refs/remotes/${remoteName(workDir)}/$branch")
     }
 
     override fun checkoutExisting(workDir: File, branch: String): GitResult =
@@ -498,6 +512,8 @@ internal class GitCommandClient(
     companion object {
         /** Bounds `ls-tree` pathspec lists so exec arg size stays well under ARG_MAX. */
         private const val PATHSPEC_CHUNK_SIZE = 400
+        /** A full object id, accepted by [targetBranchMatches] as an explicit tree ref. */
+        private val SHA_HEX = Regex("^[0-9a-fA-F]{40}$")
         private const val MAX_SUBMODULE_DEPTH = 10
         private const val SUBMODULE_ENTRY_KEY_REGEX = "^submodule\\..*\\.(path|url)$"
         private const val SUBMODULE_KEY_PREFIX = "submodule."

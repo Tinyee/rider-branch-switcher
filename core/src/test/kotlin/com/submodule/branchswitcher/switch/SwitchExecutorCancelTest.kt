@@ -83,12 +83,20 @@ class SwitchExecutorCancelTest : SwitchExecutorTestBase() {
                 cancelCalls++
             }
         }
+        // DirtyHandlingStep is MAIN-only now, so the third check cannot fire inside it; the
+        // trailing no-op step's pre-step check fires the cancel after `.` was already stashed.
+        val trailing = object : SwitchStep {
+            override val name = "trailing"
+            override val stage = OperationStage.CHECKOUT
+            override fun execute(context: SwitchContext, state: SwitchState): StepExecution =
+                StepExecution(StepResult.Success, state)
+        }
         val executor = SwitchExecutor(
             projectRoot,
             createStringAppender { log += it },
             dirtyGit,
             cancellationHandle = cancellation,
-            steps = listOf(DirtyHandlingStep()),
+            steps = listOf(DirtyHandlingStep(), trailing),
         )
 
         val result = executor.executeResultTest(
@@ -151,11 +159,13 @@ class SwitchExecutorCancelTest : SwitchExecutorTestBase() {
                 return true
             }
         }
+        // DirtyHandlingStep inspects the main repo only; the SubA probe now runs inside
+        // SubmoduleTreeStep (after the topology gate), so the default steps surface the
+        // exception there with the CHECKOUT stage.
         val executor = SwitchExecutor(
             projectRoot,
             createStringAppender { log += it },
             dirtyGit,
-            steps = listOf(DirtyHandlingStep()),
         )
 
         val result = executor.executeResultTest(
@@ -168,7 +178,7 @@ class SwitchExecutorCancelTest : SwitchExecutorTestBase() {
         assertTrue("failed switch keeps the stash tracked for recovery", setOf(".") == result.state.stashesSnapshot().keys)
         assertTrue(result.state.retainedStashBackupsSnapshot().isEmpty())
         val issue = result.issues.single()
-        assertEquals(OperationStage.DIRTY_HANDLING, issue.stage)
+        assertEquals(OperationStage.CHECKOUT, issue.stage)
         assertEquals(OperationIssueCode.STEP_FAILED, issue.code)
         assertTrue(issue.diagnostic.orEmpty().contains("query failed"))
     }

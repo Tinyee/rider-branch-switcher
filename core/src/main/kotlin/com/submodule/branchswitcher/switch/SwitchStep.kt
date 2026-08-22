@@ -45,8 +45,19 @@ class SwitchState private constructor(
     private val successfulCheckouts: Set<String>,
     private val initializedSubmodules: Set<String>,
     private val retainedStashBackups: Set<String>,
+    private val frozenTargetShas: Map<String, String>,
 ) {
-    constructor() : this(emptyMap(), emptySet(), emptySet(), emptySet(), emptySet())
+    constructor() : this(emptyMap(), emptySet(), emptySet(), emptySet(), emptySet(), emptyMap())
+
+    /**
+     * Records the target revision [branch] resolved to at discard time, so a later checkout
+     * of the same target can verify HEAD still matches (collision revalidation and checkout
+     * then provably operate on the same tree).
+     */
+    fun withFrozenTargetSha(path: String, sha: String): SwitchState =
+        copy(frozenTargetShas = frozenTargetShas + (path to sha))
+
+    fun frozenTargetSha(path: String): String? = frozenTargetShas[path]
 
     fun withSkipped(path: String): SwitchState =
         copy(skippedPaths = skippedPaths + path)
@@ -95,12 +106,14 @@ class SwitchState private constructor(
         successfulCheckouts: Set<String> = this.successfulCheckouts,
         initializedSubmodules: Set<String> = this.initializedSubmodules,
         retainedStashBackups: Set<String> = this.retainedStashBackups,
+        frozenTargetShas: Map<String, String> = this.frozenTargetShas,
     ): SwitchState = SwitchState(
         stashedPaths,
         skippedPaths,
         successfulCheckouts,
         initializedSubmodules,
         retainedStashBackups,
+        frozenTargetShas,
     )
 }
 

@@ -23,6 +23,23 @@ class SwitchCollisionDiscardTest : SwitchExecutorTestBase() {
         return file
     }
 
+    /**
+     * Wraps [inner] so the collision queries report [collisions] as still untracked and still in
+     * the target tree, and the target revision resolves to [sha] == HEAD. Without this, the
+     * execution-time revalidation (which is the point of the fix) sees no collision and deletes
+     * nothing; keeping [sha] equal to HEAD avoids the post-checkout HEAD_MOVED warning.
+     */
+    private fun GitClient.revalidatingGit(
+        collisions: Set<String>,
+        sha: String = "abc123",
+    ): GitClient = object : GitClient by this {
+        override fun untrackedFiles(workDir: File): List<String> = collisions.toList()
+        override fun targetBranchMatches(workDir: File, branch: String, paths: List<String>): List<String> =
+            paths.filter { it in collisions }
+        override fun resolveTargetRevision(workDir: File, branch: String): String? = sha
+        override fun revParseHead(workDir: File): String? = sha
+    }
+
     @Test
     fun `discard step deletes approved files before the switch`() {
         val collisionFile = writeUntrackedFile("Assets/Foo.meta")
@@ -30,7 +47,7 @@ class SwitchCollisionDiscardTest : SwitchExecutorTestBase() {
         val result = SwitchExecutor(
             projectRoot,
             createStringAppender { log += it },
-            fakeGit,
+            fakeGit.revalidatingGit(setOf("Assets/Foo.meta")),
             collisionDiscards = mapOf("." to setOf("Assets/Foo.meta")),
         ).executeResultTest(preset, SwitchOptions())
 
@@ -98,7 +115,7 @@ class SwitchCollisionDiscardTest : SwitchExecutorTestBase() {
                 }
                 return GitResult("checkout", 0, "", "")
             }
-        }
+        }.revalidatingGit(setOf("Assets/Foo.meta"))
 
         val result = SwitchExecutor(
             projectRoot,
@@ -177,7 +194,7 @@ class SwitchCollisionDiscardTest : SwitchExecutorTestBase() {
     }
 
     @Test
-    fun `dirty Stash submodule is still pre-deleted when a failing main later skips it`() {
+    fun `dirty Stash submodule keeps its approved files when a failing main later skips it`() {
         val submoduleDir = projectRoot.resolve("SubA").toFile()
         submoduleDir.mkdirs()
         submoduleDir.resolve(".git").mkdirs()
@@ -192,7 +209,7 @@ class SwitchCollisionDiscardTest : SwitchExecutorTestBase() {
                 } else {
                     fakeGit.checkoutExisting(workDir, branch)
                 }
-        }
+        }.revalidatingGit(setOf("Assets/Foo.meta"))
 
         val result = SwitchExecutor(
             projectRoot,
@@ -201,12 +218,12 @@ class SwitchCollisionDiscardTest : SwitchExecutorTestBase() {
             collisionDiscards = mapOf("SubA" to setOf("Assets/Foo.meta")),
         ).executeResultTest(Preset("test", "dev", mapOf("SubA" to "dev")), SwitchOptions(dirty = DirtyAction.Stash))
 
-        // Accepted trade-off, locked here so it is not silently "fixed" later: a dirty+Stash
-        // repo is pre-deleted before `git stash push -u` sweeps the worktree, and a later
-        // gate that skips it cannot bring the files back.
+        // The fix: submodule dirty handling + discard run inside SubmoduleTreeStep, after the
+        // topology gate. A failing main disables the submodule before any stash or delete, so
+        // its approved files survive even under the Stash strategy.
         assertEquals(SwitchExecutionStatus.PARTIAL, result.status)
-        assertFalse(
-            "dirty+Stash pre-deletes up-front to keep files out of the stash, even when the repo is later skipped",
+        assertTrue(
+            "a submodule skipped because the main failed must never be stashed or deleted",
             collisionFile.exists(),
         )
     }
@@ -221,7 +238,7 @@ class SwitchCollisionDiscardTest : SwitchExecutorTestBase() {
         collisionFile.writeText("local-untracked")
         val dirtyGit = object : GitClient by fakeGit {
             override fun isDirty(workDir: File): Boolean = workDir.name == "SubA"
-        }
+        }.revalidatingGit(setOf("Assets/Foo.meta"))
 
         val result = SwitchExecutor(
             projectRoot,
@@ -246,7 +263,7 @@ class SwitchCollisionDiscardTest : SwitchExecutorTestBase() {
                 observedAtStash = collisionFile.exists()
                 return GitResult("stash", 0, "", "")
             }
-        }
+        }.revalidatingGit(setOf("Assets/Foo.meta"))
 
         val result = SwitchExecutor(
             projectRoot,
@@ -260,6 +277,35 @@ class SwitchCollisionDiscardTest : SwitchExecutorTestBase() {
         // the freshly checked-out tracked versions on restore).
         assertTrue(result.ok)
         assertFalse("the approved file must be gone before git stash runs", observedAtStash)
+        assertFalse(collisionFile.exists())
+    }
+
+    @Test
+    fun `dirty Stash submodule discards approved files before its stash inside the submodule flow`() {
+        val submoduleDir = projectRoot.resolve("SubA").toFile()
+        submoduleDir.mkdirs()
+        submoduleDir.resolve(".git").mkdirs()
+        val collisionFile = submoduleDir.resolve("Assets/Foo.meta")
+        collisionFile.parentFile.mkdirs()
+        collisionFile.writeText("local-untracked")
+        var observedAtStash = true
+        val dirtyGit = object : GitClient by fakeGit {
+            override fun isDirty(workDir: File): Boolean = workDir.name == "SubA"
+            override fun stash(workDir: File, message: String): GitResult {
+                if (workDir.name == "SubA") observedAtStash = collisionFile.exists()
+                return GitResult("stash", 0, "", "")
+            }
+        }.revalidatingGit(setOf("Assets/Foo.meta"))
+
+        val result = SwitchExecutor(
+            projectRoot,
+            createStringAppender { log += it },
+            dirtyGit,
+            collisionDiscards = mapOf("SubA" to setOf("Assets/Foo.meta")),
+        ).executeResultTest(Preset("test", "dev", mapOf("SubA" to "dev")), SwitchOptions(dirty = DirtyAction.Stash))
+
+        assertTrue("switch should succeed", result.ok)
+        assertFalse("the submodule's approved file must be gone before its stash runs", observedAtStash)
         assertFalse(collisionFile.exists())
     }
 }

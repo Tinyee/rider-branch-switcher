@@ -1,7 +1,9 @@
 package com.submodule.branchswitcher.switch
 
+import com.submodule.branchswitcher.git.GitQueryException
 import com.submodule.branchswitcher.git.SubmoduleRegistration
 import com.submodule.branchswitcher.log.diagnosticFingerprint
+import com.submodule.branchswitcher.model.DirtyAction
 import com.submodule.branchswitcher.model.RepoTarget
 import java.io.File
 
@@ -204,6 +206,48 @@ class SubmoduleTreeStep : SwitchStep {
         var topology = traversal.topology
         try {
             fetchIfEnabled(context, target, directory, issues)
+            // The submodule dirty handling, collision recheck, delete, stash, and checkout all
+            // run here, AFTER prepareTarget's topology write gate: a path absent from the new
+            // .gitmodules graph was already rejected, so an obsolete worktree is never fetched,
+            // stashed, or deleted.
+            val approved = context.approvedCollisionDiscards[target.path].orEmpty()
+            val atTarget = context.checkpoint[target.path]?.branch == target.branch
+            // Freeze the revision this checkout will operate on (post-fetch) so revalidation and
+            // checkout use the same tree; skipped when the path is already on its target branch.
+            val frozenSha = if (approved.isNotEmpty() && !atTarget) {
+                try {
+                    context.git.resolveTargetRevision(directory, target.branch)
+                } catch (error: GitQueryException) {
+                    context.log.warn(
+                        "[discard] cannot resolve target revision for ${target.path}: ${error.result.diagnostic()}",
+                    )
+                    null
+                }
+            } else null
+            if (frozenSha != null) nextState = nextState.withFrozenTargetSha(target.path, frozenSha)
+
+            val facts = inspectDirtyState(context, directory)
+            if (facts != null) {
+                // Delete approved collision files BEFORE the stash so `git stash push -u` cannot
+                // sweep them into the WIP backup and re-apply them onto the freshly checked-out
+                // tracked versions during restore.
+                if (context.options.dirty == DirtyAction.Stash && !facts.submoduleOnlyDirty && frozenSha != null) {
+                    issues += discardCollidingApproved(
+                        context,
+                        target,
+                        directory,
+                        frozenSha,
+                        OperationStage.DIRTY_HANDLING,
+                    )
+                }
+                val outcome = handleTargetDirtyState(context, target, directory, facts, nextState, issues)
+                nextState = outcome.state
+                if (outcome.skipped) {
+                    nextState = disableDescendants(nextState, targets, target.path)
+                    return SubmoduleTraversal(nextState, topology)
+                }
+            }
+
             val checkout = BranchCheckout.execute(context, target, directory, nextState)
             nextState = checkout.state
             issues += checkout.issues

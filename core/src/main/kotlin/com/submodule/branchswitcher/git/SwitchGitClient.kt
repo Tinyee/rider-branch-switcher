@@ -3,7 +3,12 @@ package com.submodule.branchswitcher.git
 import java.io.File
 
 /** Git operations required by the branch-switch pipeline. */
-interface SwitchGitClient : RepositoryStateGitClient, SubmoduleRegistrationQuery {
+interface SwitchGitClient :
+    RepositoryStateGitClient,
+    SubmoduleRegistrationQuery,
+    // Collision revalidation runs at execution time (post-fetch, frozen revision), so the
+    // pipeline needs the untracked/target-tree queries that preflight also uses.
+    SwitchPreflightGitClient {
     /**
      * Cancels the active operation and its currently running git command (if any).
      * Implementations without processes must still acknowledge cancellation explicitly.
@@ -41,7 +46,7 @@ interface SwitchGitClient : RepositoryStateGitClient, SubmoduleRegistrationQuery
      * inherit the succeeding default; the CLI implementation overrides this.
      */
     fun stashDrop(workDir: File, oid: String): GitResult =
-        GitResult("stash drop", 0, "", "")
+        GitResult("stash drop", 1, "", "stashDrop not implemented; stash retained as recovery backup")
     /** Runs `git fetch --prune`. */
     fun fetch(workDir: File): GitResult
     /** Checks out an existing local branch by name. */

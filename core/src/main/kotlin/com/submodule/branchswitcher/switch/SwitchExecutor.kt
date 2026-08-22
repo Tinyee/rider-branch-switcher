@@ -57,10 +57,13 @@ data class SwitchExecutionResult(
  * Orchestrates a branch switch by running a pipeline of [SwitchStep]s.
  *
  * Pipeline order (intentional):
- * 1. [DirtyHandlingStep] - stash/skip/force known repos before any branch changes
- * 2. Update main (fetch, checkout, pull) so its .gitmodules and gitlinks are current
- * 3. [SubmoduleSyncStep] - align URLs from the updated .gitmodules
- * 4. Update submodules (fetch existing repos, initialize missing repos, checkout, pull)
+ * 1. Fetch the main repo so collision revalidation sees a fresh target ref
+ * 2. [DiscardUntrackedCollisionStep] (when discards are approved) - revalidate + delete main
+ *    collision files after the fetch and before the stash, so the files are not swept into `-u`
+ * 3. [DirtyHandlingStep] - stash/skip/force the main repo's dirty tree
+ * 4. Update main (checkout, pull) so its .gitmodules and gitlinks are current
+ * 5. [SubmoduleSyncStep] - align URLs from the updated .gitmodules
+ * 6. Update submodules (topology-confirmed: dirty handling, collision discard, stash, checkout)
  *
  * Records a [CheckpointEntry] before switching for rollback support.
  */
@@ -75,8 +78,8 @@ class SwitchExecutor @JvmOverloads constructor(
     private val preApprovedSubmoduleInit: Set<String> = emptySet(),
     private val collisionDiscards: Map<String, Set<String>> = emptyMap(),
     private val steps: List<SwitchStep> = listOf(
-        DirtyHandlingStep(),
         FetchStep(SwitchTargetScope.MAIN),
+        DirtyHandlingStep(),
         CheckoutStep(),
         PullStep(SwitchTargetScope.MAIN),
         SubmoduleSyncStep(),
@@ -186,10 +189,12 @@ class SwitchExecutor @JvmOverloads constructor(
         var switchState = initialState
         var stashRestoreInterrupted = false
         val issues = mutableListOf<OperationIssue>()
-        // The discard step is prepended only when the user approved discards; otherwise it
-        // would log a no-op step name on every switch.
+        // The discard step is inserted only when the user approved discards; otherwise it
+        // would log a no-op step name on every switch. It runs after the main fetch (so the
+        // revalidation sees a fresh ref) and before the main stash (so the deleted files are
+        // not swept into `git stash push -u`).
         val effectiveSteps =
-            if (collisionDiscards.isEmpty()) steps else listOf(DiscardUntrackedCollisionStep()) + steps
+            if (collisionDiscards.isEmpty()) steps else insertDiscardBeforeDirtyHandling(steps)
         for (step in effectiveSteps) {
             context.progressHandle?.text = step.name
             try {
@@ -280,6 +285,21 @@ class SwitchExecutor @JvmOverloads constructor(
             issues,
             stashRestoreInterrupted,
         )
+    }
+
+    /**
+     * Places [DiscardUntrackedCollisionStep] after the main fetch and before the main stash:
+     * the fetch refreshes the target ref the revalidation runs against, and deletion must
+     * precede `git stash push -u` so approved files are not swept into the WIP backup. Custom
+     * step lists (tests) degrade to inserting before the first checkout step, or at the front.
+     */
+    private fun insertDiscardBeforeDirtyHandling(steps: List<SwitchStep>): List<SwitchStep> {
+        val insertAt = steps.indexOfFirst { it.stage == OperationStage.DIRTY_HANDLING }
+            .takeIf { it >= 0 }
+            ?: steps.indexOfFirst { it.stage == OperationStage.CHECKOUT }
+            .takeIf { it >= 0 }
+            ?: steps.size
+        return steps.toMutableList().apply { add(insertAt, DiscardUntrackedCollisionStep()) }
     }
 
     /**

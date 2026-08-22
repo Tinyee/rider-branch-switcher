@@ -37,6 +37,7 @@ abstract class SwitchExecutorTestBase {
         override fun listAllBranches(workDir: File): List<String> = listOf("main", "dev", "feature-x")
         override fun revParseHead(workDir: File): String? = "abc123"
         override fun stashApply(workDir: File, oid: String): GitResult = GitResult("pop", 0, "", "")
+        override fun stashDrop(workDir: File, oid: String): GitResult = GitResult("stash drop", 0, "", "")
         override fun checkoutNewBranch(workDir: File, branch: String): GitResult = GitResult("checkout", 0, "", "")
         override fun deleteBranch(workDir: File, branch: String): GitResult = GitResult("branch", 0, "", "")
         override fun repositoryIdentity(workDir: File): RepositoryIdentity {
