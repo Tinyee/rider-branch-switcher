@@ -312,7 +312,14 @@ class SwitchExecutor @JvmOverloads constructor(
      */
     @Suppress("TooGenericExceptionCaught") // any restore failure must report rather than escape
     private fun restoreCompletedStashes(context: SwitchContext, state: SwitchState): StashRestoreResult = try {
-        restoreTrackedStashes(projectRoot, context.git, log, state, cancelled = context.cancelled)
+        // A repo that reached its target (and will not be rolled back at this point) has its
+        // approved stash dropped — the discard is authorized. A repo whose checkout failed on
+        // a partial switch gets its approved stash applied back instead.
+        restoreTrackedStashes(
+            projectRoot, context.git, log, state,
+            cancelled = context.cancelled,
+            discardApprovedFor = { path -> state.checkoutSucceeded(path) },
+        )
     } catch (error: SwitchStepException) {
         log.logFailure("[stash restore] exception", error.cause)
         StashRestoreResult(

@@ -111,8 +111,10 @@ private fun stashTarget(
         // A terminated push may have written refs/stash before dying; track any entry
         // it created so recovery can apply it instead of leaving a torn stash.
         if (stashResult.failureKind.isTermination) {
-            trackGhostStashIfCreated(context, target, repositoryDirectory, beforeTop, stashMessage, state)
-                ?.let { return DirtyTargetOutcome(it, skipped = false) }
+            trackGhostStashIfCreated(
+                context, target, repositoryDirectory, beforeTop, stashMessage, state,
+                StashPurpose.WIP_RESTORE_AFTER_SWITCH,
+            )?.let { return DirtyTargetOutcome(it, skipped = false) }
         }
         val lockHint = context.git.indexLockFile(repositoryDirectory)?.let { lock ->
             " [index.lock exists at $lock; if no other git process is running, delete it and retry]"
@@ -140,26 +142,30 @@ private fun stashTarget(
     }
     context.log.info("stash: ok (${target.path}, oid=$stashOid)")
     return DirtyTargetOutcome(
-        state.withTrackedStash(target.path, "before -> ${target.branch}", stashOid),
+        state.withTrackedStash(
+            target.path, StashPurpose.WIP_RESTORE_AFTER_SWITCH, "before -> ${target.branch}", stashOid,
+        ),
         skipped = false,
     )
 }
 
 /**
  * After a terminated stash push, locates any entry the write actually created and
- * tracks it for recovery. Only the newest entry carrying our message prefix is
- * accepted: the top must have advanced AND the newest entry must match, so an old
- * backup or a concurrent external stash is never mistaken for the current WIP.
+ * tracks it for recovery, tagged with [purpose]. Only the newest entry carrying our
+ * message prefix is accepted: the top must have advanced AND the newest entry must match,
+ * so an old backup or a concurrent external stash is never mistaken for this operation's
+ * entry.
  *
  * Returns the state to return immediately, or null when there is no ghost entry.
  */
-private fun trackGhostStashIfCreated(
+internal fun trackGhostStashIfCreated(
     context: SwitchContext,
     target: RepoTarget,
     repositoryDirectory: File,
     beforeTop: String?,
     stashMessage: String,
     state: SwitchState,
+    purpose: StashPurpose,
 ): SwitchState? {
     val ghostOid = try {
         val top = context.git.stashTopOid(repositoryDirectory)
@@ -177,7 +183,7 @@ private fun trackGhostStashIfCreated(
         "stash: terminated mid-write but entry created (${target.path}, oid=$ghostOid); " +
             "tracked for recovery",
     )
-    return state.withTrackedStash(target.path, "before -> ${target.branch}", ghostOid)
+    return state.withTrackedStash(target.path, purpose, "before -> ${target.branch}", ghostOid)
 }
 
 private fun unidentifiedStash(
@@ -200,7 +206,9 @@ private fun unidentifiedStash(
         diagnostic = diagnostic,
     )
     return DirtyTargetOutcome(
-        state.withTrackedStash(target.path, "before -> ${target.branch}", oid = null).withSkipped(target.path),
+        state.withTrackedStash(
+            target.path, StashPurpose.WIP_RESTORE_AFTER_SWITCH, "before -> ${target.branch}", oid = null,
+        ).withSkipped(target.path),
         skipped = true,
     )
 }

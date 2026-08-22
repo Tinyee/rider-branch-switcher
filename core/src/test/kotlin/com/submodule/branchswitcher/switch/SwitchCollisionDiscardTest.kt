@@ -13,7 +13,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
 
-/** Locks the collision-discard behavior: the discard step, the at-target gate, and the checkout retry. */
+/** Locks the stash-based collision-isolation behavior: the isolation step, the at-target gate, and the checkout retry. */
 class SwitchCollisionDiscardTest : SwitchExecutorTestBase() {
 
     private fun writeUntrackedFile(relative: String): File {
@@ -23,88 +23,79 @@ class SwitchCollisionDiscardTest : SwitchExecutorTestBase() {
         return file
     }
 
-    /**
-     * Wraps [inner] so the collision queries report [collisions] as still untracked and still in
-     * the target tree, and the target revision resolves to [sha] == HEAD. Without this, the
-     * execution-time revalidation (which is the point of the fix) sees no collision and deletes
-     * nothing; keeping [sha] equal to HEAD avoids the post-checkout HEAD_MOVED warning.
-     */
-    private fun GitClient.revalidatingGit(
-        collisions: Set<String>,
-        sha: String = "abc123",
-    ): GitClient = object : GitClient by this {
-        override fun untrackedFiles(workDir: File): List<String> = collisions.toList()
-        override fun targetBranchMatches(workDir: File, branch: String, paths: List<String>): List<String> =
-            paths.filter { it in collisions }
-        override fun resolveTargetRevision(workDir: File, branch: String): String? = sha
-        override fun revParseHead(workDir: File): String? = sha
-    }
-
     @Test
-    fun `discard step deletes approved files before the switch`() {
+    fun `isolation step stashes approved files before the switch and drops them on success`() {
         val collisionFile = writeUntrackedFile("Assets/Foo.meta")
+        val git = ApprovedStashFake(fakeGit, setOf("Assets/Foo.meta"))
 
         val result = SwitchExecutor(
             projectRoot,
             createStringAppender { log += it },
-            fakeGit.revalidatingGit(setOf("Assets/Foo.meta")),
+            git,
             collisionDiscards = mapOf("." to setOf("Assets/Foo.meta")),
         ).executeResultTest(preset, SwitchOptions())
 
         assertTrue("switch should succeed", result.ok)
-        assertFalse("approved file must be deleted", collisionFile.exists())
+        assertEquals("the approved stash must be isolated exactly once", 1, git.stashPathsCalls)
+        assertEquals("a successful switch discards the approved stash by drop, never applying it", 1, git.dropCalls)
+        assertEquals(0, git.applyCalls)
+        assertFalse("approved file must be gone after the isolated stash is dropped", collisionFile.exists())
     }
 
     @Test
-    fun `discard step does not delete files when the repo is already on target`() {
+    fun `isolation step does not touch files when the repo is already on target`() {
         val collisionFile = writeUntrackedFile("Assets/Foo.meta")
         val onTargetGit = object : GitClient by fakeGit {
             override fun currentBranch(workDir: File): String? = "dev"
         }
+        val git = ApprovedStashFake(onTargetGit, setOf("Assets/Foo.meta"))
 
         val result = SwitchExecutor(
             projectRoot,
             createStringAppender { log += it },
-            onTargetGit,
+            git,
             collisionDiscards = mapOf("." to setOf("Assets/Foo.meta")),
         ).executeResultTest(preset, SwitchOptions())
 
         assertTrue(result.ok)
         assertTrue("file must survive when the repo is already on the target branch", collisionFile.exists())
+        assertEquals("no stash may be created when already on target", 0, git.stashPathsCalls)
     }
 
     @Test
-    fun `discard step skips deletion when the skip strategy blocks the switch`() {
+    fun `isolation step skips stashing when the skip strategy blocks the switch`() {
         val collisionFile = writeUntrackedFile("Assets/Foo.meta")
         val dirtyGit = object : GitClient by fakeGit {
             override fun isDirty(workDir: File): Boolean = true
         }
+        val git = ApprovedStashFake(dirtyGit, setOf("Assets/Foo.meta"))
 
         val result = SwitchExecutor(
             projectRoot,
             createStringAppender { log += it },
-            dirtyGit,
+            git,
             collisionDiscards = mapOf("." to setOf("Assets/Foo.meta")),
         ).executeResultTest(preset, SwitchOptions(dirty = DirtyAction.Skip))
 
         // The Skip strategy reports the dirty repo as a (non-fatal) failure, but it must
-        // never reach checkout — so the approved collision files must survive the discard step.
+        // never reach checkout — so the approved collision files must survive the isolation step.
         assertFalse("Skip strategy reports dirty work", result.ok)
         assertTrue(
             "a Skip-strategy switch never reaches checkout, so approved files must survive",
             collisionFile.exists(),
         )
+        assertEquals("no approved stash may be created under Skip", 0, git.stashPathsCalls)
     }
 
     @Test
-    fun `checkout collision retries once after discarding a regenerated file`() {
+    fun `checkout collision retries once after isolating a regenerated file`() {
         val collisionFile = writeUntrackedFile("Assets/Foo.meta")
         var checkoutCalls = 0
         val collidingGit = object : GitClient by fakeGit {
             override fun checkoutExisting(workDir: File, branch: String): GitResult {
                 checkoutCalls++
                 if (checkoutCalls == 1) {
-                    // Simulate Unity regenerating the .meta between the discard step and checkout.
+                    // Simulate Unity regenerating the .meta between the isolation step and checkout.
                     collisionFile.parentFile.mkdirs()
                     collisionFile.writeText("regenerated")
                     return GitResult(
@@ -115,19 +106,25 @@ class SwitchCollisionDiscardTest : SwitchExecutorTestBase() {
                 }
                 return GitResult("checkout", 0, "", "")
             }
-        }.revalidatingGit(setOf("Assets/Foo.meta"))
+        }
+        val git = ApprovedStashFake(collidingGit, setOf("Assets/Foo.meta"))
 
         val result = SwitchExecutor(
             projectRoot,
             createStringAppender { log += it },
-            collidingGit,
+            git,
             collisionDiscards = mapOf("." to setOf("Assets/Foo.meta")),
             steps = listOf(CheckoutStep()),
         ).executeResultTest(preset, SwitchOptions())
 
         assertTrue("retry must succeed", result.ok)
         assertEquals("checkout must be attempted exactly twice", 2, checkoutCalls)
-        assertFalse("regenerated file must be deleted before the retry", collisionFile.exists())
+        assertEquals(
+            "the pre-stash isolates round 0 and the retry re-isolates round 1",
+            2,
+            git.stashPathsCalls,
+        )
+        assertFalse("regenerated file must be gone after the retry", collisionFile.exists())
     }
 
     @Test
@@ -176,21 +173,23 @@ class SwitchCollisionDiscardTest : SwitchExecutorTestBase() {
                     fakeGit.checkoutExisting(workDir, branch)
                 }
         }
+        val git = ApprovedStashFake(forceDirtyGit, setOf("Assets/Foo.meta"))
 
         val result = SwitchExecutor(
             projectRoot,
             createStringAppender { log += it },
-            forceDirtyGit,
+            git,
             collisionDiscards = mapOf("SubA" to setOf("Assets/Foo.meta")),
         ).executeResultTest(Preset("test", "dev", mapOf("SubA" to "dev")), SwitchOptions(dirty = DirtyAction.Force))
 
-        // Under Force the submodule is never stashed, so nothing pre-deletes its approved
-        // files; the main failure disables it, and the just-in-time discard never runs.
+        // The main failure disables the submodule before any isolation, so its approved
+        // files are never touched.
         assertEquals(SwitchExecutionStatus.PARTIAL, result.status)
         assertTrue(
             "submodule was disabled by the main failure, so its approved file must survive",
             collisionFile.exists(),
         )
+        assertEquals("no approved stash may be created for a disabled submodule", 0, git.stashPathsCalls)
     }
 
     @Test
@@ -209,27 +208,28 @@ class SwitchCollisionDiscardTest : SwitchExecutorTestBase() {
                 } else {
                     fakeGit.checkoutExisting(workDir, branch)
                 }
-        }.revalidatingGit(setOf("Assets/Foo.meta"))
+        }
+        val git = ApprovedStashFake(stashDirtyGit, setOf("Assets/Foo.meta"))
 
         val result = SwitchExecutor(
             projectRoot,
             createStringAppender { log += it },
-            stashDirtyGit,
+            git,
             collisionDiscards = mapOf("SubA" to setOf("Assets/Foo.meta")),
         ).executeResultTest(Preset("test", "dev", mapOf("SubA" to "dev")), SwitchOptions(dirty = DirtyAction.Stash))
 
-        // The fix: submodule dirty handling + discard run inside SubmoduleTreeStep, after the
-        // topology gate. A failing main disables the submodule before any stash or delete, so
-        // its approved files survive even under the Stash strategy.
+        // Submodule isolation runs inside SubmoduleTreeStep, after the topology gate. A failing
+        // main disables the submodule before any stash, so its approved files survive even under Stash.
         assertEquals(SwitchExecutionStatus.PARTIAL, result.status)
         assertTrue(
-            "a submodule skipped because the main failed must never be stashed or deleted",
+            "a submodule skipped because the main failed must never have its files isolated",
             collisionFile.exists(),
         )
+        assertEquals("no approved stash may be created for a disabled submodule", 0, git.stashPathsCalls)
     }
 
     @Test
-    fun `Force submodule collision file is deleted just-in-time before its checkout`() {
+    fun `Force submodule collision file is isolated before its checkout`() {
         val submoduleDir = projectRoot.resolve("SubA").toFile()
         submoduleDir.mkdirs()
         submoduleDir.resolve(".git").mkdirs()
@@ -238,74 +238,79 @@ class SwitchCollisionDiscardTest : SwitchExecutorTestBase() {
         collisionFile.writeText("local-untracked")
         val dirtyGit = object : GitClient by fakeGit {
             override fun isDirty(workDir: File): Boolean = workDir.name == "SubA"
-        }.revalidatingGit(setOf("Assets/Foo.meta"))
+        }
+        val git = ApprovedStashFake(dirtyGit, setOf("Assets/Foo.meta"))
 
         val result = SwitchExecutor(
             projectRoot,
             createStringAppender { log += it },
-            dirtyGit,
+            git,
             collisionDiscards = mapOf("SubA" to setOf("Assets/Foo.meta")),
         ).executeResultTest(Preset("test", "dev", mapOf("SubA" to "dev")), SwitchOptions(dirty = DirtyAction.Force))
 
-        // Under Force the submodule is never stashed, so nothing pre-deletes; the just-in-time
-        // discard in BranchCheckout deletes the approved file right before the checkout write.
+        // Under Force the submodule is never WIP-stashed, but its approved collision files are
+        // still isolated before its checkout and dropped on success.
         assertTrue("switch should succeed", result.ok)
-        assertFalse("the approved file must be deleted before the submodule checkout", collisionFile.exists())
+        assertEquals("the submodule's approved files must be isolated", 1, git.stashPathsCalls)
+        assertEquals("a successful submodule switch drops the approved stash", 1, git.dropCalls)
+        assertFalse("the approved file must be gone after the submodule checkout", collisionFile.exists())
     }
 
     @Test
-    fun `dirty Stash repo discards approved files before the stash sweeps the worktree`() {
+    fun `dirty Stash repo isolates approved files before the WIP stash sweeps the worktree`() {
         val collisionFile = writeUntrackedFile("Assets/Foo.meta")
-        var observedAtStash = true
+        var observedAtWipStash = true
         val dirtyGit = object : GitClient by fakeGit {
             override fun isDirty(workDir: File): Boolean = true
             override fun stash(workDir: File, message: String): GitResult {
-                observedAtStash = collisionFile.exists()
+                observedAtWipStash = collisionFile.exists()
                 return GitResult("stash", 0, "", "")
             }
-        }.revalidatingGit(setOf("Assets/Foo.meta"))
+        }
+        val git = ApprovedStashFake(dirtyGit, setOf("Assets/Foo.meta"))
 
         val result = SwitchExecutor(
             projectRoot,
             createStringAppender { log += it },
-            dirtyGit,
+            git,
             collisionDiscards = mapOf("." to setOf("Assets/Foo.meta")),
         ).executeResultTest(preset, SwitchOptions(dirty = DirtyAction.Stash))
 
-        // The discard must run before `git stash push -u` so the approved collision
-        // files are not swept into the WIP backup (they would otherwise re-collide with
-        // the freshly checked-out tracked versions on restore).
+        // Isolation must run before `git stash push -u` so the approved collision files are
+        // not swept into the WIP backup (they would otherwise re-collide with the freshly
+        // checked-out tracked versions on restore).
         assertTrue(result.ok)
-        assertFalse("the approved file must be gone before git stash runs", observedAtStash)
+        assertFalse("the approved file must be gone before git stash runs", observedAtWipStash)
         assertFalse(collisionFile.exists())
     }
 
     @Test
-    fun `dirty Stash submodule discards approved files before its stash inside the submodule flow`() {
+    fun `dirty Stash submodule isolates approved files before its WIP stash inside the submodule flow`() {
         val submoduleDir = projectRoot.resolve("SubA").toFile()
         submoduleDir.mkdirs()
         submoduleDir.resolve(".git").mkdirs()
         val collisionFile = submoduleDir.resolve("Assets/Foo.meta")
         collisionFile.parentFile.mkdirs()
         collisionFile.writeText("local-untracked")
-        var observedAtStash = true
+        var observedAtWipStash = true
         val dirtyGit = object : GitClient by fakeGit {
             override fun isDirty(workDir: File): Boolean = workDir.name == "SubA"
             override fun stash(workDir: File, message: String): GitResult {
-                if (workDir.name == "SubA") observedAtStash = collisionFile.exists()
+                if (workDir.name == "SubA") observedAtWipStash = collisionFile.exists()
                 return GitResult("stash", 0, "", "")
             }
-        }.revalidatingGit(setOf("Assets/Foo.meta"))
+        }
+        val git = ApprovedStashFake(dirtyGit, setOf("Assets/Foo.meta"))
 
         val result = SwitchExecutor(
             projectRoot,
             createStringAppender { log += it },
-            dirtyGit,
+            git,
             collisionDiscards = mapOf("SubA" to setOf("Assets/Foo.meta")),
         ).executeResultTest(Preset("test", "dev", mapOf("SubA" to "dev")), SwitchOptions(dirty = DirtyAction.Stash))
 
         assertTrue("switch should succeed", result.ok)
-        assertFalse("the submodule's approved file must be gone before its stash runs", observedAtStash)
+        assertFalse("the submodule's approved file must be gone before its WIP stash runs", observedAtWipStash)
         assertFalse(collisionFile.exists())
     }
 }

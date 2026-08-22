@@ -66,7 +66,7 @@ class SwitchExecutorRollbackTest : SwitchExecutorTestBase() {
                 "SubA" to CheckpointEntry("sub-sha", null, "sub-repository"),
             ),
             state = SwitchState()
-                .withTrackedStash("SubA", "before -> dev", "stash-oid")
+                .withTrackedStash("SubA", StashPurpose.WIP_RESTORE_AFTER_SWITCH, "before -> dev", "stash-oid")
                 .withInitializedSubmodule("SubB"),
         )
 
@@ -301,7 +301,7 @@ class SwitchExecutorRollbackTest : SwitchExecutorTestBase() {
                 "." to CheckpointEntry("main-sha", "main"),
                 "SubA" to CheckpointEntry("sub-sha", "main"),
             ),
-            state = SwitchState().withTrackedStash("SubA", "before -> dev", "stash-oid"),
+            state = SwitchState().withTrackedStash("SubA", StashPurpose.WIP_RESTORE_AFTER_SWITCH, "before -> dev", "stash-oid"),
         )
 
         val outcome = recovery(recoveryGit).recover(execution)

@@ -60,6 +60,62 @@ abstract class SwitchExecutorTestBase {
     protected val projectRoot = java.nio.file.Files.createTempDirectory("test-executor")
     protected val preset = Preset("test", "dev", emptyMap())
 
+    /**
+     * Wraps a base git client so [collisions] are reported as untracked + matching the
+     * target tree, and simulates the approved-stash lifecycle against real files: `stashPaths`
+     * removes the still-present collision files and records their oid; `stashApply` restores
+     * the files of exactly that oid; `stashDrop` records the drop. Message lookups only match
+     * approved-discard messages, so the WIP-stash flow keeps its own fallback.
+     */
+    protected class ApprovedStashFake(
+        private val base: GitClient,
+        private val collisions: Set<String>,
+    ) : GitClient by base {
+        var stashPathsCalls = 0
+        var dropCalls = 0
+        var applyCalls = 0
+        var isolated = mutableSetOf<String>()
+        private val oidFiles = mutableMapOf<String, Set<String>>()
+
+        override fun untrackedFiles(workDir: File): List<String> = collisions.toList()
+
+        override fun targetBranchMatches(workDir: File, branch: String, paths: List<String>): List<String> =
+            paths.filter { it in collisions }
+
+        override fun stashPaths(workDir: File, message: String, paths: Collection<String>): GitResult {
+            stashPathsCalls++
+            val files = mutableSetOf<String>()
+            for (path in paths) {
+                val file = File(workDir, path)
+                if (file.isFile) {
+                    file.delete()
+                    files += path
+                    isolated += path
+                }
+            }
+            if (files.isNotEmpty()) oidFiles["approved-oid"] = files
+            return GitResult("stash paths", 0, "", "")
+        }
+
+        override fun stashOidByMessage(workDir: File, messagePrefix: String): String? =
+            if (messagePrefix.startsWith(APPROVED_DISCARD_MESSAGE_PREFIX) && "approved-oid" in oidFiles) "approved-oid" else null
+
+        override fun stashApply(workDir: File, oid: String): GitResult {
+            applyCalls++
+            for (path in oidFiles[oid].orEmpty()) {
+                val file = File(workDir, path)
+                file.parentFile.mkdirs()
+                file.writeText("restored")
+            }
+            return GitResult("stash apply", 0, "", "")
+        }
+
+        override fun stashDrop(workDir: File, oid: String): GitResult {
+            dropCalls++
+            return GitResult("stash drop", 0, "", "")
+        }
+    }
+
     protected fun recovery(git: GitClient = fakeGit) =
         SwitchRecoveryExecutor(projectRoot, createStringAppender { log += it }, git)
 

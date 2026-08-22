@@ -246,7 +246,7 @@ class SwitchRunner(
         (execution.status == SwitchExecutionStatus.SUCCESS ||
             execution.status == SwitchExecutionStatus.PARTIAL) &&
             !execution.stashRestoreInterrupted &&
-            execution.state.stashesSnapshot().any { !it.value.restoreAttempted }
+            execution.state.stashesSnapshot().any { !it.restoreAttempted }
 
     /**
      * One stash-only retry for a SUCCESS/PARTIAL switch: restores the entries the inline

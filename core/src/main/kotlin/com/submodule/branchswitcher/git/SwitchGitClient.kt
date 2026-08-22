@@ -24,6 +24,19 @@ interface SwitchGitClient :
     override fun repositoryIdentity(workDir: File): RepositoryIdentity?
     /** Stashes all changes including untracked files (-u). */
     fun stash(workDir: File, message: String): GitResult
+
+    /**
+     * Stashes only the given untracked paths into one path-scoped stash
+     * (`git stash push -u -m <message> -- <paths>`), isolating approved collision files
+     * without sweeping unrelated untracked work into the WIP backup. A non-zero exit
+     * ("no local changes to save" when a listed path is already gone or tracked) is a
+     * normal negative — callers re-validate the paths rather than treating it as a
+     * discard. Defaults to failing so a client without the capability cannot silently
+     * skip the isolation.
+     */
+    fun stashPaths(workDir: File, message: String, paths: Collection<String>): GitResult =
+        GitResult("stash paths", 1, "", "stashPaths not implemented; approved files not isolated")
+
     /** Returns the immutable object id currently referenced by refs/stash. */
     fun stashTopOid(workDir: File): String?
 

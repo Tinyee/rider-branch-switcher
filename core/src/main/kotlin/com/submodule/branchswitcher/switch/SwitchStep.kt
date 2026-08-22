@@ -28,65 +28,92 @@ internal fun List<OperationIssue>.toStepResult(): StepResult =
     if (isEmpty()) StepResult.Success else StepResult.Partial(this)
 
 /**
+ * Why a stash was created, so recovery can decide apply (restore the work) vs drop
+ * (authorize the discard) independently for each entry.
+ */
+enum class StashPurpose {
+    /** The dirty tree's WIP backup; always applied back, then dropped on success. */
+    WIP_RESTORE_AFTER_SWITCH,
+    /** An approved collision file isolated for discard; dropped on a successful switch of its repo, applied back otherwise. */
+    APPROVED_DISCARD,
+}
+
+/**
  * Immutable record of side effects completed by earlier pipeline steps.
  *
  * Recovery depends on this state after exceptions and cancellation, so a step
  * must return a new instance immediately after each successful side effect.
  */
 data class TrackedStash(
+    val id: String,
+    val repositoryPath: String,
+    val purpose: StashPurpose,
     val message: String,
     val oid: String?,
     val restoreAttempted: Boolean = false,
+    val creationOrder: Int,
 )
 
 class SwitchState private constructor(
-    private val stashedPaths: Map<String, TrackedStash>,
+    private val trackedStashes: List<TrackedStash>,
     private val skippedPaths: Set<String>,
     private val successfulCheckouts: Set<String>,
     private val initializedSubmodules: Set<String>,
     private val retainedStashBackups: Set<String>,
-    private val frozenTargetShas: Map<String, String>,
 ) {
-    constructor() : this(emptyMap(), emptySet(), emptySet(), emptySet(), emptySet(), emptyMap())
-
-    /**
-     * Records the target revision [branch] resolved to at discard time, so a later checkout
-     * of the same target can verify HEAD still matches (collision revalidation and checkout
-     * then provably operate on the same tree).
-     */
-    fun withFrozenTargetSha(path: String, sha: String): SwitchState =
-        copy(frozenTargetShas = frozenTargetShas + (path to sha))
-
-    fun frozenTargetSha(path: String): String? = frozenTargetShas[path]
+    constructor() : this(emptyList(), emptySet(), emptySet(), emptySet(), emptySet())
 
     fun withSkipped(path: String): SwitchState =
         copy(skippedPaths = skippedPaths + path)
 
     fun isSkipped(path: String): Boolean = path in skippedPaths
 
-    fun withTrackedStash(path: String, message: String, oid: String?): SwitchState =
-        copy(stashedPaths = stashedPaths + (path to TrackedStash(message, oid)))
+    /**
+     * Records a newly created stash. A repository may hold several stashes (an approved
+     * stash, then a WIP stash), so entries are keyed by [TrackedStash.id], never by
+     * repository path. [creationOrder] is assigned in creation order; recovery restores in
+     * reverse order (WIP before approved).
+     */
+    fun withTrackedStash(path: String, purpose: StashPurpose, message: String, oid: String?): SwitchState {
+        val creationOrder = (trackedStashes.maxOfOrNull { it.creationOrder } ?: -1) + 1
+        return copy(
+            trackedStashes = trackedStashes + TrackedStash(
+                id = "stash-$creationOrder",
+                repositoryPath = path,
+                purpose = purpose,
+                message = message,
+                oid = oid,
+                creationOrder = creationOrder,
+            ),
+        )
+    }
 
-    fun withRestoredStashBackup(path: String): SwitchState =
-        copy(stashedPaths = stashedPaths - path, retainedStashBackups = retainedStashBackups + path)
+    /** Retains [id] as a recovery backup after a failed drop; the entry leaves tracking. */
+    fun withRestoredStashBackup(id: String): SwitchState =
+        copy(
+            trackedStashes = trackedStashes.filterNot { it.id == id },
+            retainedStashBackups = retainedStashBackups + id,
+        )
 
     /** Removes a successfully applied-and-dropped stash; no recovery backup is retained. */
-    fun withStashRestored(path: String): SwitchState =
-        copy(stashedPaths = stashedPaths - path)
+    fun withStashRestored(id: String): SwitchState =
+        copy(trackedStashes = trackedStashes.filterNot { it.id == id })
 
-    fun withStashRestoreAttempted(path: String): SwitchState {
-        val stash = stashedPaths[path] ?: return this
-        return copy(stashedPaths = stashedPaths + (path to stash.copy(restoreAttempted = true)))
-    }
+    fun withStashRestoreAttempted(id: String): SwitchState =
+        copy(trackedStashes = trackedStashes.map { if (it.id == id) it.copy(restoreAttempted = true) else it })
 
-    fun withStashRestoreRetryable(path: String): SwitchState {
-        val stash = stashedPaths[path] ?: return this
-        return copy(stashedPaths = stashedPaths + (path to stash.copy(restoreAttempted = false)))
-    }
+    fun withStashRestoreRetryable(id: String): SwitchState =
+        copy(trackedStashes = trackedStashes.map { if (it.id == id) it.copy(restoreAttempted = false) else it })
 
-    fun trackedStash(path: String): TrackedStash? = stashedPaths[path]
+    /** The first tracked stash for [path] (callers with several stashes per repo use [stashesSnapshot]). */
+    fun trackedStash(path: String): TrackedStash? = trackedStashes.firstOrNull { it.repositoryPath == path }
 
-    fun stashesSnapshot(): Map<String, TrackedStash> = stashedPaths.toMap()
+    /** All tracked stashes, in creation order. */
+    fun stashesSnapshot(): List<TrackedStash> = trackedStashes.toList()
+
+    /** The next approved-discard round for [path] (the number of approved stashes already recorded for it). */
+    fun approvedStashRound(path: String): Int =
+        trackedStashes.count { it.purpose == StashPurpose.APPROVED_DISCARD && it.repositoryPath == path }
 
     fun withSuccessfulCheckout(path: String): SwitchState =
         copy(successfulCheckouts = successfulCheckouts + path)
@@ -101,19 +128,17 @@ class SwitchState private constructor(
     fun retainedStashBackupsSnapshot(): Set<String> = retainedStashBackups.toSet()
 
     private fun copy(
-        stashedPaths: Map<String, TrackedStash> = this.stashedPaths,
+        trackedStashes: List<TrackedStash> = this.trackedStashes,
         skippedPaths: Set<String> = this.skippedPaths,
         successfulCheckouts: Set<String> = this.successfulCheckouts,
         initializedSubmodules: Set<String> = this.initializedSubmodules,
         retainedStashBackups: Set<String> = this.retainedStashBackups,
-        frozenTargetShas: Map<String, String> = this.frozenTargetShas,
     ): SwitchState = SwitchState(
-        stashedPaths,
+        trackedStashes,
         skippedPaths,
         successfulCheckouts,
         initializedSubmodules,
         retainedStashBackups,
-        frozenTargetShas,
     )
 }
 

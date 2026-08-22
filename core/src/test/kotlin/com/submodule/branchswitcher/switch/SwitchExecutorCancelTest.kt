@@ -105,7 +105,7 @@ class SwitchExecutorCancelTest : SwitchExecutorTestBase() {
         )
 
         assertTrue(result.cancelled)
-        assertEquals(setOf("."), result.state.stashesSnapshot().keys)
+        assertEquals(setOf("."), result.state.stashesSnapshot().map { it.repositoryPath }.toSet())
         assertEquals(1, cancelCalls)
     }
 
@@ -140,7 +140,7 @@ class SwitchExecutorCancelTest : SwitchExecutorTestBase() {
         // first would dirty the trees and block the recovery's clean-tree requirement.
         assertEquals(SwitchExecutionStatus.FAILED, result.status)
         assertEquals(0, stashApplyCalls)
-        assertEquals("failed switches must keep stashes tracked for recovery", setOf("."), result.state.stashesSnapshot().keys)
+        assertEquals("failed switches must keep stashes tracked for recovery", setOf("."), result.state.stashesSnapshot().map { it.repositoryPath }.toSet())
         assertTrue(result.state.retainedStashBackupsSnapshot().isEmpty())
 
         // Recovery rolls the repositories back first, then restores the WIP.
@@ -175,7 +175,7 @@ class SwitchExecutorCancelTest : SwitchExecutorTestBase() {
 
         assertEquals(SwitchExecutionStatus.FAILED, result.status)
         assertNotNull(result.checkpoint)
-        assertTrue("failed switch keeps the stash tracked for recovery", setOf(".") == result.state.stashesSnapshot().keys)
+        assertTrue("failed switch keeps the stash tracked for recovery", setOf(".") == result.state.stashesSnapshot().map { it.repositoryPath }.toSet())
         assertTrue(result.state.retainedStashBackupsSnapshot().isEmpty())
         val issue = result.issues.single()
         assertEquals(OperationStage.CHECKOUT, issue.stage)

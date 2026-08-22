@@ -50,8 +50,6 @@ enum class OperationIssueCode {
     RECOVERY_FAILED,
     STEP_FAILED,
     UNTRACKED_DISCARD_FAILED,
-    /** The target ref moved between the frozen-SHA revalidation and the checkout that consumed it. */
-    HEAD_MOVED,
 }
 
 enum class OperationIssueSeverity { WARNING, ERROR }

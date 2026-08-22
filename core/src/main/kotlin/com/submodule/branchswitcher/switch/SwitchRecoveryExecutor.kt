@@ -78,8 +78,8 @@ class SwitchRecoveryExecutor(
             repositories = checkpoint.orEmpty().map { (path, entry) ->
                 RepositoryRecoveryAction(path, entry.sha, entry.branch, entry.repositoryId)
             },
-            stashes = result.state.stashesSnapshot().map { (path, stash) ->
-                StashRecoveryAction(path, stash.message, stash.oid)
+            stashes = result.state.stashesSnapshot().map { stash ->
+                StashRecoveryAction(stash.repositoryPath, stash.message, stash.oid)
             },
             retainedInitializedSubmodules = result.state.initializedSubmodulesSnapshot(),
             issues = planIssues,
@@ -97,6 +97,10 @@ class SwitchRecoveryExecutor(
         state,
         plan.stashes.mapTo(linkedSetOf(), StashRecoveryAction::repositoryPath),
         cancelled = cancelled,
+        // Recovery rolled every repository back, so no repo reached the target: every
+        // approved stash must be applied back (the file returns to its original path),
+        // never dropped as authorized.
+        discardApprovedFor = { false },
     )
 
     /** Plans once, then executes repository rollback and stash restoration independently. */
