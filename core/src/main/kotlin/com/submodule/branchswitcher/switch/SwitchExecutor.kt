@@ -1,12 +1,14 @@
 package com.submodule.branchswitcher.switch
 
 import com.submodule.branchswitcher.git.GitQueryException
+import com.submodule.branchswitcher.git.IndexLockBlockedException
 import com.submodule.branchswitcher.git.SwitchGitClient
 import com.submodule.branchswitcher.log.AppLogger
 import com.submodule.branchswitcher.log.logFailure
 import com.submodule.branchswitcher.model.Preset
 import com.submodule.branchswitcher.model.RepoTarget
 import com.submodule.branchswitcher.model.ResolvedSwitchRequest
+import java.io.File
 import java.nio.file.Path
 
 data class CheckpointEntry(
@@ -78,6 +80,14 @@ class SwitchExecutor @JvmOverloads constructor(
     private val collisionDiscards: Map<String, Set<String>> = emptyMap(),
 ) {
     private val checkpointRecorder = SwitchCheckpointRecorder(projectRoot, log, git)
+
+    /** Canonical repository directory -> preset target path (".", "SubA", ...), set per execute. */
+    private var targetPaths: Map<String, String> = emptyMap()
+
+    /** Maps a repository directory from a git-layer exception back to its preset target path. */
+    private fun repositoryPathFor(workDir: File): String =
+        targetPaths[runCatching { workDir.canonicalPath }.getOrElse { workDir.path }]
+            ?: workDir.path
 
     /**
      * The fixed production pipeline. The discard step is always present at this exact
@@ -220,7 +230,7 @@ class SwitchExecutor @JvmOverloads constructor(
                     issues += OperationIssue(
                         stage = step.stage,
                         code = OperationIssueCode.INDEX_LOCK_BLOCKING,
-                        repositoryPath = lock.repositoryPath,
+                        repositoryPath = repositoryPathFor(lock.workDir),
                         severity = OperationIssueSeverity.ERROR,
                         diagnostic = indexLockBlockedDiagnostic(lock.lockPath),
                         lockPath = lock.lockPath,
@@ -334,19 +344,15 @@ class SwitchExecutor @JvmOverloads constructor(
         options: com.submodule.branchswitcher.model.SwitchOptions,
         checkpoint: Map<String, CheckpointEntry>,
     ): SwitchContext {
-        val targetPaths = preset.targets().associate { target ->
+        targetPaths = preset.targets().associate { target ->
             val directory = resolveGitDir(projectRoot, target.path)
             directory.canonicalPath to target.path
         }
-        val guardedGit = WriteGuardGitClient(
-            git,
-            repositoryPath = { directory -> targetPaths[directory.canonicalPath] ?: directory.path },
-        )
         return SwitchContext(
             projectRoot = projectRoot,
             preset = preset,
             options = options,
-            git = guardedGit,
+            git = git,
             log = log,
             operationControl = operationControl,
             progressHandle = progressHandle,

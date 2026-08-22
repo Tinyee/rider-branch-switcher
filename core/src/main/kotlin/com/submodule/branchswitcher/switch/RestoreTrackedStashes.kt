@@ -1,5 +1,6 @@
 package com.submodule.branchswitcher.switch
 
+import com.submodule.branchswitcher.git.IndexLockBlockedException
 import com.submodule.branchswitcher.git.SwitchGitClient
 import com.submodule.branchswitcher.git.isTermination
 import com.submodule.branchswitcher.log.AppLogger
@@ -78,7 +79,7 @@ internal fun restoreTrackedStashes(
         issues += OperationIssue(
             stage = OperationStage.STASH_RESTORE,
             code = OperationIssueCode.INDEX_LOCK_BLOCKING,
-            repositoryPath = lock.repositoryPath,
+            repositoryPath = repositoryPathFor(projectRoot, e.latestState, lock.workDir),
             severity = OperationIssueSeverity.ERROR,
             diagnostic = indexLockBlockedDiagnostic(lock.lockPath),
             lockPath = lock.lockPath,
@@ -88,6 +89,21 @@ internal fun restoreTrackedStashes(
         throw SwitchStepException(nextState, e)
     }
     return StashRestoreResult(nextState, issues, interrupted = interrupted)
+}
+
+/**
+ * Maps a locked repository directory back to the tracked stash path it belongs to, for the
+ * issue's display path. Falls back to "." when the work directory is not one of the tracked
+ * repositories (a stale lock on a repo with no tracked stash).
+ */
+private fun repositoryPathFor(projectRoot: Path, state: SwitchState, workDir: File): String {
+    val canonical = runCatching { workDir.canonicalFile }.getOrNull() ?: workDir
+    return state.stashesSnapshot()
+        .map(TrackedStash::repositoryPath)
+        .firstOrNull { path ->
+            runCatching { resolveGitDir(projectRoot, path).canonicalFile }.getOrNull() == canonical
+        }
+        ?: "."
 }
 
 /**

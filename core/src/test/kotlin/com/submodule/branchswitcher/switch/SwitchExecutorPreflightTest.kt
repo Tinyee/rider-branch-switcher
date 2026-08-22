@@ -5,6 +5,7 @@ import com.submodule.branchswitcher.git.GitClient
 import com.submodule.branchswitcher.git.GitFailureKind
 import com.submodule.branchswitcher.git.GitQueryException
 import com.submodule.branchswitcher.git.GitResult
+import com.submodule.branchswitcher.git.IndexLockBlockedException
 import com.submodule.branchswitcher.git.RepositoryIdentity
 import com.submodule.branchswitcher.log.createStringAppender
 import com.submodule.branchswitcher.model.DirtyAction
@@ -150,7 +151,12 @@ class SwitchExecutorPreflightTest : SwitchExecutorTestBase() {
                 return if (lockChecks == 1) null else "/repo/.git/index.lock"
             }
 
+            // The git-layer index-mutation funnel re-checks the lock immediately before the
+            // write and throws when a lock appeared since the preflight; the executor maps
+            // that to a structured INDEX_LOCK_BLOCKING failure.
             override fun checkoutExisting(workDir: File, branch: String): GitResult {
+                val lock = indexLockFile(workDir)
+                if (lock != null) throw IndexLockBlockedException(workDir, lock)
                 checkoutCalls++
                 return GitResult("checkout", 0, "", "")
             }
@@ -163,7 +169,7 @@ class SwitchExecutorPreflightTest : SwitchExecutorTestBase() {
         )
 
         assertEquals(SwitchExecutionStatus.FAILED, result.status)
-        assertEquals(0, checkoutCalls)
+        assertEquals("the funnel must block the write behind a raced lock", 0, checkoutCalls)
         assertEquals(OperationIssueCode.INDEX_LOCK_BLOCKING, result.issues.single().code)
         assertTrue(lockChecks >= 2)
     }

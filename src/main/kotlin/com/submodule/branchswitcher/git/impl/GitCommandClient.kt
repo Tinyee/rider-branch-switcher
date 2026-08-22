@@ -9,6 +9,7 @@ import com.submodule.branchswitcher.git.GitRepositoryInspection
 import com.submodule.branchswitcher.git.GitResult
 import com.submodule.branchswitcher.git.GitRuntimeInfo
 import com.submodule.branchswitcher.git.HeadAndBranch
+import com.submodule.branchswitcher.git.IndexLockBlockedException
 import com.submodule.branchswitcher.git.RepositoryIdentity
 import com.submodule.branchswitcher.git.RepositoryStateBatchGitClient
 import com.submodule.branchswitcher.git.RepositoryStateBatchInspection
@@ -62,6 +63,24 @@ internal class GitCommandClient(
 
     private fun run(workDir: File, args: List<String>): GitResult =
         processRunner.run(workDir, cancellation, args)
+
+    /**
+     * Runs a command that mutates the index/worktree (Spec 2 index gate), re-checking for a
+     * stale `index.lock` immediately before the write so a lock appearing since the last
+     * check surfaces as [IndexLockBlockedException] instead of a mystery git failure. Reads
+     * and ref-only writes go through [run] and stay ungated.
+     */
+    private fun runIndexMutation(workDir: File, vararg args: String): GitResult {
+        val lock = indexLockFile(workDir)
+        if (lock != null) throw IndexLockBlockedException(workDir, lock)
+        return run(workDir, *args)
+    }
+
+    private fun runIndexMutation(workDir: File, args: List<String>): GitResult {
+        val lock = indexLockFile(workDir)
+        if (lock != null) throw IndexLockBlockedException(workDir, lock)
+        return run(workDir, args)
+    }
 
     /**
      * Converts a failed read into the exception to throw. A cancelled/interrupted git read is
@@ -240,11 +259,11 @@ internal class GitCommandClient(
         )
 
     override fun stash(workDir: File, message: String): GitResult =
-        run(workDir, "stash", "push", "-u", "-m", message)
+        runIndexMutation(workDir, "stash", "push", "-u", "-m", message)
 
     override fun stashPaths(workDir: File, message: String, paths: Collection<String>): GitResult {
         if (paths.isEmpty()) return GitResult("stash paths", 0, "", "")
-        return run(workDir, listOf("stash", "push", "-u", "-m", message, "--") + paths)
+        return runIndexMutation(workDir, listOf("stash", "push", "-u", "-m", message, "--") + paths)
     }
 
     override fun fetch(workDir: File): GitResult = run(workDir, "fetch", "--prune")
@@ -299,22 +318,22 @@ internal class GitCommandClient(
     }
 
     override fun checkoutExisting(workDir: File, branch: String): GitResult =
-        run(workDir, "checkout", branch)
+        runIndexMutation(workDir, "checkout", branch)
 
     override fun resetHard(workDir: File, revision: String): GitResult =
-        run(workDir, "reset", "--hard", revision)
+        runIndexMutation(workDir, "reset", "--hard", revision)
 
     override fun checkoutFromRemote(workDir: File, branch: String): GitResult =
-        run(workDir, "checkout", "-b", branch, "${remoteName(workDir)}/$branch")
+        runIndexMutation(workDir, "checkout", "-b", branch, "${remoteName(workDir)}/$branch")
 
     override fun pullFf(workDir: File, branch: String): GitResult =
-        run(workDir, "pull", "--ff-only", remoteName(workDir), branch)
+        runIndexMutation(workDir, "pull", "--ff-only", remoteName(workDir), branch)
 
     override fun submoduleSync(gitRoot: File): GitResult =
         run(gitRoot, "submodule", "sync", "--recursive")
 
     override fun submoduleInitPath(gitRoot: File, path: String): GitResult =
-        run(gitRoot, "submodule", "update", "--init", "--recursive", "--", path)
+        runIndexMutation(gitRoot, "submodule", "update", "--init", "--recursive", "--", path)
 
     override fun registeredSubmodules(gitRoot: File): List<SubmoduleRegistration> =
         listSubmoduleRegistrations(gitRoot)
@@ -479,7 +498,7 @@ internal class GitCommandClient(
     }
 
     override fun stashApply(workDir: File, oid: String): GitResult =
-        run(workDir, "stash", "apply", oid)
+        runIndexMutation(workDir, "stash", "apply", oid)
 
     override fun stashDrop(workDir: File, oid: String): GitResult {
         // `git stash drop` requires a stash@{n} selector — a bare OID is rejected with
@@ -511,7 +530,7 @@ internal class GitCommandClient(
     }
 
     override fun checkoutNewBranch(workDir: File, branch: String): GitResult =
-        run(workDir, "checkout", "-b", branch)
+        runIndexMutation(workDir, "checkout", "-b", branch)
 
     override fun deleteBranch(workDir: File, branch: String): GitResult =
         run(workDir, "branch", "-d", branch)

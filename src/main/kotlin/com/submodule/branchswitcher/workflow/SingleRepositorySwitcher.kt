@@ -2,6 +2,7 @@ package com.submodule.branchswitcher.workflow
 
 import com.submodule.branchswitcher.git.GitOperationSession
 import com.submodule.branchswitcher.git.GitResult
+import com.submodule.branchswitcher.git.IndexLockBlockedException
 import com.submodule.branchswitcher.log.AppLogger
 import com.submodule.branchswitcher.log.logFailure
 import com.submodule.branchswitcher.log.newOperationId
@@ -188,11 +189,11 @@ class SingleRepositorySwitcher(
         blockingIndexLock(root, path, operation, operationLog)?.let { return it }
         return when {
             operation.localBranchExists(directory, target) ->
-                switchWithLockGuard(root, path, operation, operationLog) {
+                switchWithLockGuard(path, operationLog) {
                     operation.checkoutExisting(directory, target)
                 }
             operation.remoteBranchExists(directory, target) ->
-                switchWithLockGuard(root, path, operation, operationLog) {
+                switchWithLockGuard(path, operationLog) {
                     operation.checkoutFromRemote(directory, target)
                 }
             else -> {
@@ -219,19 +220,21 @@ class SingleRepositorySwitcher(
     }
 
     /**
-     * Re-checks the index lock immediately before the checkout write, closing the
-     * gap between the earlier gate and this command (local/remote existence probes
-     * run in between and may take milliseconds).
+     * Runs the checkout write; the git layer's index-mutation funnel re-checks the lock
+     * immediately before the command, so a lock appearing since the earlier gate surfaces
+     * here as a structured lock block instead of a mystery git failure.
      */
     private fun switchWithLockGuard(
-        root: Path,
         path: String,
-        operation: GitOperationSession,
         operationLog: AppLogger,
         action: () -> GitResult,
-    ): SingleRepositorySwitchResult {
-        blockingIndexLock(root, path, operation, operationLog)?.let { return it }
-        return action().toSwitchResult()
+    ): SingleRepositorySwitchResult = try {
+        action().toSwitchResult()
+    } catch (e: IndexLockBlockedException) {
+        operationLog.error(
+            "stale index.lock blocks checkout of $path - delete it and retry: ${e.lockPath}",
+        )
+        SingleRepositorySwitchResult.LockBlocked(e.lockPath)
     }
 
     private fun GitResult.toSwitchResult(): SingleRepositorySwitchResult =

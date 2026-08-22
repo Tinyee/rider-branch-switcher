@@ -3,6 +3,7 @@ package com.submodule.branchswitcher.switch
 import com.submodule.branchswitcher.git.GitClient
 import com.submodule.branchswitcher.git.GitQueryException
 import com.submodule.branchswitcher.git.GitResult
+import com.submodule.branchswitcher.git.IndexLockBlockedException
 import com.submodule.branchswitcher.git.RepositoryIdentity
 import com.submodule.branchswitcher.git.SubmoduleRegistration
 import com.submodule.branchswitcher.log.createStringAppender
@@ -724,7 +725,7 @@ class SwitchStepTest {
     fun `stash restore guard lock remains retryable when guard throws`() {
         val guardedGit = object : GitClient by fakeGit {
             override fun stashApply(workDir: File, oid: String): GitResult =
-                throw IndexLockBlockedException(".", "/repo/.git/index.lock")
+                throw IndexLockBlockedException(projectRoot.toFile(), "/repo/.git/index.lock")
         }
         val state = SwitchState().withTrackedStash(".", StashPurpose.WIP_RESTORE_AFTER_SWITCH, "before -> dev", "stash-oid")
 

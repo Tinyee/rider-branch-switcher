@@ -1,6 +1,7 @@
 package com.submodule.branchswitcher.switch
 
 import com.submodule.branchswitcher.git.DeriveGitClient
+import com.submodule.branchswitcher.git.IndexLockBlockedException
 import com.submodule.branchswitcher.git.resolveHeadAndBranch
 import com.submodule.branchswitcher.log.AppLogger
 import com.submodule.branchswitcher.log.logFailure
@@ -317,6 +318,16 @@ class DeriveBranchExecutor(
                     )
                     log.warn("[derive] $repositoryLabel: FAILED - $diagnostic")
                 }
+            } catch (e: IndexLockBlockedException) {
+                // A lock appearing between the pre-probe and the write surfaces from the
+                // git funnel; map it to the structured lock block, not a generic failure.
+                outcomes += target.outcome(
+                    DeriveRepositoryStatus.FAILED,
+                    OperationIssueCode.INDEX_LOCK_BLOCKING,
+                    indexLockBlockedDiagnostic(e.lockPath),
+                    OperationStage.DERIVE,
+                    lockPath = e.lockPath,
+                )
             } catch (e: OperationCancelledException) {
                 throw e
             } catch (e: Exception) {

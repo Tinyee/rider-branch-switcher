@@ -3,6 +3,7 @@ package com.submodule.branchswitcher.workflow
 import com.submodule.branchswitcher.git.GitOperationProvider
 import com.submodule.branchswitcher.git.GitOperationSession
 import com.submodule.branchswitcher.git.GitResult
+import com.submodule.branchswitcher.git.IndexLockBlockedException
 import com.submodule.branchswitcher.git.RepositoryIdentity
 import com.submodule.branchswitcher.git.SubmoduleRegistration
 import com.submodule.branchswitcher.log.createStringAppender
@@ -292,30 +293,37 @@ class SingleRepositorySwitcherTest {
                 GitOperationSession::class.java.classLoader,
                 arrayOf(GitOperationSession::class.java),
             ) { _, method, arguments ->
+                fun workDir() = arguments!!.first() as java.io.File
+                // Simulates the git-layer index-mutation funnel: the pre-mutation check lets
+                // the first query pass (lockAppearsAfterGate), the funnel's immediate re-check
+                // before the write sees the lock and throws.
+                fun currentLock(): String? {
+                    lockQueries++
+                    return when {
+                        !lockAppearsAfterGate -> indexLockPath
+                        lockQueries == 1 -> null
+                        else -> indexLockPath
+                    }
+                }
                 when (method.name) {
                     "close", "cancel" -> null
                     "registeredSubmodules" -> (registeredPaths ?: setOf("module")).map { path ->
                         SubmoduleRegistration(path, path.substringAfterLast('/'), ".")
                     }
-                    "repositoryIdentity" -> identity ?: defaultIdentity(arguments?.firstOrNull() as java.io.File)
+                    "repositoryIdentity" -> identity ?: defaultIdentity(workDir())
                     "isGitRepo" -> true
                     "isDirty" -> dirty
                     "currentBranch" -> branch
-                    "indexLockFile" -> {
-                        lockQueries++
-                        when {
-                            !lockAppearsAfterGate -> indexLockPath
-                            lockQueries == 1 -> null // first gate check passes
-                            else -> indexLockPath // re-check before the write sees the lock
-                        }
-                    }
+                    "indexLockFile" -> currentLock()
                     "localBranchExists" -> localBranchExists
                     "remoteBranchExists" -> remoteBranchExists
                     "checkoutExisting" -> {
+                        currentLock()?.let { throw IndexLockBlockedException(workDir(), it) }
                         checkoutExistingCount++
                         checkoutResult
                     }
                     "checkoutFromRemote" -> {
+                        currentLock()?.let { throw IndexLockBlockedException(workDir(), it) }
                         checkoutRemoteCount++
                         checkoutResult
                     }
