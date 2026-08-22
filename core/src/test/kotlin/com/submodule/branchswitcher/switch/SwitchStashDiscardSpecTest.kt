@@ -13,7 +13,7 @@ import java.io.File
 import java.util.concurrent.CancellationException
 
 /**
- * Specification tests for the Phase 1 stash-based discard (complexity-contraction rev 6).
+ * Specification tests for the Phase 1 stash-based discard.
  *
  * They assert the data-safety property the current delete-based discard violates: an
  * approved collision file must survive a terminal switch outcome, recoverable from its
@@ -21,6 +21,14 @@ import java.util.concurrent.CancellationException
  * FAILS against it — hence [Ignore] until Phase 1 replaces deletion with a path-scoped
  * `git stash push -u -- <paths>`. Phase 1 deletes the [Ignore] annotations; it must not
  * change the expectations.
+ *
+ * Phase 1 enablement conditions (hard, from review): the fake git must actually simulate
+ * the full lifecycle — [approvedStashCreated] set when `stashPaths` isolates the file,
+ * original file gone before checkout/cancel, approved stash OID recorded, `stashApply`
+ * called after rollback, restore order WIP → approved, drop only after a successful apply
+ * and never on apply failure — not a no-op `stashPaths` that would make the assertions
+ * pass vacuously. The cancellation window is event-driven (cancel on the check after
+ * `approvedStashCreated`), not a hard-coded check count.
  *
  * The executor-wiring specs (final commit point, round+1 re-stash, no-stash re-validation,
  * ghost-message recovery, drop-failure non-fatality) need the Phase 1 `stashPaths` /

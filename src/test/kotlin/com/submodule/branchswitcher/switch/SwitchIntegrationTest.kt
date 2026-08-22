@@ -937,7 +937,10 @@ class SwitchIntegrationTest {
         assertTrue("SubA dirty file should be restored", File(subADir, "dirty-sub.txt").exists())
         for (dir in listOf(root, subADir)) {
             val (_, stashList) = runGit(dir, "stash", "list")
-            assertTrue("Recovery stash should be retained in ${dir.name}: $stashList", stashList.isNotBlank())
+            assertTrue(
+                "a successfully restored WIP stash must be dropped after the rollback: $stashList",
+                stashList.isBlank(),
+            )
         }
     }
 
@@ -958,7 +961,10 @@ class SwitchIntegrationTest {
         assertEquals("dev", git.currentBranch(root))
         assertEquals("dirty tracked change", File(root, "tracked.txt").readText().trim())
         val (_, stashList) = runGit(root, "stash", "list")
-        assertTrue("Backup stash should be retained", stashList.isNotBlank())
+        assertTrue(
+            "a successfully applied WIP stash must be dropped, not accumulated per switch: $stashList",
+            stashList.isBlank(),
+        )
     }
 
     @Test
@@ -1000,10 +1006,10 @@ class SwitchIntegrationTest {
         assertTrue("SubA work file should be restored", File(subADir, "suba-work.txt").exists())
         assertTrue("SubB work file should be restored", File(subBDir, "subb-work.txt").exists())
 
-        // Immutable recovery backups remain available after applying the changes.
+        // A successfully restored WIP stash must be dropped, not accumulated per switch.
         for (dir in listOf(root, subADir, subBDir)) {
             val (_, list) = runGit(dir, "stash", "list")
-            assertTrue("Recovery stash should be retained in ${dir.name}: $list", list.isNotBlank())
+            assertTrue("a successfully restored WIP stash must be dropped: $list", list.isBlank())
         }
     }
 

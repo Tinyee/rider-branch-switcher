@@ -432,32 +432,75 @@ internal class GitCommandClient(
 
     override fun stashTopOid(workDir: File): String? = revParseOptional(workDir, "--verify", "refs/stash")
 
+    /** One entry of `git stash list`: its reflog selector, object id, and reflog subject. */
+    private data class StashListEntry(val selector: String, val oid: String, val subject: String)
+
+    /**
+     * Parses `git stash list` once, keyed by selector/oid/subject. Fails closed: a non-zero
+     * exit is a genuine query failure (`git stash list` exits 0 on an empty stash), and any
+     * non-empty malformed row (fewer than two tab separators) is a parse failure — silently
+     * skipping it would make [stashDrop] misread a missing oid as "already gone" and return
+     * a false success.
+     */
+    private fun stashListEntries(workDir: File): List<StashListEntry> {
+        val result = run(workDir, "stash", "list", "--format=%gd%x09%H%x09%gs")
+        if (!result.ok) throw GitQueryException(result)
+        val entries = mutableListOf<StashListEntry>()
+        for (line in result.stdout.lineSequence()) {
+            if (line.isEmpty()) continue
+            val firstTab = line.indexOf('\t')
+            val secondTab = if (firstTab < 0) -1 else line.indexOf('\t', firstTab + 1)
+            if (secondTab < 0) {
+                throw GitQueryException(GitResult("stash list", 1, "", "malformed stash list line: $line"))
+            }
+            entries += StashListEntry(
+                selector = line.substring(0, firstTab),
+                oid = line.substring(firstTab + 1, secondTab),
+                // %gs is the reflog subject and may itself contain tabs; keep the rest verbatim.
+                subject = line.substring(secondTab + 1),
+            )
+        }
+        return entries
+    }
+
     override fun stashOidByMessage(workDir: File, messagePrefix: String): String? {
         // %gs is the stash reflog subject ("On <branch>: <message>"), so matching is
         // scoped to stashes this plugin created rather than whatever sits on top of
         // refs/stash (a concurrent external `git stash push` must not be misapplied).
-        // `git stash list` exits 0 on an empty stash, so a non-zero exit is a genuine
-        // query failure, never a normal "no match". Failing open here (returning null)
-        // would defeat the message-prefix race guard: a transient failure would fall
-        // back to the stack top and could apply an external stash. This differs from
-        // revParseOptional's fail-open, where `--verify refs/stash` exit-1 is the
-        // normal negative.
-        val result = run(workDir, "stash", "list", "--format=%H%x09%gs")
-        if (!result.ok) throw GitQueryException(result)
-        return result.stdout.lineSequence()
-            .mapNotNull { line ->
-                val tab = line.indexOf('\t')
-                if (tab < 0) null else line.substring(0, tab) to line.substring(tab + 1)
-            }
-            .firstOrNull { (_, subject) -> subject.contains(messagePrefix) }
-            ?.first
+        return stashListEntries(workDir).firstOrNull { it.subject.contains(messagePrefix) }?.oid
     }
 
     override fun stashApply(workDir: File, oid: String): GitResult =
         run(workDir, "stash", "apply", oid)
 
-    override fun stashDrop(workDir: File, oid: String): GitResult =
-        run(workDir, "stash", "drop", oid)
+    override fun stashDrop(workDir: File, oid: String): GitResult {
+        // `git stash drop` requires a stash@{n} selector — a bare OID is rejected with
+        // "error: '<oid>' is not a stash reference" (apply accepts either). Git porcelain
+        // has no atomic drop-by-oid, so the selector is resolved and re-verified at drop
+        // time; if the mapping does not stabilize across one retry the drop is refused. This
+        // narrows — it cannot fully close — the window where a concurrent external
+        // `git stash push` shifts stash@{n} between two commands, so the drop ultimately
+        // executes against a (re-verified) stack selector.
+        repeat(2) {
+            val entries = try {
+                stashListEntries(workDir)
+            } catch (e: GitQueryException) {
+                return e.result
+            }
+            val selector = entries.firstOrNull { it.oid == oid }?.selector
+                ?: return GitResult("stash drop", 0, "", "") // already gone → idempotent success
+            val confirm = try {
+                stashListEntries(workDir)
+            } catch (e: GitQueryException) {
+                return e.result
+            }
+            if (confirm.firstOrNull { it.selector == selector }?.oid == oid) {
+                return run(workDir, "stash", "drop", selector)
+            }
+            // The selector changed between the two reads; retry once with a fresh resolution.
+        }
+        return GitResult("stash drop", 1, "", "stash selector for $oid changed between reads; refusing to drop")
+    }
 
     override fun checkoutNewBranch(workDir: File, branch: String): GitResult =
         run(workDir, "checkout", "-b", branch)

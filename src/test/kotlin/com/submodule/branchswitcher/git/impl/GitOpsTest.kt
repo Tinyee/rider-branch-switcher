@@ -457,6 +457,156 @@ class GitOpsTest : GitOpsTestBase() {
     }
 
     @Test
+    fun `stashDrop resolves the oid to its current selector and never drops by bare oid`() {
+        val oid = "abc123abc123"
+        val dropCommands = mutableListOf<List<String>>()
+        val dropGit = GitOps(timeoutSeconds = 10) { builder ->
+            val args = builder.command()
+            if (args.contains("list")) {
+                ControllableProcess(
+                    finished = true,
+                    stdout = "stash@{1}\t$oid\tOn main: some stash\n".toByteArray(),
+                )
+            } else {
+                dropCommands += args
+                ControllableProcess(finished = true)
+            }
+        }
+
+        val result = dropGit.stashDrop(tmpDir.toFile(), oid)
+
+        assertTrue("the drop must succeed: ${result.diagnostic()}", result.ok)
+        val dropArgs = dropCommands.single()
+        assertTrue("the drop must target the resolved selector, got: $dropArgs", dropArgs.contains("stash@{1}"))
+        assertFalse("the drop must never pass the bare oid, got: $dropArgs", dropArgs.contains(oid))
+    }
+
+    @Test
+    fun `stashDrop of an already-gone oid is a no-op success`() {
+        val dropCommands = mutableListOf<List<String>>()
+        val emptyGit = GitOps(timeoutSeconds = 10) { builder ->
+            if (builder.command().contains("list")) {
+                ControllableProcess(finished = true, stdout = ByteArray(0))
+            } else {
+                dropCommands += builder.command()
+                ControllableProcess(finished = true)
+            }
+        }
+
+        val result = emptyGit.stashDrop(tmpDir.toFile(), "deadbeef")
+
+        assertTrue("an already-dropped stash must be a no-op success", result.ok)
+        assertTrue("no drop command may run for a missing oid", dropCommands.isEmpty())
+    }
+
+    @Test
+    fun `stashDrop with a failing stash list query never drops`() {
+        val dropCommands = mutableListOf<List<String>>()
+        val failingGit = GitOps(timeoutSeconds = 10) { builder ->
+            if (builder.command().contains("list")) {
+                ControllableProcess(finished = true, exitCode = 1, stderr = "fatal: bad config\n".toByteArray())
+            } else {
+                dropCommands += builder.command()
+                ControllableProcess(finished = true)
+            }
+        }
+
+        val result = failingGit.stashDrop(tmpDir.toFile(), "abc123")
+
+        assertFalse("a failing stash list must fail the drop: ${result.diagnostic()}", result.ok)
+        assertEquals(GitFailureKind.GIT_FAILED, result.failureKind)
+        assertTrue("no drop command may run after a list failure", dropCommands.isEmpty())
+    }
+
+    @Test
+    fun `stashDrop with malformed stash list output fails closed and never drops`() {
+        val dropCommands = mutableListOf<List<String>>()
+        val malformedGit = GitOps(timeoutSeconds = 10) { builder ->
+            if (builder.command().contains("list")) {
+                // One tab separator only — a valid row needs selector, oid, and subject.
+                ControllableProcess(finished = true, stdout = "stash@{0}\tbroken-oid\n".toByteArray())
+            } else {
+                dropCommands += builder.command()
+                ControllableProcess(finished = true)
+            }
+        }
+
+        val result = malformedGit.stashDrop(tmpDir.toFile(), "anything")
+
+        assertFalse("malformed output must fail closed, not look like an already-gone stash: ${result.diagnostic()}", result.ok)
+        assertTrue("no drop command may run on malformed output", dropCommands.isEmpty())
+    }
+
+    @Test
+    fun `stashDrop re-resolves when an external stash shifts the selector between list calls`() {
+        val oid = "0000oooo00"
+        val other = "aaaa1111aa"
+        val newer = "bbbb2222bb"
+        // attempt 0 resolve: oid sits at stash@{1}; attempt 0 confirm: an external stash was
+        // pushed, so stash@{1} now maps to `other` and oid moved to stash@{2}; attempt 1
+        // resolve + confirm: stable, so the drop must target the re-resolved stash@{2}.
+        val responses = listOf(
+            "stash@{0}\t$other\tOn main: other\nstash@{1}\t$oid\tOn main: oid\n",
+            "stash@{0}\t$newer\tOn main: newer\nstash@{1}\t$other\tOn main: other\nstash@{2}\t$oid\tOn main: oid\n",
+            "stash@{0}\t$newer\tOn main: newer\nstash@{1}\t$other\tOn main: other\nstash@{2}\t$oid\tOn main: oid\n",
+            "stash@{0}\t$newer\tOn main: newer\nstash@{1}\t$other\tOn main: other\nstash@{2}\t$oid\tOn main: oid\n",
+        )
+        val dropCommands = mutableListOf<List<String>>()
+        var call = 0
+        val shiftingGit = GitOps(timeoutSeconds = 10) { builder ->
+            val args = builder.command()
+            if (args.contains("list")) {
+                ControllableProcess(finished = true, stdout = responses[call++].toByteArray())
+            } else {
+                dropCommands += args
+                ControllableProcess(finished = true)
+            }
+        }
+
+        val result = shiftingGit.stashDrop(tmpDir.toFile(), oid)
+
+        assertTrue("the drop must succeed after re-resolution: ${result.diagnostic()}", result.ok)
+        assertTrue("the drop must target the re-resolved selector", dropCommands.single().contains("stash@{2}"))
+        assertFalse("the drop must not use the stale selector", dropCommands.single().contains("stash@{1}"))
+    }
+
+    @Test
+    fun `stashDrop drops the entry identified by oid even after a newer stash shifts selectors`() {
+        val dir = tmpDir.toFile()
+        gitInitWithCommit(dir)
+        File(dir, "a.txt").writeText("a")
+        runGit(dir, "stash", "push", "-u", "-m", "first")
+        val firstOid = gitOutput(dir, "rev-parse", "--verify", "refs/stash")
+        File(dir, "b.txt").writeText("b")
+        runGit(dir, "stash", "push", "-u", "-m", "second")
+
+        // first's stash is now stash@{1}; dropping by oid must drop first, not the newer second.
+        val result = git.stashDrop(dir, firstOid)
+        assertTrue("drop by oid must succeed: ${result.diagnostic()}", result.ok)
+
+        val remaining = gitOutput(dir, "stash", "list")
+        assertTrue("the second stash must remain: $remaining", remaining.contains("second"))
+        assertFalse("the first stash must be gone: $remaining", remaining.contains("first"))
+    }
+
+    private fun gitInitWithCommit(dir: File) {
+        runGit(dir, "init")
+        runGit(dir, "config", "user.email", "test@test.com")
+        runGit(dir, "config", "user.name", "Test")
+        runGit(dir, "config", "core.autocrlf", "false")
+        File(dir, "README.md").writeText("# repo\n")
+        runGit(dir, "add", "README.md")
+        runGit(dir, "commit", "-m", "initial")
+    }
+
+    private fun gitOutput(dir: File, vararg args: String): String {
+        val proc = ProcessBuilder(listOf("git") + args).directory(dir).start()
+        val out = proc.inputStream.bufferedReader().readText().trim()
+        assertEquals("git ${args.joinToString(" ")} failed in ${dir.name}", 0, proc.waitFor())
+        return out
+    }
+
+    @Test
     fun `untracked paths preserve leading and trailing whitespace in names`() {
         val whitespaceGit = GitOps(timeoutSeconds = 10) { _ ->
             ControllableProcess(
