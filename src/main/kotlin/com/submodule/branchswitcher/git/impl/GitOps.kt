@@ -5,9 +5,6 @@ import com.submodule.branchswitcher.git.GitClient
 import com.submodule.branchswitcher.git.GitOperationSession
 import com.submodule.branchswitcher.git.GitRepositoryInspection
 import com.submodule.branchswitcher.git.GitWorkflowClient
-import com.submodule.branchswitcher.git.RepositoryStateBatchGitClient
-import com.submodule.branchswitcher.git.RepositoryStateBatchInspection
-import com.submodule.branchswitcher.git.SwitchPreflightBatchGitClient
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
@@ -32,10 +29,7 @@ private class GitOpsComponents(
 class GitOps private constructor(
     private val components: GitOpsComponents,
 ) : GitClient,
-    GitWorkflowClient by components.directClient,
-    RepositoryStateBatchGitClient,
-    SwitchPreflightBatchGitClient,
-    RepositoryStateBatchInspection {
+    GitWorkflowClient by components.directClient {
 
     constructor(
         timeoutSeconds: Int = 60,
@@ -43,12 +37,6 @@ class GitOps private constructor(
     ) : this(GitOpsComponents(timeoutSeconds, processStarter))
 
     override fun cancel() = components.directClient.cancel()
-
-    override fun inspectRepositoryState(workDir: File): GitRepositoryInspection =
-        components.directClient.inspectRepositoryState(workDir)
-
-    override fun inspectRepositoryStateIfAvailable(workDir: File): GitRepositoryInspection? =
-        components.directClient.inspectRepositoryStateIfAvailable(workDir)
 
     override fun inspectPreflight(
         workDir: File,

@@ -1,7 +1,6 @@
 package com.submodule.branchswitcher.workflow
 
 import com.submodule.branchswitcher.git.GitRepositoryInspection
-import com.submodule.branchswitcher.git.RepositoryStateBatchGitClient
 import com.submodule.branchswitcher.git.RepositoryStateGitClient
 import com.submodule.branchswitcher.log.createStringAppender
 import com.submodule.branchswitcher.switch.OperationCancelledException
@@ -20,7 +19,7 @@ class RepositoryStateDetectorCancellationTest {
     @Test
     fun `cancelled git query propagates as cancellation and is not logged as failure`() {
         val logs = mutableListOf<String>()
-        val git = object : RepositoryStateGitClient, RepositoryStateBatchGitClient {
+        val git = object : RepositoryStateGitClient {
             override fun inspectRepositoryState(workDir: File): GitRepositoryInspection =
                 throw OperationCancelledException("git status cancelled")
 

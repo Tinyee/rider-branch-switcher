@@ -51,7 +51,37 @@ interface RepositoryStateGitClient : GitRepositoryQuery {
      * the stash path.
      */
     fun isSubmoduleOnlyDirty(workDir: File): Boolean = false
+
+    /**
+     * Reads the repository state from the individual per-query methods. Implementations
+     * with a single-invocation read (one git status process) override this with the
+     * optimized version; callers depend on the one code path here. [dirtyFileCount] is
+     * boolean-derived (1 when [isDirty], else 0): state detection only distinguishes
+     * dirty/clean — the real count lives on [SwitchPreflightGitClient.inspectPreflight].
+     *
+     * The default delegates to [inspectRepositoryStateFallback] so `by`-delegating
+     * wrappers can re-route to their own overrides instead of inheriting the delegate's
+     * inspection (which would lose the wrapper's per-query overrides).
+     */
+    fun inspectRepositoryState(workDir: File): GitRepositoryInspection =
+        inspectRepositoryStateFallback(workDir)
 }
+
+/**
+ * Builds a state inspection from the receiver's per-query methods. An extension (not the
+ * default method body) so a `by`-delegating wrapper can call it on ITSELF: the default
+ * method forwarded through `by` resolves its internal reads against the delegate, losing
+ * the wrapper's overrides; calling this extension on the wrapper resolves against the
+ * wrapper.
+ */
+fun RepositoryStateGitClient.inspectRepositoryStateFallback(workDir: File): GitRepositoryInspection =
+    GitRepositoryInspection(
+        isGitRepository = true,
+        currentBranch = currentBranch(workDir),
+        head = revParseHead(workDir),
+        dirtyFileCount = if (isDirty(workDir)) 1 else 0,
+        submoduleOnlyDirty = isSubmoduleOnlyDirty(workDir),
+    )
 
 /** Read-only access to the submodule paths registered by the current worktree graph. */
 interface SubmoduleRegistrationQuery {
@@ -88,27 +118,31 @@ interface SwitchPreflightGitClient : GitRepositoryQuery {
      * The implementation resolves the ref: local branch when it exists, else `<remote>/<branch>`.
      */
     fun targetBranchMatches(workDir: File, branch: String, paths: List<String>): List<String> = emptyList()
+
+    /**
+     * Reads the pre-switch inspection from the individual per-query methods. Implementations
+     * with a single-invocation read override this with the optimized version (carrying the
+     * real [GitRepositoryInspection.dirtyFileCount]); callers depend on the one code path here.
+     *
+     * The default delegates to [inspectPreflightFallback] so `by`-delegating wrappers can
+     * re-route to their own overrides instead of inheriting the delegate's inspection.
+     */
+    fun inspectPreflight(workDir: File, targetBranches: Set<String>): GitRepositoryInspection =
+        inspectPreflightFallback(workDir, targetBranches)
 }
 
-/** Optional optimized capability; callers retain a compatible per-query fallback. */
-interface RepositoryStateBatchGitClient {
-    fun inspectRepositoryState(workDir: File): GitRepositoryInspection
-}
-
-/**
- * Optional single-invocation inspection as a nullable capability. Batch clients expose
- * their read here and write-guard wrappers forward to their delegate, so consumers can
- * probe the chain without referencing a concrete wrapper class. Returns null when the
- * client chain lacks the capability.
- */
-interface RepositoryStateBatchInspection {
-    fun inspectRepositoryStateIfAvailable(workDir: File): GitRepositoryInspection?
-}
-
-/** Optional optimized capability for fail-closed switch preview inspection. */
-interface SwitchPreflightBatchGitClient {
-    fun inspectPreflight(workDir: File, targetBranches: Set<String>): GitRepositoryInspection
-}
+/** Delegation-safe build of the pre-switch inspection from the receiver's per-query methods. */
+fun SwitchPreflightGitClient.inspectPreflightFallback(
+    workDir: File,
+    targetBranches: Set<String>,
+): GitRepositoryInspection = GitRepositoryInspection(
+    isGitRepository = true,
+    currentBranch = currentBranch(workDir),
+    head = revParseHead(workDir),
+    dirtyFileCount = dirtyFileCount(workDir),
+    localBranches = targetBranches.filterTo(linkedSetOf()) { localBranchExists(workDir, it) },
+    remoteBranches = targetBranches.filterTo(linkedSetOf()) { remoteBranchExists(workDir, it) },
+)
 
 /**
  * Reads HEAD and the current branch atomically when the client supports it,

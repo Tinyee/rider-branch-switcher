@@ -2,7 +2,9 @@ package com.submodule.branchswitcher.switch
 
 import com.submodule.branchswitcher.executeResultTest
 import com.submodule.branchswitcher.git.GitClient
+import com.submodule.branchswitcher.git.GitRepositoryInspection
 import com.submodule.branchswitcher.git.GitResult
+import com.submodule.branchswitcher.git.inspectRepositoryStateFallback
 import com.submodule.branchswitcher.log.createStringAppender
 import com.submodule.branchswitcher.model.DirtyAction
 import com.submodule.branchswitcher.model.Preset
@@ -66,6 +68,9 @@ class SwitchCollisionDiscardTest : SwitchExecutorTestBase() {
     fun `isolation step skips stashing when the skip strategy blocks the switch`() {
         val collisionFile = writeUntrackedFile("Assets/Foo.meta")
         val dirtyGit = object : GitClient by fakeGit {
+            override fun inspectRepositoryState(workDir: File): GitRepositoryInspection =
+                inspectRepositoryStateFallback(workDir)
+
             override fun isDirty(workDir: File): Boolean = true
         }
         val git = ApprovedStashFake(dirtyGit, setOf("Assets/Foo.meta"))
@@ -259,6 +264,9 @@ class SwitchCollisionDiscardTest : SwitchExecutorTestBase() {
         val collisionFile = writeUntrackedFile("Assets/Foo.meta")
         var observedAtWipStash = true
         val dirtyGit = object : GitClient by fakeGit {
+            override fun inspectRepositoryState(workDir: File): GitRepositoryInspection =
+                inspectRepositoryStateFallback(workDir)
+
             override fun isDirty(workDir: File): Boolean = true
             override fun stash(workDir: File, message: String): GitResult {
                 observedAtWipStash = collisionFile.exists()
@@ -292,6 +300,9 @@ class SwitchCollisionDiscardTest : SwitchExecutorTestBase() {
         collisionFile.writeText("local-untracked")
         var observedAtWipStash = true
         val dirtyGit = object : GitClient by fakeGit {
+            override fun inspectRepositoryState(workDir: File): GitRepositoryInspection =
+                inspectRepositoryStateFallback(workDir)
+
             override fun isDirty(workDir: File): Boolean = workDir.name == "SubA"
             override fun stash(workDir: File, message: String): GitResult {
                 if (workDir.name == "SubA") observedAtWipStash = collisionFile.exists()

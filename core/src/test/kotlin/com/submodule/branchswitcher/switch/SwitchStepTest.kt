@@ -2,9 +2,11 @@ package com.submodule.branchswitcher.switch
 
 import com.submodule.branchswitcher.git.GitClient
 import com.submodule.branchswitcher.git.GitQueryException
+import com.submodule.branchswitcher.git.GitRepositoryInspection
 import com.submodule.branchswitcher.git.GitResult
 import com.submodule.branchswitcher.git.IndexLockBlockedException
 import com.submodule.branchswitcher.git.RepositoryIdentity
+import com.submodule.branchswitcher.git.inspectRepositoryStateFallback
 import com.submodule.branchswitcher.git.SubmoduleRegistration
 import com.submodule.branchswitcher.log.createStringAppender
 import com.submodule.branchswitcher.model.DirtyAction
@@ -196,6 +198,9 @@ class SwitchStepTest {
     fun `dirty step stash on dirty repo`() {
         var stashCalls = 0
         val dirtyGit = object : GitClient by fakeGit {
+            override fun inspectRepositoryState(workDir: File): GitRepositoryInspection =
+                inspectRepositoryStateFallback(workDir)
+
             override fun isDirty(workDir: File): Boolean = true
             override fun stash(workDir: File, message: String): GitResult {
                 stashCalls++
@@ -216,6 +221,9 @@ class SwitchStepTest {
         var stashCalls = 0
         val onTargetDirtyGit = object : GitClient by fakeGit {
             override fun currentBranch(workDir: File): String? = "dev"
+            override fun inspectRepositoryState(workDir: File): GitRepositoryInspection =
+                inspectRepositoryStateFallback(workDir)
+
             override fun isDirty(workDir: File): Boolean = true
             override fun stash(workDir: File, message: String): GitResult {
                 stashCalls++
@@ -234,6 +242,9 @@ class SwitchStepTest {
     fun `terminated stash with a created entry is tracked for recovery`() {
         var pushRan = false
         val dirtyGit = object : GitClient by fakeGit {
+            override fun inspectRepositoryState(workDir: File): GitRepositoryInspection =
+                inspectRepositoryStateFallback(workDir)
+
             override fun isDirty(workDir: File): Boolean = true
             override fun stashTopOid(workDir: File): String? =
                 if (pushRan) "created-oid" else "before-oid"
@@ -258,6 +269,9 @@ class SwitchStepTest {
     fun `failed pre-push stash top read logs a warning`() {
         var reads = 0
         val dirtyGit = object : GitClient by fakeGit {
+            override fun inspectRepositoryState(workDir: File): GitRepositoryInspection =
+                inspectRepositoryStateFallback(workDir)
+
             override fun isDirty(workDir: File): Boolean = true
             override fun stashTopOid(workDir: File): String? {
                 reads++
@@ -282,6 +296,9 @@ class SwitchStepTest {
     fun `failed ghost stash inspection logs a warning`() {
         var reads = 0
         val dirtyGit = object : GitClient by fakeGit {
+            override fun inspectRepositoryState(workDir: File): GitRepositoryInspection =
+                inspectRepositoryStateFallback(workDir)
+
             override fun isDirty(workDir: File): Boolean = true
             override fun stashTopOid(workDir: File): String? {
                 reads++
@@ -310,6 +327,9 @@ class SwitchStepTest {
         // The push died before writing refs/stash, but an older backup still sits on
         // top. That backup must not be mistaken for the current WIP (H2).
         val dirtyGit = object : GitClient by fakeGit {
+            override fun inspectRepositoryState(workDir: File): GitRepositoryInspection =
+                inspectRepositoryStateFallback(workDir)
+
             override fun isDirty(workDir: File): Boolean = true
             override fun stash(workDir: File, message: String): GitResult =
                 GitResult("stash", -1, "", "cancelled")
@@ -331,6 +351,9 @@ class SwitchStepTest {
     @Test
     fun `terminated stash without an entry is reported as failed`() {
         val dirtyGit = object : GitClient by fakeGit {
+            override fun inspectRepositoryState(workDir: File): GitRepositoryInspection =
+                inspectRepositoryStateFallback(workDir)
+
             override fun isDirty(workDir: File): Boolean = true
             override fun stash(workDir: File, message: String): GitResult =
                 GitResult("stash", -1, "", "interrupted")
@@ -351,6 +374,9 @@ class SwitchStepTest {
     @Test
     fun `dirty step retains an unidentified stash but blocks further writes`() {
         val dirtyGit = object : GitClient by fakeGit {
+            override fun inspectRepositoryState(workDir: File): GitRepositoryInspection =
+                inspectRepositoryStateFallback(workDir)
+
             override fun isDirty(workDir: File): Boolean = true
             override fun stashTopOid(workDir: File): String? = null
         }
@@ -368,6 +394,9 @@ class SwitchStepTest {
     @Test
     fun `dirty step fail with skip on dirty repo`() {
         val dirtyGit = object : GitClient by fakeGit {
+            override fun inspectRepositoryState(workDir: File): GitRepositoryInspection =
+                inspectRepositoryStateFallback(workDir)
+
             override fun isDirty(workDir: File): Boolean = true
         }
         val c = context(SwitchOptions(DirtyAction.Skip)).copy(git = dirtyGit)
@@ -382,6 +411,9 @@ class SwitchStepTest {
     @Test
     fun `stash failure marks path skipped and does not track stash`() {
         val dirtyGit = object : GitClient by fakeGit {
+            override fun inspectRepositoryState(workDir: File): GitRepositoryInspection =
+                inspectRepositoryStateFallback(workDir)
+
             override fun isDirty(workDir: File): Boolean = true
             override fun stash(workDir: File, message: String): GitResult =
                 GitResult("stash", 1, "", "failed")
@@ -398,6 +430,9 @@ class SwitchStepTest {
     fun `submodule-only dirt proceeds without stashing`() {
         var stashCalls = 0
         val subOnlyGit = object : GitClient by fakeGit {
+            override fun inspectRepositoryState(workDir: File): GitRepositoryInspection =
+                inspectRepositoryStateFallback(workDir)
+
             override fun isDirty(workDir: File): Boolean = true
             override fun isSubmoduleOnlyDirty(workDir: File): Boolean = true
             override fun stash(workDir: File, message: String): GitResult {
@@ -417,6 +452,9 @@ class SwitchStepTest {
     @Test
     fun `stash failure surfaces a stale index lock as an actionable hint`() {
         val lockGit = object : GitClient by fakeGit {
+            override fun inspectRepositoryState(workDir: File): GitRepositoryInspection =
+                inspectRepositoryStateFallback(workDir)
+
             override fun isDirty(workDir: File): Boolean = true
             override fun indexLockFile(workDir: File): String? = "/repo/.git/index.lock"
             override fun stash(workDir: File, message: String): GitResult =
@@ -672,6 +710,9 @@ class SwitchStepTest {
         projectRoot.resolve("Parent").toFile().mkdirs()
         val c = context(SwitchOptions(DirtyAction.Skip, pull = false)).copy(
             git = object : GitClient by fakeGit {
+            override fun inspectRepositoryState(workDir: File): GitRepositoryInspection =
+                inspectRepositoryStateFallback(workDir)
+
                 override fun isDirty(workDir: File): Boolean = workDir.name == "Parent"
                 override fun isGitRepo(workDir: File): Boolean = true
             },

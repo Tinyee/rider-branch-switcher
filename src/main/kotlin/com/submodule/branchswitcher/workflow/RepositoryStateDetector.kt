@@ -1,7 +1,6 @@
 package com.submodule.branchswitcher.workflow
 
 import com.submodule.branchswitcher.git.RepositoryStateGitClient
-import com.submodule.branchswitcher.git.RepositoryStateBatchGitClient
 import com.submodule.branchswitcher.log.AppLogger
 import com.submodule.branchswitcher.log.logFailure
 import com.submodule.branchswitcher.switch.OperationCancelledException
@@ -48,11 +47,10 @@ class RepositoryStateDetector(
         request: RepositoryStateRequest,
         git: RepositoryStateGitClient,
     ): RepositoryStateSnapshot {
-        val batch = git as? RepositoryStateBatchGitClient
         val probes = ArrayList<PathProbe?>(request.paths.size)
         for (path in request.paths) {
             if (!isLatest(request)) break
-            probes += probePath(request, path, git, batch)
+            probes += probePath(request, path, git)
         }
         return assembleSnapshot(request, probes)
     }
@@ -62,7 +60,7 @@ class RepositoryStateDetector(
         request: RepositoryStateRequest,
         path: String,
         git: RepositoryStateGitClient,
-    ): PathProbe? = probePath(request, path, git, git as? RepositoryStateBatchGitClient)
+    ): PathProbe? = probePath(request, path, git)
 
     /** Builds a snapshot from per-path probes, in probe order. */
     internal fun assembleSnapshot(
@@ -103,27 +101,19 @@ class RepositoryStateDetector(
         request: RepositoryStateRequest,
         path: String,
         git: RepositoryStateGitClient,
-        batch: RepositoryStateBatchGitClient?,
     ): PathProbe? {
         if (!isLatest(request)) return null
         val dir = if (path == ".") request.root.toFile() else request.root.resolve(path).toFile()
         return try {
-            val inspection = when {
-                !dir.exists() -> null
-                batch != null -> batch.inspectRepositoryState(dir)
-                else -> null
-            }
+            // One inspection code path: an implementation with a single-invocation read
+            // avoids a second status process per repository.
+            val inspection = if (dir.exists()) git.inspectRepositoryState(dir) else null
             val branch = when {
-                inspection?.isGitRepository == true -> inspection.currentBranch
-                inspection != null -> null
-                dir.exists() -> git.currentBranch(dir)
+                inspection == null -> null
+                inspection.isGitRepository -> inspection.currentBranch
                 else -> null
             }
-            val dirty = when {
-                inspection != null -> inspection.isGitRepository && inspection.dirtyFileCount > 0
-                dir.exists() -> git.isDirty(dir)
-                else -> false
-            }
+            val dirty = inspection != null && inspection.isGitRepository && inspection.dirtyFileCount > 0
             PathProbe(path, branch, dirty)
         } catch (e: OperationCancelledException) {
             throw e

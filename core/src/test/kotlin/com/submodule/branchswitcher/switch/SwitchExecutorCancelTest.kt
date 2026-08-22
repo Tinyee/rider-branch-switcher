@@ -3,7 +3,9 @@ package com.submodule.branchswitcher.switch
 import com.submodule.branchswitcher.executeResultTest
 import com.submodule.branchswitcher.executeTest
 import com.submodule.branchswitcher.git.GitClient
+import com.submodule.branchswitcher.git.GitRepositoryInspection
 import com.submodule.branchswitcher.git.GitResult
+import com.submodule.branchswitcher.git.inspectRepositoryStateFallback
 import com.submodule.branchswitcher.log.createStringAppender
 import com.submodule.branchswitcher.model.DirtyAction
 import com.submodule.branchswitcher.model.Preset
@@ -23,6 +25,9 @@ class SwitchExecutorCancelTest : SwitchExecutorTestBase() {
         var stashCalls = 0
         var checkoutCalls = 0
         val trackingGit = object : GitClient by fakeGit {
+            override fun inspectRepositoryState(workDir: File): GitRepositoryInspection =
+                inspectRepositoryStateFallback(workDir)
+
             override fun isDirty(workDir: File): Boolean = true
             override fun stash(workDir: File, message: String): GitResult {
                 stashCalls++
@@ -81,6 +86,9 @@ class SwitchExecutorCancelTest : SwitchExecutorTestBase() {
             override val isCanceled = false
         }
         val dirtyGit = object : GitClient by fakeGit {
+            override fun inspectRepositoryState(workDir: File): GitRepositoryInspection =
+                inspectRepositoryStateFallback(workDir)
+
             override fun isDirty(workDir: File): Boolean = true
             override fun stash(workDir: File, message: String): GitResult {
                 stashRecorded = true
@@ -112,6 +120,9 @@ class SwitchExecutorCancelTest : SwitchExecutorTestBase() {
     fun `failed step keeps stashes tracked so recovery restores them after rollback`() {
         var stashApplyCalls = 0
         val dirtyGit = object : GitClient by fakeGit {
+            override fun inspectRepositoryState(workDir: File): GitRepositoryInspection =
+                inspectRepositoryStateFallback(workDir)
+
             override fun isDirty(workDir: File): Boolean = true
             // The checkout query aborting is the failing step: a plain RuntimeException
             // escaping the checkout, folded into a STEP_FAILED result by the executor.
@@ -151,6 +162,9 @@ class SwitchExecutorCancelTest : SwitchExecutorTestBase() {
     fun `Git exception inside dirty step returns failed execution with latest state`() {
         initGitRepo(File(projectRoot.toFile(), "SubA"))
         val dirtyGit = object : GitClient by fakeGit {
+            override fun inspectRepositoryState(workDir: File): GitRepositoryInspection =
+                inspectRepositoryStateFallback(workDir)
+
             override fun isDirty(workDir: File): Boolean {
                 if (workDir.name == "SubA") error("query failed")
                 return true

@@ -1,6 +1,7 @@
 package com.submodule.branchswitcher.workflow
 
 import com.submodule.branchswitcher.git.GitOperationSession
+import com.submodule.branchswitcher.git.GitRepositoryInspection
 import com.submodule.branchswitcher.git.impl.GIT_PROCESS_BACKGROUND_BUDGET
 import com.submodule.branchswitcher.log.createStringAppender
 import kotlinx.coroutines.CoroutineScope
@@ -187,6 +188,14 @@ class RepositoryStateRefreshCoordinatorTest {
     ) { _, method, _ ->
         when (method.name) {
             "currentBranch" -> branch()
+            // The single-invocation inspection folds branch + dirty into one read, matching
+            // the optimized production client (a Proxy cannot inherit the interface default).
+            "inspectRepositoryState" -> GitRepositoryInspection(
+                isGitRepository = true,
+                currentBranch = branch(),
+                head = null,
+                dirtyFileCount = 0,
+            )
             "isDirty" -> false
             "isGitRepo" -> true
             "cancel" -> onCancel()

@@ -1,7 +1,6 @@
 package com.submodule.branchswitcher.switch
 
 import com.submodule.branchswitcher.git.GitQueryException
-import com.submodule.branchswitcher.git.RepositoryStateBatchInspection
 import com.submodule.branchswitcher.git.isTermination
 import com.submodule.branchswitcher.model.DirtyAction
 import com.submodule.branchswitcher.model.RepoTarget
@@ -18,27 +17,19 @@ internal data class DirtyTargetOutcome(val state: SwitchState, val skipped: Bool
 
 /**
  * Probes [repositoryDirectory] for dirty state. Returns null when the directory is missing,
- * not a git repository, or clean; otherwise the facts dirty handling needs. The batch
- * inspection is used when available so a second process per target is avoided; write-guard
- * wrappers forward it to their delegate.
+ * not a git repository, or clean; otherwise the facts dirty handling needs. Uses the one
+ * [RepositoryStateGitClient.inspectRepositoryState] code path (an implementation with a
+ * single-invocation read avoids a second status process per target).
  */
 internal fun inspectDirtyState(
     context: SwitchContext,
     repositoryDirectory: File,
 ): DirtyFacts? {
     if (!repositoryDirectory.exists()) return null
-    val inspection = (context.git as? RepositoryStateBatchInspection)
-        ?.inspectRepositoryStateIfAvailable(repositoryDirectory)
-    if (inspection?.isGitRepository == false ||
-        (inspection == null && !context.git.isGitRepo(repositoryDirectory))
-    ) {
-        return null
-    }
-    val dirty = inspection?.dirtyFileCount?.let { it > 0 } ?: context.git.isDirty(repositoryDirectory)
-    if (!dirty) return null
-    val submoduleOnlyDirty = inspection?.submoduleOnlyDirty
-        ?: context.git.isSubmoduleOnlyDirty(repositoryDirectory)
-    return DirtyFacts(submoduleOnlyDirty)
+    val inspection = context.git.inspectRepositoryState(repositoryDirectory)
+    if (!inspection.isGitRepository) return null
+    if (inspection.dirtyFileCount <= 0) return null
+    return DirtyFacts(inspection.submoduleOnlyDirty)
 }
 
 /**

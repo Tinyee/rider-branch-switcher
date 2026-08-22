@@ -1,7 +1,6 @@
 package com.submodule.branchswitcher.switch
 
 import com.submodule.branchswitcher.git.SwitchPreflightGitClient
-import com.submodule.branchswitcher.git.SwitchPreflightBatchGitClient
 import com.submodule.branchswitcher.model.PreflightRow
 import com.submodule.branchswitcher.model.Preset
 import com.submodule.branchswitcher.model.RepoTarget
@@ -43,12 +42,10 @@ class SwitchPreflight(
         val label = if (target.path == ".") projectRoot.fileName.toString() else shortLabel(target.path)
         if (!dir.exists()) return notGitRepoRow(label, target)
         return try {
-            val inspection = if (git is SwitchPreflightBatchGitClient) {
-                git.inspectPreflight(dir, setOf(target.branch))
-            } else {
-                null
-            }
-            if (inspection?.isGitRepository == false || (inspection == null && !git.isGitRepo(dir))) {
+            // One inspection code path: an implementation with a single-invocation read
+            // (one status + one ref query) avoids a second process per target.
+            val inspection = git.inspectPreflight(dir, setOf(target.branch))
+            if (!inspection.isGitRepository) {
                 return notGitRepoRow(label, target)
             }
             val row = PreflightRow(
@@ -56,12 +53,10 @@ class SwitchPreflight(
                 path = target.path,
                 target = target.branch,
                 exists = true,
-                current = if (inspection != null) inspection.currentBranch else git.currentBranch(dir),
-                dirtyCount = inspection?.dirtyFileCount ?: git.dirtyFileCount(dir),
-                hasLocal = inspection?.localBranches?.contains(target.branch)
-                    ?: git.localBranchExists(dir, target.branch),
-                hasRemote = inspection?.remoteBranches?.contains(target.branch)
-                    ?: git.remoteBranchExists(dir, target.branch),
+                current = inspection.currentBranch,
+                dirtyCount = inspection.dirtyFileCount,
+                hasLocal = inspection.localBranches.contains(target.branch),
+                hasRemote = inspection.remoteBranches.contains(target.branch),
             )
             // Only a repo being switched can collide, and a missing branch never reaches a
             // checkout, so both gates keep the extra queries off the common (clean/on-target)

@@ -1,9 +1,11 @@
 package com.submodule.branchswitcher.switch
 
 import com.submodule.branchswitcher.git.GitClient
+import com.submodule.branchswitcher.git.GitRepositoryInspection
 import com.submodule.branchswitcher.git.GitResult
 import com.submodule.branchswitcher.git.RepositoryIdentity
 import com.submodule.branchswitcher.git.SubmoduleRegistration
+import com.submodule.branchswitcher.git.inspectPreflightFallback
 import com.submodule.branchswitcher.model.Preset
 import org.junit.Assert.*
 import org.junit.Before
@@ -90,6 +92,9 @@ class SwitchPreflightTest {
     @Test
     fun `probe detects dirty repos`() {
         val dirtyGit = object : GitClient by fakeGit {
+            override fun inspectPreflight(workDir: File, targetBranches: Set<String>): GitRepositoryInspection =
+                inspectPreflightFallback(workDir, targetBranches)
+
             override fun dirtyFileCount(workDir: File): Int = 3
         }
         val preflight = SwitchPreflight(dirtyGit)
@@ -101,6 +106,9 @@ class SwitchPreflightTest {
     @Test
     fun `probe detects local-only branch`() {
         val localGit = object : GitClient by fakeGit {
+            override fun inspectPreflight(workDir: File, targetBranches: Set<String>): GitRepositoryInspection =
+                inspectPreflightFallback(workDir, targetBranches)
+
             override fun localBranchExists(workDir: File, branch: String): Boolean = true
             override fun remoteBranchExists(workDir: File, branch: String): Boolean = false
         }
@@ -115,6 +123,9 @@ class SwitchPreflightTest {
     @Test
     fun `probe detects missing branch`() {
         val missingGit = object : GitClient by fakeGit {
+            override fun inspectPreflight(workDir: File, targetBranches: Set<String>): GitRepositoryInspection =
+                inspectPreflightFallback(workDir, targetBranches)
+
             override fun localBranchExists(workDir: File, branch: String): Boolean = false
             override fun remoteBranchExists(workDir: File, branch: String): Boolean = false
         }
@@ -135,6 +146,9 @@ class SwitchPreflightTest {
     @Test
     fun `probe converts ordinary git exception to fail-closed row`() {
         val throwingGit = object : GitClient by fakeGit {
+            override fun inspectPreflight(workDir: File, targetBranches: Set<String>): GitRepositoryInspection =
+                inspectPreflightFallback(workDir, targetBranches)
+
             override fun dirtyFileCount(workDir: File): Int = throw java.io.IOException("git failed")
         }
         val failures = mutableListOf<Pair<String, Exception>>()
@@ -156,7 +170,8 @@ class SwitchPreflightTest {
     @Test
     fun `repository probe failure is not reported as a missing directory`() {
         val throwingGit = object : GitClient by fakeGit {
-            override fun isGitRepo(workDir: File): Boolean = throw java.io.IOException("cannot inspect repo")
+            override fun inspectPreflight(workDir: File, targetBranches: Set<String>): GitRepositoryInspection =
+                throw java.io.IOException("cannot inspect repo")
         }
 
         val row = SwitchPreflight(throwingGit).probe(projectRoot, Preset("test", "main")).single()
@@ -168,6 +183,9 @@ class SwitchPreflightTest {
     @Test
     fun `probe caps diagnostic text when git exception message is long`() {
         val throwingGit = object : GitClient by fakeGit {
+            override fun inspectPreflight(workDir: File, targetBranches: Set<String>): GitRepositoryInspection =
+                inspectPreflightFallback(workDir, targetBranches)
+
             override fun dirtyFileCount(workDir: File): Int =
                 throw IllegalStateException("x".repeat(400))
         }
@@ -224,6 +242,9 @@ class SwitchPreflightTest {
     fun `missing branch does not run the collision query`() {
         val matches = AtomicInteger(0)
         val collisionGit = object : GitClient by fakeGit {
+            override fun inspectPreflight(workDir: File, targetBranches: Set<String>): GitRepositoryInspection =
+                inspectPreflightFallback(workDir, targetBranches)
+
             override fun localBranchExists(workDir: File, branch: String): Boolean = false
             override fun remoteBranchExists(workDir: File, branch: String): Boolean = false
             override fun untrackedFiles(workDir: File): List<String> = listOf("Assets/Foo.meta")
@@ -254,6 +275,9 @@ class SwitchPreflightTest {
         // A cancelled read surfaces as OperationCancelledException (the git read boundary
         // converts it); it must abort the preflight, not degrade to a fail-closed row.
         val cancelledGit = object : GitClient by fakeGit {
+            override fun inspectPreflight(workDir: File, targetBranches: Set<String>): GitRepositoryInspection =
+                inspectPreflightFallback(workDir, targetBranches)
+
             override fun currentBranch(workDir: File): String? =
                 throw OperationCancelledException("cancelled")
         }

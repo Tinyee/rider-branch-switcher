@@ -11,11 +11,8 @@ import com.submodule.branchswitcher.git.GitRuntimeInfo
 import com.submodule.branchswitcher.git.HeadAndBranch
 import com.submodule.branchswitcher.git.IndexLockBlockedException
 import com.submodule.branchswitcher.git.RepositoryIdentity
-import com.submodule.branchswitcher.git.RepositoryStateBatchGitClient
-import com.submodule.branchswitcher.git.RepositoryStateBatchInspection
 import com.submodule.branchswitcher.git.SubmoduleDiscoveryException
 import com.submodule.branchswitcher.git.SubmoduleRegistration
-import com.submodule.branchswitcher.git.SwitchPreflightBatchGitClient
 import com.submodule.branchswitcher.switch.OperationCancelledException
 import com.submodule.branchswitcher.switch.resolvedIdentity
 import java.io.File
@@ -40,7 +37,7 @@ internal class GitCommandClient(
      * operation sessions get an isolated flag so [cancel]/[close] affect only them.
      */
     cancellation: AtomicBoolean = AtomicBoolean(false),
-) : GitOperationSession, RepositoryStateBatchGitClient, SwitchPreflightBatchGitClient, RepositoryStateBatchInspection {
+) : GitOperationSession {
     private val cancellation = cancellation
 
     /**
@@ -213,10 +210,6 @@ internal class GitCommandClient(
         if (!hasRepositoryMarker(workDir)) return missingRepositoryInspection()
         return inspectStatus(workDir)
     }
-
-    /** Same single-invocation read as [inspectRepositoryState]; exposed for capability probes. */
-    override fun inspectRepositoryStateIfAvailable(workDir: File): GitRepositoryInspection? =
-        inspectRepositoryState(workDir)
 
     override fun inspectPreflight(
         workDir: File,

@@ -3,6 +3,7 @@ package com.submodule.branchswitcher.switch
 import com.submodule.branchswitcher.executeTest
 
 import com.submodule.branchswitcher.git.GitClient
+import com.submodule.branchswitcher.git.GitRepositoryInspection
 import com.submodule.branchswitcher.git.GitResult
 import com.submodule.branchswitcher.git.RepositoryIdentity
 import com.submodule.branchswitcher.git.SubmoduleRegistration
@@ -73,6 +74,18 @@ class LargeRepoScalabilityTest {
         }
 
         override fun stashTopOid(workDir: File): String = "stash-oid"
+
+        // The single-invocation read folds branch + dirty into one command (no separate
+        // currentBranch/revParseHead/isDirty), matching the optimized production client.
+        override fun inspectRepositoryState(workDir: File): GitRepositoryInspection {
+            count("inspectRepositoryState")
+            return GitRepositoryInspection(
+                isGitRepository = true,
+                currentBranch = "main",
+                head = "abc123",
+                dirtyFileCount = 0,
+            )
+        }
 
         override fun currentBranch(workDir: File): String? {
             count("currentBranch"); return if (workDir.name.startsWith("sub-")) "main" else "main"
@@ -168,9 +181,10 @@ class LargeRepoScalabilityTest {
         assertEquals("revParseHead calls should match checkpoint repo count",
             repos, git.calls["revParseHead"])
 
-        // isDirty: called once per repo by DirtyHandlingStep
-        assertEquals("isDirty calls should match repo count",
-            repos, git.calls["isDirty"])
+        // Dirty state folds into one inspection per repo; isDirty is never called separately.
+        assertEquals("inspectRepositoryState calls should match repo count",
+            repos, git.calls["inspectRepositoryState"])
+        assertNull("isDirty must not be called separately from the inspection", git.calls["isDirty"])
 
         // Fetch/checkout: each repo exactly once
         assertEquals("fetch calls should match repo count",
