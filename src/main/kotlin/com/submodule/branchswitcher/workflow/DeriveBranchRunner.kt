@@ -7,7 +7,6 @@ import com.submodule.branchswitcher.log.withContext
 import com.submodule.branchswitcher.model.Preset
 import com.submodule.branchswitcher.operation.GitOperationResult
 import com.submodule.branchswitcher.operation.GitOperationRunner
-import com.submodule.branchswitcher.switch.CancellationClassifier
 import com.submodule.branchswitcher.switch.DeriveBranchExecutor
 import com.submodule.branchswitcher.switch.DeriveResult
 import com.submodule.branchswitcher.switch.DeriveRollbackResult
@@ -38,7 +37,6 @@ private data class BackgroundDeriveOutcome(
 class DeriveBranchRunner(
     private val projectRoot: Path,
     private val operations: GitOperationRunner,
-    private val cancellationClassifier: CancellationClassifier = CancellationClassifier.DEFAULT,
 ) {
     suspend fun execute(
         title: String,
@@ -71,13 +69,12 @@ class DeriveBranchRunner(
         }
         val backgroundResult = operations.run(title) { indicator, gitOperation ->
             indicator.isIndeterminate = true
-            operationLog.logGitRuntime(gitOperation, projectRoot.toFile(), cancellationClassifier)
+            operationLog.logGitRuntime(gitOperation, projectRoot.toFile())
             val executor = DeriveBranchExecutor(
                 projectRoot = projectRoot,
                 log = operationLog,
                 git = gitOperation,
-                cancelled = { indicator.isCanceled },
-                classifier = cancellationClassifier,
+                operationControl = indicator,
             )
             val deriveResult = executor.execute(preset, branchName)
             val operationCancelled = indicator.isCanceled || deriveResult.cancelled
@@ -159,7 +156,6 @@ class DeriveBranchRunner(
                 projectRoot = projectRoot,
                 log = log,
                 git = rollbackOperation,
-                classifier = cancellationClassifier,
             ).rollbackSucceeded(execution, branchName, pathsToRestore).pendingPaths
         }
         return when (rollbackResult) {

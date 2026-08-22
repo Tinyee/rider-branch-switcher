@@ -2,7 +2,6 @@ package com.submodule.branchswitcher.git.impl
 
 import com.submodule.branchswitcher.log.createStringAppender
 import com.submodule.branchswitcher.model.Preset
-import com.submodule.branchswitcher.switch.CancellationClassifier
 import com.submodule.branchswitcher.switch.SwitchPreflight
 import com.submodule.branchswitcher.workflow.RepositoryStateDetector
 import org.junit.After
@@ -45,7 +44,6 @@ class GitBatchInspectionIntegrationTest {
         }
         val detector = RepositoryStateDetector(
             log = createStringAppender {},
-            cancellationClassifier = CancellationClassifier.DEFAULT,
         )
 
         val snapshot = detector.detect(detector.begin(root, listOf(".") + submodulePaths), git)

@@ -10,7 +10,6 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
-import java.util.concurrent.CancellationException
 
 /**
  * Specification tests for the Phase 1 stash-based discard.
@@ -136,11 +135,11 @@ class SwitchStashDiscardSpecTest : SwitchExecutorTestBase() {
             fakeGit, setOf("Assets/Foo.meta"), collisionFile,
             failCheckout = false, applyFails = false, afterIsolation = { cancelRequested = true },
         )
-        val cancellation = object : CancellationHandle {
-            override fun checkCanceled() {
+        val cancellation = object : OperationControl {
+            override fun checkCancelled() {
                 // Event-driven: cancel on the check after the approved stash was isolated,
                 // so the test always covers the post-isolation window.
-                if (cancelRequested) throw CancellationException("cancelled after approved stash")
+                if (cancelRequested) throw OperationCancelledException("cancelled after approved stash")
             }
 
             override val isCanceled: Boolean get() = cancelRequested
@@ -150,7 +149,7 @@ class SwitchStashDiscardSpecTest : SwitchExecutorTestBase() {
             projectRoot,
             createStringAppender { log += it },
             fake,
-            cancellationHandle = cancellation,
+            operationControl = cancellation,
             collisionDiscards = mapOf("." to setOf("Assets/Foo.meta")),
         ).executeResultTest(preset, SwitchOptions())
 

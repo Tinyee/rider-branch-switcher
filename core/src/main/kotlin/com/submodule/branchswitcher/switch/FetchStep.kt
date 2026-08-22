@@ -12,7 +12,7 @@ class FetchStep(
 
         val issues = mutableListOf<OperationIssue>()
         for (target in context.preset.targetsFor(scope)) {
-            context.cancellationHandle?.checkCanceled()
+            context.operationControl?.checkCancelled()
             if (state.isSkipped(target.path)) {
                 context.log.info("[skip] fetch - target disabled for ${target.path}")
                 continue

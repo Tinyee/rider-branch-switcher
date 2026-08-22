@@ -1,11 +1,11 @@
 package com.submodule.branchswitcher.operation
 
 import com.submodule.branchswitcher.git.GitOperationSession
-import com.submodule.branchswitcher.switch.CancellationHandle
+import com.submodule.branchswitcher.switch.OperationControl
 import com.submodule.branchswitcher.switch.ProgressHandle
 
 /** Progress and cancellation view exposed to platform-independent workflows. */
-interface OperationProgress : CancellationHandle, ProgressHandle
+interface OperationProgress : OperationControl, ProgressHandle
 
 /** Outcome of one isolated background Git operation. */
 sealed class GitOperationResult<out T> {

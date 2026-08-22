@@ -5,6 +5,7 @@ import com.submodule.branchswitcher.git.GitOperationSession
 import com.submodule.branchswitcher.operation.GitOperationResult
 import com.submodule.branchswitcher.operation.GitOperationRunner
 import com.submodule.branchswitcher.operation.OperationProgress
+import com.submodule.branchswitcher.switch.OperationCancelledException
 import java.util.concurrent.CancellationException
 
 internal enum class TestOperationCompletion {
@@ -15,9 +16,9 @@ internal enum class TestOperationCompletion {
 
 internal class TestOperationProgress(
     override var isCanceled: Boolean = false,
-    private val onCheckCanceled: () -> Unit = {},
+    private val onCheckCancelled: () -> Unit = {},
 ) : OperationProgress {
-    override fun checkCanceled() = onCheckCanceled()
+    override fun checkCancelled() = onCheckCancelled()
     override var fraction: Double = 0.0
     override var text: String? = null
     override var text2: String? = null
@@ -38,6 +39,8 @@ internal class TestGitOperationRunner(
             provider.openOperation()
         } catch (_: CancellationException) {
             return GitOperationResult.Cancelled()
+        } catch (_: OperationCancelledException) {
+            return GitOperationResult.Cancelled()
         } catch (e: RuntimeException) {
             return GitOperationResult.Failed(e)
         }
@@ -55,6 +58,9 @@ internal class TestGitOperationRunner(
                 }
             }
         } catch (_: CancellationException) {
+            operation.cancel()
+            GitOperationResult.Cancelled()
+        } catch (_: OperationCancelledException) {
             operation.cancel()
             GitOperationResult.Cancelled()
         } catch (e: RuntimeException) {

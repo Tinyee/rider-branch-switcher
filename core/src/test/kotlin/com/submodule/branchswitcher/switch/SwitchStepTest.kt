@@ -603,14 +603,18 @@ class SwitchStepTest {
         var cancelledCalls = 0
         // Cancelled only mid-apply: the loop-top check must let the apply start, then
         // the user cancels while git is applying the stash.
-        val cancelMidApply: () -> Boolean = {
-            cancelledCalls++
-            cancelledCalls > 1
+        val cancelMidApply = object : OperationControl {
+            override fun checkCancelled() = Unit
+            override val isCanceled: Boolean
+                get() {
+                    cancelledCalls++
+                    return cancelledCalls > 1
+                }
         }
 
         val restore = restoreTrackedStashes(
             projectRoot, terminatedGit, createStringAppender { log += it }, state,
-            cancelled = cancelMidApply,
+            control = cancelMidApply,
         )
 
         // Termination must win over the raced-lock branch: the leftover lock is the
@@ -628,14 +632,18 @@ class SwitchStepTest {
         }
         val state = SwitchState().withTrackedStash(".", StashPurpose.WIP_RESTORE_AFTER_SWITCH, "before -> dev", "stash-oid")
         var cancelledCalls = 0
-        val cancelMidApply: () -> Boolean = {
-            cancelledCalls++
-            cancelledCalls > 1
+        val cancelMidApply = object : OperationControl {
+            override fun checkCancelled() = Unit
+            override val isCanceled: Boolean
+                get() {
+                    cancelledCalls++
+                    return cancelledCalls > 1
+                }
         }
 
         val restore = restoreTrackedStashes(
             projectRoot, terminatedGit, createStringAppender { log += it }, state,
-            cancelled = cancelMidApply,
+            control = cancelMidApply,
         )
 
         assertTrue("an apply-time cancel must mark the restore interrupted", restore.interrupted)
@@ -652,7 +660,6 @@ class SwitchStepTest {
 
         val restore = restoreTrackedStashes(
             projectRoot, timeoutGit, createStringAppender { log += it }, state,
-            cancelled = { false },
         )
 
         assertFalse("a timeout is not an explicit user cancel", restore.interrupted)
@@ -732,13 +739,17 @@ class SwitchStepTest {
     @Test
     fun `restore interrupted by cancel is reported as interrupted`() {
         val state = SwitchState().withTrackedStash(".", StashPurpose.WIP_RESTORE_AFTER_SWITCH, "before -> dev", "stash-oid")
+        val cancelled = object : OperationControl {
+            override fun checkCancelled() = Unit
+            override val isCanceled: Boolean = true
+        }
 
         val restore = restoreTrackedStashes(
             projectRoot,
             fakeGit,
             createStringAppender { log += it },
             state,
-            cancelled = { true },
+            control = cancelled,
         )
 
         assertTrue("a cancel-stopped restore must be marked interrupted", restore.interrupted)

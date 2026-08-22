@@ -8,7 +8,7 @@ import com.submodule.branchswitcher.log.newOperationId
 import com.submodule.branchswitcher.log.withContext
 import com.submodule.branchswitcher.operation.GitOperationResult
 import com.submodule.branchswitcher.operation.GitOperationRunner
-import com.submodule.branchswitcher.switch.CancellationClassifier
+import com.submodule.branchswitcher.switch.OperationCancelledException
 import com.submodule.branchswitcher.switch.expectedSubmoduleGitDirectory
 import com.submodule.branchswitcher.switch.findBlockingIndexLocks
 import com.submodule.branchswitcher.switch.indexLockBlockedDiagnostic
@@ -50,7 +50,6 @@ class SingleRepositorySwitcher(
     private val operations: GitOperationRunner,
     private val tryAcquireWrite: () -> AutoCloseable?,
     private val log: AppLogger,
-    private val cancellationClassifier: CancellationClassifier = CancellationClassifier.DEFAULT,
 ) {
     /**
      * Acquires the write gate synchronously, then runs Git on [scope]. Returns the
@@ -83,7 +82,7 @@ class SingleRepositorySwitcher(
         // execute() maps failures to results, but an unexpected escape (or a throwing
         // result callback) would otherwise surface as an unobserved job failure.
         job.invokeOnCompletion { failure ->
-            if (failure != null && !cancellationClassifier.isCancellation(failure)) {
+            if (failure != null && failure !is OperationCancelledException) {
                 log.error("single-repository switch failed", failure)
             }
         }
@@ -105,7 +104,7 @@ class SingleRepositorySwitcher(
             val dir = resolveGitDir(root, path)
             when (val background = operations.run(title) { indicator, operation ->
                 indicator.isIndeterminate = true
-                operationLog.logGitRuntime(operation, root.toFile(), cancellationClassifier)
+                operationLog.logGitRuntime(operation, root.toFile())
                 val topology = operation.loadSubmoduleTopology(root.toFile())
                 when {
                     topology.isUnregistered(path) -> {
@@ -133,12 +132,10 @@ class SingleRepositorySwitcher(
                 is GitOperationResult.Cancelled -> SingleRepositorySwitchResult.Cancelled
                 is GitOperationResult.Failed -> SingleRepositorySwitchResult.Unexpected(background.error)
             }
+        } catch (e: OperationCancelledException) {
+            SingleRepositorySwitchResult.Cancelled
         } catch (e: Exception) {
-            if (cancellationClassifier.isCancellation(e)) {
-                SingleRepositorySwitchResult.Cancelled
-            } else {
-                SingleRepositorySwitchResult.Unexpected(e)
-            }
+            SingleRepositorySwitchResult.Unexpected(e)
         }
         when (result) {
             is SingleRepositorySwitchResult.Success ->

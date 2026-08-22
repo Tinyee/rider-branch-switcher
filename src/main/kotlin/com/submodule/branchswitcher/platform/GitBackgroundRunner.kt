@@ -7,6 +7,7 @@ import com.submodule.branchswitcher.git.GitOperationSession
 import com.submodule.branchswitcher.operation.GitOperationResult
 import com.submodule.branchswitcher.operation.GitOperationRunner
 import com.submodule.branchswitcher.operation.OperationProgress
+import com.submodule.branchswitcher.switch.OperationCancelledException
 import kotlinx.coroutines.CancellationException
 import java.util.concurrent.atomic.AtomicReference
 
@@ -93,6 +94,8 @@ class GitBackgroundRunner(
             return GitOperationResult.Cancelled()
         } catch (_: com.intellij.openapi.progress.ProcessCanceledException) {
             return GitOperationResult.Cancelled()
+        } catch (_: OperationCancelledException) {
+            return GitOperationResult.Cancelled()
         } catch (e: RuntimeException) {
             return GitOperationResult.Failed(e)
         }
@@ -117,6 +120,9 @@ class GitBackgroundRunner(
             outcome.recordCancellation()
             outcome.result()
         } catch (_: com.intellij.openapi.progress.ProcessCanceledException) {
+            outcome.recordCancellation()
+            outcome.result()
+        } catch (_: OperationCancelledException) {
             outcome.recordCancellation()
             outcome.result()
         } catch (e: RuntimeException) {

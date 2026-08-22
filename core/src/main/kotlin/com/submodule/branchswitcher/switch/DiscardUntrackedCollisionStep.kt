@@ -33,7 +33,7 @@ class DiscardUntrackedCollisionStep : SwitchStep {
         if (mainApproved.isEmpty()) return StepExecution(StepResult.Success, state)
 
         val issues = mutableListOf<OperationIssue>()
-        context.cancellationHandle?.checkCanceled()
+        context.operationControl?.checkCancelled()
         val target = RepoTarget(".", context.preset.main)
         // The repo is already on the target branch (the branch may have changed since the
         // user approved the discard): checkout will not run, so isolating approved files

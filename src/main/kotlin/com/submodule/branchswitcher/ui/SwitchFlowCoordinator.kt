@@ -12,9 +12,9 @@ import com.submodule.branchswitcher.model.Preset
 import com.submodule.branchswitcher.model.ResolvedSwitchRequest
 import com.submodule.branchswitcher.service.BranchSwitcherService
 import com.submodule.branchswitcher.platform.GitBackgroundRunner
-import com.submodule.branchswitcher.platform.platformCancellationClassifier
 import com.submodule.branchswitcher.platform.refreshVcsTail
 import com.submodule.branchswitcher.operation.GitOperationResult
+import com.submodule.branchswitcher.switch.OperationCancelledException
 import com.submodule.branchswitcher.switch.SwitchRecoveryExecutor
 import com.submodule.branchswitcher.switch.SwitchExecutionResult
 import com.submodule.branchswitcher.workflow.SwitchRunner
@@ -234,7 +234,6 @@ class SwitchFlowCoordinator(
             SwitchRunner(
                 projectRoot = root,
                 operations = GitBackgroundRunner(project, service.gitClient),
-                cancellationClassifier = platformCancellationClassifier,
                 preApprovedSubmoduleInit = preApprovedSubmoduleInit,
                 collisionDiscards = collisionDiscards,
             ).execute(
@@ -252,7 +251,7 @@ class SwitchFlowCoordinator(
         // lease — and never leaves busy claimed by a switch that was never accepted.
         onSwitchStart?.invoke()
         completion.completeWhenFailed(job) { failure ->
-            if (!platformCancellationClassifier.isCancellation(failure)) {
+            if (failure !is OperationCancelledException) {
                 log.logFailure("switch completion failed", failure)
             }
         }
@@ -298,7 +297,7 @@ class SwitchFlowCoordinator(
                     root,
                     recoveryLog,
                     operation,
-                    cancelled = { indicator.isCanceled },
+                    operationControl = indicator,
                 )
                 recovery.recover(execution)
             }

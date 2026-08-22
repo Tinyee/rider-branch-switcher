@@ -16,7 +16,7 @@ import java.nio.file.Path
  * not be rolled back; otherwise it is applied back (the switch did not happen for that repo,
  * or recovery rolled it back) and then dropped.
  *
- * [cancelled] is polled before every repository so a user cancel stops the loop
+ * [control] is polled before every repository so a user cancel stops the loop
  * without marking the interrupted entry as at-most-once: a cancelled apply never
  * started, so the WIP stays safe in the stash and remains retryable.
  */
@@ -27,7 +27,7 @@ internal fun restoreTrackedStashes(
     log: AppLogger,
     state: SwitchState,
     selectedPaths: Set<String>? = null,
-    cancelled: (() -> Boolean)? = null,
+    control: OperationControl? = null,
     discardApprovedFor: (String) -> Boolean = { false },
 ): StashRestoreResult {
     val issues = mutableListOf<OperationIssue>()
@@ -35,7 +35,7 @@ internal fun restoreTrackedStashes(
     var interrupted = false
     try {
         for (stash in state.stashesSnapshot().sortedByDescending { it.creationOrder }) {
-            if (cancelled?.invoke() == true) {
+            if (control?.isCanceled == true) {
                 // Stop restoring on cancel; the remaining entries stay tracked and
                 // retryable (no apply started for them). Callers use [interrupted]
                 // to avoid automatically retrying after an explicit user cancel.
@@ -66,7 +66,7 @@ internal fun restoreTrackedStashes(
                 stash,
                 repositoryDirectory,
                 issues,
-                cancelled,
+                control,
             )
             nextState = outcome.state
             if (outcome.interrupted) interrupted = true
@@ -169,7 +169,7 @@ private fun applyRestoredStash(
     stash: TrackedStash,
     repositoryDirectory: File,
     issues: MutableList<OperationIssue>,
-    cancelled: (() -> Boolean)?,
+    control: OperationControl?,
 ): RestoreApplyOutcome {
     val path = stash.repositoryPath
     // restoreGuard only lets this run when the stash has an identity.
@@ -217,7 +217,7 @@ private fun applyRestoredStash(
             diagnostic = "restore interrupted by cancellation; WIP preserved in stash " +
                 "(${stash.message}, oid=$oid)",
         )
-        return RestoreApplyOutcome(current, stop = true, interrupted = cancelled?.invoke() == true)
+        return RestoreApplyOutcome(current, stop = true, interrupted = control?.isCanceled == true)
     }
     // A lock created between the earlier check and the apply must surface as
     // the structured lock block, not a generic stash-apply failure.

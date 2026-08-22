@@ -11,10 +11,10 @@ import com.submodule.branchswitcher.Notifier
 import com.submodule.branchswitcher.Bundle
 import com.submodule.branchswitcher.model.Preset
 import com.submodule.branchswitcher.platform.GitBackgroundRunner
-import com.submodule.branchswitcher.platform.platformCancellationClassifier
 import com.submodule.branchswitcher.platform.refreshVcsTail
 import com.submodule.branchswitcher.service.BranchSwitcherService
 import com.submodule.branchswitcher.switch.DeriveNotification
+import com.submodule.branchswitcher.switch.OperationCancelledException
 import com.submodule.branchswitcher.switch.deriveNotification
 import com.submodule.branchswitcher.workflow.DeriveBranchRunner
 import com.submodule.branchswitcher.workflow.WriteOperationLauncher
@@ -89,7 +89,6 @@ internal class SwitchController(
             DeriveBranchRunner(
                 projectRoot = root,
                 operations = GitBackgroundRunner(project, service.gitClient),
-                cancellationClassifier = platformCancellationClassifier,
             ).execute(
                 title = Bundle.msg("progress.derive", branchName),
                 rollbackTitle = Bundle.msg("progress.derive.rollback"),
@@ -108,7 +107,7 @@ internal class SwitchController(
         // path above never touches state set by a concurrent operation.
         setSwitchInProgress(true)
         job.invokeOnCompletion { failure ->
-            if (failure != null && !platformCancellationClassifier.isCancellation(failure)) {
+            if (failure != null && failure !is OperationCancelledException) {
                 log.error("derive operation failed", failure)
             }
             invokeLaterIfProjectAlive { setSwitchInProgress(false) }

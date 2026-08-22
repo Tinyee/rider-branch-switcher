@@ -15,7 +15,7 @@ class CheckoutStep : SwitchStep {
         }
 
         context.progressHandle?.updateProgress(0, 1, context.projectRoot, ".")
-        context.cancellationHandle?.checkCanceled()
+        context.operationControl?.checkCancelled()
         context.log.info("")
         context.log.info("--- ${context.projectRoot.fileName} - ${target.branch} ---")
 

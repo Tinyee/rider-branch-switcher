@@ -4,21 +4,26 @@ import com.intellij.openapi.progress.ProcessCanceledException
 import com.intellij.openapi.progress.ProgressIndicator
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.LocalFileSystem
-import com.submodule.branchswitcher.git.GitFailureKind
-import com.submodule.branchswitcher.git.GitQueryException
 import com.submodule.branchswitcher.log.AppLogger
 import com.submodule.branchswitcher.log.logFailure
 import com.submodule.branchswitcher.operation.OperationProgress
-import com.submodule.branchswitcher.switch.CancellationClassifier
-import com.submodule.branchswitcher.switch.CancellationHandle
+import com.submodule.branchswitcher.switch.OperationCancelledException
+import com.submodule.branchswitcher.switch.OperationControl
 import git4idea.repo.GitRepositoryManager
 import java.nio.file.Path
 
-/** Adapts an IntelliJ [ProgressIndicator] to a pure [CancellationHandle]. */
-class ProgressCancellationHandle(
+/** Adapts an IntelliJ [ProgressIndicator] to a pure [OperationControl]. */
+class ProgressOperationControl(
     private val indicator: ProgressIndicator?,
-) : CancellationHandle {
-    override fun checkCanceled() { indicator?.checkCanceled() }
+) : OperationControl {
+    override fun checkCancelled() {
+        try {
+            indicator?.checkCanceled()
+        } catch (e: ProcessCanceledException) {
+            throw OperationCancelledException("operation cancelled", e)
+        }
+    }
+
     override val isCanceled: Boolean get() = indicator?.isCanceled == true
 }
 
@@ -26,7 +31,14 @@ class ProgressCancellationHandle(
 class ProgressIndicatorHandle(
     private val indicator: ProgressIndicator,
 ) : OperationProgress {
-    override fun checkCanceled() = indicator.checkCanceled()
+    override fun checkCancelled() {
+        try {
+            indicator.checkCanceled()
+        } catch (e: ProcessCanceledException) {
+            throw OperationCancelledException("operation cancelled", e)
+        }
+    }
+
     override val isCanceled: Boolean get() = indicator.isCanceled
     override var fraction: Double
         get() = indicator.fraction
@@ -69,8 +81,13 @@ private fun refreshVcsRepos(
             vf.refresh(false, true)
             mgr.getRepositoryForRoot(vf)?.update()
             refreshedRepositories++
+        } catch (e: OperationCancelledException) {
+            throw e
+        } catch (e: ProcessCanceledException) {
+            // A platform cancel surfaces as OperationCancelledException so the caller
+            // treats this refresh as cancelled, not as a per-root VCS failure.
+            throw OperationCancelledException("operation cancelled", e)
         } catch (e: Exception) {
-            if (platformCancellationClassifier.isCancellation(e)) throw e
             failures[path] = "${e.javaClass.simpleName}: ${e.message}"
             log.logFailure("[vcs] $path refresh failed", e)
         }
@@ -103,16 +120,4 @@ fun refreshVcsTail(
         logVcsRefresh(log, refreshResult)
         onUi()
     }
-}
-
-/**
- * Platform classifier: recognizes JDK CancellationException, IntelliJ ProcessCanceledException,
- * and git queries cancelled mid-run (failureKind CANCELLED/INTERRUPTED), so a superseded probe
- * is treated as cancellation instead of a noisy failure.
- */
-val platformCancellationClassifier = CancellationClassifier { e ->
-    e is java.util.concurrent.CancellationException ||
-        e is ProcessCanceledException ||
-        (e is GitQueryException && e.result.failureKind in
-            setOf(GitFailureKind.CANCELLED, GitFailureKind.INTERRUPTED))
 }

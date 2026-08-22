@@ -336,11 +336,15 @@ class SwitchExecutorRollbackTest : SwitchExecutorTestBase() {
             state = SwitchState(),
         )
 
+        val cancelled = object : OperationControl {
+            override fun checkCancelled() = Unit
+            override val isCanceled: Boolean get() = writes >= 1
+        }
         val outcome = SwitchRecoveryExecutor(
             projectRoot,
             createStringAppender { log += it },
             countingGit,
-            cancelled = { writes >= 1 },
+            operationControl = cancelled,
         ).recover(execution)
 
         assertEquals("recovery must stop after the first write when cancelled", 1, writes)

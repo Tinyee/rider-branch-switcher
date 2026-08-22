@@ -10,7 +10,6 @@ import com.submodule.branchswitcher.log.AppLogger
 import com.submodule.branchswitcher.log.withContext
 import com.submodule.branchswitcher.model.Preset
 import com.submodule.branchswitcher.platform.GitBackgroundRunner
-import com.submodule.branchswitcher.platform.platformCancellationClassifier
 import com.submodule.branchswitcher.platform.refreshVcsTail
 import com.submodule.branchswitcher.service.BranchSwitcherService
 import com.submodule.branchswitcher.workflow.SingleRepositorySwitcher
@@ -51,7 +50,6 @@ internal class PresetListManager(
         operations = GitBackgroundRunner(project, service.gitClient),
         tryAcquireWrite = service::tryAcquireWrite,
         log = log,
-        cancellationClassifier = platformCancellationClassifier,
     )
 
     fun reload() = actions.reload()

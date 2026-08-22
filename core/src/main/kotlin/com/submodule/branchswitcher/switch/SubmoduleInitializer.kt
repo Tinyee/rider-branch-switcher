@@ -27,7 +27,7 @@ internal object SubmoduleInitializer {
     ): Result {
         // Cancellation aborts at the entry, before any Git query or side effect, and
         // cannot bypass the pre-approval check below.
-        context.cancellationHandle?.checkCanceled()
+        context.operationControl?.checkCancelled()
         if (context.git.isGitRepo(directory)) {
             return verifyReady(context, target, directory, initializedBySwitch = false)
         }

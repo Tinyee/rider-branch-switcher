@@ -171,10 +171,8 @@ data class SwitchContext(
     val options: SwitchOptions,
     val git: SwitchGitClient,
     val log: AppLogger,
-    val cancellationHandle: CancellationHandle? = null,
+    val operationControl: OperationControl? = null,
     val progressHandle: ProgressHandle? = null,
-    /** Mutable flag checked between/within steps for cancellation. */
-    val cancelled: () -> Boolean = { false },
     /** If true, missing submodule directories must be pre-approved before the switch starts. */
     val confirmBeforeInit: Boolean = false,
     /** Submodule paths the user approved for initialization before execution (no worker-time dialogs). */

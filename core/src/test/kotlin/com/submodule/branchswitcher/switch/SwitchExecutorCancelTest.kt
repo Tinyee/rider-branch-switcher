@@ -12,7 +12,6 @@ import com.submodule.branchswitcher.model.SwitchOptions
 import org.junit.Assert.*
 import org.junit.Test
 import java.io.File
-import java.util.concurrent.CancellationException
 
 /** Cancellation, stash tracking, and fail-closed submodule initialization of [SwitchExecutor]. */
 class SwitchExecutorCancelTest : SwitchExecutorTestBase() {
@@ -40,11 +39,18 @@ class SwitchExecutorCancelTest : SwitchExecutorTestBase() {
                 cancelCalls++
             }
         }
+        val operationControl = object : OperationControl {
+            override fun checkCancelled() {
+                if (cancelled) throw OperationCancelledException("cancelled after first step")
+            }
+
+            override val isCanceled = false
+        }
         val executor = SwitchExecutor(
             projectRoot,
             createStringAppender { log += it },
             trackingGit,
-            cancelled = { cancelled },
+            operationControl = operationControl,
         )
 
         val result = executor.executeResultTest(
@@ -65,11 +71,11 @@ class SwitchExecutorCancelTest : SwitchExecutorTestBase() {
         initGitRepo(File(projectRoot.toFile(), "SubA"))
         var stashRecorded = false
         var cancelCalls = 0
-        val cancellation = object : CancellationHandle {
-            override fun checkCanceled() {
+        val cancellation = object : OperationControl {
+            override fun checkCancelled() {
                 // Event-driven: cancel on the first check after the WIP stash was recorded,
                 // so the test always covers the post-stash window rather than a check count.
-                if (stashRecorded) throw CancellationException("cancel after stash")
+                if (stashRecorded) throw OperationCancelledException("cancel after stash")
             }
 
             override val isCanceled = false
@@ -89,7 +95,7 @@ class SwitchExecutorCancelTest : SwitchExecutorTestBase() {
             projectRoot,
             createStringAppender { log += it },
             dirtyGit,
-            cancellationHandle = cancellation,
+            operationControl = cancellation,
         )
 
         val result = executor.executeResultTest(
@@ -259,7 +265,7 @@ class SwitchExecutorCancelTest : SwitchExecutorTestBase() {
             }
 
             override fun fetch(workDir: File): GitResult {
-                if (workDir.name == "SubA") throw CancellationException("cancel after init")
+                if (workDir.name == "SubA") throw OperationCancelledException("cancel after init")
                 return GitResult("fetch", 0, "", "")
             }
 
@@ -269,7 +275,6 @@ class SwitchExecutorCancelTest : SwitchExecutorTestBase() {
             projectRoot,
             createStringAppender { log += it },
             retainedGit,
-            cancellationClassifier = CancellationClassifier.DEFAULT,
         )
 
         val result = executor.executeResultTest(
@@ -336,8 +341,8 @@ class SwitchExecutorCancelTest : SwitchExecutorTestBase() {
     fun `cancellation aborts submodule init before an unapproved path can be initialized`() {
         var initCalls = 0
         var isGitRepoCalls = 0
-        val cancelled = object : CancellationHandle {
-            override fun checkCanceled() = throw CancellationException("cancelled")
+        val cancelled = object : OperationControl {
+            override fun checkCancelled() = throw OperationCancelledException("cancelled")
             override val isCanceled = true
         }
         val git = object : GitClient by fakeGit {
@@ -356,11 +361,11 @@ class SwitchExecutorCancelTest : SwitchExecutorTestBase() {
             options = SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false, confirmBeforeInit = true),
             git = git,
             log = createStringAppender { },
-            cancellationHandle = cancelled,
+            operationControl = cancelled,
             preApprovedSubmoduleInit = emptySet(),
         )
         val target = RepoTarget("SubA", "main")
-        assertThrows(CancellationException::class.java) {
+        assertThrows(OperationCancelledException::class.java) {
             SubmoduleInitializer.prepare(
                 context,
                 target,

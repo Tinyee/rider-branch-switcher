@@ -10,13 +10,12 @@ import java.nio.file.Path
 
 /**
  * Pre-switch inspection: probes all repos in a preset and returns a [PreflightRow] per target.
- * Pure-JVM: no IntelliJ Platform dependencies. Cancellation via [CancellationHandle],
+ * Pure-JVM: no IntelliJ Platform dependencies. Cancellation via [OperationControl],
  * progress display via [onProgress] callback, error labels via [probeErrorSuffix].
  */
 class SwitchPreflight(
     private val git: SwitchPreflightGitClient,
     private val probeErrorSuffix: String = "[probe error]",
-    private val classifier: CancellationClassifier = CancellationClassifier.DEFAULT,
     private val onProbeFailure: (path: String, error: Exception) -> Unit = { _, _ -> },
 ) {
     /**
@@ -26,13 +25,13 @@ class SwitchPreflight(
     fun probe(
         projectRoot: Path,
         preset: Preset,
-        cancellationHandle: CancellationHandle? = null,
+        operationControl: OperationControl? = null,
         onProgress: ((index: Int, total: Int, label: String) -> Unit)? = null,
     ): List<PreflightRow> {
         val targets = preset.targets()
         val total = targets.size.coerceAtLeast(1)
         return targets.mapIndexed { idx, t ->
-            cancellationHandle?.checkCanceled()
+            operationControl?.checkCancelled()
             onProgress?.invoke(idx, total, displayLabel(projectRoot, t.path))
             probeOne(projectRoot, t)
         }
@@ -72,10 +71,12 @@ class SwitchPreflight(
             } else {
                 row
             }
+        } catch (e: OperationCancelledException) {
+            // A cancelled probe is a user cancel: it must abort the preflight, not degrade
+            // to a fail-closed warning row.
+            throw e
         } catch (e: Exception) {
-            classifier.rethrowIfCancellation(e)
             onProbeFailure(target.path, e)
-            // probe failure -> fail-closed row (includes platform cancellation if classifier says so)
             // Fail closed per repo: one flaky git command must not abort the whole preflight.
             // All flags default to blocking/unknown so the user sees this repo as a warning.
             probeErrorRow(label, target, e)

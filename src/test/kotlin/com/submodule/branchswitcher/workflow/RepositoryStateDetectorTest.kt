@@ -2,7 +2,7 @@ package com.submodule.branchswitcher.workflow
 
 import com.submodule.branchswitcher.git.RepositoryStateGitClient
 import com.submodule.branchswitcher.log.createStringAppender
-import com.submodule.branchswitcher.switch.CancellationClassifier
+import com.submodule.branchswitcher.switch.OperationCancelledException
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertThrows
@@ -11,7 +11,6 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import java.io.File
-import java.util.concurrent.CancellationException
 
 class RepositoryStateDetectorTest {
 
@@ -29,7 +28,6 @@ class RepositoryStateDetectorTest {
         }
         val detector = RepositoryStateDetector(
             log = createStringAppender {},
-            cancellationClassifier = CancellationClassifier.DEFAULT,
         )
 
         val snapshot = detector.detect(
@@ -73,7 +71,7 @@ class RepositoryStateDetectorTest {
         val detector = detector()
         val request = detector.begin(root.toPath(), listOf("."))
 
-        assertThrows(CancellationException::class.java) { detector.detect(request, git) }
+        assertThrows(OperationCancelledException::class.java) { detector.detect(request, git) }
     }
 
     @Test
@@ -112,7 +110,6 @@ class RepositoryStateDetectorTest {
 
     private fun detector(logs: MutableList<String> = mutableListOf()) = RepositoryStateDetector(
         log = createStringAppender { logs += it },
-        cancellationClassifier = CancellationClassifier.DEFAULT,
     )
 
     private class RecordingGit : RepositoryStateGitClient {
@@ -124,7 +121,7 @@ class RepositoryStateDetectorTest {
 
         override fun currentBranch(workDir: File): String? {
             currentBranchCalls++
-            if (workDir == cancellation) throw CancellationException("cancelled")
+            if (workDir == cancellation) throw OperationCancelledException("cancelled")
             if (workDir in failures) error("unreadable")
             return branches[workDir]
         }

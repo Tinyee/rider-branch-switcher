@@ -15,6 +15,7 @@ import com.submodule.branchswitcher.git.RepositoryStateBatchInspection
 import com.submodule.branchswitcher.git.SubmoduleDiscoveryException
 import com.submodule.branchswitcher.git.SubmoduleRegistration
 import com.submodule.branchswitcher.git.SwitchPreflightBatchGitClient
+import com.submodule.branchswitcher.switch.OperationCancelledException
 import com.submodule.branchswitcher.switch.resolvedIdentity
 import java.io.File
 import java.io.IOException
@@ -62,12 +63,28 @@ internal class GitCommandClient(
     private fun run(workDir: File, args: List<String>): GitResult =
         processRunner.run(workDir, cancellation, args)
 
+    /**
+     * Converts a failed read into the exception to throw. A cancelled/interrupted git read is
+     * a user cancel and surfaces as [OperationCancelledException]; every other read failure
+     * stays a [GitQueryException]. Timeout is termination but NOT a user cancel, so it stays
+     * a query failure. Write commands never pass through here: they return a structured
+     * [GitResult] so the business layer can record a ghost stash or partial checkout first.
+     */
+    private fun readFailure(result: GitResult): RuntimeException =
+        if (result.failureKind == GitFailureKind.CANCELLED ||
+            result.failureKind == GitFailureKind.INTERRUPTED
+        ) {
+            OperationCancelledException("git read cancelled: ${result.diagnostic()}")
+        } else {
+            GitQueryException(result)
+        }
+
     override fun currentBranch(workDir: File): String? {
         val result = run(workDir, "symbolic-ref", "--short", "-q", "HEAD")
         return when {
             result.ok -> result.stdout.trim().ifEmpty { null }
             result.exitCode == 1 -> null
-            else -> throw GitQueryException(result)
+            else -> throw readFailure(result)
         }
     }
 
@@ -75,10 +92,10 @@ internal class GitCommandClient(
         if (!workDir.isDirectory) return false
         val result = run(workDir, "rev-parse", "--show-toplevel")
         if (!result.ok) {
-            if (!isNotGitRepoResult(workDir, result)) throw GitQueryException(result)
+            if (!isNotGitRepoResult(workDir, result)) throw readFailure(result)
             return false
         }
-        if (result.stdout.isBlank()) throw GitQueryException(result)
+        if (result.stdout.isBlank()) throw readFailure(result)
         val topLevel = runCatching { File(result.stdout).canonicalFile }.getOrNull() ?: return false
         val requested = runCatching { workDir.canonicalFile }.getOrNull() ?: return false
         return topLevel == requested
@@ -88,13 +105,13 @@ internal class GitCommandClient(
         if (!workDir.isDirectory) return null
         val result = run(workDir, "rev-parse", "--absolute-git-dir", "--show-superproject-working-tree")
         if (!result.ok) {
-            if (!isNotGitRepoResult(workDir, result)) throw GitQueryException(result)
+            if (!isNotGitRepoResult(workDir, result)) throw readFailure(result)
             return null
         }
         val lines = result.stdout.lineSequence().map(String::trim).filter(String::isNotEmpty).toList()
         val gitDirectory = lines.firstOrNull()?.let { path ->
             runCatching { File(path).canonicalPath }.getOrElse { File(path).absolutePath }
-        } ?: throw GitQueryException(result)
+        } ?: throw readFailure(result)
         val superprojectRoot = lines.getOrNull(1)?.let { path ->
             runCatching { File(path).canonicalPath }.getOrElse { File(path).absolutePath }
         }
@@ -103,7 +120,7 @@ internal class GitCommandClient(
 
     override fun runtimeInfo(workDir: File): GitRuntimeInfo {
         val result = run(workDir, "--version")
-        if (!result.ok) throw GitQueryException(result)
+        if (!result.ok) throw readFailure(result)
         return GitRuntimeInfo(
             version = result.stdout.trim().ifEmpty { "unknown" },
             timeoutSeconds = processRunner.effectiveTimeoutSeconds,
@@ -112,19 +129,19 @@ internal class GitCommandClient(
 
     override fun isDirty(workDir: File): Boolean {
         val result = run(workDir, "--no-optional-locks", "status", "--porcelain")
-        if (!result.ok) throw GitQueryException(result)
+        if (!result.ok) throw readFailure(result)
         return result.stdout.isNotBlank()
     }
 
     override fun dirtyFileCount(workDir: File): Int {
         val result = run(workDir, "--no-optional-locks", "status", "--porcelain")
-        if (!result.ok) throw GitQueryException(result)
+        if (!result.ok) throw readFailure(result)
         return result.stdout.lines().count { it.isNotBlank() }
     }
 
     override fun isSubmoduleOnlyDirty(workDir: File): Boolean {
         val result = run(workDir, "--no-optional-locks", "status", "--porcelain=v2", "--untracked-files=normal")
-        if (!result.ok) throw GitQueryException(result)
+        if (!result.ok) throw readFailure(result)
         return isSubmoduleOnlyPorcelainStatus(result.stdout)
     }
 
@@ -136,7 +153,7 @@ internal class GitCommandClient(
         }
         val result = run(workDir, "rev-parse", "--git-path", "index.lock")
         if (!result.ok) {
-            if (result.failureKind != GitFailureKind.GIT_FAILED) throw GitQueryException(result)
+            if (result.failureKind != GitFailureKind.GIT_FAILED) throw readFailure(result)
             return null
         }
         val path = result.stdout.trim()
@@ -197,7 +214,7 @@ internal class GitCommandClient(
                 listOf("refs/heads/$branch", "refs/remotes/$remote/$branch")
             },
         )
-        if (!result.ok) throw GitQueryException(result)
+        if (!result.ok) throw readFailure(result)
         val refs = result.stdout.lineSequence().map(String::trim).filter(String::isNotEmpty).toSet()
         return status.copy(
             localBranches = targetBranches.filterTo(linkedSetOf()) { "refs/heads/$it" in refs },
@@ -207,7 +224,7 @@ internal class GitCommandClient(
 
     private fun inspectStatus(workDir: File): GitRepositoryInspection {
         val result = run(workDir, "--no-optional-locks", "status", "--porcelain=v2", "--branch", "--untracked-files=normal")
-        if (!result.ok) throw GitQueryException(result)
+        if (!result.ok) throw readFailure(result)
         return parsePorcelainV2Status(result.stdout)
     }
 
@@ -237,7 +254,7 @@ internal class GitCommandClient(
         return when {
             result.ok -> true
             result.exitCode == 1 -> false
-            else -> throw GitQueryException(result)
+            else -> throw readFailure(result)
         }
     }
 
@@ -245,7 +262,7 @@ internal class GitCommandClient(
         val key = workDir.absolutePath
         return remoteCache[key] ?: run {
             val result = run(workDir, "remote")
-            if (!result.ok) throw GitQueryException(result)
+            if (!result.ok) throw readFailure(result)
             val remotes = result.stdout.lines().map { it.trim() }.filter { it.isNotEmpty() }
             val name = selectRemoteName(remotes)
             remoteCache[key] = name
@@ -258,13 +275,13 @@ internal class GitCommandClient(
         return when {
             result.ok -> true
             result.exitCode == 1 -> false
-            else -> throw GitQueryException(result)
+            else -> throw readFailure(result)
         }
     }
 
     override fun untrackedFiles(workDir: File): List<String> {
         val result = run(workDir, "--no-optional-locks", "ls-files", "--others", "--exclude-standard")
-        if (!result.ok) throw GitQueryException(result)
+        if (!result.ok) throw readFailure(result)
         // Paths must not be trimmed: a file literally named " leading.txt" would lose its
         // leading space and escape collision detection before checkout silently overwrites it.
         return result.stdout.lineSequence().filter { it.isNotEmpty() }.toList()
@@ -276,7 +293,7 @@ internal class GitCommandClient(
         val ref = if (localBranchExists(workDir, branch)) branch else "${remoteName(workDir)}/$branch"
         return paths.chunked(PATHSPEC_CHUNK_SIZE).flatMap { chunk ->
             val result = run(workDir, listOf("ls-tree", "-r", "--name-only", ref, "--") + chunk)
-            if (!result.ok) throw GitQueryException(result)
+            if (!result.ok) throw readFailure(result)
             result.stdout.lineSequence().filter { it.isNotEmpty() }.toList()
         }
     }
@@ -379,7 +396,7 @@ internal class GitCommandClient(
         )
         if (!result.ok) {
             if (result.exitCode == 1 && result.failureKind == GitFailureKind.GIT_FAILED) return emptyList()
-            throw GitQueryException(result)
+            throw readFailure(result)
         }
         val paths = LinkedHashMap<String, String>()
         val urls = LinkedHashMap<String, String>()
@@ -417,7 +434,7 @@ internal class GitCommandClient(
      */
     private fun revParseOptional(workDir: File, vararg args: String): String? {
         val result = run(workDir, "rev-parse", *args)
-        if (!result.ok && result.failureKind != GitFailureKind.GIT_FAILED) throw GitQueryException(result)
+        if (!result.ok && result.failureKind != GitFailureKind.GIT_FAILED) throw readFailure(result)
         return if (result.ok) result.stdout.trim().ifEmpty { null } else null
     }
 
@@ -435,7 +452,7 @@ internal class GitCommandClient(
      */
     private fun stashListEntries(workDir: File): List<StashListEntry> {
         val result = run(workDir, "stash", "list", "--format=%gd%x09%H%x09%gs")
-        if (!result.ok) throw GitQueryException(result)
+        if (!result.ok) throw readFailure(result)
         val entries = mutableListOf<StashListEntry>()
         for (line in result.stdout.lineSequence()) {
             if (line.isEmpty()) continue
@@ -514,7 +531,7 @@ internal class GitCommandClient(
             "--branch",
             "--untracked-files=no",
         )
-        if (!result.ok) throw GitQueryException(result)
+        if (!result.ok) throw readFailure(result)
         val inspection = parsePorcelainV2Status(result.stdout)
         return HeadAndBranch(inspection.head, inspection.currentBranch)
     }
@@ -528,7 +545,7 @@ internal class GitCommandClient(
             "refs/heads",
             "refs/remotes/$remote",
         )
-        if (!result.ok) throw GitQueryException(result)
+        if (!result.ok) throw readFailure(result)
         return result.stdout.lines()
             .map { it.trim() }
             .filter { it.isNotEmpty() && !it.startsWith("$remote/HEAD") }

@@ -36,7 +36,7 @@ class SubmoduleTreeStep : SwitchStep {
         try {
             for ((index, target) in targets.withIndex()) {
                 updateProgress(context, index, targets.size, target.path)
-                context.cancellationHandle?.checkCanceled()
+                context.operationControl?.checkCancelled()
                 current = processTarget(context, targets, target, current, issues)
             }
         } catch (error: SwitchStepException) {

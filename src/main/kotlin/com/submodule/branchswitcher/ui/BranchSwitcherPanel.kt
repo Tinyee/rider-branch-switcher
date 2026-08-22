@@ -21,7 +21,6 @@ import com.submodule.branchswitcher.platform.gitRootPath
 import com.submodule.branchswitcher.service.BranchSwitcherService
 import com.submodule.branchswitcher.workflow.RepositoryStateDetector
 import com.submodule.branchswitcher.workflow.RepositoryStateRefreshCoordinator
-import com.submodule.branchswitcher.platform.platformCancellationClassifier
 import com.submodule.branchswitcher.settings.BranchSwitcherConfigurable
 import java.awt.BorderLayout
 import java.awt.Dimension
@@ -97,7 +96,6 @@ class BranchSwitcherPanel(
     )
     private val stateDetector = RepositoryStateDetector(
         logger,
-        platformCancellationClassifier,
     )
     private val stateRefreshes = RepositoryStateRefreshCoordinator(
         scope = service.scope,
@@ -106,7 +104,6 @@ class BranchSwitcherPanel(
         log = logger,
         deliver = project::invokeLaterIfAlive,
         gitProcessBudget = GIT_PROCESS_BACKGROUND_BUDGET,
-        cancellationClassifier = platformCancellationClassifier,
     )
 
     // ── Explicit command wiring ─────────────────────────────────

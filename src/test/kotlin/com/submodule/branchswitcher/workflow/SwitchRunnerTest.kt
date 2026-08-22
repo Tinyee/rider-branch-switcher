@@ -23,7 +23,7 @@ import org.junit.Test
 import java.io.File
 import java.nio.file.Files
 import java.nio.file.Path
-import java.util.concurrent.CancellationException
+import com.submodule.branchswitcher.switch.OperationCancelledException
 
 class SwitchRunnerTest {
     @Test
@@ -145,7 +145,7 @@ class SwitchRunnerTest {
             root,
             git,
             progress = TestOperationProgress {
-                if (git.checkoutCount > 0) throw CancellationException()
+                if (git.checkoutCount > 0) throw OperationCancelledException()
             },
         )
 
@@ -390,7 +390,7 @@ class SwitchRunnerTest {
             root,
             git,
             progress = TestOperationProgress {
-                if (git.checkoutCount > 0) throw CancellationException()
+                if (git.checkoutCount > 0) throw OperationCancelledException()
             },
         )
 

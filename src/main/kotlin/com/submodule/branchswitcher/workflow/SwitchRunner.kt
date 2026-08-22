@@ -8,7 +8,6 @@ import com.submodule.branchswitcher.log.withContext
 import com.submodule.branchswitcher.model.ResolvedSwitchRequest
 import com.submodule.branchswitcher.operation.GitOperationResult
 import com.submodule.branchswitcher.operation.GitOperationRunner
-import com.submodule.branchswitcher.switch.CancellationClassifier
 import com.submodule.branchswitcher.switch.OperationIssue
 import com.submodule.branchswitcher.switch.OperationIssueCode
 import com.submodule.branchswitcher.switch.recoveryIssue
@@ -56,7 +55,6 @@ private data class RecoveredSwitchOutcome(
 class SwitchRunner(
     private val projectRoot: Path,
     private val operations: GitOperationRunner,
-    private val cancellationClassifier: CancellationClassifier = CancellationClassifier.DEFAULT,
     private val preApprovedSubmoduleInit: Set<String> = emptySet(),
     private val collisionDiscards: Map<String, Set<String>> = emptyMap(),
 ) {
@@ -97,14 +95,13 @@ class SwitchRunner(
         }
         val backgroundResult = operations.run(title) { indicator, operation ->
             indicator.isIndeterminate = true
-            operationLog.logGitRuntime(operation, projectRoot.toFile(), cancellationClassifier)
+            operationLog.logGitRuntime(operation, projectRoot.toFile())
             SwitchExecutor(
                 projectRoot,
                 operationLog,
                 operation,
                 indicator,
                 indicator,
-                cancellationClassifier = cancellationClassifier,
                 preApprovedSubmoduleInit = preApprovedSubmoduleInit,
                 collisionDiscards = collisionDiscards,
             ).execute(request)
@@ -193,7 +190,7 @@ class SwitchRunner(
                 projectRoot,
                 log,
                 operation,
-                cancelled = { indicator.isCanceled },
+                operationControl = indicator,
             ).recover(execution)
         }
         return when (recoveryResult) {
@@ -268,7 +265,7 @@ class SwitchRunner(
                 projectRoot,
                 retryLog,
                 operation,
-                cancelled = { indicator.isCanceled },
+                operationControl = indicator,
             )
             executor.retryStashRestore(execution)
         }

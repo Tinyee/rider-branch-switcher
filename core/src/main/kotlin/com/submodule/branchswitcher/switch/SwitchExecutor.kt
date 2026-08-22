@@ -72,10 +72,8 @@ class SwitchExecutor @JvmOverloads constructor(
     private val projectRoot: Path,
     private val log: AppLogger,
     private val git: SwitchGitClient,
-    private val cancellationHandle: CancellationHandle? = null,
+    private val operationControl: OperationControl? = null,
     private val progressHandle: ProgressHandle? = null,
-    private val cancelled: (() -> Boolean)? = null,
-    private val cancellationClassifier: CancellationClassifier = CancellationClassifier.DEFAULT,
     private val preApprovedSubmoduleInit: Set<String> = emptySet(),
     private val collisionDiscards: Map<String, Set<String>> = emptyMap(),
 ) {
@@ -98,7 +96,7 @@ class SwitchExecutor @JvmOverloads constructor(
         SubmoduleTreeStep(),
     )
 
-    @Suppress("TooGenericExceptionCaught") // platform cancellation type is recognized through the injected classifier
+    @Suppress("TooGenericExceptionCaught") // platform cancellation type is recognized as OperationCancelledException
     fun execute(request: ResolvedSwitchRequest): SwitchExecutionResult {
         val preset = request.preset
         val options = request.options
@@ -156,7 +154,7 @@ class SwitchExecutor @JvmOverloads constructor(
      * permission), so failures are mapped to a structured result instead of escaping as an
      * unhandled exception that loses the repository path and diagnostic the caller relies on.
      */
-    @Suppress("TooGenericExceptionCaught") // platform cancellation type is recognized through the injected classifier
+    @Suppress("TooGenericExceptionCaught") // platform cancellation type is recognized as OperationCancelledException
     private fun recordCheckpoint(preset: Preset, switchState: SwitchState): Checkpoint = try {
         val entries = checkpointRecorder.record(preset)
         if (entries != null) {
@@ -169,15 +167,16 @@ class SwitchExecutor @JvmOverloads constructor(
             )
         }
     } catch (error: GitQueryException) {
-        // The platform classifier recognizes a cancelled/interrupted Git query as
-        // cancellation; it must not be downgraded to a FAILED/GIT_QUERY_FAILED result.
-        if (cancellationClassifier.isCancellation(error)) throw error
+        // A cancelled/interrupted Git query surfaces as OperationCancelledException from the
+        // git read boundary, so this catch is only reached by real query failures.
         log.error("[checkpoint] switch aborted: git query failed: ${error.result.diagnostic()}")
         Checkpoint.Failed(
             checkpointFailure(switchState, OperationIssueCode.GIT_QUERY_FAILED, error.result.diagnostic()),
         )
+    } catch (error: OperationCancelledException) {
+        // A cancelled checkpoint read is a user cancel, never a checkpoint failure.
+        throw error
     } catch (error: RuntimeException) {
-        if (cancellationClassifier.isCancellation(error)) throw error
         log.logFailure("[checkpoint] switch aborted: unable to record every existing repository", error)
         Checkpoint.Failed(
             checkpointFailure(
@@ -202,15 +201,8 @@ class SwitchExecutor @JvmOverloads constructor(
         for (step in pipeline) {
             context.progressHandle?.text = step.name
             try {
-                cancellationHandle?.checkCanceled()
-            } catch (e: RuntimeException) {
-                if (!cancellationClassifier.isCancellation(e)) throw e
-                git.cancel()
-                log.info("[cancelled] before step: ${step.name}")
-                executionStatus = SwitchExecutionStatus.CANCELLED
-                break
-            }
-            if (context.cancelled()) {
+                operationControl?.checkCancelled()
+            } catch (e: OperationCancelledException) {
                 git.cancel() // terminate in-flight command if any
                 log.info("[cancelled] before step: ${step.name}")
                 executionStatus = SwitchExecutionStatus.CANCELLED
@@ -234,7 +226,7 @@ class SwitchExecutor @JvmOverloads constructor(
                         lockPath = lock.lockPath,
                     )
                     executionStatus = SwitchExecutionStatus.FAILED
-                } else if (cancellationClassifier.isCancellation(error)) {
+                } else if (error is OperationCancelledException) {
                     git.cancel()
                     log.info("[cancelled] during step: ${step.name}")
                     executionStatus = SwitchExecutionStatus.CANCELLED
@@ -306,7 +298,7 @@ class SwitchExecutor @JvmOverloads constructor(
         // a partial switch gets its approved stash applied back instead.
         restoreTrackedStashes(
             projectRoot, context.git, log, state,
-            cancelled = context.cancelled,
+            control = context.operationControl,
             discardApprovedFor = { path -> state.checkoutSucceeded(path) },
         )
     } catch (error: SwitchStepException) {
@@ -356,9 +348,8 @@ class SwitchExecutor @JvmOverloads constructor(
             options = options,
             git = guardedGit,
             log = log,
-            cancellationHandle = cancellationHandle,
+            operationControl = operationControl,
             progressHandle = progressHandle,
-            cancelled = { cancelled?.invoke() == true || cancellationHandle?.isCanceled == true },
             confirmBeforeInit = options.confirmBeforeInit,
             preApprovedSubmoduleInit = preApprovedSubmoduleInit,
             approvedCollisionDiscards = collisionDiscards,
@@ -385,8 +376,9 @@ class SwitchExecutor @JvmOverloads constructor(
             if (entry.branch != target.branch) return@all false
             try {
                 !git.isDirty(resolveGitDir(context.projectRoot, target.path))
+            } catch (e: OperationCancelledException) {
+                throw e
             } catch (e: RuntimeException) {
-                if (cancellationClassifier.isCancellation(e)) throw e
                 false
             }
         }
@@ -452,15 +444,18 @@ class SwitchExecutor @JvmOverloads constructor(
         try {
             blockingLockIssues(context, preset)
         } catch (e: GitQueryException) {
-            // A cancelled/interrupted lock probe is a user cancel, not a query failure.
-            if (cancellationClassifier.isCancellation(e)) throw e
+            // A cancelled/interrupted lock probe surfaces as OperationCancelledException from
+            // the git read boundary, so this catch is only reached by real query failures.
             preMutationLockProbeFailure(e.result.diagnostic())
+        } catch (e: OperationCancelledException) {
+            // A cancelled lock probe is a user cancel and must propagate, not degrade to
+            // a structured pre-mutation failure.
+            throw e
         } catch (e: RuntimeException) {
             // Mirrors recordCheckpoint's broader catch: a lock probe that fails for a
             // non-query reason (a path that cannot be resolved) must still surface as a
             // structured pre-mutation result instead of escaping execute() and collapsing
             // the whole switch into a generic failure without recovery.
-            if (cancellationClassifier.isCancellation(e)) throw e
             preMutationLockProbeFailure("${e.javaClass.simpleName}: ${e.message}")
         }
 

@@ -4,8 +4,7 @@ import com.submodule.branchswitcher.git.RepositoryStateGitClient
 import com.submodule.branchswitcher.git.RepositoryStateBatchGitClient
 import com.submodule.branchswitcher.log.AppLogger
 import com.submodule.branchswitcher.log.logFailure
-import com.submodule.branchswitcher.switch.CancellationClassifier
-import com.submodule.branchswitcher.switch.rethrowIfCancellation
+import com.submodule.branchswitcher.switch.OperationCancelledException
 import java.nio.file.Path
 import java.util.concurrent.atomic.AtomicLong
 
@@ -30,7 +29,6 @@ class RepositoryStateRequest internal constructor(
  */
 class RepositoryStateDetector(
     private val log: AppLogger,
-    private val cancellationClassifier: CancellationClassifier = CancellationClassifier.DEFAULT,
 ) {
     private val latestRequestId = AtomicLong(0)
 
@@ -127,8 +125,9 @@ class RepositoryStateDetector(
                 else -> false
             }
             PathProbe(path, branch, dirty)
+        } catch (e: OperationCancelledException) {
+            throw e
         } catch (e: Exception) {
-            cancellationClassifier.rethrowIfCancellation(e)
             log.logFailure("[detect] $path failed", e)
             PathProbe(path, null, false)
         }

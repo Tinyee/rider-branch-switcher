@@ -6,7 +6,7 @@ import com.submodule.branchswitcher.operation.SessionCancelGuard
 import com.submodule.branchswitcher.log.logFailure
 import com.submodule.branchswitcher.log.newOperationContext
 import com.submodule.branchswitcher.log.withContext
-import com.submodule.branchswitcher.switch.CancellationClassifier
+import com.submodule.branchswitcher.switch.OperationCancelledException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -31,7 +31,6 @@ class RepositoryStateRefreshCoordinator(
     /** Concurrent background probe budget; one git-process slot is already reserved for a foreground switch or recovery. */
     private val gitProcessBudget: Int,
     private val worker: CoroutineDispatcher = Dispatchers.IO,
-    private val cancellationClassifier: CancellationClassifier = CancellationClassifier.DEFAULT,
 ) : AutoCloseable {
     private val lock = Any()
     private var active: RefreshState? = null
@@ -86,8 +85,10 @@ class RepositoryStateRefreshCoordinator(
                         clearIfCurrent(state)
                     }
                 }
+            } catch (error: OperationCancelledException) {
+                // A superseded/cancelled refresh is not a failure worth logging.
             } catch (error: Exception) {
-                if (isCurrent(state) && !cancellationClassifier.isCancellation(error)) {
+                if (isCurrent(state)) {
                     operationLog.logFailure("repository state refresh failed", error)
                 }
             } finally {

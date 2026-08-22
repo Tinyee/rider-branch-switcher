@@ -20,7 +20,7 @@ class DirtyHandlingStep : SwitchStep {
             val targets = context.preset.targetsFor(SwitchTargetScope.MAIN)
             for ((index, target) in targets.withIndex()) {
                 updateProgress(context, index, targets.size, target.path)
-                context.cancellationHandle?.checkCanceled()
+                context.operationControl?.checkCancelled()
                 val repositoryDirectory = resolveGitDir(context.projectRoot, target.path)
                 val facts = inspectDirtyState(context, repositoryDirectory) ?: continue
                 val outcome = handleTargetDirtyState(context, target, repositoryDirectory, facts, nextState, issues)

@@ -65,7 +65,7 @@ class SwitchRecoveryExecutor(
     private val log: AppLogger,
     private val git: SwitchGitClient,
     /** Polled between repository actions so a user cancel stops a long rollback. */
-    private val cancelled: (() -> Boolean)? = null,
+    private val operationControl: OperationControl? = null,
 ) {
     internal fun plan(result: SwitchExecutionResult): SwitchRecoveryPlan {
         val checkpoint = result.checkpoint
@@ -96,7 +96,7 @@ class SwitchRecoveryExecutor(
         log,
         state,
         plan.stashes.mapTo(linkedSetOf(), StashRecoveryAction::repositoryPath),
-        cancelled = cancelled,
+        control = operationControl,
         // Recovery rolled every repository back, so no repo reached the target: every
         // approved stash must be applied back (the file returns to its original path),
         // never dropped as authorized.
@@ -154,7 +154,7 @@ class SwitchRecoveryExecutor(
         log.activity("=== rolling back to pre-switch state ===")
         val outcomes = mutableListOf<RepositoryRecoveryOutcome>()
         for (action in plan.repositories) {
-            if (cancelled?.invoke() == true) {
+            if (operationControl?.isCanceled == true) {
                 // A user cancel stops the rollback between repositories; the write
                 // lease is released as soon as the caller observes the completion.
                 log.warn("[rollback] cancelled by user after ${outcomes.size}/${plan.repositories.size} repos")

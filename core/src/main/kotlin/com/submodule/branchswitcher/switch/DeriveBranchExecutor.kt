@@ -24,9 +24,8 @@ class DeriveBranchExecutor(
     private val projectRoot: Path,
     private val log: AppLogger,
     private val git: DeriveGitClient,
-    private val cancelled: (() -> Boolean)? = null,
+    private val operationControl: OperationControl? = null,
     private val requireClean: Boolean = true,
-    private val classifier: CancellationClassifier = CancellationClassifier.DEFAULT,
 ) {
 
     fun execute(preset: Preset, branchName: String): DeriveResult {
@@ -165,8 +164,9 @@ class DeriveBranchExecutor(
         query: () -> T,
     ): ProbeResult<T> = try {
         ProbeResult(query())
+    } catch (error: OperationCancelledException) {
+        throw error
     } catch (error: Exception) {
-        rethrowIfCancellation(error)
         log.logFailure("[derive] $label: $description probe failed", error)
         ProbeResult(null, error)
     }
@@ -236,8 +236,9 @@ class DeriveBranchExecutor(
                         OperationIssueCode.DERIVE_CHECKPOINT_FAILED,
                     )
                 }
+            } catch (e: OperationCancelledException) {
+                throw e
             } catch (e: Exception) {
-                rethrowIfCancellation(e)
                 log.logFailure("[derive] $repositoryLabel: checkpoint failed", e)
                 checkpointFailures += target.outcome(
                     DeriveRepositoryStatus.CHECKPOINT_FAILED,
@@ -316,8 +317,9 @@ class DeriveBranchExecutor(
                     )
                     log.warn("[derive] $repositoryLabel: FAILED - $diagnostic")
                 }
+            } catch (e: OperationCancelledException) {
+                throw e
             } catch (e: Exception) {
-                rethrowIfCancellation(e)
                 log.logFailure("[derive] $repositoryLabel: branch creation exception", e)
                 outcomes += target.outcome(
                     DeriveRepositoryStatus.FAILED,
@@ -419,12 +421,11 @@ class DeriveBranchExecutor(
                     log.warn("[derive] $repositoryLabel: no checkpoint entry, cannot rollback")
                     pendingPaths.add(path)
                 }
+            } catch (e: OperationCancelledException) {
+                log.warn("[derive] rollback cancelled at $path; remaining paths deferred")
+                pendingPaths += paths.drop(index)
+                break
             } catch (e: Exception) {
-                if (classifier.isCancellation(e)) {
-                    log.warn("[derive] rollback cancelled at $path; remaining paths deferred")
-                    pendingPaths += paths.drop(index)
-                    break
-                }
                 log.logFailure("[derive] $path: rollback exception", e)
                 pendingPaths.add(path)
             }
@@ -433,7 +434,7 @@ class DeriveBranchExecutor(
         return DeriveRollbackResult(pendingPaths.distinct())
     }
 
-    private fun isCancelled(): Boolean = cancelled?.invoke() == true
+    private fun isCancelled(): Boolean = operationControl?.isCanceled == true
 
     private fun labelFor(path: String): String = displayLabel(projectRoot, path)
 
@@ -455,9 +456,6 @@ class DeriveBranchExecutor(
         ),
     )
 
-    private fun rethrowIfCancellation(e: Exception) {
-        if (classifier.isCancellation(e)) throw e
-    }
 }
 
 private data class DerivePreflightResult(

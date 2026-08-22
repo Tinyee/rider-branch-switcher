@@ -705,12 +705,12 @@ class SwitchIntegrationTest {
         assertFalse(git.localBranchExists(root, "derived"))
     }
 
-    @Test(expected = com.intellij.openapi.progress.ProcessCanceledException::class)
-    fun `derive rethrows ProcessCanceledException instead of converting to preflight error`() {
+    @Test(expected = OperationCancelledException::class)
+    fun `derive rethrows cancellation instead of converting to preflight error`() {
         val root = createRepo(tmpDir, "project")
         val cancellingGit = object : GitClient by git {
             override fun currentBranch(workDir: java.io.File): String? =
-                throw com.intellij.openapi.progress.ProcessCanceledException()
+                throw OperationCancelledException()
         }
 
         DeriveBranchExecutor(root.toPath(), deriveLog(), cancellingGit)

@@ -178,16 +178,6 @@ class SwitchPreflightTest {
         assertTrue(rows.single().probeError!!.startsWith("IllegalStateException: "))
     }
 
-    @Test(expected = java.util.concurrent.CancellationException::class)
-    fun `probe rethrows CancellationException instead of converting to row`() {
-        val cancelGit = object : GitClient by fakeGit {
-            override fun currentBranch(workDir: File): String? =
-                throw java.util.concurrent.CancellationException("cancelled")
-        }
-        val preflight = SwitchPreflight(cancelGit)
-        preflight.probe(projectRoot, Preset("test", "main"))
-    }
-
     @Test
     fun `probe computes untracked collisions for a repo being switched`() {
         val collisionGit = object : GitClient by fakeGit {
@@ -259,19 +249,15 @@ class SwitchPreflightTest {
         assertTrue(rows.single().probeError!!.startsWith("IOException: ls-tree failed"))
     }
 
-    // Simulates IntelliJ ProcessCanceledException without importing the type
-    class ProcessCanceledException(msg: String) : RuntimeException(msg)
-
-    @Test(expected = ProcessCanceledException::class)
-    fun `probe rethrows PCE-like exception instead of converting to row`() {
-        val pceGit = object : GitClient by fakeGit {
+    @Test(expected = OperationCancelledException::class)
+    fun `probe rethrows cancellation instead of converting to row`() {
+        // A cancelled read surfaces as OperationCancelledException (the git read boundary
+        // converts it); it must abort the preflight, not degrade to a fail-closed row.
+        val cancelledGit = object : GitClient by fakeGit {
             override fun currentBranch(workDir: File): String? =
-                throw ProcessCanceledException("cancelled")
+                throw OperationCancelledException("cancelled")
         }
-        val pceClassifier = CancellationClassifier { e ->
-            e is java.util.concurrent.CancellationException || e is ProcessCanceledException
-        }
-        val preflight = SwitchPreflight(pceGit, classifier = pceClassifier)
+        val preflight = SwitchPreflight(cancelledGit)
         preflight.probe(projectRoot, Preset("test", "main"))
     }
 }

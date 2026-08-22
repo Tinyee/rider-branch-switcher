@@ -13,8 +13,8 @@ import com.submodule.branchswitcher.log.OperationContext
 import com.submodule.branchswitcher.log.withContext
 import com.submodule.branchswitcher.model.PreflightRow
 import com.submodule.branchswitcher.model.Preset
-import com.submodule.branchswitcher.platform.ProgressCancellationHandle
-import com.submodule.branchswitcher.platform.platformCancellationClassifier
+import com.submodule.branchswitcher.platform.ProgressOperationControl
+import com.submodule.branchswitcher.switch.OperationCancelledException
 import com.submodule.branchswitcher.service.BranchSwitcherService
 import com.submodule.branchswitcher.switch.SwitchPreflight
 import java.nio.file.Path
@@ -49,11 +49,10 @@ internal class SwitchPreflightUi(
                     SwitchPreflight(
                         operation,
                         Bundle.msg("preflight.probe.error.suffix"),
-                        platformCancellationClassifier,
                     ) { path, error ->
                         operationLog.warn("repository probe failed: path=$path", error)
                     }
-                        .probe(root, preset, ProgressCancellationHandle(indicator)) { index, total, label ->
+                        .probe(root, preset, ProgressOperationControl(indicator)) { index, total, label ->
                             indicator.text2 = label
                             indicator.fraction = index.toDouble() / total
                         }
@@ -61,15 +60,14 @@ internal class SwitchPreflightUi(
                     cancelWatcher.dispose()
                 }
             }
+        } catch (error: OperationCancelledException) {
+            operationLog.info("operation finished: status=cancelled")
+            throw error
         } catch (error: Exception) {
-            if (platformCancellationClassifier.isCancellation(error)) {
-                operationLog.info("operation finished: status=cancelled")
-            } else {
-                // Recorded here with context, then rethrown for the single reporting
-                // boundary (SwitchController / SwitchPresetAction). Using failure keeps
-                // this from duplicating their fatal-error report.
-                operationLog.failure("operation finished: status=failed", error)
-            }
+            // Recorded here with context, then rethrown for the single reporting
+            // boundary (SwitchController / SwitchPresetAction). Using failure keeps
+            // this from duplicating their fatal-error report.
+            operationLog.failure("operation finished: status=failed", error)
             throw error
         } finally {
             operation.close()
