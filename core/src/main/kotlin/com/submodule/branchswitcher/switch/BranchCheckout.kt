@@ -58,57 +58,36 @@ internal object BranchCheckout {
         directory: File,
         state: SwitchState,
     ): Attempt {
-        val currentBranch = context.git.currentBranch(directory)
-        context.log.info("current: ${currentBranch ?: "(detached)"}")
-
-        if (currentBranch == target.branch) {
-            context.log.info("already on '${target.branch}', skipping checkout")
-            return Attempt(
-                result = Result(
-                    state = state.withSuccessfulCheckout(target.path),
-                    succeeded = true,
-                ),
-            )
-        }
-
-        val checkoutResult = when {
-            context.git.localBranchExists(directory, target.branch) ->
-                context.git.checkoutExisting(directory, target.branch)
-
-            context.git.remoteBranchExists(directory, target.branch) -> {
-                context.log.info("local branch missing, creating from origin/${target.branch}")
-                context.git.checkoutFromRemote(directory, target.branch)
-            }
-
-            else -> {
+        val outcome = RepositoryCheckout(context.git, context.log).checkout(directory, target.branch)
+        when (outcome) {
+            is RepositoryCheckoutOutcome.BranchMissing ->
                 // A missing target branch must not leave a stash created earlier in the
                 // switch hidden from the user: returning a failed checkout keeps state
                 // unchanged, so the stash stays tracked. SwitchExecutor restores it at
                 // the end of a partial pipeline, or SwitchRunner's recovery applies it
                 // after rolling the repositories back.
                 return Attempt(result = branchMissingFailure(context, target, directory, state))
-            }
-        }
-
-        if (!checkoutResult.ok) {
-            context.log.warn("[fail] checkout - ${directory.path}: ${checkoutResult.diagnostic()}")
-            return Attempt(
-                result = Result(
-                    state,
-                    succeeded = false,
-                    issues = listOf(
-                        OperationIssue(
-                            stage = OperationStage.CHECKOUT,
-                            code = OperationIssueCode.CHECKOUT_FAILED,
-                            repositoryPath = target.path,
-                            diagnostic = checkoutResult.diagnostic(),
+            is RepositoryCheckoutOutcome.AlreadyOnTarget ->
+                context.log.info("already on '${target.branch}', skipping checkout")
+            is RepositoryCheckoutOutcome.CheckedOut -> if (!outcome.result.ok) {
+                context.log.warn("[fail] checkout - ${directory.path}: ${outcome.result.diagnostic()}")
+                return Attempt(
+                    result = Result(
+                        state,
+                        succeeded = false,
+                        issues = listOf(
+                            OperationIssue(
+                                stage = OperationStage.CHECKOUT,
+                                code = OperationIssueCode.CHECKOUT_FAILED,
+                                repositoryPath = target.path,
+                                diagnostic = outcome.result.diagnostic(),
+                            ),
                         ),
                     ),
-                ),
-                checkoutFailure = checkoutResult,
-            )
+                    checkoutFailure = outcome.result,
+                )
+            }
         }
-
         context.log.info("checkout ok")
         return Attempt(
             result = Result(

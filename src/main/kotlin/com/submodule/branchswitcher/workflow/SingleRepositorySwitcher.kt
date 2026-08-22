@@ -10,6 +10,8 @@ import com.submodule.branchswitcher.log.withContext
 import com.submodule.branchswitcher.operation.GitOperationResult
 import com.submodule.branchswitcher.operation.GitOperationRunner
 import com.submodule.branchswitcher.switch.OperationCancelledException
+import com.submodule.branchswitcher.switch.RepositoryCheckout
+import com.submodule.branchswitcher.switch.RepositoryCheckoutOutcome
 import com.submodule.branchswitcher.switch.expectedSubmoduleGitDirectory
 import com.submodule.branchswitcher.switch.findBlockingIndexLocks
 import com.submodule.branchswitcher.switch.indexLockBlockedDiagnostic
@@ -183,20 +185,31 @@ class SingleRepositorySwitcher(
         if (operation.isDirty(directory)) {
             return SingleRepositorySwitchResult.Skipped(SingleRepositorySkipReason.DIRTY)
         }
-        if (operation.currentBranch(directory) == target) {
-            return SingleRepositorySwitchResult.Skipped(SingleRepositorySkipReason.ALREADY_ON_TARGET)
-        }
         blockingIndexLock(root, path, operation, operationLog)?.let { return it }
-        return when {
-            operation.localBranchExists(directory, target) ->
-                switchWithLockGuard(path, operationLog) {
-                    operation.checkoutExisting(directory, target)
+        val checkout = try {
+            RepositoryCheckout(operation, operationLog).checkout(directory, target)
+        } catch (e: IndexLockBlockedException) {
+            // A lock appearing since the pre-check surfaces from the git index-mutation funnel.
+            operationLog.error(
+                "stale index.lock blocks checkout of $path - delete it and retry: ${e.lockPath}",
+            )
+            return SingleRepositorySwitchResult.LockBlocked(e.lockPath)
+        }
+        return when (checkout) {
+            is RepositoryCheckoutOutcome.AlreadyOnTarget ->
+                SingleRepositorySwitchResult.Skipped(SingleRepositorySkipReason.ALREADY_ON_TARGET)
+
+            is RepositoryCheckoutOutcome.CheckedOut -> {
+                val result = checkout.result
+                if (result.ok) {
+                    SingleRepositorySwitchResult.Success(result)
+                } else {
+                    operationLog.warn("[fail] checkout - ${directory.path}: ${result.diagnostic()}")
+                    SingleRepositorySwitchResult.GitFailure(result)
                 }
-            operation.remoteBranchExists(directory, target) ->
-                switchWithLockGuard(path, operationLog) {
-                    operation.checkoutFromRemote(directory, target)
-                }
-            else -> {
+            }
+
+            is RepositoryCheckoutOutcome.BranchMissing -> {
                 operationLog.warn("branch \"$target\" not found in $path (local and remote both missing)")
                 SingleRepositorySwitchResult.GitFailure(
                     GitResult("checkout", 1, "", "branch $target not found"),
@@ -218,30 +231,5 @@ class SingleRepositorySwitcher(
         )
         return SingleRepositorySwitchResult.LockBlocked(block.lockPath)
     }
-
-    /**
-     * Runs the checkout write; the git layer's index-mutation funnel re-checks the lock
-     * immediately before the command, so a lock appearing since the earlier gate surfaces
-     * here as a structured lock block instead of a mystery git failure.
-     */
-    private fun switchWithLockGuard(
-        path: String,
-        operationLog: AppLogger,
-        action: () -> GitResult,
-    ): SingleRepositorySwitchResult = try {
-        action().toSwitchResult()
-    } catch (e: IndexLockBlockedException) {
-        operationLog.error(
-            "stale index.lock blocks checkout of $path - delete it and retry: ${e.lockPath}",
-        )
-        SingleRepositorySwitchResult.LockBlocked(e.lockPath)
-    }
-
-    private fun GitResult.toSwitchResult(): SingleRepositorySwitchResult =
-        if (ok) {
-            SingleRepositorySwitchResult.Success(this)
-        } else {
-            SingleRepositorySwitchResult.GitFailure(this)
-        }
 
 }
