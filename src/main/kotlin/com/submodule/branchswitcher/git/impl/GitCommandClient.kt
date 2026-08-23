@@ -292,11 +292,13 @@ internal class GitCommandClient(
     }
 
     override fun untrackedFiles(workDir: File): List<String> {
-        val result = run(workDir, "--no-optional-locks", "ls-files", "--others", "--exclude-standard")
+        val result = run(workDir, "--no-optional-locks", "ls-files", "-z", "--others", "--exclude-standard")
         if (!result.ok) throw readFailure(result)
-        // Paths must not be trimmed: a file literally named " leading.txt" would lose its
-        // leading space and escape collision detection before checkout silently overwrites it.
-        return result.stdout.lineSequence().filter { it.isNotEmpty() }.toList()
+        // NUL-delimited raw paths (`-z` disables C-style quoting), so a file whose name
+        // contains a tab, newline, or quote arrives whole — not as a quoted escape that a
+        // later ls-tree pathspec could never match. Paths must not be trimmed: a file
+        // literally named " leading.txt" keeps its leading space.
+        return result.stdout.split('\u0000').filter { it.isNotEmpty() }
     }
 
     override fun targetBranchMatches(workDir: File, branch: String, paths: List<String>): List<String> {
@@ -325,7 +327,10 @@ internal class GitCommandClient(
         if (paths.isEmpty()) return emptyList()
         val pathSpecs = paths.flatMap { path -> ancestorPaths(path) + path }
         val typed = pathSpecs.chunked(PATHSPEC_CHUNK_SIZE).flatMap { chunk ->
-            val result = run(workDir, listOf("ls-tree", treeish, "--") + chunk)
+            // `-z` disables C-style quoting so a pathspec whose name contains a tab/newline
+            // matches the real entry, and the returned path is raw (identical to the input
+            // that untrackedFiles produced, also under -z).
+            val result = run(workDir, listOf("ls-tree", "-z", treeish, "--") + chunk)
             if (!result.ok) throw readFailure(result)
             parseLsTreeEntries(result.stdout)
         }
@@ -362,16 +367,20 @@ internal class GitCommandClient(
 
     private data class LsTreeEntry(val type: String, val path: String)
 
-    /** Parses `git ls-tree`'s default `<mode> <type> <sha>\t<path>` lines. */
+    /**
+     * Parses `git ls-tree -z` entries: `<mode> <type> <sha>\t<path>`, NUL-terminated. The
+     * path is raw (unquoted), so it may itself contain tabs — the meta/path separator is the
+     * FIRST tab, everything after it is the path verbatim.
+     */
     private fun parseLsTreeEntries(stdout: String): List<LsTreeEntry> =
-        stdout.lineSequence()
+        stdout.split('\u0000')
             .filter { it.isNotEmpty() }
-            .mapNotNull { line ->
-                val tab = line.indexOf('\t')
+            .mapNotNull { entry ->
+                val tab = entry.indexOf('\t')
                 if (tab < 0) return@mapNotNull null
-                val meta = line.substring(0, tab).split(' ')
+                val meta = entry.substring(0, tab).split(' ')
                 if (meta.size < 2) return@mapNotNull null
-                LsTreeEntry(meta[1], line.substring(tab + 1))
+                LsTreeEntry(meta[1], entry.substring(tab + 1))
             }
             .toList()
 

@@ -45,6 +45,38 @@ class GitOpsTest : GitOpsTestBase() {
     }
 
     @Test
+    fun `untracked and target-tree queries survive odd file names with tabs and quotes`() {
+        val repo = tmpDir.resolve("repo").toFile().also { it.mkdirs() }
+        runGit(repo, "init", "-b", "main")
+        val trackedTab = "a\tb.txt"
+        File(repo, trackedTab).writeText("tracked")
+        runGit(repo, "add", "-A")
+        runGit(repo, "commit", "-m", "init")
+        val untrackedTab = "odd\tname.txt"
+        File(repo, untrackedTab).writeText("untracked")
+        val leadingSpace = " leading.txt"
+        File(repo, leadingSpace).writeText("untracked")
+
+        val untracked = git.untrackedFiles(repo)
+        // -z keeps the raw path; the C-quoted form ("odd\tname.txt") must never leak.
+        assertTrue("a tab filename must come back raw", untrackedTab in untracked)
+        assertTrue("a leading-space filename must keep its leading space", leadingSpace in untracked)
+        assertFalse("the C-style escape must not leak into the results", untracked.any { it.contains("\\t") })
+
+        // The raw tab path must match as a collision against the tracked tree and HEAD.
+        assertEquals(
+            "a tracked tab filename must collide by its raw path",
+            listOf(trackedTab),
+            git.targetBranchMatches(repo, "main", listOf(trackedTab)),
+        )
+        assertEquals(
+            "the raw tab path must also collide against the actual HEAD",
+            listOf(trackedTab),
+            git.headStructuralCollisions(repo, listOf(trackedTab)),
+        )
+    }
+
+    @Test
     fun `isGitRepo returns true only for usable git repositories`() {
         val plainDir = tmpDir.resolve("plain").toFile().also { it.mkdirs() }
         assertFalse("plain directory is not a git repo", git.isGitRepo(plainDir))
@@ -637,7 +669,8 @@ class GitOpsTest : GitOpsTestBase() {
         val whitespaceGit = GitOps(timeoutSeconds = 10) { _ ->
             ControllableProcess(
                 finished = true,
-                stdout = " leading.txt\ntrailing.txt \nplain.txt\n".toByteArray(),
+                // -z output: NUL-delimited raw paths (git disables C-style quoting).
+                stdout = " leading.txt\u0000trailing.txt \u0000plain.txt\u0000".toByteArray(),
             )
         }
 
