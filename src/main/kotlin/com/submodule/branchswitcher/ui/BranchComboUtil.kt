@@ -211,10 +211,11 @@ private suspend fun discoverBranchChoices(
     } catch (e: CancellationException) {
         throw e
     } catch (e: OperationCancelledException) {
-        // A cancelled Git read surfaces as OperationCancelledException (not the JDK type):
-        // it is a user cancel, so it must propagate to end the lifecycle, never be recorded
-        // as a load failure.
-        throw e
+        // A cancelled Git read surfaces as OperationCancelledException (not the JDK type);
+        // the enclosing launch only treats a coroutine CancellationException as a cancel, so
+        // convert here (carrying the cause) rather than letting a custom exception be
+        // recorded as a load failure by the completion handler.
+        throw CancellationException("branch discovery cancelled").apply { initCause(e) }
     } catch (e: GitQueryException) {
         if (e.result.failureKind == GitFailureKind.CANCELLED) {
             throw CancellationException("branch discovery cancelled").apply { initCause(e) }

@@ -238,35 +238,19 @@ private fun applyRestoredStash(
         )
         return RestoreApplyOutcome(current, stop = true, interrupted = control?.isCanceled == true)
     }
-    // A lock created between the earlier check and the apply must surface as
-    // the structured lock block, not a generic stash-apply failure.
-    val racedLock = git.indexLockFile(repositoryDirectory)
-    if (racedLock != null) {
-        // The preflight check proved the tree was unlocked, the apply did not terminate,
-        // and the follow-up proved the failure was the lock race. No Git apply started,
-        // so this entry remains safe to retry.
-        current = current.withStashRestoreRetryable(stash.id)
-        log.warn(
-            "[fail] stash apply blocked by stale index.lock at $racedLock; " +
-                "delete it and retry (${stash.message})",
-        )
-        issues += OperationIssue(
-            stage = OperationStage.STASH_RESTORE,
-            code = OperationIssueCode.INDEX_LOCK_BLOCKING,
-            repositoryPath = path,
-            diagnostic = indexLockBlockedDiagnostic(racedLock),
-            lockPath = racedLock,
-        )
-    } else {
-        current = current.withStashRestoreAttempted(stash.id)
-        log.warn("[fail] stash apply failed for $path (${repositoryDirectory.path}): ${applyResult.diagnostic()}")
-        issues += OperationIssue(
-            stage = OperationStage.STASH_RESTORE,
-            code = OperationIssueCode.STASH_RESTORE_FAILED,
-            repositoryPath = path,
-            diagnostic = applyResult.diagnostic(),
-        )
-    }
+    // A plain apply failure may have PARTIALLY modified the worktree (a conflict is itself
+    // a partial write), and a lock observed afterward does not prove git never started —
+    // git may have created the lock and died. So a non-ok apply is always marked attempted
+    // and never auto-retried; only the pre-apply guard or a thrown IndexLockBlockedException
+    // (proven before start) is retryable.
+    current = current.withStashRestoreAttempted(stash.id)
+    log.warn("[fail] stash apply failed for $path (${repositoryDirectory.path}): ${applyResult.diagnostic()}")
+    issues += OperationIssue(
+        stage = OperationStage.STASH_RESTORE,
+        code = OperationIssueCode.STASH_RESTORE_FAILED,
+        repositoryPath = path,
+        diagnostic = applyResult.diagnostic(),
+    )
     return RestoreApplyOutcome(current)
 }
 

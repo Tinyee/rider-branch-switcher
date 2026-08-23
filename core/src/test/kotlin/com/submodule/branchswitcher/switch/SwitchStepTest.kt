@@ -616,7 +616,7 @@ class SwitchStepTest {
     }
 
     @Test
-    fun `stash apply blocked by a lock appearing mid-restore reports the lock`() {
+    fun `plain apply failure stays attempted even when a lock appears afterward`() {
         var lockChecks = 0
         val racedLockGit = object : GitClient by fakeGit {
             override fun indexLockFile(workDir: File): String? {
@@ -632,10 +632,14 @@ class SwitchStepTest {
             projectRoot, racedLockGit, createStringAppender { log += it }, state,
         )
 
-        val issue = restore.issues.single()
-        assertEquals(OperationIssueCode.INDEX_LOCK_BLOCKING, issue.code)
-        assertEquals("/repo/.git/index.lock", issue.lockPath)
-        assertTrue(issue.diagnostic.orEmpty().contains("delete it and retry"))
+        // A plain apply failure may have partially modified the worktree, and the lock
+        // observed afterward cannot prove git never started, so the entry is marked
+        // attempted (never auto-retried), not converted into a retryable lock race.
+        assertEquals(OperationIssueCode.STASH_RESTORE_FAILED, restore.issues.single().code)
+        assertTrue(
+            "a post-apply lock must not make a started apply retryable",
+            restore.state.stashesSnapshot().first().restoreAttempted,
+        )
     }
 
     @Test

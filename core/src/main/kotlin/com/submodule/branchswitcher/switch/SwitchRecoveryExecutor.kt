@@ -87,19 +87,23 @@ class SwitchRecoveryExecutor(
     }
 
     /**
-     * Restores the stash actions captured by [plan] after every repository was rolled back:
-     * no repo reached the target, so every approved stash is applied back (the file returns
-     * to its original path), never dropped as authorized.
+     * Restores the stashes of [state] whose repository is in [restoredPaths] — the repos the
+     * rollback provably returned to their pre-switch state (RESTORED/ALREADY_RESTORED).
+     * Repos that failed to roll back, or were never rolled back (e.g. a cancelled rollback),
+     * may still sit on the (partial) target tree: applying their stash there could conflict
+     * or partially rewrite it, so those stashes are left tracked untouched. No repo reached
+     * the target, so every approved stash for a restored repo is applied back (the file
+     * returns to its original path), never dropped as authorized.
      */
     internal fun recoverAfterRollback(
-        plan: SwitchRecoveryPlan,
         state: SwitchState,
+        restoredPaths: Set<String>,
     ): StashRestoreResult = restoreTrackedStashes(
         projectRoot,
         git,
         log,
         state,
-        plan.stashes.mapTo(linkedSetOf(), StashRecoveryAction::repositoryPath),
+        restoredPaths,
         control = operationControl,
         discardApprovedFor = { false },
     )
@@ -109,8 +113,16 @@ class SwitchRecoveryExecutor(
     fun recover(result: SwitchExecutionResult): SwitchRecoveryOutcome {
         val recoveryPlan = plan(result)
         val rollback = execute(recoveryPlan)
+        // Only repos the rollback provably returned to their pre-switch state get their
+        // stashes restored; failed or un-executed repos may still be on the target tree.
+        val restoredPaths = rollback.outcomes
+            .asSequence()
+            .filter {
+                it.status == RecoveryActionStatus.RESTORED || it.status == RecoveryActionStatus.ALREADY_RESTORED
+            }
+            .mapTo(linkedSetOf()) { it.action.repositoryPath }
         val stashRestore = try {
-            recoverAfterRollback(recoveryPlan, result.state)
+            recoverAfterRollback(result.state, restoredPaths)
         } catch (error: SwitchStepException) {
             val cause = error.cause
             log.logFailure("[stash restore] exception", cause)

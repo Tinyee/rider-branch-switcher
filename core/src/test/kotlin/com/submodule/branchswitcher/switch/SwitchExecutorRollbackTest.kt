@@ -290,6 +290,11 @@ class SwitchExecutorRollbackTest : SwitchExecutorTestBase() {
                     GitResult("checkout", 0, "", "")
                 }
 
+            // SubA's rollback provably succeeds: its HEAD already matches the checkpoint SHA,
+            // so its recovery outcome is RESTORED even though the main repo's rollback fails.
+            override fun revParseHead(workDir: File): String? =
+                if (workDir == projectRoot.toFile()) "abc123" else "sub-sha"
+
             override fun stashApply(workDir: File, oid: String): GitResult {
                 stashApplyCalls += workDir.name
                 return GitResult("stash pop", 0, "", "")
@@ -312,6 +317,36 @@ class SwitchExecutorRollbackTest : SwitchExecutorTestBase() {
         assertFalse(outcome.stashRestore.state.stashesSnapshot().isNotEmpty())
         // The applied stash is dropped after a clean restore, not retained as a backup.
         assertTrue(outcome.stashRestore.state.retainedStashBackupsSnapshot().isEmpty())
+    }
+
+    @Test
+    fun `recovery keeps a stash when its repository rollback failed`() {
+        initGitRepo(projectRoot.toFile())
+        val stashApplyCalls = mutableListOf<String>()
+        val recoveryGit = object : GitClient by fakeGit {
+            override fun currentBranch(workDir: File): String? = "dev"
+            override fun checkoutExisting(workDir: File, branch: String): GitResult =
+                error("restore failed")
+            override fun revParseHead(workDir: File): String? = "abc123"
+            override fun stashApply(workDir: File, oid: String): GitResult {
+                stashApplyCalls += workDir.name
+                return GitResult("stash pop", 0, "", "")
+            }
+        }
+        val execution = SwitchExecutionResult(
+            status = SwitchExecutionStatus.FAILED,
+            checkpoint = mapOf("." to CheckpointEntry("main-sha", "main")),
+            state = SwitchState().withTrackedStash(".", StashPurpose.WIP_RESTORE_AFTER_SWITCH, "before -> dev", "stash-oid"),
+        )
+
+        val outcome = recovery(recoveryGit).recover(execution)
+
+        assertFalse(outcome.rollbackOk)
+        assertTrue(
+            "a failed rollback must not restore the stash into the un-rolled-back tree",
+            stashApplyCalls.isEmpty(),
+        )
+        assertTrue("the stash must stay tracked for a later explicit recovery", outcome.stashRestore.state.stashesSnapshot().isNotEmpty())
     }
 
     @Test

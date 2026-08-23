@@ -312,48 +312,68 @@ internal class GitCommandClient(
     }
 
     /**
-     * Returns the input [paths] that structurally collide with [treeish]'s tree, read once:
-     * a path that is itself tracked, whose tracked ancestor is a file, or that is the
-     * ancestor of a tracked path. A checkout writes all three locations, so a plain
-     * pathspec over just the input paths would miss a tracked ancestor (empty result) or a
-     * tracked descendant (returns the child, not the blocking parent). The full tree is
-     * matched in memory so every structural case is returned as the original input path.
+     * Returns the input [paths] that structurally collide with [treeish]'s tree: a path that
+     * is itself tracked (a file, or a directory the checkout needs to create), or whose
+     * tracked ancestor is a file. Bounded: the query names the input paths AND their
+     * ancestors as NON-recursive pathspecs, so it returns at most one entry per pathspec
+     * regardless of repository size — never the whole tree (which could exceed the process
+     * stdout limit). Git always lists a blob pathspec even when a deeper pathspec descends
+     * into it, so a tracked-file ancestor is never missed; a tree ancestor may be elided,
+     * which is harmless (a tracked directory ancestor is not a collision).
      */
     private fun structuralCollisions(workDir: File, treeish: String, paths: List<String>): List<String> {
-        val result = run(workDir, "ls-tree", "-r", "--name-only", treeish)
-        if (!result.ok) throw readFailure(result)
-        val tracked = result.stdout.lineSequence().filter { it.isNotEmpty() }.toHashSet()
-        val input = paths.toHashSet()
-        val colliding = mutableSetOf<String>()
-        // Exact match and tracked descendant: a tracked path that IS the input, or is under it.
-        for (entry in tracked) {
-            var prefix: String? = entry
-            while (prefix != null) {
-                if (prefix in input) {
-                    colliding += prefix
-                    break
-                }
-                prefix = parentPath(prefix)
-            }
+        if (paths.isEmpty()) return emptyList()
+        val pathSpecs = paths.flatMap { path -> ancestorPaths(path) + path }
+        val typed = pathSpecs.chunked(PATHSPEC_CHUNK_SIZE).flatMap { chunk ->
+            val result = run(workDir, listOf("ls-tree", treeish, "--") + chunk)
+            if (!result.ok) throw readFailure(result)
+            parseLsTreeEntries(result.stdout)
         }
-        // Tracked ancestor as a file: a tracked path that is a prefix of the input.
+        val byPath = typed.associateBy { it.path }
+        val colliding = mutableSetOf<String>()
         for (path in paths) {
-            var prefix = parentPath(path)
-            while (prefix != null) {
-                if (prefix in tracked) {
-                    colliding += path
-                    break
-                }
-                prefix = parentPath(prefix)
+            // Exact (a tracked file) or descendant (a tracked directory): the entry at the
+            // path exists. Input paths are untracked FILES on disk, so they never nest under
+            // each other and git returns the tree entry of any tracked-directory input.
+            if (path in byPath) colliding += path
+            // A tracked FILE that is a prefix of the path blocks it: checkout needs the file
+            // where the worktree has a directory.
+            if (ancestorPaths(path).any { it in byPath && byPath.getValue(it).type == LS_TREE_TYPE_BLOB }) {
+                colliding += path
             }
         }
         return paths.filter { it in colliding }
+    }
+
+    private fun ancestorPaths(path: String): List<String> {
+        val ancestors = mutableListOf<String>()
+        var prefix = parentPath(path)
+        while (prefix != null) {
+            ancestors += prefix
+            prefix = parentPath(prefix)
+        }
+        return ancestors
     }
 
     private fun parentPath(path: String): String? {
         val slash = path.lastIndexOf('/')
         return if (slash < 0) null else path.substring(0, slash)
     }
+
+    private data class LsTreeEntry(val type: String, val path: String)
+
+    /** Parses `git ls-tree`'s default `<mode> <type> <sha>\t<path>` lines. */
+    private fun parseLsTreeEntries(stdout: String): List<LsTreeEntry> =
+        stdout.lineSequence()
+            .filter { it.isNotEmpty() }
+            .mapNotNull { line ->
+                val tab = line.indexOf('\t')
+                if (tab < 0) return@mapNotNull null
+                val meta = line.substring(0, tab).split(' ')
+                if (meta.size < 2) return@mapNotNull null
+                LsTreeEntry(meta[1], line.substring(tab + 1))
+            }
+            .toList()
 
     override fun checkoutExisting(workDir: File, branch: String): GitResult =
         runIndexMutation(workDir, "checkout", branch)
@@ -618,6 +638,9 @@ internal class GitCommandClient(
     }
 
     companion object {
+        /** Bounds `ls-tree` pathspec lists so exec arg size stays well under ARG_MAX. */
+        private const val PATHSPEC_CHUNK_SIZE = 400
+        private const val LS_TREE_TYPE_BLOB = "blob"
         private const val MAX_SUBMODULE_DEPTH = 10
         private const val SUBMODULE_ENTRY_KEY_REGEX = "^submodule\\..*\\.(path|url)$"
         private const val SUBMODULE_KEY_PREFIX = "submodule."

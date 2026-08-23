@@ -5,7 +5,6 @@ import com.submodule.branchswitcher.git.IndexLockBlockedException
 import com.submodule.branchswitcher.git.SwitchGitClient
 import com.submodule.branchswitcher.log.AppLogger
 import com.submodule.branchswitcher.log.logFailure
-import com.submodule.branchswitcher.log.newOperationId
 import com.submodule.branchswitcher.model.Preset
 import com.submodule.branchswitcher.model.RepoTarget
 import com.submodule.branchswitcher.model.ResolvedSwitchRequest
@@ -118,10 +117,11 @@ class SwitchExecutor @JvmOverloads constructor(
             is Checkpoint.Failed -> return checkpoint.result
         }
 
-        // One opaque operation id per execution scopes every stash message, so a retained
-        // stash from an earlier switch can never be matched by message and applied or dropped
-        // as if it belonged to this one.
-        val context = createContext(preset, options, switchCheckpoint, newOperationId("switch"))
+        // One full-UUID operation id per execution scopes every stash message. A short
+        // (32-bit) log id is fine for human log lines but too weak to back the "a retained
+        // stash from an earlier switch can never be matched" guarantee, so the stash identity
+        // uses the full 128-bit UUID.
+        val context = createContext(preset, options, switchCheckpoint, java.util.UUID.randomUUID().toString())
 
         context.progressHandle?.isIndeterminate = false
 
