@@ -8,8 +8,8 @@ import java.io.File
 import java.nio.file.Path
 
 /**
- * Restores tracked stashes, drops entries that applied cleanly, and retains failed
- * entries so a later recovery can retry them.
+ * Restores tracked stashes, drops entries that applied cleanly, and retains entries whose
+ * apply failed or was interrupted, or whose drop was declined, as a manual recovery backup.
  *
  * Entries are restored in reverse creation order (WIP before approved). Per the
  * restore/drop matrix, an APPROVED_DISCARD stash is dropped WITHOUT applying — the discard
@@ -176,9 +176,11 @@ private data class RestoreApplyOutcome(
 )
 
 /**
- * Applies [stash] into [repositoryDirectory] and records the outcome. A lock race or
- * generic apply failure throws [SwitchStepException] carrying the latest state, so the
- * caller must use the carried state rather than its own when it catches one.
+ * Applies [stash] into [repositoryDirectory] and records the outcome. A non-ok git result
+ * marks the entry attempted (at-most-once) and returns normally; [SwitchStepException]
+ * carrying the latest state is thrown only for a proven pre-start
+ * [IndexLockBlockedException] (retryable) or an unexpected runtime exception (attempted),
+ * so the caller must use the carried state rather than its own when it catches one.
  */
 @Suppress("TooGenericExceptionCaught") // any apply failure must stay at-most-once, whatever the cause
 private fun applyRestoredStash(

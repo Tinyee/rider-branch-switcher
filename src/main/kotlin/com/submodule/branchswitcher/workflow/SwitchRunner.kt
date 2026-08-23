@@ -235,10 +235,12 @@ class SwitchRunner(
     )
 
     /**
-     * True when a completed switch left stash entries that were never marked attempted
-     * (a lock race or an interrupted apply) and the restore was not stopped by a user
-     * cancel. These are exactly the entries a retry can make progress on; an apply that
-     * failed with Git refusing is already marked attempted and must not be re-applied.
+     * True when a completed switch left stash entries that were never marked attempted —
+     * the restore loop stopped before reaching them, or the index.lock funnel proved Git
+     * had not started (retryable) — and the restore was not stopped by a user cancel.
+     * These are exactly the entries a retry can make progress on; an apply that started
+     * and failed, was interrupted, or timed out is already marked attempted and must not
+     * be re-applied.
      */
     private fun needsStashRetry(execution: SwitchExecutionResult): Boolean =
         (execution.status == SwitchExecutionStatus.SUCCESS ||

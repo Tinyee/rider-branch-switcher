@@ -28,9 +28,11 @@
 - A staged submodule gitlink update is treated as stashable dirt, not
   submodule-only: if `git stash` cannot save it, the switch fails closed and
   skips the target rather than aborting a checkout midway.
-- Every mutating git write (stash, fetch, checkout, pull, submodule) rechecks for
-  a pre-existing `index.lock` immediately before starting, closing the
-  check-then-act gap between the initial preflight and the first mutation.
+- Every index/worktree mutation (checkout, pull, stash, stash apply, reset,
+  submodule init) rechecks for a pre-existing `index.lock` immediately before
+  starting, closing the check-then-act gap between the initial preflight and the
+  first mutation; fetch and ref-only writes (stash drop, branch delete, submodule
+  sync) remain ungated.
 - The `index.lock` probe resolves the git directory directly on disk (zero
   process spawns on the common no-lock path), and a probe failure is reported as
   a structured `GIT_QUERY_FAILED` instead of silently passing the preflight.
@@ -222,8 +224,11 @@
   shared fallback (`resolveHeadAndBranch`) and collapse the duplicate
   `dirtyProbe`/`localBranchProbe` methods onto their equivalents, so both
   checkpoints share a single atomic-read-then-fallback contract.
-- `stashDrop` now rechecks for a pre-existing `index.lock` immediately before
-  dropping, matching every other mutating git write.
+- `stashDrop` now resolves the stash OID to a `stash@{n}` selector via
+  `git stash list` and re-verifies the mapping immediately before dropping, so a
+  selector shifted by a concurrent stash push cannot drop the wrong entry (a bare
+  OID is rejected by `git stash drop`); like other ref-only writes it stays
+  outside the index.lock gate.
 - Every switch, derive, and recovery failure diagnostic names the resolved
   repository directory, so a single log line locates the affected repo without
   cross-referencing the operation header; recovery stash-restore failures also
@@ -235,17 +240,23 @@
 - Notification balloons carry the operation ID (`op: switch-…`), so an outcome
   can be matched to its tool-window log lines; the preflight-failure log line is
   recorded inside the same operation scope.
-- A completed switch whose end-of-pipeline stash restore left retryable entries
-  (a stale `index.lock` race or an interrupted apply) automatically retries the
-  restore once without rolling any repository back; an explicit cancel during
-  the restore suppresses the retry so the remaining WIP stays in `git stash`.
+- A completed switch whose end-of-pipeline stash restore left un-attempted
+  entries — the loop stopped before reaching them, or an `index.lock` block the
+  funnel proved occurred before Git started — automatically retries the restore
+  once without rolling any repository back; an apply that started and failed or
+  was interrupted is marked attempted and is not re-applied, and an explicit
+  cancel during the restore suppresses the retry so the remaining WIP stays in
+  `git stash`.
 
 ### Fixed
 
-- Approved untracked-collision discards are deleted at the last safe moment —
-  just before the target's own checkout — instead of up-front for every
-  repository, so a downstream skip (a failed main checkout or a topology change)
-  no longer leaves a switched-to repository's approved files already gone.
+- Approved untracked-collision discards are isolated into a path-scoped stash
+  just before the target's own checkout instead of being deleted up-front for
+  every repository, so a downstream skip (a failed main checkout or a topology
+  change) no longer leaves a switched-to repository's approved files already
+  gone; the stash is dropped only after the checkout succeeds and the actual HEAD
+  still proves every approved path conflicts, otherwise it is retained or
+  re-applied.
 - The collision-discard preview's OK button label now tracks the live checkbox
   decision instead of a snapshot taken when the dialog opened.
 - Preserve the latest stash and checkout state when cancellation or a Git query
@@ -298,9 +309,10 @@
   later step throws.
 - A skipped parent submodule disables its nested descendants, so a repository the
   user chose to skip is not mutated through a nested child checkout or pull.
-- A stash restore whose apply is blocked by an `index.lock` stays retryable, both
-  when the write guard throws before Git starts and when Git returns the lock
-  failure, instead of permanently abandoning auto-restore.
+- A stash restore blocked by an `index.lock` stays retryable both when the
+  pre-apply guard finds a stale lock and when the index-mutation funnel throws
+  before Git starts, instead of permanently abandoning auto-restore; a lock that
+  appears only in a non-ok apply result does not make it retryable.
 - Recovery no longer reports `RESTORED` when a branch checkout fell back to a
   detached SHA checkout; it verifies the named branch and reports
   `RECOVERY_FAILED` instead.
@@ -338,10 +350,11 @@
 - A stash push terminated mid-write no longer falls back to the top of
   `refs/stash`, which could misapply an older backup or a concurrent external
   stash; only an entry the push actually created is tracked.
-- Stash restoration honors cancellation: an interrupted apply stays retryable
-  and the preserved WIP is surfaced in the notification instead of being marked
-  as attempted and silently abandoned, and a completed switch that could not
-  restore some stashes warns with the preserved stash details.
+- Stash restoration honors cancellation: an interrupted apply may have partially
+  modified the worktree, so it is marked attempted and is never re-applied
+  automatically — it stays in `git stash` for manual or explicit recovery, the
+  preserved WIP is surfaced in the notification, and a completed switch that
+  could not restore some stashes warns with the preserved stash details.
 - A fetch-first switch is no longer short-circuited even when every target is
   already on its branch with a clean tree, so remote-tracking refs stay fresh.
 - A background task that completes before its task infrastructure throws keeps
@@ -416,9 +429,10 @@
   repository inspection as a nullable capability so pipeline steps depend on an
   interface instead of a concrete write-guard wrapper; and single-pass the
   porcelain-v2 status parser.
-- Add tests for the automatic stash-restore retry (an interrupted inline restore
-  is re-applied by the runner without rollback) and for the cancel-interrupted
-  restore flag that suppresses the retry.
+- Add tests for the automatic stash-restore retry (a lock-blocked or un-attempted
+  entry is re-applied by the runner without rollback, and a completed switch's
+  interrupted restore drops an approved stash it left behind) and for the
+  cancel-interrupted restore flag that suppresses the retry.
 
 ## [0.6.0] - 2026-06-13
 
