@@ -118,7 +118,7 @@ internal class SwitchController(
         val notification = deriveNotification(
             cancelled = runResult.cancelled,
             result = runResult.execution,
-            rollbackFailureCount = runResult.rollbackFailures.size,
+            rollbackFailureCount = runResult.rollback.failureCount,
             branchName = branchName,
         )
         val operationId = runResult.operationId

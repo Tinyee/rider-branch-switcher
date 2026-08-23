@@ -30,11 +30,16 @@ internal class TestGitOperationRunner(
     private val provider: GitOperationProvider,
     private val completion: TestOperationCompletion = TestOperationCompletion.COMPLETE,
     private val progress: OperationProgress = TestOperationProgress(),
+    /** Per-call completion override (indexed from 0), for multi-operation workflows where one run must behave differently. */
+    private val completionForRun: (Int) -> TestOperationCompletion = { completion },
 ) : GitOperationRunner {
+    private var runCount = 0
+
     override suspend fun <T> run(
         title: String,
         block: (OperationProgress, GitOperationSession) -> T,
     ): GitOperationResult<T> {
+        val thisCompletion = completionForRun(runCount++)
         val operation = try {
             provider.openOperation()
         } catch (_: CancellationException) {
@@ -45,12 +50,12 @@ internal class TestGitOperationRunner(
             return GitOperationResult.Failed(e)
         }
         return try {
-            if (completion == TestOperationCompletion.CANCEL_BEFORE) {
+            if (thisCompletion == TestOperationCompletion.CANCEL_BEFORE) {
                 operation.cancel()
                 GitOperationResult.Cancelled()
             } else {
                 val value = block(progress, operation)
-                if (completion == TestOperationCompletion.CANCEL_AFTER) {
+                if (thisCompletion == TestOperationCompletion.CANCEL_AFTER) {
                     operation.cancel()
                     GitOperationResult.Cancelled(value)
                 } else {

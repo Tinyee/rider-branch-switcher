@@ -19,8 +19,37 @@ data class DeriveRunResult(
     val operationId: String,
     val cancelled: Boolean,
     val execution: DeriveResult?,
-    val rollbackFailures: List<String> = emptyList(),
+    val rollback: DeriveRollbackOutcome = DeriveRollbackOutcome.None,
 )
+
+/**
+ * What happened to the post-derive rollback, as a typed outcome instead of the
+ * former "(cancelled)"/"(failed)" string sentinels that used to be smuggled into
+ * the pending-path list. Local to the runner/result boundary; the presenter
+ * reduces it to a count.
+ */
+sealed interface DeriveRollbackOutcome {
+    /** Rollback ran; [paths] are the repositories still unrestored (empty = fully restored). */
+    data class PendingPaths(val paths: List<String>) : DeriveRollbackOutcome
+
+    /** The rollback itself was cancelled before it finished; the restore state is unknown. */
+    data object Cancelled : DeriveRollbackOutcome
+
+    /** Rollback could not run at all (the Git session failed to open, etc.). */
+    data object Failed : DeriveRollbackOutcome
+
+    /** No rollback was needed or run. */
+    data object None : DeriveRollbackOutcome
+
+    /** Presenter-facing count of rollback problems: pending paths, or one non-path failure. */
+    val failureCount: Int
+        get() = when (this) {
+            is PendingPaths -> paths.size
+            Cancelled -> 1
+            Failed -> 1
+            None -> 0
+        }
+}
 
 private data class BackgroundDeriveOutcome(
     val deriveResult: DeriveResult,
@@ -99,7 +128,9 @@ class DeriveBranchRunner(
                 operationId = operationId,
                 cancelled = false,
                 execution = backgroundResult.value.deriveResult,
-                rollbackFailures = backgroundResult.value.rollback?.pendingPaths.orEmpty(),
+                rollback = backgroundResult.value.rollback
+                    ?.let { DeriveRollbackOutcome.PendingPaths(it.pendingPaths) }
+                    ?: DeriveRollbackOutcome.None,
             )
             is GitOperationResult.Cancelled -> {
                 operationLog.info("[cancelled] derive cancelled by user")
@@ -109,7 +140,7 @@ class DeriveBranchRunner(
                     operationId = operationId,
                     cancelled = true,
                     execution = deriveResult,
-                    rollbackFailures = rollbackAfterCancellation(
+                    rollback = rollbackAfterCancellation(
                         deriveResult,
                         branchName,
                         operationLog,
@@ -128,22 +159,21 @@ class DeriveBranchRunner(
             "operation finished: cancelled=${result.cancelled}, " +
                 "succeeded=${result.execution?.succeeded?.size ?: 0}, " +
                 "failed=${result.execution?.failedOutcomes?.size ?: 0}, " +
-                "rollbackFailures=${result.rollbackFailures.size}",
+                "rollbackFailures=${result.rollback.failureCount}",
         )
         return result
     }
 
-    @Suppress("TooGenericExceptionCaught") // cancellation recovery returns a report instead of escaping
     private suspend fun rollbackAfterCancellation(
         execution: DeriveResult?,
         branchName: String,
         log: AppLogger,
         pendingPaths: List<String>? = null,
         rollbackTitle: String,
-    ): List<String> {
+    ): DeriveRollbackOutcome {
         val pathsToRestore = pendingPaths ?: execution?.succeeded.orEmpty()
         if (execution == null || pathsToRestore.isEmpty()) {
-            return emptyList()
+            return DeriveRollbackOutcome.None
         }
         log.activity(
             "[derive] rolling back ${pathsToRestore.size} pending repo(s) after cancel...",
@@ -159,14 +189,18 @@ class DeriveBranchRunner(
             ).rollbackSucceeded(execution, branchName, pathsToRestore).pendingPaths
         }
         return when (rollbackResult) {
-            is GitOperationResult.Completed -> rollbackResult.value
+            is GitOperationResult.Completed -> DeriveRollbackOutcome.PendingPaths(rollbackResult.value)
             is GitOperationResult.Cancelled -> {
                 log.warn("rollback after cancel was itself cancelled")
-                rollbackResult.value ?: listOf("(cancelled)")
+                // A cancelled-after run still executed rollback and returned its paths;
+                // a cancelled-before run left the restore state unknown.
+                val value = rollbackResult.value
+                if (value != null) DeriveRollbackOutcome.PendingPaths(value)
+                else DeriveRollbackOutcome.Cancelled
             }
             is GitOperationResult.Failed -> {
                 log.logFailure("derive rollback after cancel failed", rollbackResult.error)
-                listOf("(failed)")
+                DeriveRollbackOutcome.Failed
             }
         }
     }

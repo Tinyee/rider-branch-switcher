@@ -35,7 +35,7 @@ class DeriveBranchRunnerTest {
         )
 
         assertTrue(result.cancelled)
-        assertTrue(result.rollbackFailures.isEmpty())
+        assertEquals(DeriveRollbackOutcome.PendingPaths(emptyList()), result.rollback)
         assertEquals("main", git.currentBranch)
         assertEquals(2, git.openCount)
         assertEquals(2, git.closeCount)
@@ -68,7 +68,7 @@ class DeriveBranchRunnerTest {
         )
 
         assertTrue(result.cancelled)
-        assertTrue(result.rollbackFailures.isEmpty())
+        assertEquals(DeriveRollbackOutcome.None, result.rollback)
         assertEquals(1, git.deleteCount)
         assertEquals(1, git.openCount)
         assertEquals(1, git.closeCount)
@@ -96,7 +96,7 @@ class DeriveBranchRunnerTest {
         )
 
         assertTrue(result.cancelled)
-        assertTrue(result.rollbackFailures.isEmpty())
+        assertEquals(DeriveRollbackOutcome.PendingPaths(emptyList()), result.rollback)
         assertEquals(2, git.rollbackCheckoutCount)
         assertEquals(1, git.deleteCount)
         assertEquals(2, git.openCount)
@@ -128,9 +128,87 @@ class DeriveBranchRunnerTest {
         assertTrue("an indicator cancel must cancel the derive", result.execution?.cancelled == true)
     }
 
+    @Test
+    fun `rollback cancelled before it runs reports a cancelled outcome`() = runBlocking {
+        val root = Files.createTempDirectory("derive-runner-rollback-cancelled")
+        val git = RecordingDeriveGit()
+        val runner = DeriveBranchRunner(
+            projectRoot = root,
+            operations = TestGitOperationRunner(
+                git,
+                completionForRun = { run ->
+                    if (run == 1) TestOperationCompletion.CANCEL_BEFORE else TestOperationCompletion.CANCEL_AFTER
+                },
+            ),
+        )
+
+        val result = runner.execute(
+            title = "Deriving",
+            rollbackTitle = "Rolling back",
+            preset = Preset("main", "main"),
+            branchName = "feature",
+            log = createStringAppender {},
+        )
+
+        assertTrue(result.cancelled)
+        assertEquals(DeriveRollbackOutcome.Cancelled, result.rollback)
+        assertEquals(1, result.rollback.failureCount)
+    }
+
+    @Test
+    fun `rollback infrastructure failure reports a failed outcome`() = runBlocking {
+        val root = Files.createTempDirectory("derive-runner-rollback-failed")
+        val git = RecordingDeriveGit(failOpenOnCall = 2)
+        val runner = DeriveBranchRunner(
+            projectRoot = root,
+            operations = TestGitOperationRunner(git, TestOperationCompletion.CANCEL_AFTER),
+        )
+
+        val result = runner.execute(
+            title = "Deriving",
+            rollbackTitle = "Rolling back",
+            preset = Preset("main", "main"),
+            branchName = "feature",
+            log = createStringAppender {},
+        )
+
+        assertTrue(result.cancelled)
+        assertEquals(DeriveRollbackOutcome.Failed, result.rollback)
+        assertEquals(1, result.rollback.failureCount)
+    }
+
+    @Test
+    fun `rollback that cannot restore a repo reports its pending paths`() = runBlocking {
+        val root = Files.createTempDirectory("derive-runner-rollback-pending")
+        val git = RecordingDeriveGit(failAllRollbackCheckouts = true)
+        val runner = DeriveBranchRunner(
+            projectRoot = root,
+            operations = TestGitOperationRunner(
+                git,
+                completionForRun = { run ->
+                    if (run == 0) TestOperationCompletion.CANCEL_AFTER else TestOperationCompletion.COMPLETE
+                },
+            ),
+        )
+
+        val result = runner.execute(
+            title = "Deriving",
+            rollbackTitle = "Rolling back",
+            preset = Preset("main", "main"),
+            branchName = "feature",
+            log = createStringAppender {},
+        )
+
+        assertTrue(result.cancelled)
+        assertEquals(DeriveRollbackOutcome.PendingPaths(listOf(".")), result.rollback)
+        assertEquals(1, result.rollback.failureCount)
+    }
+
     private class RecordingDeriveGit(
         private val failNewBranchDirectoryName: String? = null,
         private val cancelFirstRollbackCheckout: Boolean = false,
+        private val failAllRollbackCheckouts: Boolean = false,
+        private val failOpenOnCall: Int = -1,
     ) : GitClient {
         var currentBranch = "main"
         private val branchesByPath = mutableMapOf<String, String>()
@@ -142,6 +220,7 @@ class DeriveBranchRunnerTest {
 
         override fun openOperation(): GitOperationSession {
             openCount++
+            if (openCount == failOpenOnCall) throw IllegalStateException("cannot open session")
             val delegate = this
             return object : GitOperationSession, GitWorkflowClient by delegate {
                 override fun cancel() {
@@ -186,6 +265,9 @@ class DeriveBranchRunnerTest {
             rollbackCheckoutCount++
             if (cancelFirstRollbackCheckout && rollbackCheckoutCount == 1) {
                 return GitResult("checkout", -1, "", "cancelled")
+            }
+            if (failAllRollbackCheckouts) {
+                return GitResult("checkout", 1, "", "failed")
             }
             currentBranch = branch
             branchesByPath[workDir.canonicalPath] = branch
