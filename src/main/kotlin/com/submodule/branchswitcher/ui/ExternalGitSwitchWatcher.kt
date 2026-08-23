@@ -126,7 +126,7 @@ internal sealed interface WatchPollAction {
      * fire the external-change callback). [readError] is set when reading the stamp
      * failed, in which case [stamp] is the -1 sentinel.
      */
-    data class Observe(val stamp: Long, val previous: Long, val readError: Throwable? = null) : WatchPollAction
+    data class Observe(val stamp: Long, val previous: Long, val readError: Exception? = null) : WatchPollAction
 }
 
 /**

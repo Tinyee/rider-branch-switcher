@@ -303,9 +303,16 @@ class PresetRepositoryTest {
         )
         repository.load().getOrThrow()
 
-        val exception = runCatching { repository.save(listOf(Preset("dev", "dev"))) }.exceptionOrNull()
+        val exception = checkNotNull(
+            runCatching { repository.save(listOf(Preset("dev", "dev"))) }.exceptionOrNull(),
+        ) as PresetBackupFailedException
 
-        assertTrue("expected PresetBackupFailedException, was: $exception", exception is PresetBackupFailedException)
+        assertEquals(file, exception.source)
+        assertEquals(backupDir, exception.backup)
+        assertTrue(
+            "the underlying copy failure must be preserved",
+            exception.cause is java.nio.file.DirectoryNotEmptyException,
+        )
         assertEquals("the original file must not be overwritten when its backup failed", 0, saveAttempts)
         assertArrayEquals(onDiskBytes, Files.readAllBytes(file))
         // The refusal leaves dropBackupPending set, so once the obstruction is gone the

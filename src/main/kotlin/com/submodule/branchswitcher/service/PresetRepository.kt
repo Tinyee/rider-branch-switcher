@@ -85,8 +85,9 @@ class PresetRepository internal constructor(
         // copy fails, refuse the overwrite: the backup is the only durable copy of the
         // dropped entries. dropBackupPending stays set so the next save re-attempts it.
         if (dropBackupPending) {
-            val backedUp = withContext(Dispatchers.IO) { backupOriginal(file) }
-            if (!backedUp) throw PresetBackupFailedException(file)
+            // Throws PresetBackupFailedException (carrying the source, backup, and cause)
+            // when the copy fails, leaving dropBackupPending set for the next save.
+            withContext(Dispatchers.IO) { backupOriginal(file) }
             dropBackupPending = false
         }
         val updated = presetFile.copy(presets = newPresets)
@@ -105,21 +106,22 @@ class PresetRepository internal constructor(
 
     /**
      * Copies the pre-filtered file so entries dropped as invalid at load are recoverable
-     * after the next save rewrites the file without them. Returns true when the original
-     * is preserved (including the no-file case); false when the copy failed. The caller
-     * must then refuse the destructive overwrite, because the backup is the only durable
-     * copy of the dropped entries.
+     * after the next save rewrites the file without them. Returns the written backup path,
+     * or null when there is no file to preserve. Throws [PresetBackupFailedException]
+     * (source, backup, cause) when the copy fails; the caller must then refuse the
+     * destructive overwrite, because the backup is the only durable copy of the dropped
+     * entries.
      */
     @Suppress("TooGenericExceptionCaught") // backup failure is a refusal reason; any IO failure is caught here
-    private fun backupOriginal(file: Path): Boolean {
-        if (!Files.exists(file)) return true
+    private fun backupOriginal(file: Path): Path? {
+        if (!Files.exists(file)) return null
         val backup = file.resolveSibling(file.fileName.toString() + ".bak")
         return try {
             Files.copy(file, backup, java.nio.file.StandardCopyOption.REPLACE_EXISTING)
-            true
+            backup
         } catch (e: Exception) {
             LOG.warn("preset backup to $backup failed: ${e.message}", e)
-            false
+            throw PresetBackupFailedException(file, backup, e)
         }
     }
 

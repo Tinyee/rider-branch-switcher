@@ -76,7 +76,7 @@ object PresetLoader {
             val bytes = Files.readAllBytes(file)
             val text = String(bytes, StandardCharsets.UTF_8)
             val dto = gson.fromJson(text, PresetFileDto::class.java) ?: PresetFileDto()
-            val (parsed, _, droppedNames) = normalizePresetIds(dto)
+            val (parsed, droppedNames) = normalizePresetIds(dto)
             PresetLoadResult(
                 file,
                 parsed,
@@ -91,16 +91,14 @@ object PresetLoader {
         }
     }
 
-    private fun normalizePresetIds(dto: PresetFileDto): Triple<PresetFile, Boolean, List<String>> {
+    private fun normalizePresetIds(dto: PresetFileDto): Pair<PresetFile, List<String>> {
         val usedIds = mutableSetOf<String>()
-        var changed = false
         val dropped = mutableListOf<String>()
         val presets = dto.presets.orEmpty().filterNotNull().mapNotNull { presetDto ->
             val existingId = presetDto.id?.takeIf { it.isNotBlank() }
             val id = if (existingId != null && usedIds.add(existingId)) {
                 existingId
             } else {
-                changed = true
                 generateUniqueId(usedIds)
             }
             runCatching { presetDto.toPreset(explicitId = id) }.getOrElse {
@@ -108,11 +106,10 @@ object PresetLoader {
                 // whole file unloadable: drop it and let the next save rewrite the file
                 // without it. Same per-entry policy as parsePresetImport.
                 dropped += presetDto.name?.trim()?.ifEmpty { id } ?: id
-                changed = true
                 null
             }
         }
-        return Triple(PresetFile(presets), changed, dropped)
+        return Pair(PresetFile(presets), dropped)
     }
 
     private fun generateUniqueId(usedIds: MutableSet<String>): String {

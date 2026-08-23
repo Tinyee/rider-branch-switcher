@@ -8,5 +8,10 @@ import java.nio.file.Path
  * without a backup would permanently lose those entries; the user should resolve the
  * backup-write failure (e.g. permissions on the `.bak` target) and save again.
  */
-class PresetBackupFailedException(val file: Path) :
-    Exception("could not write the recovery backup of $file before overwriting it")
+class PresetBackupFailedException(
+    /** The preset file whose overwrite would permanently lose the dropped entries. */
+    val source: Path,
+    /** The sibling `.bak` path that was intended to preserve the original bytes. */
+    val backup: Path,
+    cause: Throwable,
+) : Exception("could not write the recovery backup of $source to $backup before overwriting it", cause)
