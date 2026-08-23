@@ -112,7 +112,7 @@ Configure global behavior at `Settings | Version Control | Submodule Branch Swit
 
 | Option | Default | Description |
 | --- | --- | --- |
-| Uncommitted changes | Stash changes | Stash and restore changes — the safe default, uncommitted work is preserved and restored; or skip dirty repositories, or try checkout without stashing. A successfully restored entry is dropped automatically; only a failed or interrupted restore leaves the entry in `git stash list` as a manual recovery backup. |
+| Uncommitted changes | Stash changes | Stash and restore changes — the safe default, uncommitted work is preserved and restored; or skip dirty repositories, or try checkout without stashing. A successfully restored entry is dropped automatically; if the restore fails or is interrupted, or the post-restore drop fails, the entry stays in `git stash list` as a manual recovery backup. |
 | Git command timeout | 60s | Maximum time for each inspection, fetch, checkout, pull, or submodule command. |
 | Refresh remote branches | On | Run `git fetch --prune` before checkout; report failures and continue where possible. |
 | Fast-forward target branches | On | Run `git pull --ff-only` after checkout without automatically merging diverged branches. |

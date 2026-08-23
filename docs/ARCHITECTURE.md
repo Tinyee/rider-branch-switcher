@@ -175,21 +175,26 @@ an exception or cancellation occurs, so recovery still knows which stashes and
 checkouts completed and which missing submodules were initialized by the switch.
 Tracked stashes store immutable Git object IDs, and each stash message is scoped
 to one switch execution (a full-UUID operation id; approved-discard stashes add a
-round) — never repository or file paths. Recovery locates an entry by that unique
-message, never by `stash@{n}` stack position, so an external or retained stash is
-never misapplied. Git's `stash drop` accepts a `stash@{n}` selector but not a bare
-OID, so the CLI resolves the OID to a selector via `git stash list` and re-verifies
-the mapping immediately before the drop; the query→drop window is narrowed, not
-eliminated, and an unstable mapping refuses to drop.
-Each stash is marked before apply because a failed or interrupted apply may
-already have changed the worktree; later automatic stages do not replay it, and
-the notification rollback action expires when started. A successfully applied
-stash is then dropped so `refs/stash` does not accumulate one backup per switch
-(a drop failure only leaves a backup). The entry is retained only when its apply
-failed or was interrupted, when an approved-drop was declined (the approved paths
-no longer conflict with the actual checked-out tree), or when identity cannot be
-read after creation — the repository is blocked and the unresolved stash remains
-in structured recovery state for manual review.
+round) — never repository or file paths. The unique message is used only at the
+moment of creation, to locate the entry's OID; recovery then applies the recorded
+OID directly and never re-locates by message, so an external or retained stash is
+never misapplied. Only the drop phase maps the OID back to a mutable `stash@{n}`:
+`git stash drop` accepts a selector but not a bare OID, so the CLI resolves it via
+`git stash list` and re-verifies the mapping immediately before the drop; the
+query→drop window is narrowed, not eliminated, and an unstable mapping refuses
+to drop.
+At-most-once: any apply that may already have started is marked attempted before
+control returns to the automatic-retry decision, so a later stage never replays
+it, and the notification rollback action expires when started. Only an `index.lock`
+block thrown before Git started (the funnel proves the apply never ran) keeps an
+entry retryable. A successfully applied stash is then dropped so `refs/stash`
+does not accumulate one backup per switch (a drop failure only leaves a backup).
+The entry is retained when its apply failed or was interrupted, when an approved-
+drop was declined (the approved paths no longer conflict with the actual checked-
+out tree), or when identity cannot be read after creation — a submodule is then
+disabled together with its descendants, while the main repository's discard step
+reports a partial result and the fixed pipeline continues; the unresolved stash
+remains in structured recovery state for manual review.
 After the main repository is current, `SubmoduleTreeStep` processes submodules
 in parent-first order. Each parent is prepared, fetched, checked out, pulled,
 and synchronized before descendants are inspected, so nested `.gitmodules`
@@ -244,9 +249,10 @@ checkout lets Git reject conflicts so restored user changes can travel back to
 their original branch. Successful commands must satisfy the checkpoint HEAD
 postcondition. Repository rollback and stash restoration remain
 independent, so one failure does not prevent the other.
-Stash apply is at-most-once for each tracked switch state: the state is marked
-before invoking Git because a failed or interrupted apply may already have
-changed the worktree. Later automatic stages do not replay that stash, and the
+Stash apply is at-most-once for each tracked switch state: any apply that may
+already have started is marked attempted before control returns to the automatic
+retry decision, because a failed or interrupted apply may already have changed
+the worktree. Later automatic stages do not replay that stash, and the
 notification rollback action expires when started. Only a failure proven to
 occur before Git started (an `index.lock` block thrown by the funnel) is
 retryable; the applied stash is dropped on success, and a failed, interrupted,

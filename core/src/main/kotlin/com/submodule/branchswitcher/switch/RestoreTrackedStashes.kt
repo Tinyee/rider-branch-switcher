@@ -216,10 +216,11 @@ private fun applyRestoredStash(
             if (dropped) current.withStashRestored(stash.id) else current.withRestoredStashBackup(stash.id),
         )
     }
-    // Termination takes precedence over a raced lock: a terminated apply may have
-    // created its own index.lock before dying, and misreading that lock as "git never
-    // started" would mark the entry retryable and double-apply a partially-restored
-    // worktree. Only a non-terminated apply failure with a lock present is a true race.
+    // A terminated apply is handled separately from a plain failure: it may have PARTIALLY
+    // modified the worktree before dying, so it is marked attempted (at-most-once), the loop
+    // stops, and an explicit user cancel is recorded as interrupted so no automatic retry
+    // follows. Whether an index.lock is present is irrelevant — only the pre-apply guard or
+    // a thrown IndexLockBlockedException (proven before Git started) keeps an entry retryable.
     if (applyResult.failureKind.isTermination) {
         // A cancelled/interrupted/timed-out apply may have PARTIALLY modified the worktree
         // before dying, so it must never be re-applied automatically: mark the entry

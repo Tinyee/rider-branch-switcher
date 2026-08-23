@@ -129,11 +129,12 @@ class SwitchRunner(
             recoveryResult = recovered.recovery
         }
 
-        // A SUCCESS/PARTIAL switch whose end-of-pipeline stash restore left retryable
-        // entries (a stale index.lock race, an interrupted apply) gets one automatic
-        // stash-only retry: the repositories are already at their targets, so this never
-        // rolls anything back. An explicit user cancel during the restore is recorded on
-        // the execution and suppresses the retry.
+        // A SUCCESS/PARTIAL switch whose end-of-pipeline stash restore left un-attempted
+        // entries (the loop stopped early, or a pre-start index.lock block) gets one
+        // automatic stash-only retry: the repositories are already at their targets, so this
+        // never rolls anything back. An apply that actually started and failed or was
+        // interrupted is marked attempted and is not retried. An explicit user cancel during
+        // the restore is recorded on the execution and suppresses the retry.
         if (executionResult != null && needsStashRetry(executionResult)) {
             executionResult = retryStashRestore(executionResult, log, operationContext, stashRestoreTitle)
         }
