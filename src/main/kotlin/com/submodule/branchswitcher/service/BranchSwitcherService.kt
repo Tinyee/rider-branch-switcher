@@ -191,11 +191,24 @@ class BranchSwitcherService(
     fun addHistory(name: String, id: String? = null) {
         synchronized(stateLock) {
             val list = options.history
-            list.add(0, SwitchHistoryEntry(name, id, System.currentTimeMillis()))
+            val next = SwitchHistoryEntry(name, id, System.currentTimeMillis())
+            // Re-selecting the preset already at the top of the history is not a new
+            // switch to record, so it must not add a consecutive duplicate (which would
+            // crowd out a real return-to-previous entry at maxHistory).
+            if (list.firstOrNull()?.samePreset(next) == true) return
+            list.add(0, next)
             if (list.size > maxHistory) {
                 options.history = list.take(maxHistory).toMutableList()
             }
         }
+    }
+
+    /** Two history entries are the same switch target when their stable ids agree, else their names. */
+    private fun SwitchHistoryEntry.samePreset(other: SwitchHistoryEntry): Boolean {
+        val a = presetId
+        val b = other.presetId
+        if (a != null && b != null) return a == b
+        return presetName == other.presetName
     }
 
     fun getHistory(): List<SwitchHistoryEntry> = synchronized(stateLock) { options.history.toList() }

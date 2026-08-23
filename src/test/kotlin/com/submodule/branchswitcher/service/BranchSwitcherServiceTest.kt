@@ -83,6 +83,43 @@ class BranchSwitcherServiceTest {
         assertEquals("oldest kept", "preset-3", history[4].presetName)
     }
 
+    @Test
+    fun `addHistory dedups a repeat of the newest entry`() {
+        service.addHistory("a", "id-a")
+        service.addHistory("a", "id-a")
+        val history = service.getHistory()
+        assertEquals(1, history.size)
+        assertEquals("a", history[0].presetName)
+    }
+
+    @Test
+    fun `addHistory keeps a genuine return to an older preset`() {
+        service.addHistory("a", "id-a")
+        service.addHistory("b", "id-b")
+        service.addHistory("a", "id-a")
+        val history = service.getHistory()
+        assertEquals(listOf("a", "b", "a"), history.map { it.presetName })
+    }
+
+    @Test
+    fun `addHistory dedups by id so a rename does not create a second entry`() {
+        service.addHistory("new-name", "id-1")
+        service.addHistory("old-name", "id-1")
+        val history = service.getHistory()
+        assertEquals(1, history.size)
+        assertEquals("new-name", history[0].presetName)
+    }
+
+    @Test
+    fun `addHistory falls back to name for legacy entries without an id`() {
+        service.addHistory("main")
+        service.addHistory("main")
+        assertEquals(1, service.getHistory().size)
+        // A legacy entry and an id-carrying entry for the same name are the same preset.
+        service.addHistory("main", "id-9")
+        assertEquals(1, service.getHistory().size)
+    }
+
     // ── Settings getters/setters ─────────────────────────────────────
 
     @Test
