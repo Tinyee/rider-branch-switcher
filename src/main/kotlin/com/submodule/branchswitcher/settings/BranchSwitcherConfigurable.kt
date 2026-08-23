@@ -5,6 +5,7 @@ import com.intellij.openapi.options.Configurable
 import com.intellij.openapi.project.Project
 import com.intellij.util.ui.JBUI
 import com.submodule.branchswitcher.Bundle
+import com.submodule.branchswitcher.model.DirtyAction
 import com.submodule.branchswitcher.service.BranchSwitcherService
 import java.awt.BorderLayout
 import java.awt.Component
@@ -42,7 +43,7 @@ class BranchSwitcherConfigurable(private val project: Project) : Configurable {
             Bundle.msg("option.dirty.skip"),
             Bundle.msg("option.dirty.force"),
         ))
-        timeoutCombo = JComboBox(arrayOf("30s", "60s", "120s", "300s"))
+        timeoutCombo = JComboBox(timeoutOptionsSeconds().map { "${it}s" }.toTypedArray())
         fetchCheck = JCheckBox(Bundle.msg("option.fetch.before"))
         pullCheck = JCheckBox(Bundle.msg("option.pull.after"))
         confirmInitCheck = JCheckBox(Bundle.msg("option.confirm.init"))
@@ -141,14 +142,16 @@ class BranchSwitcherConfigurable(private val project: Project) : Configurable {
         autoMetaCheck = null
     }
 
-    private fun dirtyComboIndex(): Int = dirtyCombo?.selectedIndex ?: 0
-    private fun timeoutComboIndex(): Int = timeoutCombo?.selectedIndex ?: 1
+    // A missing combo falls back to the persisted default action/timeout, so an
+    // early read behaves exactly as the default selection would.
+    private fun dirtyComboIndex(): Int = dirtyCombo?.selectedIndex ?: dirtyActionToIndex(DirtyAction.Stash)
+    private fun timeoutComboIndex(): Int = timeoutCombo?.selectedIndex ?: timeoutToIndex(DEFAULT_TIMEOUT_SECONDS)
 
     private fun updateDirtyDescription() {
-        val messageKey = when (dirtyComboIndex()) {
-            1 -> "settings.dirty.skip.description"
-            2 -> "settings.dirty.force.description"
-            else -> "settings.dirty.stash.description"
+        val messageKey = when (indexToDirtyAction(dirtyComboIndex())) {
+            DirtyAction.Skip -> "settings.dirty.skip.description"
+            DirtyAction.Force -> "settings.dirty.force.description"
+            DirtyAction.Stash -> "settings.dirty.stash.description"
         }
         dirtyDescription?.text = descriptionHtml(Bundle.msg(messageKey))
     }

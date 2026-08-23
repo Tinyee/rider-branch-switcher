@@ -29,10 +29,22 @@ class SettingsRulesTest {
 
     @Test
     fun `timeout mapping round trips supported values and defaults to 60 seconds`() {
-        listOf(30, 60, 120, 300).forEach { timeout ->
+        timeoutOptionsSeconds().forEach { timeout ->
             assertEquals(timeout, indexToTimeout(timeoutToIndex(timeout)))
         }
-        assertEquals(60, indexToTimeout(-1))
-        assertEquals(1, timeoutToIndex(999))
+        assertEquals(DEFAULT_TIMEOUT_SECONDS, indexToTimeout(-1))
+        assertEquals(timeoutToIndex(DEFAULT_TIMEOUT_SECONDS), timeoutToIndex(999))
+    }
+
+    @Test
+    fun `timeout options are the single source for the settings dropdown`() {
+        val options = timeoutOptionsSeconds()
+        // The UI derives its labels from these options, so each position must match
+        // what the index mapping persists, and each option must round-trip to its own
+        // index — otherwise the dropdown would show a value the mapping can never save.
+        assertEquals(options, (0 until options.size).map { indexToTimeout(it) })
+        options.forEachIndexed { index, seconds ->
+            assertEquals(index, timeoutToIndex(seconds))
+        }
     }
 }
