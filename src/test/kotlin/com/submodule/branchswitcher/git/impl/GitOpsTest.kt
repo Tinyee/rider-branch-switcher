@@ -1,6 +1,7 @@
 package com.submodule.branchswitcher.git.impl
 
 import org.junit.Assert.*
+import org.junit.Assume.assumeFalse
 import org.junit.Assume.assumeTrue
 import org.junit.Test
 import com.submodule.branchswitcher.git.GitFailureKind
@@ -22,6 +23,8 @@ class GitOpsTest : GitOpsTestBase() {
     fun `targetBranchMatches reports structural collisions exact ancestor and descendant`() {
         val repo = tmpDir.resolve("repo").toFile().also { it.mkdirs() }
         runGit(repo, "init", "-b", "main")
+        runGit(repo, "config", "user.email", "tests@example.com")
+        runGit(repo, "config", "user.name", "Branch Switcher Tests")
         File(repo, "a.txt").writeText("a")
         File(repo, "dir/b.txt").apply { parentFile.mkdirs() }.writeText("b")
         File(repo, "dir/sub/c.txt").apply { parentFile.mkdirs() }.writeText("c")
@@ -46,8 +49,14 @@ class GitOpsTest : GitOpsTestBase() {
 
     @Test
     fun `untracked and target-tree queries survive odd file names with tabs and quotes`() {
+        assumeFalse(
+            "a tab is a control character, which NTFS cannot hold in a filename",
+            System.getProperty("os.name").startsWith("Windows"),
+        )
         val repo = tmpDir.resolve("repo").toFile().also { it.mkdirs() }
         runGit(repo, "init", "-b", "main")
+        runGit(repo, "config", "user.email", "tests@example.com")
+        runGit(repo, "config", "user.name", "Branch Switcher Tests")
         val trackedTab = "a\tb.txt"
         File(repo, trackedTab).writeText("tracked")
         runGit(repo, "add", "-A")
