@@ -6,8 +6,9 @@ import java.io.File
 interface SwitchGitClient :
     RepositoryStateGitClient,
     SubmoduleRegistrationQuery,
-    // Collision revalidation runs at execution time (post-fetch, frozen revision), so the
-    // pipeline needs the untracked/target-tree queries that preflight also uses.
+    // Collision revalidation runs at execution time (post-fetch, against the target branch
+    // tree and the untracked set), so the pipeline needs the untracked/target-tree queries
+    // that preflight also uses.
     SwitchPreflightGitClient {
     /**
      * Cancels the active operation and its currently running git command (if any).

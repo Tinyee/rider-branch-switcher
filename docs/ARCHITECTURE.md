@@ -58,7 +58,7 @@ require a different preset, checkpoint, and recovery model.
 | --- | --- | --- |
 | `core` root | Preset JSON lookup, parsing, and atomic persistence | `PresetLoader.kt` |
 | `core/model` | Presets, resolved requests, switch options | `PresetConfig.kt` |
-| `core/switch` | Preflight, ordered steps, immutable state, lock guard, structured issues, recovery plans, derive | `SwitchExecutor.kt`, `SwitchStep.kt`, `SwitchRecoveryExecutor.kt`, `DeriveBranchExecutor.kt`, `WriteGuardGitClient.kt` |
+| `core/switch` | Preflight, ordered steps, immutable state, structured issues, stash restore/drop, recovery plans, derive, cancellation contract | `SwitchExecutor.kt`, `SwitchStep.kt`, `SwitchRecoveryExecutor.kt`, `DeriveBranchExecutor.kt`, `OperationControl.kt` |
 | `core/git` | Capability-oriented Git interfaces and results | `GitClient.kt` |
 | `core/operation` | Platform-independent background Git result and progress contracts | `GitOperationRunner.kt` |
 | `core/presentation` | Pure import, preset editing, shortcut, and preview decisions | `PresetEditRules.kt`, `SwitchPreviewRules.kt` |
@@ -79,8 +79,9 @@ with the largest Swing class:
 
 1. `PresetConfig.kt` for presets, options, and resolved requests.
 2. `SwitchStep.kt` for step results, immutable state, and execution context.
-3. `SwitchExecutor.kt` for the ordered pipeline, and `WriteGuardGitClient.kt`
-   for the pre-write lock guard.
+3. `SwitchExecutor.kt` for the ordered pipeline and its pre-mutation
+   `index.lock` check, and `OperationControl.kt` / `OperationCancelledException.kt`
+   for the cancellation contract.
 4. `SwitchRecoveryExecutor.kt` for checkpoint and stash recovery.
 5. `GitOperationRunner.kt`, `SwitchRunner.kt`, and `GitBackgroundRunner.kt` for
    the pure operation contract, workflow, and IntelliJ adapter.
@@ -172,16 +173,23 @@ whole user action.
 `SwitchState` between steps. Stateful steps preserve the latest state even when
 an exception or cancellation occurs, so recovery still knows which stashes and
 checkouts completed and which missing submodules were initialized by the switch.
-Tracked stashes store their immutable Git object IDs rather than stack positions;
-recovery applies that object ID directly and retains the Git stash entry as a
-manual recovery backup. It never maps the ID back to a mutable `stash@{n}` or
-automatically drops an entry across a race window.
+Tracked stashes store immutable Git object IDs, and each stash message is scoped
+to one switch execution (a full-UUID operation id; approved-discard stashes add a
+round) — never repository or file paths. Recovery locates an entry by that unique
+message, never by `stash@{n}` stack position, so an external or retained stash is
+never misapplied. Git's `stash drop` accepts a `stash@{n}` selector but not a bare
+OID, so the CLI resolves the OID to a selector via `git stash list` and re-verifies
+the mapping immediately before the drop; the query→drop window is narrowed, not
+eliminated, and an unstable mapping refuses to drop.
 Each stash is marked before apply because a failed or interrupted apply may
-already have changed the worktree. Later automatic stages do not replay it,
-and the notification rollback action expires when started. The retained stash
-object remains available for manual inspection and recovery. If identity cannot be read
-after stash creation, the repository is blocked
-and the unresolved stash remains in structured recovery state for manual review.
+already have changed the worktree; later automatic stages do not replay it, and
+the notification rollback action expires when started. A successfully applied
+stash is then dropped so `refs/stash` does not accumulate one backup per switch
+(a drop failure only leaves a backup). The entry is retained only when its apply
+failed or was interrupted, when an approved-drop was declined (the approved paths
+no longer conflict with the actual checked-out tree), or when identity cannot be
+read after creation — the repository is blocked and the unresolved stash remains
+in structured recovery state for manual review.
 After the main repository is current, `SubmoduleTreeStep` processes submodules
 in parent-first order. Each parent is prepared, fetched, checked out, pulled,
 and synchronized before descendants are inspected, so nested `.gitmodules`
@@ -191,13 +199,17 @@ is retained. Nested initialization runs from the immediate parent repository,
 not from the project root.
 
 Submodule dirty handling and untracked-collision discard run inside that same
-per-submodule flow, after the topology gate: a registered submodule is stashed,
-its approved collision files deleted (revalidated against the frozen target
-revision, before the `-u` stash so they are not swept into it), and checked out.
-The main repository is fetched first, its approved collision set revalidated
-against the frozen target revision, and its dirty tree stashed after that
-revalidation; `BranchCheckout` re-verifies the checked-out HEAD still equals the
-frozen revision and emits a `HEAD_MOVED` warning when the target moved mid-switch.
+per-submodule flow, after the topology gate: a registered submodule has its
+still-colliding approved files isolated into one path-scoped stash
+(`git stash push -u -m <opaque message> -- <paths>`, one per round) BEFORE the
+`-u` WIP stash so they are never swept into it, then it is checked out. The main
+repository is fetched first, its approved collision set revalidated against the
+target branch tree and the untracked set, and the approved files isolated before
+its dirty tree is stashed. The revalidation is structural, not revision-based: a
+push that creates no stash re-validates the paths (gone/tracked → proceed; still
+approved collisions → fail closed), and a regenerated collision before checkout
+is isolated as a round+1 stash and the checkout retried once. Nothing is deleted
+until the repository provably switched to the actual target.
 
 `SubmoduleTopology.isUnregistered` is the shared write gate for preset switching,
 single-repository switching, and derive operations. A retained worktree whose
@@ -208,17 +220,20 @@ over every target. Recovery deliberately does not use current
 registration because rolling the main repository back may legitimately make a
 checkpointed path obsolete.
 
-A second gate closes the check-then-act window between preflight and mutation:
-`WriteGuardGitClient` wraps the injected `SwitchGitClient` and rechecks
-`index.lock` immediately before every write operation, aborting with a
-structured `IndexLockBlockedException` when a lock has appeared. `IndexLockBlock`
-and `LockBlockedPresentation` keep blocked-repository paths as locale-neutral
-structured data so the UI can present and localize the message without parsing
-English diagnostics. Core also recognizes cancellation without knowing IDE
-types: `CancellationClassifier` maps an exception to cancellation (defaulting to
-JDK `CancellationException`), while `CancellationHandle` and `ProgressHandle`
+The index.lock check-then-act window is closed inside the CLI git layer:
+`GitCommandClient.runIndexMutation` rechecks `index.lock` immediately before
+every index/worktree mutation (checkout, pull, stash, stash paths, stash apply,
+reset, submodule init) and throws a structured `IndexLockBlockedException` when
+a lock has appeared; reads, fetch, stash drop, branch delete, and submodule sync
+are ungated. `IndexLockBlock` and `LockBlockedPresentation` keep blocked-
+repository paths as locale-neutral structured data so the UI can present and
+localize the message without parsing English diagnostics. Core also recognizes
+cancellation without knowing IDE types: `OperationCancelledException` is the one
+type, and `OperationControl` (checkCancelled / isCanceled) with `ProgressHandle`
 expose platform-neutral cancellation and progress checkpoints that `platform`
-adapts to an IntelliJ `ProgressIndicator`.
+adapts to an IntelliJ `ProgressIndicator`. A cancelled read surfaces as
+`OperationCancelledException` at the git read boundary; a timeout is termination
+but not a user cancel, so it stays a git failure.
 
 `SwitchRecoveryExecutor` first builds an immutable `SwitchRecoveryPlan` listing
 repository targets, stash actions, and retained initialized worktrees. The plan
@@ -232,8 +247,11 @@ independent, so one failure does not prevent the other.
 Stash apply is at-most-once for each tracked switch state: the state is marked
 before invoking Git because a failed or interrupted apply may already have
 changed the worktree. Later automatic stages do not replay that stash, and the
-notification rollback action expires when started. The retained stash object
-remains available for manual inspection or recovery.
+notification rollback action expires when started. Only a failure proven to
+occur before Git started (an `index.lock` block thrown by the funnel) is
+retryable; the applied stash is dropped on success, and a failed, interrupted,
+or declined entry stays in `git stash` for manual inspection or explicit
+recovery.
 Checkpoints also retain the canonical Git directory identity. Recovery and
 derive rollback skip a path if a different repository later occupies it.
 Before ordinary writes, an initialized submodule must report a superproject

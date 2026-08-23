@@ -88,11 +88,14 @@ Git 命令：
 
 `SwitchExecutor` 按固定顺序执行：
 
-1. 处理已有仓库的 dirty worktree。
-2. Fetch、checkout、pull 主仓库。
-3. 根据更新后的 `.gitmodules` 执行 `submodule sync --recursive`。
-4. 按父级优先顺序逐个处理子模块：初始化、fetch、checkout、pull。
-5. 父子模块完成 pull 后同步并重新读取其 `.gitmodules`，再处理下一层子模块。
+1. Fetch 主仓库，让后续的冲突重校验看到最新的目标分支 ref。
+2. 隔离主仓库已批准丢弃的未跟踪冲突文件（按路径隔离进 stash），fetch 之后、主仓 dirty
+   stash 之前。
+3. 处理已有仓库的 dirty worktree。
+4. Fetch、checkout、pull 主仓库。
+5. 根据更新后的 `.gitmodules` 执行 `submodule sync --recursive`。
+6. 按父级优先顺序逐个处理子模块：初始化、fetch、checkout、pull。
+7. 父子模块完成 pull 后同步并重新读取其 `.gitmodules`，再处理下一层子模块。
 
 主仓库必须先更新，因为远端主分支可能刚增加或修改子模块。缺失子模块使用
 `git submodule update --init --recursive -- <path>` 初始化；嵌套子模块会在其直接父仓库中
@@ -104,25 +107,34 @@ Git 命令：
 Recovery 不使用当前注册状态，因为主仓回滚后某个 checkpoint 路径可能合法地变为废弃路径；
 它通过独立的 checkpoint 安全规则恢复。
 
-预检与实际 Git 写入之间还有一道锁闸门：`WriteGuardGitClient` 包装注入的
-`SwitchGitClient`，在每次写操作前立即重查 `index.lock`，一旦发现新锁就以结构化的
-`IndexLockBlockedException` 中止，关闭 check-then-act 竞态窗口。`IndexLockBlock` 和
-`LockBlockedPresentation` 把被阻塞仓库的路径保存为与语言无关的结构化数据，UI 可以直接
-本地化展示，不需要解析英文诊断。core 不依赖 IDE 类型也能识别取消：`CancellationClassifier`
-把异常归类为取消（默认只认 JDK `CancellationException`），`CancellationHandle` 和
-`ProgressHandle` 提供平台无关的取消与进度检查点，由 `platform` 适配到 IntelliJ 的
-`ProgressIndicator`。
+index.lock 的 check-then-act 竞态窗口在 CLI Git 层内部关闭：
+`GitCommandClient.runIndexMutation` 在每次索引/工作区写操作（checkout、pull、stash、
+stash paths、stash apply、reset、submodule init）启动前立即重查 `index.lock`，一旦发现
+新锁就抛出结构化的 `IndexLockBlockedException`；读命令、fetch、stash drop、删除分支和
+submodule sync 不受此闸门约束。`IndexLockBlock` 和 `LockBlockedPresentation` 把被阻塞
+仓库的路径保存为与语言无关的结构化数据，UI 可以直接本地化展示，不需要解析英文诊断。
+core 不依赖 IDE 类型也能识别取消：`OperationCancelledException` 是唯一取消类型，
+`OperationControl`（checkCancelled / isCanceled）和 `ProgressHandle` 提供平台无关的
+取消与进度检查点，由 `platform` 适配到 IntelliJ 的 `ProgressIndicator`。被取消的读命令在
+Git 读边界转换成 `OperationCancelledException`；超时属于终止而不是用户取消，因此仍作为
+Git 失败返回。
 
 预检、执行、刷新和恢复共用一个 `OperationContext`，日志中的操作 ID 不会在预检后断开。
 可恢复失败使用包含阶段、错误码和仓库路径的 `OperationIssue`，展示文字不再承担控制流语义。
 
 切换前会记录 checkpoint。每个步骤返回新的 `SwitchState`，而不是直接修改共享状态。
 这样即使中途抛异常或取消，恢复流程仍然知道哪些仓库已切换、哪些 stash 尚未恢复。
-stash 使用不可变的 Git object ID 跟踪，而不是容易变化的 `stash@{n}` 序号；恢复时按 object ID
-直接 apply，并保留 Git stash 条目作为人工恢复备份，不会再映射回可变序号后 pop 或自动 drop。
-每个 stash 在调用 apply 前就会标记为已尝试，因为失败或中断的 apply 也可能已经部分修改工作区；
-后续自动阶段不会再次 apply，通知中的回滚动作启动后也会立即失效。保留的 stash object 仍可供
-人工检查和恢复。
+stash 使用不可变的 Git object ID 跟踪，每条 stash 消息都限定在单次切换执行内（完整 UUID
+操作 id；approved-discard stash 再带上 round），绝不包含仓库或文件路径。恢复按这条唯一消息
+定位条目，而不是按 `stash@{n}` 栈位置，因此外部或保留的 stash 不会被误用。`git stash drop`
+只接受 `stash@{n}` 序号而不是裸 OID，所以 CLI 通过 `git stash list` 把 OID 解析成序号，
+并在 drop 前立即复核映射；查询到 drop 的窗口被收窄但无法完全消除，映射不稳定时会拒绝 drop。
+apply 成功后条目会被 drop，避免 `refs/stash` 每切换一次就累积一个备份（drop 失败只是留下
+备份）；只有 apply 失败或中断、approved drop 被拒绝（批准路径与实际 checkout 的树不再冲突）、
+或身份读取失败时才保留条目。每个 stash 在调用 apply 前就会标记为已尝试，因为失败或中断的
+apply 也可能已经部分修改工作区；后续自动阶段不会再次 apply，通知中的回滚动作启动后也会立即
+失效。只有被证明发生在 Git 启动前的失败（`index.lock` 闸门抛出的 `IndexLockBlockedException`）
+才可重试。
 stash 已创建但身份读取失败时，该仓库会停止后续写入，未知身份
 仍保留在结构化恢复状态中，只允许人工检查，不会退回弹出栈顶的危险行为。
 checkpoint 还会记录规范化后的 Git 目录身份；如果同一路径后来被另一个仓库占用，

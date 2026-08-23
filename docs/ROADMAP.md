@@ -139,10 +139,11 @@ repository state) and narrow fakes.
 
 The cleanup is done: `GitCancellation` (zero direct references, only inherited
 by `SwitchGitClient`) is merged into `SwitchGitClient`, reducing the count from
-14 to 13 with no behavior change; tests, Detekt, and `quickCheck` pass. A
-separate brittle spot to watch: `DirtyHandlingStep` detects the concrete
-`WriteGuardGitClient` wrapper with `is`; revisit when the wrapper is next
-touched.
+14 to 13 with no behavior change; tests, Detekt, and `quickCheck` pass. The
+`WriteGuardGitClient` wrapper this section flagged is gone — the
+complexity-contraction refactor deleted it and moved the index.lock
+check-then-act gate into `GitCommandClient.runIndexMutation`, and
+`DirtyHandlingStep` no longer inspects any wrapper.
 
 ### P3-15: Deferred Maintainability Backlog
 
