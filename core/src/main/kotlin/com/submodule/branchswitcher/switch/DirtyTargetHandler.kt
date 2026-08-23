@@ -83,7 +83,10 @@ private fun stashTarget(
         )
         return DirtyTargetOutcome(state, skipped = false)
     }
-    val stashMessage = "$STASH_MESSAGE_PREFIX${target.branch}"
+    // The message carries the operation's opaque id (never the branch or a repository/file
+    // path), so a retained WIP stash from an earlier execution can never be matched by
+    // message and applied to this switch.
+    val stashMessage = "$STASH_MESSAGE_PREFIX${context.operationId}"
     // Snapshot the stash stack top before the push so a terminated push can be told
     // apart from a pre-existing entry (an old backup or an external stash) that must
     // never be mistaken for the current WIP.
@@ -121,20 +124,20 @@ private fun stashTarget(
         return DirtyTargetOutcome(state.withSkipped(target.path), skipped = true)
     }
     val stashOid = try {
-        // Locate our stash by message prefix: an external `git stash push` racing in
-        // between stash and lookup must not make recovery apply the wrong entry.
+        // Locate our stash by its unique per-operation message: an external `git stash push`
+        // racing in, or a retained stash from an earlier operation, must never be mistaken
+        // for this switch's WIP. There is no fallback to the arbitrary stack top.
         context.git.stashOidByMessage(repositoryDirectory, stashMessage)
-            ?: context.git.stashTopOid(repositoryDirectory)
     } catch (error: GitQueryException) {
-        return unidentifiedStash(context, target, state, issues, stage, error.result.diagnostic())
+        return unidentifiedStash(context, target, state, issues, stage, stashMessage, error.result.diagnostic())
     }
     if (stashOid == null) {
-        return unidentifiedStash(context, target, state, issues, stage)
+        return unidentifiedStash(context, target, state, issues, stage, stashMessage)
     }
     context.log.info("stash: ok (${target.path}, oid=$stashOid)")
     return DirtyTargetOutcome(
         state.withTrackedStash(
-            target.path, StashPurpose.WIP_RESTORE_AFTER_SWITCH, "before -> ${target.branch}", stashOid,
+            target.path, StashPurpose.WIP_RESTORE_AFTER_SWITCH, stashMessage, stashOid,
         ),
         skipped = false,
     )
@@ -157,6 +160,7 @@ internal fun trackGhostStashIfCreated(
     stashMessage: String,
     state: SwitchState,
     purpose: StashPurpose,
+    approvedPaths: Set<String> = emptySet(),
 ): SwitchState? {
     val ghostOid = try {
         val top = context.git.stashTopOid(repositoryDirectory)
@@ -174,7 +178,7 @@ internal fun trackGhostStashIfCreated(
         "stash: terminated mid-write but entry created (${target.path}, oid=$ghostOid); " +
             "tracked for recovery",
     )
-    return state.withTrackedStash(target.path, purpose, "before -> ${target.branch}", ghostOid)
+    return state.withTrackedStash(target.path, purpose, stashMessage, ghostOid, approvedPaths)
 }
 
 private fun unidentifiedStash(
@@ -183,6 +187,7 @@ private fun unidentifiedStash(
     state: SwitchState,
     issues: MutableList<OperationIssue>,
     stage: OperationStage,
+    stashMessage: String,
     diagnostic: String? = null,
 ): DirtyTargetOutcome {
     context.log.error(
@@ -198,7 +203,7 @@ private fun unidentifiedStash(
     )
     return DirtyTargetOutcome(
         state.withTrackedStash(
-            target.path, StashPurpose.WIP_RESTORE_AFTER_SWITCH, "before -> ${target.branch}", oid = null,
+            target.path, StashPurpose.WIP_RESTORE_AFTER_SWITCH, stashMessage, oid = null,
         ).withSkipped(target.path),
         skipped = true,
     )

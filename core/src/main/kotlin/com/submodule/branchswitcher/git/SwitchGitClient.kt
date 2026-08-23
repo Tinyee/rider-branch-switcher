@@ -43,9 +43,11 @@ interface SwitchGitClient :
     /**
      * Returns the object id of the newest stash whose subject contains [messagePrefix],
      * or null when no entry matches (or the implementation does not support message
-     * lookups). Callers fall back to [stashTopOid] when this returns null. The CLI
-     * implementation scopes the lookup to the stashes this plugin created so a
-     * concurrent external `git stash push` cannot be misapplied.
+     * lookups). The message is unique per switch execution, so a null result means the
+     * push created no entry — callers re-validate the paths and fail closed, they do NOT
+     * fall back to an arbitrary [stashTopOid] (a retained or external stash could be
+     * mistaken for this switch's). The CLI implementation scopes the lookup to the stashes
+     * this plugin created so a concurrent external `git stash push` cannot be misapplied.
      */
     fun stashOidByMessage(workDir: File, messagePrefix: String): String? = null
 

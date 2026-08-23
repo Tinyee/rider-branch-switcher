@@ -17,9 +17,11 @@ import java.nio.file.Path
  * not be rolled back; otherwise it is applied back (the switch did not happen for that repo,
  * or recovery rolled it back) and then dropped.
  *
- * [control] is polled before every repository so a user cancel stops the loop
- * without marking the interrupted entry as at-most-once: a cancelled apply never
- * started, so the WIP stays safe in the stash and remains retryable.
+ * [control] is polled before every repository so a user cancel stops the loop. An apply
+ * that actually started and was terminated (cancelled/interrupted/timed out) may have
+ * partially modified the worktree, so it is marked attempted and never re-applied
+ * automatically; only a failure proven to occur before Git started (an index.lock block) is
+ * retryable.
  */
 @Suppress("TooGenericExceptionCaught", "ThrowsCount") // preserve successfully restored entries if a later Git query fails
 internal fun restoreTrackedStashes(
@@ -48,9 +50,10 @@ internal fun restoreTrackedStashes(
             val repositoryDirectory = resolveGitDir(projectRoot, path)
             if (stash.purpose == StashPurpose.APPROVED_DISCARD && discardApprovedFor(path)) {
                 // The repo switched and will not be rolled back: the discard is authorized,
-                // so drop the isolated copy without applying it. A drop failure only leaves
-                // a backup; it must not fail the switch.
-                val discarded = discardApprovedStash(git, log, path, stash, repositoryDirectory)
+                // so drop the isolated copy without applying it. The authorization is
+                // re-verified against the actual checked-out tree; a drop failure or a drift
+                // only leaves a backup and must not fail the switch.
+                val discarded = discardApprovedStash(git, log, path, stash, repositoryDirectory, issues)
                 nextState = if (discarded) nextState.withStashRestored(stash.id)
                 else nextState.withRestoredStashBackup(stash.id)
                 continue
@@ -194,8 +197,8 @@ private fun applyRestoredStash(
     val applyResult = try {
         git.stashApply(repositoryDirectory, oid)
     } catch (error: IndexLockBlockedException) {
-        // WriteGuard can observe a lock after the initial probe and throw
-        // before Git starts. This is safe to retry after the lock is removed.
+        // The git index-mutation funnel re-checked the index.lock and threw BEFORE Git
+        // started, so the apply provably never ran: safe to retry after the lock is removed.
         current = current.withStashRestoreRetryable(stash.id)
         throw SwitchStepException(current, error)
     } catch (error: RuntimeException) {
@@ -218,10 +221,10 @@ private fun applyRestoredStash(
     // started" would mark the entry retryable and double-apply a partially-restored
     // worktree. Only a non-terminated apply failure with a lock present is a true race.
     if (applyResult.failureKind.isTermination) {
-        // A cancelled/interrupted apply is a stop signal, not a failed
-        // restore: the command died before completing, so the entry stays
-        // tracked and retryable and the WIP is preserved in the stash.
-        current = current.withStashRestoreRetryable(stash.id)
+        // A cancelled/interrupted/timed-out apply may have PARTIALLY modified the worktree
+        // before dying, so it must never be re-applied automatically: mark the entry
+        // attempted (at-most-once) and keep the stash for the user or an explicit recovery.
+        current = current.withStashRestoreAttempted(stash.id)
         log.warn(
             "[fail] stash apply interrupted for $path (${repositoryDirectory.path}): ${applyResult.failureKind}; " +
                 "WIP preserved in stash (${stash.message})",
@@ -230,7 +233,7 @@ private fun applyRestoredStash(
             stage = OperationStage.STASH_RESTORE,
             code = OperationIssueCode.STASH_RESTORE_FAILED,
             repositoryPath = path,
-            diagnostic = "restore interrupted by cancellation; WIP preserved in stash " +
+            diagnostic = "restore interrupted by termination; WIP preserved in stash " +
                 "(${stash.message}, oid=$oid)",
         )
         return RestoreApplyOutcome(current, stop = true, interrupted = control?.isCanceled == true)
@@ -295,6 +298,13 @@ private fun dropRestoredStash(
 /**
  * Best-effort `git stash drop` of an APPROVED_DISCARD stash whose repo reached the target;
  * false leaves the backup behind. Never applies the stash — the discard is authorized.
+ *
+ * The authorization is re-verified against the ACTUAL checked-out HEAD tree: if the target
+ * ref moved after the collision validation and the tree no longer conflicts with the
+ * approved paths, dropping would permanently discard a file the checkout no longer replaced.
+ * The drop runs only when every approved path still structurally collides; on drift or
+ * uncertainty the stash is retained and an issue is reported (never a complex partial
+ * restore).
  */
 @Suppress("TooGenericExceptionCaught") // a failed drop only retains a backup; it must never fail the switch
 private fun discardApprovedStash(
@@ -303,6 +313,7 @@ private fun discardApprovedStash(
     path: String,
     stash: TrackedStash,
     repositoryDirectory: File,
+    issues: MutableList<OperationIssue>,
 ): Boolean {
     val oid = stash.oid
     if (oid == null) {
@@ -313,5 +324,43 @@ private fun discardApprovedStash(
         log.warn("[fail] approved stash drop skipped - repository unavailable for $path (${repositoryDirectory.path}) (${stash.message})")
         return false
     }
+    val approvedPaths = stash.approvedPaths
+    if (approvedPaths.isEmpty()) {
+        log.warn("[fail] approved stash drop skipped - approved paths unavailable for $path (${repositoryDirectory.path}) (${stash.message})")
+        issues += declinedApprovedDrop(path, stash, "approved paths are unknown; cannot verify the checked-out tree still conflicts")
+        return false
+    }
+    val stillColliding = try {
+        git.headStructuralCollisions(repositoryDirectory, approvedPaths.toList()).toSet()
+    } catch (error: RuntimeException) {
+        log.warn(
+            "[fail] approved stash drop skipped - cannot re-verify the checked-out tree for $path " +
+                "(${repositoryDirectory.path}): ${error.message} (${stash.message})",
+        )
+        issues += declinedApprovedDrop(path, stash, "cannot verify the checked-out tree still conflicts")
+        return false
+    }
+    if (stillColliding != approvedPaths) {
+        val drifted = approvedPaths - stillColliding
+        log.warn(
+            "[fail] approved stash drop skipped - ${drifted.size} approved path(s) no longer conflict " +
+                "with the checked-out tree for $path; retained as backup (${stash.message})",
+        )
+        issues += declinedApprovedDrop(
+            path,
+            stash,
+            "no longer conflict with the checked-out tree: ${drifted.sorted().joinToString(", ")}",
+        )
+        return false
+    }
     return dropRestoredStash(git, repositoryDirectory, oid, path, log)
 }
+
+private fun declinedApprovedDrop(path: String, stash: TrackedStash, reason: String): OperationIssue =
+    OperationIssue(
+        stage = OperationStage.STASH_RESTORE,
+        code = OperationIssueCode.UNTRACKED_DISCARD_FAILED,
+        repositoryPath = path,
+        severity = OperationIssueSeverity.ERROR,
+        diagnostic = "approved stash retained: $reason (${stash.message})",
+    )

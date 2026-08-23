@@ -64,6 +64,9 @@ class SwitchStashDiscardSpecTest : SwitchExecutorTestBase() {
         override fun targetBranchMatches(workDir: File, branch: String, paths: List<String>): List<String> =
             paths.filter { it in collision }
 
+        override fun headStructuralCollisions(workDir: File, paths: List<String>): List<String> =
+            paths.filter { it in collision }
+
         override fun checkoutExisting(workDir: File, branch: String): GitResult =
             if (failCheckout) GitResult("checkout", 1, "", "checkout failed")
             else base.checkoutExisting(workDir, branch)

@@ -267,7 +267,7 @@ class SwitchRunner(
                 operation,
                 operationControl = indicator,
             )
-            executor.retryStashRestore(execution)
+            executor.retryCompletedRestore(execution)
         }
         return when (retryResult) {
             is GitOperationResult.Completed -> {

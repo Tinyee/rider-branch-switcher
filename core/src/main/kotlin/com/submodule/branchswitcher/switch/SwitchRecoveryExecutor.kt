@@ -86,8 +86,12 @@ class SwitchRecoveryExecutor(
         )
     }
 
-    /** Retries the stash actions captured by [plan] and keeps failed entries in state. */
-    internal fun restoreTrackedStashes(
+    /**
+     * Restores the stash actions captured by [plan] after every repository was rolled back:
+     * no repo reached the target, so every approved stash is applied back (the file returns
+     * to its original path), never dropped as authorized.
+     */
+    internal fun recoverAfterRollback(
         plan: SwitchRecoveryPlan,
         state: SwitchState,
     ): StashRestoreResult = restoreTrackedStashes(
@@ -97,9 +101,6 @@ class SwitchRecoveryExecutor(
         state,
         plan.stashes.mapTo(linkedSetOf(), StashRecoveryAction::repositoryPath),
         control = operationControl,
-        // Recovery rolled every repository back, so no repo reached the target: every
-        // approved stash must be applied back (the file returns to its original path),
-        // never dropped as authorized.
         discardApprovedFor = { false },
     )
 
@@ -109,7 +110,7 @@ class SwitchRecoveryExecutor(
         val recoveryPlan = plan(result)
         val rollback = execute(recoveryPlan)
         val stashRestore = try {
-            restoreTrackedStashes(recoveryPlan, result.state)
+            recoverAfterRollback(recoveryPlan, result.state)
         } catch (error: SwitchStepException) {
             val cause = error.cause
             log.logFailure("[stash restore] exception", cause)
@@ -128,12 +129,22 @@ class SwitchRecoveryExecutor(
     }
 
     /**
-     * Builds the recovery plan for [result] and retries only the stash-restore step.
-     * Used by the caller to recover WIP after an interrupted restore; the plan model
-     * stays core-internal behind this single entry point.
+     * Retries the stash-restore step for a switch that ALREADY completed (SUCCESS/PARTIAL)
+     * and will not be rolled back. The repositories are at their targets, so an approved
+     * stash is dropped where its repo's checkout succeeded (authorized, re-verified against
+     * the actual tree) and applied back only where it did not — unlike [recover], which rolls
+     * every repo back first and so must apply every approved stash. The plan model stays
+     * core-internal behind this single entry point.
      */
-    fun retryStashRestore(result: SwitchExecutionResult): StashRestoreResult =
-        restoreTrackedStashes(plan(result), result.state)
+    fun retryCompletedRestore(result: SwitchExecutionResult): StashRestoreResult = restoreTrackedStashes(
+        projectRoot,
+        git,
+        log,
+        result.state,
+        plan(result).stashes.mapTo(linkedSetOf(), StashRecoveryAction::repositoryPath),
+        control = operationControl,
+        discardApprovedFor = { path -> result.state.checkoutSucceeded(path) },
+    )
 
     /** Executes a previously inspected plan; each write is guarded by fresh repository checks. */
     internal fun execute(plan: SwitchRecoveryPlan): RecoveryExecutionResult {

@@ -11,6 +11,7 @@ import com.submodule.branchswitcher.model.Preset
 import com.submodule.branchswitcher.model.SwitchOptions
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
@@ -321,5 +322,158 @@ class SwitchCollisionDiscardTest : SwitchExecutorTestBase() {
         assertTrue("switch should succeed", result.ok)
         assertFalse("the submodule's approved file must be gone before its WIP stash runs", observedAtWipStash)
         assertFalse(collisionFile.exists())
+    }
+
+    @Test
+    fun `stash messages are operation-scoped and never leak repository paths`() {
+        val collisionFile = writeUntrackedFile("Assets/Foo.meta")
+        val messages = mutableListOf<String>()
+        val capturingGit = object : GitClient by fakeGit {
+            override fun untrackedFiles(workDir: File): List<String> = listOf("Assets/Foo.meta")
+            override fun targetBranchMatches(workDir: File, branch: String, paths: List<String>): List<String> =
+                paths.filter { it in setOf("Assets/Foo.meta") }
+            override fun headStructuralCollisions(workDir: File, paths: List<String>): List<String> = paths
+            override fun stashPaths(workDir: File, message: String, paths: Collection<String>): GitResult {
+                messages += message
+                File(workDir, "Assets/Foo.meta").delete()
+                return GitResult("stash paths", 0, "", "")
+            }
+            override fun stashOidByMessage(workDir: File, messagePrefix: String): String? = "approved-oid"
+            override fun stashDrop(workDir: File, oid: String): GitResult = GitResult("stash drop", 0, "", "")
+        }
+
+        fun runOnce() {
+            SwitchExecutor(
+                projectRoot,
+                createStringAppender { log += it },
+                capturingGit,
+                collisionDiscards = mapOf("." to setOf("Assets/Foo.meta")),
+            ).executeResultTest(preset, SwitchOptions())
+        }
+        runOnce()
+        val first = messages.single()
+        assertTrue("the message must carry the approved-discard marker", first.contains("approved-discard"))
+        assertFalse("the message must not leak the repository path", first.contains("Assets"))
+        messages.clear()
+
+        // A second execution mints a fresh operation id, so a retained stash from an earlier
+        // run can never be matched by message and applied or dropped as this run's own.
+        writeUntrackedFile("Assets/Foo.meta") // the first run isolated (deleted) the file
+        runOnce()
+        assertNotEquals("each execution must use a fresh operation-scoped message", first, messages.single())
+    }
+
+    @Test
+    fun `completed-switch retry drops an approved stash an interrupted restore left behind`() {
+        // A SUCCESS switch whose inline restore interrupted the WIP apply (marked attempted)
+        // before the approved stash was processed. The stash-only retry must NOT apply the
+        // approved stash onto the already-switched tree — the discard is authorized — it must
+        // drop it.
+        val git = ApprovedStashFake(fakeGit, setOf("Assets/Foo.meta"))
+        val state = SwitchState()
+            .withTrackedStash(
+                ".",
+                StashPurpose.APPROVED_DISCARD,
+                "approved",
+                "approved-oid",
+                approvedPaths = setOf("Assets/Foo.meta"),
+            )
+            .withTrackedStash(".", StashPurpose.WIP_RESTORE_AFTER_SWITCH, "wip", "wip-oid")
+            .withStashRestoreAttempted("stash-1") // the WIP (created second) was interrupted
+            .withSuccessfulCheckout(".")
+        val result = SwitchExecutionResult(
+            status = SwitchExecutionStatus.SUCCESS,
+            checkpoint = mapOf("." to CheckpointEntry(sha = "abc123", branch = "dev")),
+            state = state,
+        )
+
+        val restore = recovery(git).retryCompletedRestore(result)
+
+        assertEquals("the retry must not apply the approved stash onto the switched tree", 0, git.applyCalls)
+        assertEquals("the retry must drop the approved stash as authorized", 1, git.dropCalls)
+        assertTrue(
+            "the approved stash must leave tracking after the authorized drop",
+            restore.state.stashesSnapshot().none { it.purpose == StashPurpose.APPROVED_DISCARD },
+        )
+    }
+
+    @Test
+    fun `submodule isolation that cannot stash disables the submodule and reports the issue`() {
+        val submoduleDir = projectRoot.resolve("SubA").toFile()
+        submoduleDir.mkdirs()
+        submoduleDir.resolve(".git").mkdirs()
+        val collisionFile = submoduleDir.resolve("Assets/Foo.meta")
+        collisionFile.parentFile.mkdirs()
+        collisionFile.writeText("local-untracked")
+        val failingIsolation = object : GitClient by fakeGit {
+            override fun untrackedFiles(workDir: File): List<String> =
+                if (workDir.name == "SubA") listOf("Assets/Foo.meta") else emptyList()
+            override fun targetBranchMatches(workDir: File, branch: String, paths: List<String>): List<String> =
+                paths.filter { it in setOf("Assets/Foo.meta") }
+            override fun stashPaths(workDir: File, message: String, paths: Collection<String>): GitResult =
+                if (workDir.name == "SubA") {
+                    GitResult("stash paths", 1, "", "cannot stash")
+                } else {
+                    GitResult("stash paths", 0, "", "")
+                }
+        }
+
+        val result = SwitchExecutor(
+            projectRoot,
+            createStringAppender { log += it },
+            failingIsolation,
+            collisionDiscards = mapOf("SubA" to setOf("Assets/Foo.meta")),
+        ).executeResultTest(
+            Preset("test", "dev", mapOf("SubA" to "dev")),
+            SwitchOptions(dirty = DirtyAction.Force),
+        )
+
+        assertTrue("the isolation failure must disable the submodule", result.state.isSkipped("SubA"))
+        assertTrue(
+            "the isolation failure must be reported, not silently discarded",
+            result.issues.any { it.code == OperationIssueCode.STASH_FAILED },
+        )
+        assertTrue("the approved file must survive a failed isolation", collisionFile.exists())
+    }
+
+    @Test
+    fun `approved stash is retained when the checked-out tree no longer conflicts`() {
+        val collisionFile = writeUntrackedFile("Assets/Foo.meta")
+        var dropCalls = 0
+        val driftingGit = object : GitClient by fakeGit {
+            override fun untrackedFiles(workDir: File): List<String> = listOf("Assets/Foo.meta")
+            override fun targetBranchMatches(workDir: File, branch: String, paths: List<String>): List<String> =
+                paths.filter { it in setOf("Assets/Foo.meta") }
+            // The target ref moved after the collision validation: the actual checked-out
+            // tree no longer tracks the approved path, so a drop would discard it for nothing.
+            override fun headStructuralCollisions(workDir: File, paths: List<String>): List<String> = emptyList()
+            override fun stashPaths(workDir: File, message: String, paths: Collection<String>): GitResult {
+                File(workDir, "Assets/Foo.meta").delete()
+                return GitResult("stash paths", 0, "", "")
+            }
+            override fun stashOidByMessage(workDir: File, messagePrefix: String): String? = "approved-oid"
+            override fun stashDrop(workDir: File, oid: String): GitResult {
+                dropCalls++
+                return GitResult("stash drop", 0, "", "")
+            }
+        }
+
+        val result = SwitchExecutor(
+            projectRoot,
+            createStringAppender { log += it },
+            driftingGit,
+            collisionDiscards = mapOf("." to setOf("Assets/Foo.meta")),
+        ).executeResultTest(preset, SwitchOptions())
+
+        assertTrue(result.ok)
+        assertEquals("a drifted checked-out tree must prevent the approved drop", 0, dropCalls)
+        assertTrue(
+            "the unverifiable approved stash must be retained as a backup",
+            result.state.retainedStashBackupsSnapshot().isNotEmpty(),
+        )
+        assertTrue(
+            "the retained stash must be reported as an issue",
+            result.issues.any { it.code == OperationIssueCode.UNTRACKED_DISCARD_FAILED },
+        )
     }
 }

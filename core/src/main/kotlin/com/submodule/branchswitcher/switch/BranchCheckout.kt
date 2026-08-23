@@ -42,14 +42,19 @@ internal object BranchCheckout {
         val stillColliding = approvedCollisionPaths(context, target, directory)
         if (stillColliding.isEmpty()) return first.result
         context.log.warn("[retry] untracked collision, isolating approved files - ${directory.path}")
-        val retryIssues = mutableListOf<OperationIssue>()
-        val stash = stashApprovedCollisions(
-            context, target, directory, first.result.state, retryIssues, OperationStage.CHECKOUT,
-        )
-        if (!stash.created && stash.issue != null) {
-            context.log.warn("[retry] ${target.path}: ${stash.issue.diagnostic}")
+        when (val stash = stashApprovedCollisions(
+            context, target, directory, first.result.state, OperationStage.CHECKOUT,
+        )) {
+            is ApprovedStashOutcome.Blocked -> {
+                // The regenerated collision could not be isolated, so a second checkout would
+                // fail identically; report the isolation failure instead of discarding the
+                // first checkout's diagnostic in a doomed retry.
+                context.log.warn("[retry] ${target.path}: ${stash.issue.diagnostic}")
+                return first.result.copy(issues = first.result.issues + stash.issue)
+            }
+            is ApprovedStashOutcome.NoCollision, is ApprovedStashOutcome.Created ->
+                return executeOnce(context, target, directory, stash.state).result
         }
-        return executeOnce(context, target, directory, stash.state).result
     }
 
     private fun executeOnce(

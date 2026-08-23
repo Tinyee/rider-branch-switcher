@@ -113,11 +113,22 @@ interface SwitchPreflightGitClient : GitRepositoryQuery {
     fun untrackedFiles(workDir: File): List<String> = emptyList()
 
     /**
-     * Returns which of [paths] exist as tracked files in the tree of [branch]
-     * (= the untracked-files that `git checkout` would refuse to overwrite).
-     * The implementation resolves the ref: local branch when it exists, else `<remote>/<branch>`.
+     * Returns which of [paths] structurally collide with the tree of [branch] — a path that
+     * is itself tracked, whose tracked ancestor is a file, or that is the ancestor of a
+     * tracked path. These are exactly the untracked locations a checkout of [branch] would
+     * refuse to write. The implementation resolves the ref: local branch when it exists,
+     * else `<remote>/<branch>`.
      */
     fun targetBranchMatches(workDir: File, branch: String, paths: List<String>): List<String> = emptyList()
+
+    /**
+     * Returns which of [paths] structurally collide with the ACTUAL checked-out HEAD tree
+     * (same matching rules as [targetBranchMatches]). Used to authorize an approved-stash
+     * drop against the real tree after a checkout, so a ref that moved since the collision
+     * validation can never authorize a discard. Defaults to empty so a client without the
+     * capability can never authorize a discard.
+     */
+    fun headStructuralCollisions(workDir: File, paths: List<String>): List<String> = emptyList()
 
     /**
      * Reads the pre-switch inspection from the individual per-query methods. Implementations

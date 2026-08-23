@@ -19,6 +19,32 @@ import java.util.concurrent.Semaphore
 class GitOpsTest : GitOpsTestBase() {
 
     @Test
+    fun `targetBranchMatches reports structural collisions exact ancestor and descendant`() {
+        val repo = tmpDir.resolve("repo").toFile().also { it.mkdirs() }
+        runGit(repo, "init", "-b", "main")
+        File(repo, "a.txt").writeText("a")
+        File(repo, "dir/b.txt").apply { parentFile.mkdirs() }.writeText("b")
+        File(repo, "dir/sub/c.txt").apply { parentFile.mkdirs() }.writeText("c")
+        runGit(repo, "add", "-A")
+        runGit(repo, "commit", "-m", "init")
+
+        // Exact match: the untracked file is itself tracked on the target.
+        assertEquals(listOf("a.txt"), git.targetBranchMatches(repo, "main", listOf("a.txt")))
+        // Tracked descendant: an untracked FILE at `dir` blocks the target's tracked dir/ tree.
+        assertEquals(listOf("dir"), git.targetBranchMatches(repo, "main", listOf("dir")))
+        // Tracked ancestor as a file: a path under the tracked FILE `dir/b.txt`.
+        assertEquals(listOf("dir/b.txt/x"), git.targetBranchMatches(repo, "main", listOf("dir/b.txt/x")))
+        // An untracked file inside a tracked directory the target does NOT track is not a collision.
+        assertEquals(emptyList<String>(), git.targetBranchMatches(repo, "main", listOf("dir/other.txt")))
+        // A missing path is not a collision.
+        assertEquals(emptyList<String>(), git.targetBranchMatches(repo, "main", listOf("missing.txt")))
+        // The drop-authorization query against the actual HEAD mirrors the same rules.
+        assertEquals(listOf("a.txt"), git.headStructuralCollisions(repo, listOf("a.txt")))
+        assertEquals(listOf("dir"), git.headStructuralCollisions(repo, listOf("dir")))
+        assertEquals(emptyList<String>(), git.headStructuralCollisions(repo, listOf("dir/other.txt")))
+    }
+
+    @Test
     fun `isGitRepo returns true only for usable git repositories`() {
         val plainDir = tmpDir.resolve("plain").toFile().also { it.mkdirs() }
         assertFalse("plain directory is not a git repo", git.isGitRepo(plainDir))

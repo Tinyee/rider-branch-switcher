@@ -32,6 +32,8 @@ class SwitchStepTest {
         override fun dirtyFileCount(workDir: File): Int = 0
         override fun stash(workDir: File, message: String): GitResult = GitResult("stash", 0, "", "")
         override fun stashTopOid(workDir: File): String = "stash-oid"
+        override fun stashOidByMessage(workDir: File, messagePrefix: String): String? =
+            if (messagePrefix.startsWith(STASH_MESSAGE_PREFIX)) "stash-oid" else null
         override fun stashApply(workDir: File, oid: String): GitResult = GitResult("pop", 0, "", "")
         override fun fetch(workDir: File): GitResult = GitResult("fetch", 0, "", "")
         override fun localBranchExists(workDir: File, branch: String): Boolean = branch in listOf("main", "dev")
@@ -64,7 +66,14 @@ class SwitchStepTest {
     }
 
     private fun context(opts: SwitchOptions = SwitchOptions(DirtyAction.Stash, pull = false, fetchFirst = false)) =
-        SwitchContext(projectRoot, Preset("test", "dev"), opts, fakeGit, createStringAppender { log += it })
+        SwitchContext(
+            projectRoot,
+            Preset("test", "dev"),
+            opts,
+            fakeGit,
+            createStringAppender { log += it },
+            operationId = "test-op",
+        )
 
     private fun SwitchStep.run(
         context: SwitchContext,
@@ -378,7 +387,9 @@ class SwitchStepTest {
                 inspectRepositoryStateFallback(workDir)
 
             override fun isDirty(workDir: File): Boolean = true
-            override fun stashTopOid(workDir: File): String? = null
+            // A stash was created but its message cannot be matched (no unique entry): the
+            // push is treated as unidentified and blocks further writes, never assumed gone.
+            override fun stashOidByMessage(workDir: File, messagePrefix: String): String? = null
         }
         val execution = DirtyHandlingStep().run(
             context(SwitchOptions(DirtyAction.Stash)).copy(git = dirtyGit),
@@ -657,10 +668,15 @@ class SwitchStepTest {
         )
 
         // Termination must win over the raced-lock branch: the leftover lock is the
-        // terminated apply's own, so it must not surface as a lock race.
+        // terminated apply's own, so it must not surface as a lock race. The terminated
+        // apply may have PARTIALLY modified the worktree, so it is marked attempted —
+        // never retried automatically.
         assertEquals(OperationIssueCode.STASH_RESTORE_FAILED, restore.issues.single().code)
         assertTrue("a user-cancelled termination suppresses automatic retry", restore.interrupted)
-        assertFalse("WIP stays retryable (apply never completed)", restore.state.trackedStash(".")?.restoreAttempted ?: true)
+        assertTrue(
+            "a terminated apply may have modified the worktree, so it must be marked attempted",
+            restore.state.trackedStash(".")?.restoreAttempted == true,
+        )
     }
 
     @Test
@@ -690,7 +706,7 @@ class SwitchStepTest {
     }
 
     @Test
-    fun `timeout termination without user cancel stays retryable`() {
+    fun `timeout termination is marked attempted and never auto-retried`() {
         val timeoutGit = object : GitClient by fakeGit {
             override fun stashApply(workDir: File, oid: String): GitResult =
                 GitResult("pop", -1, "", "timeout after 10s")
@@ -702,7 +718,10 @@ class SwitchStepTest {
         )
 
         assertFalse("a timeout is not an explicit user cancel", restore.interrupted)
-        assertFalse(restore.state.trackedStash(".")?.restoreAttempted ?: true)
+        // A timed-out apply may have PARTIALLY modified the worktree, so it must be marked
+        // attempted (at-most-once) and never re-applied automatically — only a pre-start
+        // failure (an index.lock block) is retryable.
+        assertTrue(restore.state.trackedStash(".")?.restoreAttempted == true)
     }
 
     @Test

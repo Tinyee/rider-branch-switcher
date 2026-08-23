@@ -5,6 +5,7 @@ import com.submodule.branchswitcher.git.GitClient
 import com.submodule.branchswitcher.git.GitOperationProvider
 import com.submodule.branchswitcher.git.GitOperationSession
 import com.submodule.branchswitcher.git.GitResult
+import com.submodule.branchswitcher.git.IndexLockBlockedException
 import com.submodule.branchswitcher.git.RepositoryIdentity
 import com.submodule.branchswitcher.git.SubmoduleRegistration
 import com.submodule.branchswitcher.git.GitWorkflowClient
@@ -202,7 +203,7 @@ class SwitchRunnerTest {
     }
 
     @Test
-    fun `completed switch retries a retryable stash restore without rollback`() = runBlocking {
+    fun `completed switch retries a lock-blocked stash restore without rollback`() = runBlocking {
         val root = Files.createTempDirectory("switch-runner-stash-retry")
         initGitRepo(root.toFile())
         var applyCount = 0
@@ -210,13 +211,13 @@ class SwitchRunnerTest {
             override fun isDirty(workDir: File): Boolean = true
             override fun stashApply(workDir: File, oid: String): GitResult {
                 applyCount++
-                // First apply (end-of-pipeline restore) is interrupted and left
-                // retryable; the automatic stash-only retry applies it cleanly.
-                return if (applyCount == 1) {
-                    GitResult("stash apply", -1, "", "interrupted")
-                } else {
-                    GitResult("stash apply", 0, "", "")
+                // First apply (end-of-pipeline restore) is blocked by a stale index.lock
+                // BEFORE Git starts — the one failure proven safe to retry; the automatic
+                // stash-only retry applies it cleanly.
+                if (applyCount == 1) {
+                    throw IndexLockBlockedException(workDir, File(workDir, ".git/index.lock").path)
                 }
+                return GitResult("stash apply", 0, "", "")
             }
         }
         val runner = runner(root, git)
@@ -237,6 +238,38 @@ class SwitchRunnerTest {
         )
         assertEquals("switch session + retry session", 2, git.openCount)
         assertEquals("retry must not roll back the branch", "dev", git.branch)
+    }
+
+    @Test
+    fun `timed-out stash apply is never automatically retried`() = runBlocking {
+        val root = Files.createTempDirectory("switch-runner-stash-timeout")
+        initGitRepo(root.toFile())
+        var applyCount = 0
+        val git = object : RecordingGit() {
+            override fun isDirty(workDir: File): Boolean = true
+            override fun stashApply(workDir: File, oid: String): GitResult {
+                applyCount++
+                return GitResult("stash apply", -1, "", "timeout after 60s")
+            }
+        }
+        val runner = runner(root, git)
+
+        val result = runner.execute(
+            title = "Switching",
+            request = request(target = "dev", fetchFirst = false, pull = false),
+            log = createStringAppender {},
+            recoveryTitle = "Rolling back",
+            stashRestoreTitle = "Restoring stash",
+        )
+
+        // A timed-out apply may have PARTIALLY modified the worktree, so it must be marked
+        // attempted and never re-applied automatically (at-most-once).
+        assertEquals("a timed-out apply must not be retried", 1, applyCount)
+        assertTrue("the timed-out apply must not fail the completed switch", result.ok)
+        assertTrue(
+            "the timed-out WIP must stay tracked and marked attempted",
+            result.execution?.state?.stashesSnapshot()?.any { it.restoreAttempted } == true,
+        )
     }
 
     @Test
@@ -467,6 +500,8 @@ class SwitchRunnerTest {
         override fun dirtyFileCount(workDir: File): Int = 0
         override fun stash(workDir: File, message: String): GitResult = ok("stash")
         override fun stashTopOid(workDir: File): String = "stash-oid"
+        override fun stashOidByMessage(workDir: File, messagePrefix: String): String? =
+            if (messagePrefix.startsWith("branch-switcher: before -> ")) "stash-oid" else null
         override fun fetch(workDir: File): GitResult = ok("fetch")
         override fun localBranchExists(workDir: File, branch: String): Boolean = true
         override fun remoteBranchExists(workDir: File, branch: String): Boolean = false

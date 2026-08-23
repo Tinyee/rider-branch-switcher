@@ -25,6 +25,8 @@ abstract class SwitchExecutorTestBase {
         override fun dirtyFileCount(workDir: File): Int = 0
         override fun stash(workDir: File, message: String): GitResult = GitResult("stash", 0, "", "")
         override fun stashTopOid(workDir: File): String = "stash-oid"
+        override fun stashOidByMessage(workDir: File, messagePrefix: String): String? =
+            if (messagePrefix.startsWith(STASH_MESSAGE_PREFIX)) "stash-oid" else null
         override fun fetch(workDir: File): GitResult = GitResult("fetch", 0, "", "")
         override fun localBranchExists(workDir: File, branch: String): Boolean = branch == "main" || branch == "dev"
         override fun remoteBranchExists(workDir: File, branch: String): Boolean = true
@@ -82,6 +84,9 @@ abstract class SwitchExecutorTestBase {
         override fun targetBranchMatches(workDir: File, branch: String, paths: List<String>): List<String> =
             paths.filter { it in collisions }
 
+        override fun headStructuralCollisions(workDir: File, paths: List<String>): List<String> =
+            paths.filter { it in collisions }
+
         override fun stashPaths(workDir: File, message: String, paths: Collection<String>): GitResult {
             stashPathsCalls++
             val files = mutableSetOf<String>()
@@ -97,8 +102,13 @@ abstract class SwitchExecutorTestBase {
             return GitResult("stash paths", 0, "", "")
         }
 
-        override fun stashOidByMessage(workDir: File, messagePrefix: String): String? =
-            if (messagePrefix.startsWith(APPROVED_DISCARD_MESSAGE_PREFIX) && "approved-oid" in oidFiles) "approved-oid" else null
+        override fun stashOidByMessage(workDir: File, messagePrefix: String): String? = when {
+            // WIP stash identity (the production client matches the unique per-operation
+            // message, so the fake must serve the same message-based lookup).
+            messagePrefix.startsWith(STASH_MESSAGE_PREFIX) -> "stash-oid"
+            messagePrefix.startsWith(APPROVED_DISCARD_MESSAGE_PREFIX) && "approved-oid" in oidFiles -> "approved-oid"
+            else -> null
+        }
 
         override fun stashApply(workDir: File, oid: String): GitResult {
             applyCalls++

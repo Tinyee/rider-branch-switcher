@@ -32,7 +32,6 @@ class DiscardUntrackedCollisionStep : SwitchStep {
         val mainApproved = approved["."].orEmpty()
         if (mainApproved.isEmpty()) return StepExecution(StepResult.Success, state)
 
-        val issues = mutableListOf<OperationIssue>()
         context.operationControl?.checkCancelled()
         val target = RepoTarget(".", context.preset.main)
         // The repo is already on the target branch (the branch may have changed since the
@@ -44,7 +43,11 @@ class DiscardUntrackedCollisionStep : SwitchStep {
         val dir = resolveGitDir(context.projectRoot, ".")
         if (!dir.exists()) return StepExecution(StepResult.Success, state)
 
-        val outcome = stashApprovedCollisions(context, target, dir, state, issues, OperationStage.DIRTY_HANDLING)
-        return StepExecution(issues.toStepResult(), outcome.state)
+        val outcome = stashApprovedCollisions(context, target, dir, state, OperationStage.DIRTY_HANDLING)
+        val stepIssues = when (outcome) {
+            is ApprovedStashOutcome.Blocked -> listOf(outcome.issue)
+            else -> emptyList()
+        }
+        return StepExecution(stepIssues.toStepResult(), outcome.state)
     }
 }

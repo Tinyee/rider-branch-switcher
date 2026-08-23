@@ -303,11 +303,56 @@ internal class GitCommandClient(
         if (paths.isEmpty()) return emptyList()
         // Match BranchCheckout's selection: a local branch wins, else the remote-tracking ref.
         val ref = if (localBranchExists(workDir, branch)) branch else "${remoteName(workDir)}/$branch"
-        return paths.chunked(PATHSPEC_CHUNK_SIZE).flatMap { chunk ->
-            val result = run(workDir, listOf("ls-tree", "-r", "--name-only", ref, "--") + chunk)
-            if (!result.ok) throw readFailure(result)
-            result.stdout.lineSequence().filter { it.isNotEmpty() }.toList()
+        return structuralCollisions(workDir, ref, paths)
+    }
+
+    override fun headStructuralCollisions(workDir: File, paths: List<String>): List<String> {
+        if (paths.isEmpty()) return emptyList()
+        return structuralCollisions(workDir, "HEAD", paths)
+    }
+
+    /**
+     * Returns the input [paths] that structurally collide with [treeish]'s tree, read once:
+     * a path that is itself tracked, whose tracked ancestor is a file, or that is the
+     * ancestor of a tracked path. A checkout writes all three locations, so a plain
+     * pathspec over just the input paths would miss a tracked ancestor (empty result) or a
+     * tracked descendant (returns the child, not the blocking parent). The full tree is
+     * matched in memory so every structural case is returned as the original input path.
+     */
+    private fun structuralCollisions(workDir: File, treeish: String, paths: List<String>): List<String> {
+        val result = run(workDir, "ls-tree", "-r", "--name-only", treeish)
+        if (!result.ok) throw readFailure(result)
+        val tracked = result.stdout.lineSequence().filter { it.isNotEmpty() }.toHashSet()
+        val input = paths.toHashSet()
+        val colliding = mutableSetOf<String>()
+        // Exact match and tracked descendant: a tracked path that IS the input, or is under it.
+        for (entry in tracked) {
+            var prefix: String? = entry
+            while (prefix != null) {
+                if (prefix in input) {
+                    colliding += prefix
+                    break
+                }
+                prefix = parentPath(prefix)
+            }
         }
+        // Tracked ancestor as a file: a tracked path that is a prefix of the input.
+        for (path in paths) {
+            var prefix = parentPath(path)
+            while (prefix != null) {
+                if (prefix in tracked) {
+                    colliding += path
+                    break
+                }
+                prefix = parentPath(prefix)
+            }
+        }
+        return paths.filter { it in colliding }
+    }
+
+    private fun parentPath(path: String): String? {
+        val slash = path.lastIndexOf('/')
+        return if (slash < 0) null else path.substring(0, slash)
     }
 
     override fun checkoutExisting(workDir: File, branch: String): GitResult =
@@ -573,8 +618,6 @@ internal class GitCommandClient(
     }
 
     companion object {
-        /** Bounds `ls-tree` pathspec lists so exec arg size stays well under ARG_MAX. */
-        private const val PATHSPEC_CHUNK_SIZE = 400
         private const val MAX_SUBMODULE_DEPTH = 10
         private const val SUBMODULE_ENTRY_KEY_REGEX = "^submodule\\..*\\.(path|url)$"
         private const val SUBMODULE_KEY_PREFIX = "submodule."

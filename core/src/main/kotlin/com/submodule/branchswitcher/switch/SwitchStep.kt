@@ -52,6 +52,8 @@ data class TrackedStash(
     val oid: String?,
     val restoreAttempted: Boolean = false,
     val creationOrder: Int,
+    /** The approved collision paths isolated in this stash (APPROVED_DISCARD only); the drop is authorized only after re-verifying them against the actual checked-out tree. */
+    val approvedPaths: Set<String> = emptySet(),
 )
 
 class SwitchState private constructor(
@@ -74,7 +76,13 @@ class SwitchState private constructor(
      * repository path. [creationOrder] is assigned in creation order; recovery restores in
      * reverse order (WIP before approved).
      */
-    fun withTrackedStash(path: String, purpose: StashPurpose, message: String, oid: String?): SwitchState {
+    fun withTrackedStash(
+        path: String,
+        purpose: StashPurpose,
+        message: String,
+        oid: String?,
+        approvedPaths: Set<String> = emptySet(),
+    ): SwitchState {
         val creationOrder = (trackedStashes.maxOfOrNull { it.creationOrder } ?: -1) + 1
         return copy(
             trackedStashes = trackedStashes + TrackedStash(
@@ -84,6 +92,7 @@ class SwitchState private constructor(
                 message = message,
                 oid = oid,
                 creationOrder = creationOrder,
+                approvedPaths = approvedPaths,
             ),
         )
     }
@@ -181,6 +190,8 @@ data class SwitchContext(
     val approvedCollisionDiscards: Map<String, Set<String>> = emptyMap(),
     /** Pre-switch repository identities used by later topology safety gates. */
     val checkpoint: Map<String, CheckpointEntry> = emptyMap(),
+    /** Opaque id for one switch execution; scopes every stash message so a stale stash from an earlier operation can never be matched or restored. */
+    val operationId: String,
 )
 
 /**

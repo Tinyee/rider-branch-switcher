@@ -377,6 +377,7 @@ class SwitchExecutorCancelTest : SwitchExecutorTestBase() {
             log = createStringAppender { },
             operationControl = cancelled,
             preApprovedSubmoduleInit = emptySet(),
+            operationId = "test-op",
         )
         val target = RepoTarget("SubA", "main")
         assertThrows(OperationCancelledException::class.java) {

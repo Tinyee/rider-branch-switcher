@@ -5,6 +5,7 @@ import com.submodule.branchswitcher.git.IndexLockBlockedException
 import com.submodule.branchswitcher.git.SwitchGitClient
 import com.submodule.branchswitcher.log.AppLogger
 import com.submodule.branchswitcher.log.logFailure
+import com.submodule.branchswitcher.log.newOperationId
 import com.submodule.branchswitcher.model.Preset
 import com.submodule.branchswitcher.model.RepoTarget
 import com.submodule.branchswitcher.model.ResolvedSwitchRequest
@@ -117,7 +118,10 @@ class SwitchExecutor @JvmOverloads constructor(
             is Checkpoint.Failed -> return checkpoint.result
         }
 
-        val context = createContext(preset, options, switchCheckpoint)
+        // One opaque operation id per execution scopes every stash message, so a retained
+        // stash from an earlier switch can never be matched by message and applied or dropped
+        // as if it belonged to this one.
+        val context = createContext(preset, options, switchCheckpoint, newOperationId("switch"))
 
         context.progressHandle?.isIndeterminate = false
 
@@ -343,6 +347,7 @@ class SwitchExecutor @JvmOverloads constructor(
         preset: Preset,
         options: com.submodule.branchswitcher.model.SwitchOptions,
         checkpoint: Map<String, CheckpointEntry>,
+        operationId: String,
     ): SwitchContext {
         targetPaths = preset.targets().associate { target ->
             val directory = resolveGitDir(projectRoot, target.path)
@@ -360,6 +365,7 @@ class SwitchExecutor @JvmOverloads constructor(
             preApprovedSubmoduleInit = preApprovedSubmoduleInit,
             approvedCollisionDiscards = collisionDiscards,
             checkpoint = checkpoint,
+            operationId = operationId,
         )
     }
 

@@ -210,15 +210,19 @@ class SubmoduleTreeStep : SwitchStep {
             val approved = context.approvedCollisionDiscards[target.path].orEmpty()
             val atTarget = context.checkpoint[target.path]?.branch == target.branch
             if (approved.isNotEmpty() && !atTarget) {
-                val stash = stashApprovedCollisions(
-                    context, target, directory, nextState, issues, OperationStage.DIRTY_HANDLING,
-                )
-                nextState = stash.state
-                if (!stash.created && stash.issue != null) {
-                    // Still an approved untracked collision that could not be isolated: fail
-                    // closed rather than pretending it was discarded.
-                    nextState = disableDescendants(nextState, targets, target.path)
-                    return SubmoduleTraversal(nextState, topology)
+                when (val stash = stashApprovedCollisions(
+                    context, target, directory, nextState, OperationStage.DIRTY_HANDLING,
+                )) {
+                    is ApprovedStashOutcome.Blocked -> {
+                        // Still an approved untracked collision that could not be isolated: fail
+                        // closed rather than pretending it was discarded — disable this submodule
+                        // and its descendants so its checkout never runs against the collision.
+                        issues += stash.issue
+                        nextState = disableTargetAndDescendants(nextState, targets, target.path)
+                        return SubmoduleTraversal(nextState, topology)
+                    }
+                    is ApprovedStashOutcome.NoCollision, is ApprovedStashOutcome.Created ->
+                        nextState = stash.state
                 }
             }
 
