@@ -679,4 +679,22 @@ class GitOpsTest : GitOpsTestBase() {
             whitespaceGit.untrackedFiles(tmpDir.toFile()),
         )
     }
+
+    @Test
+    fun `last NUL record keeps a trailing space in the file name`() {
+        // The generic process layer must not trim trailing whitespace off the LAST raw
+        // record: git ls-files -z terminates it with NUL, and a file whose name ends in a
+        // space would otherwise lose it (trimEnd() strips the NUL, then the space).
+        val trailingSpaceGit = GitOps(timeoutSeconds = 10) { _ ->
+            ControllableProcess(
+                finished = true,
+                stdout = "a.txt\u0000trailing.txt \u0000".toByteArray(),
+            )
+        }
+
+        assertEquals(
+            listOf("a.txt", "trailing.txt "),
+            trailingSpaceGit.untrackedFiles(tmpDir.toFile()),
+        )
+    }
 }

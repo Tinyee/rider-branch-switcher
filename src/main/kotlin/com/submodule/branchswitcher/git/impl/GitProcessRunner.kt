@@ -241,11 +241,13 @@ internal class GitProcessRunner(
         // The drain threads already closed stdout/stderr via `use {}`; close stdin too
         // so a long-lived process never leaks its input pipe to GC (macOS FD limit).
         closeProcessStreams(process)
-        // Trim only the tail: a leading blank could belong to the first output line
-        // (e.g. a file literally named " leading.txt"), while the trailing newline is
-        // always command noise.
+        // Trim only the trailing line terminators: a leading blank, a trailing space, or a
+        // trailing tab can belong to a real output record (e.g. a file named " leading.txt"
+        // or "trailing.txt "), while the CR/LF that ends a line is always command noise.
+        // NUL is never trimmed — a NUL-delimited raw path (ls-files -z / ls-tree -z) that
+        // itself ends in whitespace must survive byte-for-byte.
         return completedOutcome(
-            GitResult(commandLabel, exitCode, stdout.capture.text.trimEnd(), stderrText.trim()),
+            GitResult(commandLabel, exitCode, stdout.capture.text.trimEnd('\r', '\n'), stderrText.trim()),
             resourcesStopped,
             process,
             observedDescendants,
