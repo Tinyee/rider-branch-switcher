@@ -4,6 +4,7 @@ import com.submodule.branchswitcher.git.GitQueryException
 import com.submodule.branchswitcher.git.PresetDiscoveryGitClient
 import com.submodule.branchswitcher.log.AppLogger
 import com.submodule.branchswitcher.log.logFailure
+import com.submodule.branchswitcher.switch.OperationCancelledException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -184,7 +185,7 @@ internal fun loadComboBranches(
  * the caller ends the lifecycle without applying any UI; any other query failure
  * degrades to a non-succeeded result the caller may use to reset retry state.
  */
-@Suppress("TooGenericExceptionCaught") // Git query adapters vary; cancellation propagates via the explicit catch
+@Suppress("TooGenericExceptionCaught", "ThrowsCount") // Git query adapters vary; each cancellation type propagates via its own explicit catch
 private suspend fun discoverBranchChoices(
     client: PresetDiscoveryGitClient,
     dir: File,
@@ -208,6 +209,11 @@ private suspend fun discoverBranchChoices(
         currentCoroutineContext().ensureActive()
         BranchComboLoadResult(selectedBranch, branches)
     } catch (e: CancellationException) {
+        throw e
+    } catch (e: OperationCancelledException) {
+        // A cancelled Git read surfaces as OperationCancelledException (not the JDK type):
+        // it is a user cancel, so it must propagate to end the lifecycle, never be recorded
+        // as a load failure.
         throw e
     } catch (e: GitQueryException) {
         if (e.result.failureKind == GitFailureKind.CANCELLED) {

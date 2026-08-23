@@ -137,6 +137,12 @@ class SwitchFlowCoordinator(
             } catch (_: com.intellij.openapi.progress.ProcessCanceledException) {
                 log.withContext(operationContext).info("preflight cancelled by user")
                 return@launch
+            } catch (e: OperationCancelledException) {
+                // A cancelled Git read surfaces as OperationCancelledException (the git read
+                // boundary converts it): it is a user cancel, so it must be treated as such,
+                // never recorded as a failed preflight probe.
+                log.withContext(operationContext).info("preflight cancelled by user")
+                return@launch
             } catch (e: Exception) {
                 log.withContext(operationContext).logFailure("preflight probe failed", e)
                 uiLater {

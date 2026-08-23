@@ -10,6 +10,7 @@ import com.submodule.branchswitcher.log.AppLogger
 import com.submodule.branchswitcher.log.logFailure
 import com.submodule.branchswitcher.model.Preset
 import com.submodule.branchswitcher.service.BranchSwitcherService
+import com.submodule.branchswitcher.switch.OperationCancelledException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import java.io.File
@@ -126,6 +127,10 @@ internal class CurrentStatePresetCreator(
         } catch (_: kotlinx.coroutines.CancellationException) {
             null
         } catch (_: com.intellij.openapi.progress.ProcessCanceledException) {
+            null
+        } catch (_: OperationCancelledException) {
+            // A cancelled Git read surfaces as OperationCancelledException (the git read
+            // boundary converts it): it is a user cancel, so no probe-failure warning.
             null
         } catch (e: Exception) {
             log.logFailure("probe current state failed", e)
