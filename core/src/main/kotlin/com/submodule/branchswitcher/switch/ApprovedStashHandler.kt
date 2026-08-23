@@ -17,11 +17,8 @@ internal sealed interface ApprovedStashOutcome {
     /** The state to continue the switch with. */
     val state: SwitchState
 
-    /** Nothing to isolate (no still-colliding approved paths); the switch proceeds. */
-    data class NoCollision(override val state: SwitchState) : ApprovedStashOutcome
-
-    /** A stash was created (or a terminated push's ghost entry was tracked). */
-    data class Created(override val state: SwitchState) : ApprovedStashOutcome
+    /** Isolation succeeded or had nothing to isolate; the switch proceeds. */
+    data class Proceed(override val state: SwitchState) : ApprovedStashOutcome
 
     /** Isolation was required but could not be performed; fail closed with [issue]. */
     data class Blocked(override val state: SwitchState, val issue: OperationIssue) : ApprovedStashOutcome
@@ -93,7 +90,7 @@ internal fun stashApprovedCollisions(
     stage: OperationStage,
 ): ApprovedStashOutcome {
     val paths = approvedCollisionPaths(context, target, directory)
-    if (paths.isEmpty()) return ApprovedStashOutcome.NoCollision(state)
+    if (paths.isEmpty()) return ApprovedStashOutcome.Proceed(state)
 
     val round = state.approvedStashRound(target.path)
     val message = "$APPROVED_DISCARD_MESSAGE_PREFIX${context.operationId} round=$round"
@@ -130,7 +127,7 @@ internal fun stashApprovedCollisions(
         }
         if (oid == null) return revalidateUncreatedStash(context, target, directory, state, stage)
         context.log.info("approved stash: ok (${target.path}, round=$round, oid=$oid)")
-        return ApprovedStashOutcome.Created(
+        return ApprovedStashOutcome.Proceed(
             state.withTrackedStash(
                 target.path, StashPurpose.APPROVED_DISCARD, message, oid, approvedPaths = paths,
             ),
@@ -143,7 +140,7 @@ internal fun stashApprovedCollisions(
         trackGhostStashIfCreated(
             context, target, directory, beforeTop, message, state, StashPurpose.APPROVED_DISCARD,
             approvedPaths = paths,
-        )?.let { return ApprovedStashOutcome.Created(it) }
+        )?.let { return ApprovedStashOutcome.Proceed(it) }
     }
     return ApprovedStashOutcome.Blocked(
         state,
@@ -171,7 +168,7 @@ private fun revalidateUncreatedStash(
     val stillColliding = approvedCollisionPaths(context, target, directory)
     if (stillColliding.isEmpty()) {
         context.log.info("approved stash: no entry created, paths no longer collide - ${target.path}")
-        return ApprovedStashOutcome.NoCollision(state)
+        return ApprovedStashOutcome.Proceed(state)
     }
     val diagnostic = "approved stash isolation created no entry yet ${stillColliding.size} path(s) " +
         "remain approved untracked collisions: ${stillColliding.sorted().joinToString(", ")}"

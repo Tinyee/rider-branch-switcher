@@ -221,7 +221,7 @@ class SubmoduleTreeStep : SwitchStep {
                         nextState = disableTargetAndDescendants(nextState, targets, target.path)
                         return SubmoduleTraversal(nextState, topology)
                     }
-                    is ApprovedStashOutcome.NoCollision, is ApprovedStashOutcome.Created ->
+                    is ApprovedStashOutcome.Proceed ->
                         nextState = stash.state
                 }
             }

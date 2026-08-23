@@ -52,7 +52,7 @@ internal object BranchCheckout {
                 context.log.warn("[retry] ${target.path}: ${stash.issue.diagnostic}")
                 return first.result.copy(issues = first.result.issues + stash.issue)
             }
-            is ApprovedStashOutcome.NoCollision, is ApprovedStashOutcome.Created ->
+            is ApprovedStashOutcome.Proceed ->
                 return executeOnce(context, target, directory, stash.state).result
         }
     }
