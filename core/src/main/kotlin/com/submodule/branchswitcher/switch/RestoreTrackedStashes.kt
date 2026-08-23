@@ -225,8 +225,9 @@ private fun applyRestoredStash(
     // a thrown IndexLockBlockedException (proven before Git started) keeps an entry retryable.
     if (applyResult.failureKind.isTermination) {
         // A cancelled/interrupted/timed-out apply may have PARTIALLY modified the worktree
-        // before dying, so it must never be re-applied automatically: mark the entry
-        // attempted (at-most-once) and keep the stash for the user or an explicit recovery.
+        // before dying, so it must never be re-applied automatically or by a later plugin
+        // restore (restoreGuard rejects attempted entries): mark it attempted (at-most-once)
+        // and keep the stash for manual recovery.
         current = current.withStashRestoreAttempted(stash.id)
         log.warn(
             "[fail] stash apply interrupted for $path (${repositoryDirectory.path}): ${applyResult.failureKind}; " +

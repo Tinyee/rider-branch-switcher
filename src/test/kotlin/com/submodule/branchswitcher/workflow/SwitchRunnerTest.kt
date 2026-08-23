@@ -301,7 +301,7 @@ class SwitchRunnerTest {
         assertTrue("a user-cancelled restore must mark the switch interrupted", result.execution?.stashRestoreInterrupted == true)
         assertEquals("a user-cancelled restore must not auto-retry", 1, applyCount)
         assertFalse(
-            "the WIP must stay tracked for a later explicit retry",
+            "the WIP must stay tracked for manual recovery",
             result.execution?.state?.stashesSnapshot().isNullOrEmpty(),
         )
     }

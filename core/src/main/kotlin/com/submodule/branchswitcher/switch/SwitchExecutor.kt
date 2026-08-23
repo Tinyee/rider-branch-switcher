@@ -299,8 +299,10 @@ class SwitchExecutor @JvmOverloads constructor(
 
     /**
      * Restores the WIP that dirty handling stashed after a completed pipeline. Honors
-     * cancellation inside the restore: a user cancel stops the loop with the remaining WIP
-     * preserved (and retryable) in git stash, and is reported via [StashRestoreResult.interrupted].
+     * cancellation inside the restore: a user cancel stops the loop — an apply that had
+     * already started is marked attempted (kept in git stash for manual recovery), and
+     * entries the loop had not reached stay untouched — reported via
+     * [StashRestoreResult.interrupted], which suppresses the automatic retry.
      * The switch itself already completed, so a cancel here must not flip the status to
      * CANCELLED — recovery would roll the completed switch back and its clean-tree reset
      * would wipe already-restored WIP.

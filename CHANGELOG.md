@@ -352,9 +352,10 @@
   stash; only an entry the push actually created is tracked.
 - Stash restoration honors cancellation: an interrupted apply may have partially
   modified the worktree, so it is marked attempted and is never re-applied
-  automatically — it stays in `git stash` for manual or explicit recovery, the
-  preserved WIP is surfaced in the notification, and a completed switch that
-  could not restore some stashes warns with the preserved stash details.
+  automatically or by a later plugin restore — it stays in `git stash` for manual
+  recovery, the preserved WIP is surfaced in the notification, and a completed
+  switch that could not restore some stashes warns with the preserved stash
+  details.
 - A fetch-first switch is no longer short-circuited even when every target is
   already on its branch with a clean tree, so remote-tracking refs stay fresh.
 - A background task that completes before its task infrastructure throws keeps

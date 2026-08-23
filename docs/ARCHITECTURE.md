@@ -256,8 +256,7 @@ the worktree. Later automatic stages do not replay that stash, and the
 notification rollback action expires when started. Only a failure proven to
 occur before Git started (an `index.lock` block thrown by the funnel) is
 retryable; the applied stash is dropped on success, and a failed, interrupted,
-or declined entry stays in `git stash` for manual inspection or explicit
-recovery.
+or declined entry stays in `git stash` for manual recovery.
 Checkpoints also retain the canonical Git directory identity. Recovery and
 derive rollback skip a path if a different repository later occupies it.
 Before ordinary writes, an initialized submodule must report a superproject
