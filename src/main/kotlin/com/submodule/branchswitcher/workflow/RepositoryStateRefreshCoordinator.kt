@@ -76,11 +76,12 @@ class RepositoryStateRefreshCoordinator(
                 deliver {
                     try {
                         if (isCurrent(state, snapshot)) onSnapshot(snapshot)
-                    } catch (t: Throwable) {
+                    } catch (error: Exception) {
                         // onSnapshot runs on the EDT inside the scheduled runnable; an
-                        // exception here would escape as an uncaught EDT error, so log it
-                        // against the refresh operation instead.
-                        operationLog.logFailure("repository state delivery failed", t)
+                        // ordinary exception here would escape as an uncaught EDT error, so
+                        // log it against the refresh operation instead. JVM Errors are
+                        // deliberately not caught: they reach the EDT uncaught-error handler.
+                        operationLog.logFailure("repository state delivery failed", error)
                     } finally {
                         clearIfCurrent(state)
                     }

@@ -69,8 +69,10 @@ internal class BranchLoadCoordinator(
             // A cancelled discovery is normal coroutine cancellation, not a
             // query failure: deliver nothing and unwind (mirrors launch()).
             throw error
-        } catch (error: Throwable) {
+        } catch (error: Exception) {
             if (!closed.get()) onResult(Result.failure(error))
+            // JVM Errors (e.g. OutOfMemoryError) are deliberately not caught: they must
+            // propagate to the coroutine machinery instead of being delivered as a query failure.
         }
     }
 

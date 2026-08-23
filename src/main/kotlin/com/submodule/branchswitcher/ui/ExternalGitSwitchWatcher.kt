@@ -135,7 +135,7 @@ internal sealed interface WatchPollAction {
  * `logs/HEAD` file (null when the root or git metadata is unavailable); [readStamp] is
  * the `lastModified`-style read whose failure is mapped to the -1 stamp sentinel.
  */
-@Suppress("TooGenericExceptionCaught") // any read failure must surface as the -1 sentinel, whatever its type
+@Suppress("TooGenericExceptionCaught") // any read failure must surface as the -1 sentinel
 internal fun pollDecision(
     shouldWatch: Boolean,
     reflog: File?,
@@ -146,9 +146,10 @@ internal fun pollDecision(
     if (reflog == null) return WatchPollAction.Requeue
     return try {
         WatchPollAction.Observe(readStamp(reflog), previous)
-    } catch (error: Throwable) {
+    } catch (error: Exception) {
         // A failed lastModified read is a stamp change (the poll refreshes rather than
         // silently staying on the old stamp), so surface it as -1 with the error attached.
+        // JVM Errors propagate: an OOM while reading the stamp must not be masked as a stamp change.
         WatchPollAction.Observe(-1L, previous, error)
     }
 }

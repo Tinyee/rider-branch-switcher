@@ -81,9 +81,12 @@ class PresetRepository internal constructor(
         val currentDigest = withContext(Dispatchers.IO) { digester(file) }
         if (digestChanged(currentDigest, recordedDigest)) throw PresetFileChangedException(file)
         // The load dropped invalid entries; the write below permanently removes them
-        // from the file, so preserve the original bytes once as a recovery copy.
+        // from the file, so preserve the original bytes once as a recovery copy. If the
+        // copy fails, refuse the overwrite: the backup is the only durable copy of the
+        // dropped entries. dropBackupPending stays set so the next save re-attempts it.
         if (dropBackupPending) {
-            withContext(Dispatchers.IO) { backupOriginal(file) }
+            val backedUp = withContext(Dispatchers.IO) { backupOriginal(file) }
+            if (!backedUp) throw PresetBackupFailedException(file)
             dropBackupPending = false
         }
         val updated = presetFile.copy(presets = newPresets)
@@ -101,18 +104,22 @@ class PresetRepository internal constructor(
         else !current.contentEquals(recorded)
 
     /**
-     * Best-effort copy of the pre-filtered file so entries dropped as invalid at load
-     * are recoverable after the next save rewrites the file without them. A backup
-     * failure must not block the user's save, so it only warns.
+     * Copies the pre-filtered file so entries dropped as invalid at load are recoverable
+     * after the next save rewrites the file without them. Returns true when the original
+     * is preserved (including the no-file case); false when the copy failed. The caller
+     * must then refuse the destructive overwrite, because the backup is the only durable
+     * copy of the dropped entries.
      */
-    @Suppress("TooGenericExceptionCaught") // backup is best-effort; any IO failure only warns
-    private fun backupOriginal(file: Path) {
-        if (!Files.exists(file)) return
+    @Suppress("TooGenericExceptionCaught") // backup failure is a refusal reason; any IO failure is caught here
+    private fun backupOriginal(file: Path): Boolean {
+        if (!Files.exists(file)) return true
         val backup = file.resolveSibling(file.fileName.toString() + ".bak")
-        try {
+        return try {
             Files.copy(file, backup, java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+            true
         } catch (e: Exception) {
             LOG.warn("preset backup to $backup failed: ${e.message}", e)
+            false
         }
     }
 

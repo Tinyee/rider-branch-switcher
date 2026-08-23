@@ -273,6 +273,51 @@ class PresetRepositoryTest {
     }
 
     @Test
+    fun `save refused when the post-drop backup fails, keeping the original bytes`() = runBlocking {
+        val root = Files.createTempDirectory("preset-repository")
+        val file = root.resolve(".idea/branch-presets.json")
+        Files.createDirectories(file.parent)
+        val onDiskBytes = """{"presets":[{"name":"bad"}]}""".toByteArray()
+        Files.write(file, onDiskBytes)
+        val diskDigest = sha256(onDiskBytes)
+        var saveAttempts = 0
+        // A non-empty directory squatting on the .bak path forces the backup copy to fail
+        // (Files.copy throws DirectoryNotEmptyException; an empty directory would be replaced).
+        val backupDir = root.resolve(".idea/branch-presets.json.bak")
+        Files.createDirectories(backupDir)
+        Files.write(backupDir.resolve("keep"), byteArrayOf())
+        val repository = PresetRepository(
+            basePath = { root },
+            loader = {
+                Result.success(
+                    PresetLoadResult(file, PresetFile(listOf(Preset("main", "main"))), diskDigest, droppedNames = listOf("bad"))
+                )
+            },
+            saver = { path, _ ->
+                saveAttempts++
+                val written = """{"presets":[]}""".toByteArray()
+                Files.write(path, written)
+                sha256(written)
+            },
+            digester = { path -> if (Files.exists(path)) sha256(Files.readAllBytes(path)) else null },
+        )
+        repository.load().getOrThrow()
+
+        val exception = runCatching { repository.save(listOf(Preset("dev", "dev"))) }.exceptionOrNull()
+
+        assertTrue("expected PresetBackupFailedException, was: $exception", exception is PresetBackupFailedException)
+        assertEquals("the original file must not be overwritten when its backup failed", 0, saveAttempts)
+        assertArrayEquals(onDiskBytes, Files.readAllBytes(file))
+        // The refusal leaves dropBackupPending set, so once the obstruction is gone the
+        // next save re-attempts the backup and proceeds.
+        Files.delete(backupDir.resolve("keep"))
+        Files.delete(backupDir)
+        repository.save(listOf(Preset("release", "release")))
+        assertEquals(1, saveAttempts)
+        assertArrayEquals(onDiskBytes, Files.readAllBytes(root.resolve(".idea/branch-presets.json.bak")))
+    }
+
+    @Test
     fun `save after a clean load does not write a backup`() = runBlocking {
         val root = Files.createTempDirectory("preset-repository")
         val file = root.resolve(".idea/branch-presets.json")

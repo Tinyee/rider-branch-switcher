@@ -6,7 +6,7 @@ package com.submodule.branchswitcher.model
  */
 fun isValidBranchName(name: String): Boolean {
     if (name.isEmpty() || name != name.trim()) return false
-    if (name == "@" || name == "HEAD" || name.startsWith("-")) return false
+    if (name == "HEAD" || name.startsWith("-")) return false
     if (name.startsWith("/") || name.endsWith("/")) return false
     if (name.contains("//")) return false
     if (name.contains("..") || name.contains("@{")) return false
