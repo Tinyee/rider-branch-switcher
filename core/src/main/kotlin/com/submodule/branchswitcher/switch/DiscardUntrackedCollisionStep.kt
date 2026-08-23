@@ -46,7 +46,7 @@ class DiscardUntrackedCollisionStep : SwitchStep {
         val outcome = stashApprovedCollisions(context, target, dir, state, OperationStage.DIRTY_HANDLING)
         val stepIssues = when (outcome) {
             is ApprovedStashOutcome.Blocked -> listOf(outcome.issue)
-            else -> emptyList()
+            is ApprovedStashOutcome.Proceed -> emptyList()
         }
         return StepExecution(stepIssues.toStepResult(), outcome.state)
     }
