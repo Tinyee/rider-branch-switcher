@@ -139,7 +139,10 @@ class SingleRepositorySwitcherTest {
         val failed = runSwitch(switcher, root.toPath(), "module", "dev")
 
         assertTrue(missing is SingleRepositorySwitchResult.GitFailure)
-        assertEquals("branch dev not found", (missing as SingleRepositorySwitchResult.GitFailure).result.stderr)
+        assertEquals(
+            "branch dev not found (local and remote both missing)",
+            (missing as SingleRepositorySwitchResult.GitFailure).result.stderr,
+        )
         assertTrue(failed is SingleRepositorySwitchResult.GitFailure)
         assertEquals("failed", (failed as SingleRepositorySwitchResult.GitFailure).result.stderr)
     }

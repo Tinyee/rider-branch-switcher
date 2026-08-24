@@ -61,11 +61,13 @@ internal class ExternalGitSwitchWatcher(
                     )
                 }
                 lastReflogStamp = reflogStampUpdate(action.previous, action.stamp, onExternalChange)
+                // No log for an unchanged stamp: ToolWindowLogger promotes debug to the
+                // visible tool-window buffer, so a per-poll noop would crowd out real
+                // operation logs within a few hours.
                 when {
                     action.previous < 0 -> log.debug("watcher initial stamp captured: ${action.stamp}")
                     action.stamp != action.previous ->
                         log.info("external switch detected: reflog stamp ${action.previous} -> ${action.stamp}")
-                    else -> log.debug("watcher noop: stamp=${action.stamp}")
                 }
                 restart()
             }

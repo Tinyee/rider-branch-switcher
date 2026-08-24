@@ -115,7 +115,8 @@ class DeriveBranchRunner(
             } else {
                 if (operationCancelled && deriveResult.succeeded.isNotEmpty()) {
                     operationLog.warn(
-                        "rollback skipped: ${deriveResult.succeeded.size} succeeded repo(s) left (operation cancelled)",
+                        "rollback deferred until the cancelled operation closes: " +
+                            "${deriveResult.succeeded.size} succeeded repo(s) left",
                     )
                 }
                 null

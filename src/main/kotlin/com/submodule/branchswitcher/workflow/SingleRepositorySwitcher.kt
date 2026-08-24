@@ -144,7 +144,7 @@ class SingleRepositorySwitcher(
             is SingleRepositorySwitchResult.Success ->
                 operationLog.activity("operation finished: status=success, path=$path, branch=$target")
             is SingleRepositorySwitchResult.GitFailure ->
-                operationLog.warn("operation finished: status=git-failure, ${result.result.diagnostic()}")
+                operationLog.warn("operation finished: status=git-failure, path=$path, ${result.result.diagnostic()}")
             is SingleRepositorySwitchResult.LockBlocked ->
                 operationLog.warn(
                     "operation finished: status=lock-blocked, ${indexLockBlockedDiagnostic(result.lockPath)}",
@@ -204,15 +204,15 @@ class SingleRepositorySwitcher(
                 if (result.ok) {
                     SingleRepositorySwitchResult.Success(result)
                 } else {
-                    operationLog.warn("[fail] checkout - ${directory.path}: ${result.diagnostic()}")
                     SingleRepositorySwitchResult.GitFailure(result)
                 }
             }
 
             is RepositoryCheckoutOutcome.BranchMissing -> {
-                operationLog.warn("branch \"$target\" not found in $path (local and remote both missing)")
+                // The summary "operation finished: status=git-failure" line below logs this
+                // diagnostic once, so the full reason lives in the branch-missing result.
                 SingleRepositorySwitchResult.GitFailure(
-                    GitResult("checkout", 1, "", "branch $target not found"),
+                    GitResult("checkout", 1, "", "branch $target not found (local and remote both missing)"),
                 )
             }
         }
