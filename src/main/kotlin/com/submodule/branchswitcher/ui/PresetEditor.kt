@@ -123,6 +123,10 @@ internal class PresetEditor(
 
         restoreSavedPresetToUi()
         isInitializing = false
+        // restoreSavedPresetToUi() recomposed the button state while isInitializing was still
+        // true and disabled switch/derive. Recompute now that init is complete so a cold-started
+        // editor does not stay disabled until the next branch load or write operation.
+        updateActionsEnabled()
     }
 
     private fun createHeader(): JPanel {
