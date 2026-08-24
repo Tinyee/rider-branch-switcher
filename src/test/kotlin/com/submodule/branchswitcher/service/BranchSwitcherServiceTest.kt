@@ -103,12 +103,13 @@ class BranchSwitcherServiceTest {
     }
 
     @Test
-    fun `addHistory dedups by id so a rename does not create a second entry`() {
-        service.addHistory("new-name", "id-1")
+    fun `addHistory dedups by id and refreshes the name after a rename`() {
         service.addHistory("old-name", "id-1")
+        service.addHistory("new-name", "id-1")
         val history = service.getHistory()
         assertEquals(1, history.size)
         assertEquals("new-name", history[0].presetName)
+        assertEquals("id-1", history[0].presetId)
     }
 
     @Test
@@ -116,9 +117,13 @@ class BranchSwitcherServiceTest {
         service.addHistory("main")
         service.addHistory("main")
         assertEquals(1, service.getHistory().size)
-        // A legacy entry and an id-carrying entry for the same name are the same preset.
+        // A legacy entry and an id-carrying entry for the same name are the same preset,
+        // so the duplicate is not added — but the top entry gains the stable id, which
+        // is what lets a later rename still resolve "switch to previous preset".
         service.addHistory("main", "id-9")
-        assertEquals(1, service.getHistory().size)
+        val history = service.getHistory()
+        assertEquals(1, history.size)
+        assertEquals("id-9", history[0].presetId)
     }
 
     // ── Settings getters/setters ─────────────────────────────────────

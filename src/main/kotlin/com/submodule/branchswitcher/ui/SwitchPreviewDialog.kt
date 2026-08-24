@@ -1,6 +1,5 @@
 package com.submodule.branchswitcher.ui
 
-import com.intellij.openapi.components.service
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.DialogWrapper
 import com.intellij.ui.JBColor
@@ -12,7 +11,6 @@ import com.submodule.branchswitcher.Bundle
 import com.submodule.branchswitcher.model.PreflightRow
 import com.submodule.branchswitcher.model.ResolvedSwitchRequest
 import com.submodule.branchswitcher.presentation.shouldShowForceWarning
-import com.submodule.branchswitcher.service.BranchSwitcherService
 import java.awt.BorderLayout
 import java.awt.Component
 import java.awt.Dimension
@@ -50,6 +48,14 @@ class SwitchPreviewDialog(
      * Read by the caller after [showAndGet] returns true.
      */
     var onlyMetaDiscard: Boolean = false
+        private set
+
+    /**
+     * Whether "always auto-discard .meta" is selected in this confirmation. The caller
+     * writes it back to the service only when [showAndGet] returns true, so dismissing
+     * the dialog with Cancel cannot change the persisted setting.
+     */
+    var autoMetaDiscard: Boolean = request.options.autoDiscardMeta
         private set
 
     /** The dialog's preferred width; see [tableFillWidth]. */
@@ -403,7 +409,9 @@ class SwitchPreviewDialog(
             applyChange()
         }
         autoMetaCheck.addActionListener {
-            project.service<BranchSwitcherService>().autoDiscardMeta = autoMetaCheck.isSelected
+            // Only the tentative value is recorded here; the caller persists it to the
+            // service after the dialog is confirmed, so Cancel leaves the setting alone.
+            autoMetaDiscard = autoMetaCheck.isSelected
             applyChange()
         }
         summaryLabel.text = initialDecision.summary

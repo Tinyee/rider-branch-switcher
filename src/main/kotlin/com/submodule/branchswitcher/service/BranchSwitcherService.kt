@@ -199,10 +199,22 @@ class BranchSwitcherService(
         synchronized(stateLock) {
             val list = options.history
             val next = SwitchHistoryEntry(name, id, System.currentTimeMillis())
-            // Re-selecting the preset already at the top of the history is not a new
-            // switch to record, so it must not add a consecutive duplicate (which would
-            // crowd out a real return-to-previous entry at maxHistory).
-            if (list.firstOrNull()?.samePreset(next) == true) return
+            val top = list.firstOrNull()
+            if (top != null && top.samePreset(next)) {
+                // Re-selecting the preset already at the top of the history is not a new
+                // switch to record, so it must not add a consecutive duplicate (which would
+                // crowd out a real return-to-previous entry at maxHistory). The matching
+                // record's metadata is still refreshed: a legacy entry (no stable id) gains
+                // one on its next switch, and a rename under the same id updates the stored
+                // name so "switch to previous preset" keeps resolving. The timestamp is
+                // untouched because this is not a new switch.
+                val enrichId = top.presetId == null && next.presetId != null
+                val refreshName = top.presetId != null && top.presetName != next.presetName
+                if (enrichId || refreshName) {
+                    list[0] = SwitchHistoryEntry(next.presetName, next.presetId ?: top.presetId, top.timestamp)
+                }
+                return
+            }
             list.add(0, next)
             if (list.size > maxHistory) {
                 options.history = list.take(maxHistory).toMutableList()

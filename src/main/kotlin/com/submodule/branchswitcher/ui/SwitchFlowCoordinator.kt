@@ -163,6 +163,9 @@ class SwitchFlowCoordinator(
                     onDecline("switch cancelled by user - preview declined")
                     return@uiLater
                 }
+                // The "always auto-discard .meta" choice is persisted only on confirmation:
+                // the dialog records the tentative value, and Cancel above leaves it alone.
+                service.autoDiscardMeta = preview.autoMetaDiscard
                 val preApproved = resolvePreApprovedSubmoduleInit(request, probeResult)
                     ?: run {
                         log.withContext(operationContext).info("switch declined by user: submodule init not approved")
