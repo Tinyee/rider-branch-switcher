@@ -145,27 +145,35 @@ complexity-contraction refactor deleted it and moved the index.lock
 check-then-act gate into `GitCommandClient.runIndexMutation`, and
 `DirtyHandlingStep` no longer inspects any wrapper.
 
-### P3-15: Deferred Maintainability Backlog
+### P3-15: Deferred Maintainability Backlog ✅ Closed 2026-08-24
 
 Quality and style findings deliberately deferred from the 2026-08-21 fix
-rounds, recorded in `review-history.md` so the decisions survive. These remain
-open and are good first-pass maintenance work; each is small and
-behavior-neutral:
+rounds. Every item is now classified — done, or cancelled with a recorded
+reason. The broader Phase 3 structural refactor was cancelled at its evidence
+gate (no real duplication outside the frozen area); these residuals were the
+part worth doing.
 
-- Bound the `remoteName` / `checkedProjects` caches (`GitCommandClient`,
-  `GitOps`) with eviction, or document the practical cap.
-- Split the nine types out of `core/model/PresetConfig.kt` into one-type-per-file.
+**Done:**
+- Dead `changed` in `PresetLoader.normalizePresetIds` — `2a13386` (Phase 1 C1).
+- Timeout list single source (`timeoutOptionsSeconds()`) and
+  `DEFAULT_TIMEOUT_SECONDS` — `8e5fb46` (Phase 1 C2).
+- Magic indices in `BranchSwitcherConfigurable` → `indexToDirtyAction` /
+  semantic mappings — `8e5fb46` (Phase 1 C2).
+- Consecutive `addHistory` dedup — `96c6131` (Phase 1 C3).
+- Normalize unknown persisted strings at the `loadState` boundary (dirtyAction
+  through the enum, timeout to a supported value, `getState` exports only
+  canonical) — `0a4ca5b`.
+- Drop the 2 s reflog-watcher no-op log — `41bc057`.
+- Reword the misleading "rollback-skipped" warning — `41bc057`.
+- Collapse the duplicate single-repository checkout/branch-missing WARN —
+  `41bc057`.
+
+**Cancelled (insufficient benefit, 2026-08-24):**
+- Bound the `remoteName` / `checkedProjects` caches with eviction.
+  `checkedProjects` no longer exists; operation-session remote caches are
+  naturally bounded by one operation and the target-repository count; the
+  long-lived direct client never calls `remoteName()`.
+- Split the nine types out of `core/model/PresetConfig.kt`.
 - Replace `AppLoggerTest`'s ~20-method anonymous git fake with a shared fake.
-- Remove the dead `changed` computation in
-  `PresetLoader.normalizePresetIds` (it is written but never returned).
-- Unify the `SettingsRules` timeout list with its settings-UI twin (one source).
-- Return a defensive copy from `PresetRepository.presets`.
-- Replace the magic indices in `BranchSwitcherConfigurable` with named constants.
-- Deduplicate consecutive `addHistory` entries (switching to the same preset
-  twice currently appends two rows).
-- Normalize unknown persisted strings (`dirtyActionFromName`, unknown timeouts)
-  instead of silently remapping.
-- Stop persisting unknown state strings verbatim in `getState`.
-- Drop the 2 s no-op log line the reflog watcher emits on quiet panels.
-- Reword the misleading "rollback-skipped" warning (it is not a failure).
-- Collapse the duplicate per-path WARN for a single repository.
+- Return a defensive copy from `PresetRepository.presets` (no mutable-alias
+  evidence in the production call chains; see `review-history.md`).
