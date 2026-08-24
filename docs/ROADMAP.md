@@ -170,8 +170,10 @@ part worth doing.
 
 **Cancelled (insufficient benefit, 2026-08-24):**
 - Bound the `remoteName` / `checkedProjects` caches with eviction.
-  `checkedProjects` no longer exists; operation-session remote caches are
-  naturally bounded by one operation and the target-repository count; the
+  `checkedProjects` still exists but holds at most one key per project per IDE
+  session (the git-availability check runs once when a project's tool window
+  opens), so there is nothing worth evicting; operation-session remote caches
+  are naturally bounded by one operation and the target-repository count; the
   long-lived direct client never calls `remoteName()`.
 - Split the nine types out of `core/model/PresetConfig.kt`.
 - Replace `AppLoggerTest`'s ~20-method anonymous git fake with a shared fake.

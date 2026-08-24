@@ -204,9 +204,10 @@ class SwitchFlowCoordinator(
         collisionDiscards: Map<String, Set<String>> = emptyMap(),
         /**
          * Claimed (on the UI thread) only once this switch owns the write lease, matching
-         * the derive and rollback paths. A rejected switch therefore never claims the busy
-         * state — it must not, or a rejection while a single-repository switch (which
-         * never touches the busy state) holds the gate would leave the tool window stuck.
+         * the derive, rollback, and single-repository paths. A rejected switch therefore
+         * never claims the busy state — the busy indicator belongs to whoever holds the
+         * lease, and a rejection must not touch it (it would shadow the holder's operation
+         * or clear its in-progress display).
          */
         onSwitchStart: (() -> Unit)? = null,
         onSuccess: (() -> Unit)? = null,

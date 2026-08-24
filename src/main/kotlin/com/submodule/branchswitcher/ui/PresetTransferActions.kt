@@ -40,8 +40,8 @@ internal class PresetTransferActions(
             log.logFailure("[export] failed", e)
             Notifier.error(
                 project,
-                Bundle.msg("notify.export.complete"),
-                "${Bundle.msg("dialog.import.failed")}: ${e.message}",
+                Bundle.msg("dialog.export.failed"),
+                "${Bundle.msg("dialog.export.failed")}: ${e.message}",
             )
         }
     }

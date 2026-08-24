@@ -29,7 +29,7 @@ Presets are project-local JSON. A personal collection defaults to `.idea/branch-
 - **One-click presets**: define the target branch for the main repo and each submodule, then switch all repos together.
 - **Dry-run preview**: see current branch, target branch, dirty file count, and branch source before checkout.
 - **Dirty working tree strategies**: stash changes, skip the repository, or try switching without stashing.
-- **Collision handling**: the preview flags untracked files a checkout would overwrite and offers to discard them — all of them, or only the safe Unity `.meta` files.
+- **Collision handling**: the preview flags untracked files a checkout would overwrite and offers to discard them — all of them, or only the `.meta` files the target branch replaces.
 - **Rollback support**: failed switches keep a checkpoint for one-click rollback.
 - **Submodule handling**: sync after main checkout, initialize missing or moved paths, and skip obsolete preset paths without deleting their local worktrees.
 - **Feature branch derivation**: create the same new branch across the main repo and all submodules from a preset baseline.
@@ -124,7 +124,7 @@ Collision-handling choices are made per switch in the preview dialog — see [Co
 
 When the target branch tracks files that the working tree currently has as untracked, those files are collisions: `git checkout` would refuse to overwrite them. The preview flags them, and before switching you can discard them in a confirmation step:
 
-- **Discard only .meta files** — keep every other file. Unity `.meta` files are safe to delete because Unity regenerates them on import.
+- **Discard only .meta files** — keep every other file. Each discarded `.meta` file is tracked by the target branch, which provides the replacement version.
 - **Always auto-discard .meta files** — remember that choice for future switches.
 
 Any other file you discard is deleted permanently, so it is never selected silently. A colliding file you keep makes that repository's checkout fail rather than overwrite it.
