@@ -20,7 +20,7 @@ style:
 complexity:
   CyclomaticComplexMethod:
     active: true
-    threshold: 30
+    threshold: 25
   NestedBlockDepth:
     active: true
     threshold: 5
@@ -31,7 +31,7 @@ complexity:
     active: false
   LongMethod:
     active: true
-    threshold: 120
+    threshold: 80
 
 naming:
   VariableNaming:

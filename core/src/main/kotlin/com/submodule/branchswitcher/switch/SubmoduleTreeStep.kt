@@ -68,7 +68,7 @@ class SubmoduleTreeStep : SwitchStep {
         )
     }
 
-    @Suppress("TooGenericExceptionCaught") // initialization state must survive later validation errors
+    @Suppress("TooGenericExceptionCaught", "LongMethod") // initialization state must survive later validation errors; frozen observation point, split deferred
     private fun prepareTarget(
         context: SwitchContext,
         targets: List<RepoTarget>,

@@ -120,7 +120,7 @@ internal class GitProcessRunner(
         return ProcessWait(exitCode, terminationReason, interrupted)
     }
 
-    @Suppress("TooGenericExceptionCaught")
+    @Suppress("TooGenericExceptionCaught", "LongMethod") // process lifecycle is inherent complexity; the run-loop split is deferred
     private fun runWithPermit(
         workDir: File,
         cancellation: AtomicBoolean,

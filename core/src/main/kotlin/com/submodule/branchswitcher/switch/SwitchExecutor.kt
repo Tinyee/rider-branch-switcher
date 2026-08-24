@@ -202,7 +202,7 @@ class SwitchExecutor @JvmOverloads constructor(
     }
 
     /** Executes the pipeline steps and folds their outcomes into one structured result. */
-    @Suppress("TooGenericExceptionCaught") // platform cancellation type is recognized through the injected classifier
+    @Suppress("TooGenericExceptionCaught", "LongMethod") // platform cancellation type is recognized through the injected classifier; frozen area, split deferred
     private fun runSteps(
         context: SwitchContext,
         switchCheckpoint: Map<String, CheckpointEntry>,
