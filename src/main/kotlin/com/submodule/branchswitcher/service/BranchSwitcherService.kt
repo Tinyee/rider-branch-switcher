@@ -13,6 +13,8 @@ import com.submodule.branchswitcher.model.DirtyAction
 import com.submodule.branchswitcher.model.ResolvedSwitchRequest
 import com.submodule.branchswitcher.model.SwitchOptions
 import com.submodule.branchswitcher.settings.dirtyActionFromName
+import com.submodule.branchswitcher.settings.indexToTimeout
+import com.submodule.branchswitcher.settings.timeoutToIndex
 import kotlinx.coroutines.CoroutineScope
 import com.submodule.branchswitcher.log.newOperationId
 import com.submodule.branchswitcher.model.Preset
@@ -94,13 +96,14 @@ class BranchSwitcherService(
      * IntelliJ persistence contract. [getState] returns a snapshot (history copied)
      * and [loadState] replaces the whole state under the same lock, so a concurrent
      * read never observes a partially swapped state. [loadState] also drops the cached
-     * GitOps so the recreated runner picks up the newly persisted timeout. Both run on
-     * the serialization thread; all other option access goes through [stateLock] too.
+     * GitOps so the recreated runner picks up the newly persisted timeout, and
+     * normalizes corrupted scalar values. Both run on the serialization thread; all
+     * other option access goes through [stateLock] too.
      */
     override fun getState(): OptionsState = synchronized(stateLock) { options.snapshot() }
     override fun loadState(state: OptionsState) {
         synchronized(stateLock) {
-            options = state.snapshot()
+            options = state.snapshot().normalized()
             _gitClient = null
         }
     }
@@ -227,4 +230,15 @@ class BranchSwitcherService(
     }
 
     private fun OptionsState.snapshot(): OptionsState = copy(history = history.toMutableList())
+
+    /**
+     * Clamps externally-persisted scalar settings to canonical values at the load
+     * boundary, so a hand-edited or corrupted state file cannot leave the settings
+     * UI and the Git runner disagreeing (e.g. the UI showing 60s while the client
+     * keeps a 999s timeout). The booleans and history pass through unchanged.
+     */
+    private fun OptionsState.normalized(): OptionsState = copy(
+        dirtyAction = dirtyActionFromName(dirtyAction).name,
+        timeoutSeconds = indexToTimeout(timeoutToIndex(timeoutSeconds)),
+    )
 }

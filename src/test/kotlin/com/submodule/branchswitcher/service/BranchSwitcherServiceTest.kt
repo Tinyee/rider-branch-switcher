@@ -156,6 +156,29 @@ class BranchSwitcherServiceTest {
     }
 
     @Test
+    fun `corrupted persisted state is normalized at the load boundary`() {
+        val before = service.gitClient
+        service.loadState(
+            BranchSwitcherService.OptionsState(
+                dirtyAction = "corrupted",
+                timeoutSeconds = 999,
+            )
+        )
+        val after = service.gitClient
+
+        // The getter reads the canonical fallbacks, never the corrupted values.
+        assertEquals(DirtyAction.Stash, service.dirtyAction)
+        assertEquals(60, service.timeoutSeconds)
+        // The exported state re-persists canonical values, so the corruption cannot
+        // survive a save/reload round-trip.
+        assertEquals("Stash", service.state.dirtyAction)
+        assertEquals(60, service.state.timeoutSeconds)
+        // loadState drops the cached GitOps; the rebuilt client is created from the
+        // normalized options, so it can never run with the corrupted 999s timeout.
+        assertNotSame(before, after)
+    }
+
+    @Test
     fun `persistent state is copied at the service boundary`() {
         val externalState = BranchSwitcherService.OptionsState(
             history = mutableListOf(BranchSwitcherService.SwitchHistoryEntry("main")),
