@@ -128,8 +128,12 @@ class BranchSwitcherService(
         get() = synchronized(stateLock) { options.timeoutSeconds }
         set(value) {
             synchronized(stateLock) {
-                if (options.timeoutSeconds != value) {
-                    options.timeoutSeconds = value
+                // The settings UI only offers supported values, but a programmatic or
+                // legacy caller could persist an arbitrary number; normalize so the
+                // getter, the exported state, and the git client never disagree.
+                val normalized = indexToTimeout(timeoutToIndex(value))
+                if (options.timeoutSeconds != normalized) {
+                    options.timeoutSeconds = normalized
                     _gitClient = null
                 }
             }

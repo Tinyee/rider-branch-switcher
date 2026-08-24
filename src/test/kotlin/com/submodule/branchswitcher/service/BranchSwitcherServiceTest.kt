@@ -8,6 +8,7 @@ import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Test
 import java.lang.reflect.Proxy
+import java.nio.file.Files
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -173,9 +174,28 @@ class BranchSwitcherServiceTest {
         // survive a save/reload round-trip.
         assertEquals("Stash", service.state.dirtyAction)
         assertEquals(60, service.state.timeoutSeconds)
-        // loadState drops the cached GitOps; the rebuilt client is created from the
-        // normalized options, so it can never run with the corrupted 999s timeout.
+        // loadState drops the cached GitOps (the instance is rebuilt), and the rebuilt
+        // client's effective timeout is the normalized 60s, not the corrupted 999s.
         assertNotSame(before, after)
+        val temp = Files.createTempDirectory("branch-switcher-service").toFile()
+        try {
+            assertEquals(60, after.runtimeInfo(temp)?.timeoutSeconds)
+        } finally {
+            temp.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun `timeout setter normalizes unsupported values`() {
+        service.timeoutSeconds = 90
+        assertEquals(60, service.timeoutSeconds)
+        assertEquals(60, service.state.timeoutSeconds)
+        val temp = Files.createTempDirectory("branch-switcher-service").toFile()
+        try {
+            assertEquals(60, service.gitClient.runtimeInfo(temp)?.timeoutSeconds)
+        } finally {
+            temp.deleteRecursively()
+        }
     }
 
     @Test
