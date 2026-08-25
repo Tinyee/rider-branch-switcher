@@ -627,15 +627,28 @@ internal class GitCommandClient(
         val result = run(
             workDir,
             "for-each-ref",
-            "--format=%(refname:short)",
+            "--format=%(refname)",
             "refs/heads",
             "refs/remotes/$remote",
         )
         if (!result.ok) throw readFailure(result)
+        // %(refname) yields full refs, so the namespace prefix — not a name-based string check —
+        // decides the shape: refs/heads/* is a local branch, the exact refs/remotes/<remote>/HEAD
+        // is the symbolic default (dropped, it is not a branch), and any other refs/remotes/<remote>/*
+        // is a remote-tracking branch. A short ref here would conflate a local branch named
+        // origin/<x> with a remote-tracking one and silently drop legal refs whose name merely
+        // begins with the remote's HEAD (e.g. HEAD-feature or HEAD/foo).
         return result.stdout.lines()
             .map { it.trim() }
-            .filter { it.isNotEmpty() && !it.startsWith("$remote/HEAD") }
-            .map { if (it.startsWith("$remote/")) it.removePrefix("$remote/") else it }
+            .filter { it.isNotEmpty() }
+            .mapNotNull { ref ->
+                when {
+                    ref == "refs/remotes/$remote/HEAD" -> null // symbolic default-remote HEAD
+                    ref.startsWith("refs/heads/") -> ref.removePrefix("refs/heads/")
+                    ref.startsWith("refs/remotes/$remote/") -> ref.removePrefix("refs/remotes/$remote/")
+                    else -> null
+                }
+            }
             .distinct()
             .sorted()
     }
