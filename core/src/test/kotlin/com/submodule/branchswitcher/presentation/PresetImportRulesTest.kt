@@ -96,4 +96,21 @@ class PresetImportRulesTest {
         assertTrue(result.presets.isEmpty())
         assertEquals(listOf("escape", "bad-branch"), result.invalidNames)
     }
+
+    @Test
+    fun `invalid entry does not reserve its name for a later valid entry`() {
+        val result = parsePresetImport(
+            """[
+                {"name":"dev","main":"-invalid"},
+                {"name":"dev","main":"main"}
+            ]""",
+            emptySet(),
+        ) { "id" }
+
+        // The first entry fails branch validation, so its name must not be reserved; the second,
+        // valid entry with the same name is accepted instead of reported as a conflict.
+        assertEquals(listOf("dev"), result.presets.map { it.name })
+        assertEquals(listOf("dev"), result.invalidNames)
+        assertEquals(emptyList<String>(), result.conflictingNames)
+    }
 }

@@ -57,7 +57,7 @@ fun parsePresetImport(
             invalid += name ?: unnamedLabel
             continue
         }
-        if (!acceptedNames.add(name)) {
+        if (name in acceptedNames) {
             conflicts += name
             continue
         }
@@ -66,6 +66,9 @@ fun parsePresetImport(
             invalid += name
             continue
         }
+        // A name only reserves its slot once the entry is actually valid, so an invalid entry
+        // cannot shadow a later valid same-name entry in the same import.
+        acceptedNames += name
         presets += preset
     }
     return PresetImportResult(presets, invalid, conflicts)

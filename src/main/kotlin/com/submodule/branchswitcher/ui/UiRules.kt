@@ -76,7 +76,7 @@ data class CollisionDecision(
     /** Note shown next to one colliding file under the options this decision was computed for. */
     fun noteFor(file: String): String = when {
         isCollisionFileMeta(file) && autoMeta -> Bundle.msg("dialog.collision.discard.meta.auto")
-        isCollisionFileMeta(file) -> Bundle.msg("dialog.collision.discard.meta.safe")
+        isCollisionFileMeta(file) -> Bundle.msg("dialog.collision.discard.meta.replacement")
         onlyMeta -> Bundle.msg("dialog.collision.discard.kept")
         else -> Bundle.msg("dialog.collision.discard.deleted")
     }

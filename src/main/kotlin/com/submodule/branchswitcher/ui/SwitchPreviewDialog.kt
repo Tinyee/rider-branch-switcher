@@ -38,7 +38,7 @@ class SwitchPreviewDialog(
     private val warnColor get() = NamedColorUtil.getErrorForeground()
     private val mutedColor get() = NamedColorUtil.getInactiveTextColor()
     private val accentColor get() = JBUI.CurrentTheme.Link.Foreground.ENABLED
-    private val safeColor get() = JBColor(0x2E7D32, 0x73C78B)
+    private val replacementColor get() = JBColor(0x2E7D32, 0x73C78B)
     private val borderColor get() = JBColor.border()
     private val panelBg get() = JBColor(0xF6F7F8, 0x3F4448)
     private val autoColor get() = JBColor(0xB45309, 0xF2A42A)
@@ -255,7 +255,7 @@ class SwitchPreviewDialog(
             add(fileList, BorderLayout.CENTER)
         }
 
-    /** "切换将覆盖 N 个未跟踪文件" plus a one-line split of safe .meta vs. deleted files. */
+    /** "切换将覆盖 N 个未跟踪文件" plus a one-line split of replacement .meta vs. deleted files. */
     private fun createCollisionHeader(total: Int, metaCount: Int, deletedCount: Int): JPanel {
         val title = ShrinkableLabel(Bundle.msg("dialog.collision.discard.message", total)).apply {
             font = font.deriveFont(Font.BOLD)
@@ -263,7 +263,7 @@ class SwitchPreviewDialog(
         val breakdown = JPanel(FlowLayout(FlowLayout.RIGHT, JBUI.scale(8), 0)).apply { isOpaque = false }
         if (metaCount > 0) {
             breakdown.add(JLabel(Bundle.msg("dialog.collision.discard.meta.count", metaCount)).apply {
-                foreground = safeColor
+                foreground = replacementColor
             })
         }
         if (metaCount > 0 && deletedCount > 0) {
@@ -342,7 +342,7 @@ class SwitchPreviewDialog(
 
     /**
      * Recomputes a file row's note and colors for the current discard decision. A meta file is
-     * always discarded; only its confirmation level changes (safe vs. auto). A non-meta file
+     * always discarded; only its confirmation level changes (replacement vs. auto). A non-meta file
      * is kept when only-meta is chosen — then it is dimmed and the note warns that this repo's
      * checkout will fail.
      */
@@ -354,7 +354,7 @@ class SwitchPreviewDialog(
         // The note text is a pure decision (UiRules); the dialog only maps it to colors.
         row.noteLabel.text = decision.noteFor(row.file)
         if (isCollisionFileMeta(row.file)) {
-            row.noteLabel.foreground = if (decision.autoMeta) autoColor else safeColor
+            row.noteLabel.foreground = if (decision.autoMeta) autoColor else replacementColor
             row.noteLabel.font = row.noteLabel.font.deriveFont(Font.PLAIN)
             row.pathLabel.foreground = JBColor.foreground()
         } else {
@@ -388,10 +388,12 @@ class SwitchPreviewDialog(
         }
         val summaryLabel = JLabel().apply { foreground = mutedColor }
 
-        // Each checkbox persists its own state; both then recompute one CollisionDecision from
-        // the live state of both checkboxes, and the summary plus the file list read it. The OK
-        // button label follows the live decision too, so "确认丢弃" only shows while a non-auto
-        // discard is actually in effect — toggling to only-meta must not leave a confirm label.
+        // Each checkbox paints only a tentative value here; the caller persists the auto-discard
+        // setting after the dialog is confirmed, so Cancel leaves it untouched. Both then recompute
+        // one CollisionDecision from the live state of both checkboxes, and the summary plus the
+        // file list read it. The OK button label follows the live decision too, so "确认丢弃" only
+        // shows while a non-auto discard is actually in effect — toggling to only-meta must not
+        // leave a confirm label.
         fun applyChange() {
             val decision = collisionDecision(collisions, onlyMetaCheck.isSelected, autoMetaCheck.isSelected)
             summaryLabel.text = decision.summary

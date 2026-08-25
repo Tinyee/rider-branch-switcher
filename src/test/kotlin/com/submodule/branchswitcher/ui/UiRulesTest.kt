@@ -94,7 +94,7 @@ class UiRulesTest {
     @Test
     fun `collision decision note covers every discard state`() {
         val auto = Bundle.msg("dialog.collision.discard.meta.auto")
-        val safe = Bundle.msg("dialog.collision.discard.meta.safe")
+        val replacement = Bundle.msg("dialog.collision.discard.meta.replacement")
         val kept = Bundle.msg("dialog.collision.discard.kept")
         val deleted = Bundle.msg("dialog.collision.discard.deleted")
         val meta = "Assets/A.prefab.meta"
@@ -106,8 +106,8 @@ class UiRulesTest {
 
         assertEquals(auto, note(isMeta = true, onlyMeta = true, autoMeta = true))
         assertEquals(auto, note(isMeta = true, onlyMeta = false, autoMeta = true))
-        assertEquals(safe, note(isMeta = true, onlyMeta = true, autoMeta = false))
-        assertEquals(safe, note(isMeta = true, onlyMeta = false, autoMeta = false))
+        assertEquals(replacement, note(isMeta = true, onlyMeta = true, autoMeta = false))
+        assertEquals(replacement, note(isMeta = true, onlyMeta = false, autoMeta = false))
         assertEquals(kept, note(isMeta = false, onlyMeta = true, autoMeta = true))
         assertEquals(kept, note(isMeta = false, onlyMeta = true, autoMeta = false))
         assertEquals(deleted, note(isMeta = false, onlyMeta = false, autoMeta = true))
