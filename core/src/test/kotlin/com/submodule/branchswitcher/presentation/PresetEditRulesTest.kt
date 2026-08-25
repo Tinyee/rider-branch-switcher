@@ -37,9 +37,10 @@ class PresetEditRulesTest {
             saved.copy(main = "feature", submodules = linkedMapOf("SubA" to "topic", "SubC" to "")),
             selection.applyTo(saved),
         )
-        assertFalse(hasUnsavedPresetChanges(saved, unchangedSelection, editingBlocked = false))
-        assertTrue(hasUnsavedPresetChanges(saved, selection, editingBlocked = false))
-        assertFalse(hasUnsavedPresetChanges(saved, selection, editingBlocked = true))
+        // The busy gate that used to suppress this check via editingBlocked now lives in
+        // presetEditorControlState; this rule answers only whether the content changed.
+        assertFalse(hasPresetDraftChanges(saved, unchangedSelection))
+        assertTrue(hasPresetDraftChanges(saved, selection))
     }
 
     @Test

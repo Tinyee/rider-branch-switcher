@@ -13,7 +13,8 @@ import com.submodule.branchswitcher.presentation.PresetRenameDecision
 import com.submodule.branchswitcher.presentation.SubmoduleDraftSelection
 import com.submodule.branchswitcher.presentation.applyTo
 import com.submodule.branchswitcher.presentation.decidePresetRename
-import com.submodule.branchswitcher.presentation.hasUnsavedPresetChanges
+import com.submodule.branchswitcher.presentation.hasPresetDraftChanges
+import com.submodule.branchswitcher.presentation.presetEditorControlState
 import java.awt.Cursor
 import java.awt.Dimension
 import java.awt.Font
@@ -36,8 +37,8 @@ import javax.swing.border.Border
  *
  * State tracking:
  * - [branchesLoaded]: whether the branch combo lists have been loaded (lazy, on first expand)
- * - [loadingCount]: number of in-flight async branch loads; [updateUnsavedState] suppresses
- *   the dirty check while any load is pending
+ * - [loadingCount]: number of in-flight async branch loads; [renderControlState] keeps all of
+ *   the save/revert and switch/derive buttons disabled while any load is pending
  * - [isInitializing]: true during constructor; prevents false dirty flags during setup
  */
 internal class PresetEditor(
@@ -55,7 +56,7 @@ internal class PresetEditor(
 
     private var savedPreset: Preset = initialPreset
 
-    private val mainCombo = makeBranchCombo(::updateUnsavedState)
+    private val mainCombo = makeBranchCombo(::renderControlState)
     private val saveBtn = jButton(Bundle.msg("action.save"), AllIcons.Actions.MenuSaveall) { isEnabled = false }
     private val revertBtn = jButton(Bundle.msg("action.discard"), AllIcons.Actions.Rollback) { isEnabled = false }
     private val addSubBtn = jButton(Bundle.msg("action.add.submodule"), AllIcons.General.Add)
@@ -102,7 +103,7 @@ internal class PresetEditor(
     private var actionsEnabled = true
 
     private val submoduleManager = SubmoduleRowManager(
-        gitRoot, branchLoads, body, log, ::updateUnsavedState, onSwitchOnly,
+        gitRoot, branchLoads, body, log, ::renderControlState, onSwitchOnly,
     )
     private val submoduleRows get() = submoduleManager.subRows
     val loadingCount get() = submoduleManager.loadingCount
@@ -123,10 +124,10 @@ internal class PresetEditor(
 
         restoreSavedPresetToUi()
         isInitializing = false
-        // restoreSavedPresetToUi() recomposed the button state while isInitializing was still
-        // true and disabled switch/derive. Recompute now that init is complete so a cold-started
+        // restoreSavedPresetToUi() derived the button state while isInitializing was still true
+        // and disabled switch/derive. Recompute now that init is complete so a cold-started
         // editor does not stay disabled until the next branch load or write operation.
-        updateActionsEnabled()
+        renderControlState()
     }
 
     private fun createHeader(): JPanel {
@@ -228,17 +229,17 @@ internal class PresetEditor(
     private fun persistAndFinalize(preset: Preset, failureContext: String, onSaved: () -> Unit) {
         if (persistenceInProgress) return
         persistenceInProgress = true
-        updateUnsavedState()
+        renderControlState()
         try {
             onSave(preset) { saved ->
                 if (saved) onSaved()
                 persistenceInProgress = false
-                updateUnsavedState()
+                renderControlState()
             }
         } catch (e: Exception) {
             persistenceInProgress = false
             log.logFailure(failureContext, e)
-            updateUnsavedState()
+            renderControlState()
         }
     }
 
@@ -278,7 +279,7 @@ internal class PresetEditor(
     private fun restoreSavedPresetToUi() {
         mainCombo.selectedItem = savedPreset.main
         submoduleManager.applyPresetToUI(savedPreset)
-        updateUnsavedState()
+        renderControlState()
     }
 
     /** Expands/collapses the preset detail panel. Loads branch lists lazily on first expand. */
@@ -314,7 +315,7 @@ internal class PresetEditor(
             onLoadEnd = { succeeded, superseded ->
                 submoduleManager.loadingCount--
                 if (!succeeded && !superseded) branchesLoaded = false
-                updateUnsavedState()
+                renderControlState()
             },
         )
     }
@@ -328,21 +329,29 @@ internal class PresetEditor(
     /** Enables or disables the mutation buttons (switch/derive) while another operation runs. */
     fun setActionsEnabled(enabled: Boolean) {
         actionsEnabled = enabled
-        updateActionsEnabled()
+        renderControlState()
     }
 
     /**
-     * Recomposes switch/derive enablement from both gates: the global mutation gate and
-     * the editor-local busy (init / branch load / persistence). Either alone disables
-     * both actions, and releasing one must not re-enable while the other still blocks —
-     * e.g. a mutation ending must not re-enable a still-loading editor whose combo holds
-     * the literal "Loading..." placeholder.
+     * Recomputes all four button states from one snapshot of the editor's inputs (see
+     * [presetEditorControlState]). Recomposed after every input change — branch selection,
+     * submodule rows, init, a branch load start/end, persistence start/end, and the global
+     * mutation gate — so save/revert and switch/derive always share the same busy rule and a
+     * mutation ending can never re-enable a still-loading editor whose combo holds the literal
+     * "Loading..." placeholder.
      */
-    private fun updateActionsEnabled() {
-        val busy = isInitializing || loadingCount > 0 || persistenceInProgress
-        val enabled = actionsEnabled && !busy
-        switchBtn.isEnabled = enabled
-        deriveBtn.isEnabled = enabled
+    private fun renderControlState() {
+        val state = presetEditorControlState(
+            hasDraftChanges = hasPresetDraftChanges(savedPreset, draftSelection()),
+            initializing = isInitializing,
+            loadingCount = loadingCount,
+            persistenceInProgress = persistenceInProgress,
+            mutationActionsEnabled = actionsEnabled,
+        )
+        saveBtn.isEnabled = state.saveEnabled
+        revertBtn.isEnabled = state.revertEnabled
+        switchBtn.isEnabled = state.switchEnabled
+        deriveBtn.isEnabled = state.deriveEnabled
     }
 
     /**
@@ -415,21 +424,6 @@ internal class PresetEditor(
 
     private fun revert() {
         restoreSavedPresetToUi()
-    }
-
-    private fun updateUnsavedState() {
-        val hasUnsavedChanges = hasUnsavedPresetChanges(
-            savedPreset = savedPreset,
-            draftSelection = draftSelection(),
-            editingBlocked = isInitializing || loadingCount > 0 || persistenceInProgress,
-        )
-        saveBtn.isEnabled = hasUnsavedChanges
-        revertBtn.isEnabled = hasUnsavedChanges
-        // During a branch load the combo still holds the literal "Loading..." placeholder;
-        // switching would build a preset targeting that placeholder, so disable both actions.
-        // Recomposed with the global mutation gate so a mutation ending never re-enables
-        // a still-loading editor (see updateActionsEnabled).
-        updateActionsEnabled()
     }
 
     fun currentPreset(): Preset = savedPreset
