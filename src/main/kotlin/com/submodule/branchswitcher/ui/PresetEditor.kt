@@ -454,8 +454,10 @@ internal class PresetEditor(
         val renamed = when (val decision = decidePresetRename(savedPreset, requestedName, nameValidator)) {
             PresetRenameDecision.Ignore -> return
             PresetRenameDecision.Invalid -> {
+                // Renaming never touches the main branch, so the create-time rule text (which
+                // mentions the default branch) is misleading here; Invalid is always a duplicate.
                 com.intellij.openapi.ui.Messages.showWarningDialog(
-                    Bundle.msg("dialog.preset.name.rule"),
+                    Bundle.msg("dialog.preset.name.duplicate"),
                     Bundle.msg("dialog.rename"),
                 )
                 return
