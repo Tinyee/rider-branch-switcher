@@ -158,21 +158,23 @@ class SwitchFlowCoordinator(
             uiLater {
                 val request = service.resolveSwitchRequest(preset)
                 val preview = SwitchPreviewDialog(project, request, probeResult)
-                if (!preview.showAndGet()) {
-                    log.withContext(operationContext).info("switch declined by user: preview cancelled")
-                    onDecline("switch cancelled by user - preview declined")
-                    return@uiLater
-                }
-                // The "always auto-discard .meta" choice is persisted only on confirmation:
-                // the dialog records the tentative value, and Cancel above leaves it alone.
-                service.autoDiscardMeta = preview.autoMetaDiscard
+                val selection = preview.showSelection()
+                    ?: run {
+                        log.withContext(operationContext).info("switch declined by user: preview cancelled")
+                        onDecline("switch cancelled by user - preview declined")
+                        return@uiLater
+                    }
+                // The "always auto-discard .meta" choice is persisted only for a confirmed
+                // selection: showSelection() returns null on Cancel, so this line is unreachable
+                // when the user dismissed the preview.
+                service.autoDiscardMeta = selection.autoMetaDiscard
                 val preApproved = resolvePreApprovedSubmoduleInit(request, probeResult)
                     ?: run {
                         log.withContext(operationContext).info("switch declined by user: submodule init not approved")
                         onDecline("switch cancelled by user - submodule init declined")
                         return@uiLater
                     }
-                val collisionDiscards = resolveCollisionDiscards(probeResult, preview.onlyMetaDiscard)
+                val collisionDiscards = resolveCollisionDiscards(probeResult, selection.onlyMetaDiscard)
                 executeAndNotify(
                     root,
                     request,

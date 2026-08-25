@@ -29,6 +29,16 @@ import javax.swing.table.AbstractTableModel
 import javax.swing.table.DefaultTableCellRenderer
 import javax.swing.table.TableCellRenderer
 
+/**
+ * The accepted selection returned by [SwitchPreviewDialog.showSelection] on OK, or null on Cancel.
+ * Bundling the two booleans into one immutable value means the caller can only read a selection
+ * that actually came from a confirmed dialog — a cancelled preview simply yields null.
+ */
+internal data class ConfirmedSwitchPreview(
+    val onlyMetaDiscard: Boolean,
+    val autoMetaDiscard: Boolean,
+)
+
 class SwitchPreviewDialog(
     private val project: Project,
     private val request: ResolvedSwitchRequest,
@@ -45,18 +55,17 @@ class SwitchPreviewDialog(
 
     /**
      * Whether this confirmation discards only .meta files rather than every collision.
-     * Read by the caller after [showAndGet] returns true.
+     * Recorded by the decision row while the dialog is open and captured by [showSelection];
+     * not read outside this dialog.
      */
-    var onlyMetaDiscard: Boolean = false
-        private set
+    private var onlyMetaDiscard: Boolean = false
 
     /**
-     * Whether "always auto-discard .meta" is selected in this confirmation. The caller
-     * writes it back to the service only when [showAndGet] returns true, so dismissing
-     * the dialog with Cancel cannot change the persisted setting.
+     * Whether "always auto-discard .meta" is selected in this confirmation. Recorded by the
+     * decision row while open and captured by [showSelection]. The caller persists it only for
+     * a non-null result, so dismissing the dialog with Cancel cannot change the setting.
      */
-    var autoMetaDiscard: Boolean = request.options.autoDiscardMeta
-        private set
+    private var autoMetaDiscard: Boolean = request.options.autoDiscardMeta
 
     /** The dialog's preferred width; see [tableFillWidth]. */
     private val dialogWidth get() = JBUI.scale(720)
@@ -92,6 +101,15 @@ class SwitchPreviewDialog(
         setCancelButtonText(Bundle.msg("dialog.cancel"))
         init()
     }
+
+    /**
+     * Shows the preview and returns the accepted selection as a value: a non-null
+     * [ConfirmedSwitchPreview] on OK, or null when the dialog is cancelled. The caller makes
+     * its decisions and its persisted `autoDiscardMeta` write from the returned value alone, so
+     * a decline can never be mistaken for an acceptance.
+     */
+    internal fun showSelection(): ConfirmedSwitchPreview? =
+        if (showAndGet()) ConfirmedSwitchPreview(onlyMetaDiscard, autoMetaDiscard) else null
 
     // ── Preview table: pack, expand, center ─────────────────
     override fun createCenterPanel(): JComponent {
