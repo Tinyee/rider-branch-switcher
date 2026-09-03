@@ -653,6 +653,12 @@ internal class GitCommandClient(
             .sorted()
     }
 
+    override fun listRemoteHeads(workDir: File, url: String): List<String> {
+        val result = run(workDir, "ls-remote", "--heads", url)
+        if (!result.ok) throw readFailure(result)
+        return parseRemoteHeads(result.stdout)
+    }
+
     private fun isSafeSubmodulePath(path: String): Boolean {
         if (path.isEmpty() || path == "." || path == "..") return false
         if (path.startsWith("/") || path.startsWith("\\")) return false
@@ -671,3 +677,18 @@ internal class GitCommandClient(
         private val LOG = IdeaLogger.getInstance("SubmoduleBranchSwitcher")
     }
 }
+
+/** Parses `git ls-remote --heads` output lines "<sha>\trefs/heads/<name>" into head names. */
+internal fun parseRemoteHeads(stdout: String): List<String> =
+    stdout.lineSequence()
+        .map { it.trim() }
+        .filter { it.isNotEmpty() }
+        .mapNotNull { line ->
+            val tab = line.indexOf('\t')
+            if (tab <= 0) return@mapNotNull null
+            val ref = line.substring(tab + 1)
+            if (!ref.startsWith("refs/heads/")) null else ref.removePrefix("refs/heads/")
+        }
+        .distinct()
+        .sorted()
+        .toList()

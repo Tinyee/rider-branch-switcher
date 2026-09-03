@@ -96,6 +96,12 @@ interface PresetDiscoveryGitClient : GitRepositoryQuery, SubmoduleRegistrationQu
      * Filters out the remote HEAD entry and strips the remote prefix.
      */
     fun listAllBranches(workDir: File): List<String>
+    /**
+     * Lists branch names that exist on the remote at [url] via `git ls-remote --heads`,
+     * without requiring a local clone. [workDir] only needs to be an existing directory.
+     * Defaults to empty so a client without remote-enumeration support reports no heads.
+     */
+    fun listRemoteHeads(workDir: File, url: String): List<String> = emptyList()
     /** Recursively parses .gitmodules to list all submodule paths, including nested ones. */
     fun listSubmodulePaths(gitRoot: File): List<String> =
         registeredSubmodules(gitRoot).map(SubmoduleRegistration::path)
