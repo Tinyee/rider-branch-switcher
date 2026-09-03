@@ -438,6 +438,12 @@ internal class PresetEditor(
         renderControlState()
     }
 
+    /** Applies freshly listed branch unions from the global refresh to the matching rows. */
+    fun fillSubmoduleRows(branches: Map<String, List<String>>) {
+        submoduleManager.fillRows(branches)
+        renderControlState()
+    }
+
     private fun updatePresetName(newName: String) {
         savedPreset = savedPreset.copy(name = newName)
         nameLabel.text = newName

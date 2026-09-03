@@ -4,7 +4,9 @@ import com.submodule.branchswitcher.git.GitOperationSession
 import com.submodule.branchswitcher.git.GitResult
 import com.submodule.branchswitcher.git.GitWorkflowClient
 import com.submodule.branchswitcher.git.PresetDiscoveryGitClient
+import com.submodule.branchswitcher.git.SubmoduleRegistration
 import com.submodule.branchswitcher.git.impl.GIT_PROCESS_BACKGROUND_BUDGET
+import com.submodule.branchswitcher.log.AppLogger
 import com.submodule.branchswitcher.operation.SessionCancelGuard
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -128,6 +130,44 @@ internal class BranchLoadCoordinator(
         }
 
     /**
+     * Sequentially refreshes every registered submodule in one operation: fetch when checked
+     * out, then always re-list fresh `ls-remote` heads (cache invalidated first) and union
+     * them with the local branches. [onResult] is invoked on the coordinator's background
+     * dispatcher with the split outcome; a submodule that lists no branches (neither local
+     * nor remote) lands in [SubmoduleRefreshOutcome.failedPaths]. Cancellation propagates.
+     */
+    @Suppress("TooGenericExceptionCaught") // a non-ok submodule refresh is reported as a result, never thrown
+    fun refreshRemoteSubmodules(
+        root: File,
+        registrations: List<SubmoduleRegistration>,
+        cache: RemoteBranchCache,
+        log: AppLogger,
+        onResult: (Result<SubmoduleRefreshOutcome>) -> Unit,
+    ): BranchLoadHandle = launchInternal { operation ->
+        try {
+            val succeeded = linkedMapOf<String, List<String>>()
+            val failedPaths = mutableListOf<String>()
+            for (registration in registrations) {
+                currentCoroutineContext().ensureActive()
+                val dir = File(root, registration.path)
+                val branches = listSubmoduleRefreshUnion(
+                    operation,
+                    dir,
+                    SubmoduleSource(root, registration.path, registration.url),
+                    cache,
+                    log,
+                )
+                if (branches == null) failedPaths += registration.path else succeeded[registration.path] = branches
+            }
+            if (!closed.get()) onResult(Result.success(SubmoduleRefreshOutcome(succeeded, failedPaths)))
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            if (!closed.get()) onResult(Result.failure(error))
+        }
+    }
+
+    /**
      * Runs one discovery under the shared concurrency limit, attached to a fresh
      * Git operation session that is cancelled when the Tool Window closes. The block
      * executes on the IO dispatcher; a closed coordinator skips execution entirely.
@@ -177,4 +217,12 @@ internal data class BranchRefreshResult(
 internal data class RefreshAllOutcome(
     val succeeded: List<File>,
     val failures: List<Pair<File, GitResult>>,
+)
+
+/** Outcome of a sequential refresh pass over several registered submodules. */
+internal data class SubmoduleRefreshOutcome(
+    /** path → deduplicated union of local and `ls-remote` branch names. */
+    val succeeded: Map<String, List<String>>,
+    /** paths whose refresh listed no branches (neither local nor remote). */
+    val failedPaths: List<String>,
 )

@@ -14,6 +14,7 @@ import java.io.File
 import java.nio.file.Path
 import javax.swing.Box
 import javax.swing.BoxLayout
+import javax.swing.DefaultComboBoxModel
 import javax.swing.JButton
 import javax.swing.JComboBox
 import javax.swing.JLabel
@@ -253,6 +254,28 @@ internal class SubmoduleRowManager(
             started++
         }
         return started
+    }
+
+    /**
+     * Applies freshly listed branch unions (from the global refresh) directly to the matching
+     * loaded rows — no fetch, no relist, and each row's current selection is preserved. Rows
+     * not present in [branches] are left untouched. Returns how many rows were updated.
+     */
+    fun fillRows(branches: Map<String, List<String>>): Int {
+        var updated = 0
+        subRows.values.forEach { row ->
+            if (row.deleted || !row.loaded) return@forEach
+            val list = branches[row.path] ?: return@forEach
+            val current = (row.combo.selectedItem as? String).orEmpty()
+            val merged = mergeBranchChoices(current, list)
+            row.combo.model = DefaultComboBoxModel(merged.toTypedArray())
+            row.combo.selectedItem = current
+            row.combo.putClientProperty(KEY_ALL_BRANCHES, merged)
+            row.combo.isEnabled = true
+            row.loaded = true
+            updated++
+        }
+        return updated
     }
 
     var loadingCount = 0

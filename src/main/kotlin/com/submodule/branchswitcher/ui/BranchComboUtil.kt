@@ -358,9 +358,58 @@ private suspend fun refreshSubmoduleBranches(
         }
     }
 
-    val url = submodule.url
+    return listSubmoduleUnion(client, dir, submodule, cache, log)
+}
+
+/**
+ * Lists the fresh union of one submodule's local branches and `ls-remote` heads for the
+ * global "refresh all" pass. A checked-out submodule (`.git` present) is fetched first; a
+ * fetch failure is logged but does not abort, so a registered URL is still re-listed fresh
+ * and local branches are still relisted. Returns the deduplicated, sorted union, or null when
+ * neither listing produced branches; cancellation propagates as [CancellationException].
+ */
+@Suppress("TooGenericExceptionCaught", "ThrowsCount") // a fetch failure degrades to WARN, never blanks the row
+internal suspend fun listSubmoduleRefreshUnion(
+    client: GitWorkflowClient,
+    dir: File,
+    submodule: SubmoduleSource,
+    cache: RemoteBranchCache?,
+    log: AppLogger,
+): List<String>? {
+    val git = File(dir, ".git").exists()
+    if (git) {
+        try {
+            val fetched = client.fetch(dir)
+            if (!fetched.ok) log.warn("refresh warn: ${dir.name}: ${fetched.diagnostic()}")
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: OperationCancelledException) {
+            throw e
+        } catch (e: Exception) {
+            log.warn("refresh warn: ${dir.name}", e)
+        }
+    }
+    return listSubmoduleUnion(client, dir, submodule, cache, log)
+}
+
+/**
+ * Re-lists a submodule's local branches and fresh `ls-remote` heads (cache invalidated
+ * first), returning their deduplicated, sorted union, or null when neither listing produced
+ * branches. Does not fetch; cancellation propagates as [CancellationException].
+ */
+@Suppress("TooGenericExceptionCaught", "ThrowsCount") // ls-remote / listAllBranches failures degrade to empty, never blank
+private suspend fun listSubmoduleUnion(
+    client: GitWorkflowClient,
+    dir: File,
+    submodule: SubmoduleSource,
+    cache: RemoteBranchCache?,
+    log: AppLogger,
+): List<String>? {
+    val git = File(dir, ".git").exists()
+
     var remote = emptyList<String>()
     var remoteOk = false
+    val url = submodule.url
     if (url != null) {
         cache?.invalidate(url)
         try {

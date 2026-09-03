@@ -78,9 +78,11 @@ internal class PresetListManager(
     val submoduleRefreshInFlight: Boolean get() = submoduleRefreshInFlightRef.get()
 
     /**
-     * Fetches remote branches for every checked-out registered submodule, then relists the
-     * loaded rows in open editors. Single-flight per Tool Window; individual failures are
-     * logged, and a Notifier fires only when every submodule failed.
+     * Fetches remote branches for every registered submodule (checked out or not), then
+     * relists the loaded rows in open editors to the fresh union of local and `ls-remote`
+     * branches. Uninitialized submodules refresh via their registered URL without fetching.
+     * Single-flight per Tool Window; individual failures are logged, and a Notifier fires only
+     * when every submodule failed. The main repo is never touched.
      */
     fun refreshAllSubmoduleBranches() {
         if (!submoduleRefreshInFlightRef.compareAndSet(false, true)) {
@@ -93,37 +95,37 @@ internal class PresetListManager(
             return
         }
         branchLoads.discover(
-            { client -> client.listSubmodulePaths(root.toFile()) },
-        ) { pathsResult ->
+            { client -> client.registeredSubmodules(root.toFile()) },
+        ) { registrationsResult ->
             project.invokeLaterIfAlive {
-                val paths = pathsResult.getOrElse { error ->
-                    log.logFailure("cannot discover submodule paths for refresh", error)
+                val registrations = registrationsResult.getOrElse { error ->
+                    log.logFailure("cannot discover registered submodules for refresh", error)
                     submoduleRefreshInFlightRef.set(false)
                     return@invokeLaterIfAlive
                 }
-                val dirs = paths.map { root.resolve(it).toFile() }
-                    .filter { it.isDirectory && it.resolve(".git").exists() }
-                if (dirs.isEmpty()) {
-                    log.debug("no checked-out submodules to refresh")
+                if (registrations.isEmpty()) {
+                    log.debug("no registered submodules to refresh")
                     submoduleRefreshInFlightRef.set(false)
                     return@invokeLaterIfAlive
                 }
-                log.debug("refreshing remote branches for ${dirs.size} submodule(s)...")
-                branchLoads.refreshAll(dirs) { outcomeResult ->
+                log.debug("refreshing remote branches for ${registrations.size} submodule(s)...")
+                branchLoads.refreshRemoteSubmodules(
+                    root.toFile(),
+                    registrations,
+                    remoteBranchesCache,
+                    log,
+                ) { outcomeResult ->
                     project.invokeLaterIfAlive {
                         val outcome = outcomeResult.getOrElse { error ->
                             log.logFailure("refresh all submodules failed", error)
                             submoduleRefreshInFlightRef.set(false)
                             return@invokeLaterIfAlive
                         }
-                        val fetchedKeys = outcome.succeeded.map { dir ->
-                            root.relativize(dir.toPath()).map(Path::toString).joinToString("/")
-                        }.toSet()
-                        mutableEditors.forEach { it.refreshSubmoduleRows(fetchedKeys) }
-                        outcome.failures.forEach { (dir, gitResult) ->
-                            log.warn("refresh warn: ${dir.name}: ${gitResult.diagnostic()}")
+                        outcome.failedPaths.forEach { path ->
+                            log.warn("refresh warn: $path: no branches listed")
                         }
-                        if (outcome.succeeded.isEmpty() && outcome.failures.isNotEmpty()) {
+                        mutableEditors.forEach { it.fillSubmoduleRows(outcome.succeeded) }
+                        if (outcome.succeeded.isEmpty() && outcome.failedPaths.isNotEmpty()) {
                             Notifier.warn(
                                 project,
                                 Bundle.msg("notify.refresh.failed.title"),
