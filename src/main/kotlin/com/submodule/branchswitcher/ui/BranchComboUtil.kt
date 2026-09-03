@@ -112,7 +112,7 @@ fun filterBranchPopup(combo: JComboBox<String>, editor: JTextField) {
  * Sets the combo to its loading state, runs discovery through [branchLoads], then
  * restores the full list and current selection on the UI thread.
  */
-@Suppress("TooGenericExceptionCaught") // Git, coroutine, and UI scheduler failures converge at this async boundary
+@Suppress("TooGenericExceptionCaught", "LongParameterList") // async-boundary failures; ls-remote submodule/cache inputs widen an already-long loader signature
 internal fun loadComboBranches(
     combo: JComboBox<String>,
     dir: File,
@@ -492,7 +492,7 @@ private suspend fun discoverBranchChoices(
  * degrades to an empty list (local branches survive; the row never blanks) and logs a WARN,
  * while cancellation propagates so the caller ends the lifecycle without applying UI.
  */
-@Suppress("TooGenericExceptionCaught") // remote-heads failures degrade to local-only, never propagate
+@Suppress("TooGenericExceptionCaught", "ThrowsCount") // remote-heads failures degrade to local-only; each cancellation type propagates via its own explicit catch
 private suspend fun discoverRemoteHeads(
     client: PresetDiscoveryGitClient,
     submodule: SubmoduleSource?,
