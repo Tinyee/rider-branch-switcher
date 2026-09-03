@@ -240,23 +240,6 @@ internal class SubmoduleRowManager(
     }
 
     /**
-     * Relists the already-loaded rows whose path is in [paths] (no fetch — the caller, e.g. a
-     * global refresh, already fetched). Returns how many rows started a reload.
-     */
-    fun refreshRows(paths: Set<String>): Int {
-        var started = 0
-        subRows.values.forEach { row ->
-            if (row.deleted || row.path !in paths || !row.loaded) return@forEach
-            val dir = gitRoot.resolve(row.path).toFile()
-            val current = (row.combo.selectedItem as? String).orEmpty()
-            row.loaded = true
-            loadComboBranches(row.combo, dir, current, row = row)
-            started++
-        }
-        return started
-    }
-
-    /**
      * Applies freshly listed branch unions (from the global refresh) directly to the matching
      * loaded rows — no fetch, no relist, and each row's current selection is preserved. Rows
      * not present in [branches] are left untouched. Returns how many rows were updated.

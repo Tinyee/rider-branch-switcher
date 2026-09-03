@@ -370,48 +370,6 @@ class SubmoduleRowManagerTest {
     }
 
     @Test
-    fun `refreshRows relists only loaded matching rows without fetching`() {
-        val root = Files.createTempDirectory("rows-relist")
-        Files.createDirectories(root.resolve("SubA"))
-        Files.createDirectories(root.resolve("SubB"))
-        val body = JPanel().apply { add(JPanel()) }
-        val methodCalls = mutableListOf<String>()
-        val done = CountDownLatch(1)
-        val manager = SubmoduleRowManager(
-            gitRoot = root,
-            branchLoads = BranchLoadCoordinator(CoroutineScope(Dispatchers.Unconfined)) {
-                gitOperation { methodName ->
-                    methodCalls += methodName
-                    if (methodName == "listAllBranches") listOf("new-1") else null
-                }
-            },
-            body = body,
-            log = createStringAppender {},
-            onDirty = {},
-            scheduleUi = { it(); done.countDown() },
-        )
-        val a = manager.buildSubRow("SubA", "dev")
-        val b = manager.buildSubRow("SubB", "dev")
-        body.add(a.panel)
-        body.add(b.panel)
-        body.addNotify()
-        a.loaded = true // only SubA was ever loaded
-        b.loaded = false
-        manager.onFirstExpand()
-
-        val started = manager.refreshRows(setOf("SubA", "SubB"))
-
-        assertTrue("relist should finish", done.await(loadCompletionTimeoutSeconds, TimeUnit.SECONDS))
-        awaitZeroLoading(manager)
-        assertEquals(1, started)
-        assertEquals("refreshRows must not fetch (global refresh already did)", 0, methodCalls.count { it == "fetch" })
-        assertTrue("refreshRows must list", methodCalls.contains("listAllBranches"))
-        @Suppress("UNCHECKED_CAST")
-        val all = requireNotNull(manager.subRows["SubA"]).combo.getClientProperty(KEY_ALL_BRANCHES) as List<String>
-        assertTrue("relisted list must include the remote branch", all.contains("new-1"))
-    }
-
-    @Test
     fun `uninitialized submodule row lists remote heads via ls-remote`() {
         val root = Files.createTempDirectory("row-lsremote")
         val body = JPanel().apply { add(JPanel()) }

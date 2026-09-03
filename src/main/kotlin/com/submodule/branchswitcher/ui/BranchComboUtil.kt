@@ -194,16 +194,16 @@ internal fun loadComboBranches(
 }
 
 /**
- * Refreshes one branch combo by fetching the repository's remote branches first, then
- * relisting. Unlike [loadComboBranches], a failed fetch never blanks the combo: the
- * previous list and selection are restored. Shares the [KEY_BRANCH_LOAD] slot so a
- * refresh and a normal discovery supersede each other. All UI work and the load-lifecycle
- * callback are routed through [scheduleUi] onto the EDT, so a successful refresh cannot
- * be overwritten by a stale restore from the completion handler.
+ * Refreshes one submodule row's branch combo by fetching the repository (when checked out)
+ * and relisting. Unlike [loadComboBranches], a failed fetch never blanks the combo: the
+ * previous list and selection are restored. Shares the [KEY_BRANCH_LOAD] slot so a refresh
+ * and a normal discovery supersede each other. All UI work and the load-lifecycle callback
+ * are routed through [scheduleUi] onto the EDT, so a successful refresh cannot be
+ * overwritten by a stale restore from the completion handler.
  *
- * For a submodule row ([submodule] != null) the refresh also unions fresh `ls-remote`
- * heads ([submodule.gitRoot] + [SubmoduleSource.url]), so an uninitialized submodule
- * (no local `.git`) still lists its remote branches without fetching.
+ * The refresh unions fresh `ls-remote` heads ([submodule.gitRoot] + [SubmoduleSource.url])
+ * with the relisted local branches, so an uninitialized submodule (no local `.git`) still
+ * lists its remote branches without fetching.
  */
 @Suppress("CyclomaticComplexMethod", "ThrowsCount", "TooGenericExceptionCaught")
 internal fun refreshComboBranches(
@@ -215,7 +215,7 @@ internal fun refreshComboBranches(
     onLoadStart: () -> Unit,
     onLoadEnd: (succeeded: Boolean, superseded: Boolean) -> Unit,
     scheduleUi: ((() -> Unit) -> Unit) = edtSchedule,
-    submodule: SubmoduleSource? = null,
+    submodule: SubmoduleSource,
     cache: RemoteBranchCache? = null,
 ): BranchLoadHandle {
     @Suppress("UNCHECKED_CAST")
@@ -259,57 +259,35 @@ internal fun refreshComboBranches(
         applyList(previousList, previousSelected)
     }
 
-    val handle = if (submodule == null) {
-        // Main-repo row keeps today's fetch --prune + relist behavior.
-        branchLoads.refresh(dir) { result ->
-            val outcome = result.getOrNull()
-            val failure = result.exceptionOrNull()
-            if (outcome != null && outcome.succeeded) {
-                schedule { applyList(outcome.branches, current) }
-                endLoad(succeeded = true)
-            } else {
-                if (outcome != null && !outcome.succeeded) {
-                    log.warn("refresh branches failed for ${dir.name}: ${outcome.failure?.diagnostic()}")
-                } else if (failure != null) {
-                    log.warn("refresh branches failed for ${dir.name}", failure)
-                } else {
-                    log.warn("refresh branches failed for ${dir.name}")
-                }
-                schedule { restorePrevious() }
-                endLoad(succeeded = false)
-            }
-        }
-    } else {
-        // Submodule row: fetch only when checked out, then union local refs with fresh
-        // ls-remote heads (an uninitialized submodule is remote-only).
-        branchLoads.launch { client ->
-            val branches = try {
-                refreshSubmoduleBranches(client as GitWorkflowClient, dir, submodule, cache, log)
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: OperationCancelledException) {
+    // Fetch only when checked out, then union local refs with fresh ls-remote heads (an
+    // uninitialized submodule is remote-only).
+    val handle = branchLoads.launch { client ->
+        val branches = try {
+            refreshSubmoduleBranches(client as GitWorkflowClient, dir, submodule, cache, log)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: OperationCancelledException) {
+            throw CancellationException("submodule refresh cancelled").apply { initCause(e) }
+        } catch (e: GitQueryException) {
+            if (e.result.failureKind == GitFailureKind.CANCELLED) {
                 throw CancellationException("submodule refresh cancelled").apply { initCause(e) }
-            } catch (e: GitQueryException) {
-                if (e.result.failureKind == GitFailureKind.CANCELLED) {
-                    throw CancellationException("submodule refresh cancelled").apply { initCause(e) }
-                }
-                log.logFailure("refresh branches failed for ${dir.name}", e)
-                schedule { restorePrevious() }
-                endLoad(succeeded = false)
-                return@launch
-            } catch (e: Exception) {
-                log.logFailure("refresh branches failed for ${dir.name}", e)
-                schedule { restorePrevious() }
-                endLoad(succeeded = false)
-                return@launch
             }
-            if (branches != null) {
-                schedule { applyList(branches, current) }
-                endLoad(succeeded = true)
-            } else {
-                schedule { restorePrevious() }
-                endLoad(succeeded = false)
-            }
+            log.logFailure("refresh branches failed for ${dir.name}", e)
+            schedule { restorePrevious() }
+            endLoad(succeeded = false)
+            return@launch
+        } catch (e: Exception) {
+            log.logFailure("refresh branches failed for ${dir.name}", e)
+            schedule { restorePrevious() }
+            endLoad(succeeded = false)
+            return@launch
+        }
+        if (branches != null) {
+            schedule { applyList(branches, current) }
+            endLoad(succeeded = true)
+        } else {
+            schedule { restorePrevious() }
+            endLoad(succeeded = false)
         }
     }
     handle.invokeOnCompletion { failure ->

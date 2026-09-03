@@ -432,12 +432,6 @@ internal class PresetEditor(
 
     fun currentPreset(): Preset = savedPreset
 
-    /** Relists submodule row combos for [paths] after their refs were refreshed elsewhere. */
-    fun refreshSubmoduleRows(paths: Set<String>) {
-        submoduleManager.refreshRows(paths)
-        renderControlState()
-    }
-
     /** Applies freshly listed branch unions from the global refresh to the matching rows. */
     fun fillSubmoduleRows(branches: Map<String, List<String>>) {
         submoduleManager.fillRows(branches)
