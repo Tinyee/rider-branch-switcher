@@ -180,6 +180,92 @@ internal fun loadComboBranches(
 }
 
 /**
+ * Refreshes one branch combo by fetching the repository's remote branches first, then
+ * relisting. Unlike [loadComboBranches], a failed fetch never blanks the combo: the
+ * previous list and selection are restored. Shares the [KEY_BRANCH_LOAD] slot so a
+ * refresh and a normal discovery supersede each other. The job completion callback only
+ * balances the load lifecycle — it never touches the UI — so a successful refresh cannot
+ * be overwritten by a stale restore.
+ */
+internal fun refreshComboBranches(
+    combo: JComboBox<String>,
+    dir: File,
+    current: String,
+    branchLoads: BranchLoadCoordinator,
+    log: AppLogger,
+    onLoadStart: () -> Unit,
+    onLoadEnd: (succeeded: Boolean, superseded: Boolean) -> Unit,
+    scheduleUi: ((() -> Unit) -> Unit) = edtSchedule,
+): BranchLoadHandle {
+    @Suppress("UNCHECKED_CAST")
+    val previousList = (combo.getClientProperty(KEY_ALL_BRANCHES) as? List<String>) ?: emptyList()
+    val previousSelected = combo.selectedItem?.toString() ?: current
+    cancelComboBranchLoad(combo)
+    val loadToken = Any()
+    combo.putClientProperty(KEY_BRANCH_LOAD_TOKEN, loadToken)
+    onLoadStart()
+    combo.model = DefaultComboBoxModel(arrayOf(LOADING_BRANCH))
+    combo.selectedItem = LOADING_BRANCH
+    combo.isEnabled = false
+    val loadEnded = AtomicBoolean(false)
+
+    fun endLoad(succeeded: Boolean) {
+        if (loadEnded.compareAndSet(false, true)) {
+            val superseded = combo.getClientProperty(KEY_BRANCH_LOAD_TOKEN) !== loadToken
+            onLoadEnd(succeeded, superseded)
+        }
+    }
+
+    fun schedule(ui: () -> Unit) {
+        try {
+            scheduleUi(ui)
+        } catch (e: Exception) {
+            log.logFailure("refresh branch UI update failed for ${dir.name}", e)
+        }
+    }
+
+    fun applyList(branches: List<String>, selected: String) {
+        if (combo.getClientProperty(KEY_BRANCH_LOAD_TOKEN) !== loadToken) return
+        if (!combo.isDisplayable) return
+        val list = mergeBranchChoices(selected, branches)
+        combo.model = DefaultComboBoxModel(list.toTypedArray())
+        combo.selectedItem = selected
+        combo.putClientProperty(KEY_ALL_BRANCHES, list)
+        combo.isEnabled = true
+    }
+
+    fun restorePrevious() {
+        applyList(previousList, previousSelected)
+    }
+
+    val handle = branchLoads.refresh(dir) { result ->
+        val outcome = result.getOrNull()
+        val failure = result.exceptionOrNull()
+        if (outcome != null && outcome.succeeded) {
+            schedule { applyList(outcome.branches, current) }
+            endLoad(succeeded = true)
+        } else {
+            if (failure != null) {
+                log.warn("refresh branches failed for ${dir.name}", failure)
+            } else {
+                log.warn("refresh branches failed for ${dir.name}")
+            }
+            schedule { restorePrevious() }
+            endLoad(succeeded = false)
+        }
+    }
+    handle.invokeOnCompletion { failure ->
+        if (failure != null && failure !is CancellationException) {
+            log.logFailure("refresh branches failed for ${dir.name}", failure)
+        }
+        // Cancel / close can fire without an onResult; balance the lifecycle only.
+        endLoad(succeeded = false)
+    }
+    combo.putClientProperty(KEY_BRANCH_LOAD, handle)
+    return handle
+}
+
+/**
  * Reads the current branch and branch list for one combo in the background.
  * A [CancellationException] (coroutine cancel or a CANCELLED Git query) propagates so
  * the caller ends the lifecycle without applying any UI; any other query failure

@@ -1,6 +1,7 @@
 package com.submodule.branchswitcher.ui
 
 import com.submodule.branchswitcher.git.GitOperationSession
+import com.submodule.branchswitcher.git.GitResult
 import com.submodule.branchswitcher.log.createStringAppender
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -15,6 +16,7 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
+import javax.swing.DefaultComboBoxModel
 import javax.swing.JComboBox
 import javax.swing.JTextField
 
@@ -206,6 +208,70 @@ class BranchComboUtilTest {
         assertEquals(listOf("main", "latest"), (0 until combo.itemCount).map(combo::getItemAt))
         assertEquals("latest", combo.selectedItem)
     }
+
+    @Test
+    fun `refreshComboBranches swaps in the fetched list on success`() {
+        val done = CountDownLatch(1)
+        val combo = comboWithOldValues()
+        refreshComboBranches(
+            combo, File("."), current = "dev", branchLoads = refreshCoordinator(ok = true),
+            log = createStringAppender {},
+            onLoadStart = {},
+            onLoadEnd = { _, _ -> done.countDown() },
+            scheduleUi = { it() },
+        )
+        assertTrue("refresh should finish", done.await(loadCompletionTimeoutSeconds, TimeUnit.SECONDS))
+        @Suppress("UNCHECKED_CAST")
+        val all = combo.getClientProperty(KEY_ALL_BRANCHES) as List<String>
+        assertTrue("fetched branches must be offered", all.containsAll(listOf("dev", "release")))
+        assertEquals("dev", combo.selectedItem)
+        assertTrue("combo should be enabled after success", combo.isEnabled)
+    }
+
+    @Test
+    fun `refreshComboBranches keeps the previous list when fetch fails`() {
+        val done = CountDownLatch(1)
+        val combo = comboWithOldValues()
+        refreshComboBranches(
+            combo, File("."), current = "dev", branchLoads = refreshCoordinator(ok = false),
+            log = createStringAppender {},
+            onLoadStart = {},
+            onLoadEnd = { succeeded, _ ->
+                assertFalse("fetch failure must report not-succeeded", succeeded)
+                done.countDown()
+            },
+            scheduleUi = { it() },
+        )
+        assertTrue("refresh should finish", done.await(loadCompletionTimeoutSeconds, TimeUnit.SECONDS))
+        @Suppress("UNCHECKED_CAST")
+        val all = combo.getClientProperty(KEY_ALL_BRANCHES) as List<String>
+        assertEquals("a failed refresh must keep the previous list", listOf("old-a", "old-b"), all)
+        assertEquals("old-a", combo.selectedItem)
+        assertTrue("combo should be re-enabled after failure", combo.isEnabled)
+    }
+
+    private fun comboWithOldValues(): JComboBox<String> = displayableCombo().apply {
+        model = DefaultComboBoxModel(arrayOf("old-a", "old-b"))
+        selectedItem = "old-a"
+        putClientProperty(KEY_ALL_BRANCHES, listOf("old-a", "old-b"))
+    }
+
+    private fun refreshCoordinator(ok: Boolean): BranchLoadCoordinator =
+        BranchLoadCoordinator(CoroutineScope(Dispatchers.Unconfined)) {
+            Proxy.newProxyInstance(
+                GitOperationSession::class.java.classLoader,
+                arrayOf(GitOperationSession::class.java),
+            ) { _, method, _ ->
+                when (method.name) {
+                    "fetch" -> if (ok) GitResult("fetch", 0, "", "")
+                              else GitResult("fetch", 1, "", "offline")
+                    "listAllBranches" -> if (ok) listOf("dev", "release") else emptyList<String>()
+                    "cancel" -> Unit
+                    "close" -> Unit
+                    else -> null
+                }
+            } as GitOperationSession
+        }
 
     private fun displayableCombo(displayable: Boolean = true): JComboBox<String> =
         object : JComboBox<String>() {
