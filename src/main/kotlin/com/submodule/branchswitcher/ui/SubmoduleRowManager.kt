@@ -249,6 +249,10 @@ internal class SubmoduleRowManager(
         subRows.values.forEach { row ->
             if (row.deleted || !row.loaded) return@forEach
             val list = branches[row.path] ?: return@forEach
+            // A load or refresh still in flight leaves the combo disabled and its selection
+            // on the loading placeholder; leave such a row to its own completion instead of
+            // force-enabling it with the placeholder as the selection.
+            if (!row.combo.isEnabled || row.combo.selectedItem == LOADING_BRANCH) return@forEach
             val current = (row.combo.selectedItem as? String).orEmpty()
             val merged = mergeBranchChoices(current, list)
             row.combo.model = DefaultComboBoxModel(merged.toTypedArray())

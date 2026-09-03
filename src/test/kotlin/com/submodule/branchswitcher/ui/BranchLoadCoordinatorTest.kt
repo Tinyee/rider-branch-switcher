@@ -1,12 +1,18 @@
 package com.submodule.branchswitcher.ui
 
 import com.submodule.branchswitcher.git.GitOperationSession
+import com.submodule.branchswitcher.git.GitResult
+import com.submodule.branchswitcher.git.SubmoduleRegistration
+import com.submodule.branchswitcher.log.createStringAppender
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.File
 import java.lang.reflect.Proxy
+import java.nio.file.Files
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
@@ -68,6 +74,57 @@ class BranchLoadCoordinatorTest {
         assertTrue("first load's session must be cancelled", firstCancelled.get())
     }
 
+    @Test
+    fun `refreshRemoteSubmodules splits succeeded and failed paths and continues past failures`() {
+        val root = Files.createTempDirectory("coord-refresh")
+        Files.createDirectories(root.resolve("SubGood").resolve(".git"))
+        Files.createDirectories(root.resolve("SubBad").resolve(".git"))
+        Files.createDirectories(root.resolve("SubUninit")) // no .git -> uninitialized
+
+        val fetchedDirs = mutableListOf<String>()
+        val listedUrls = mutableListOf<String>()
+        val finished = CountDownLatch(1)
+        var outcome: SubmoduleRefreshOutcome? = null
+        val coordinator = BranchLoadCoordinator(CoroutineScope(Dispatchers.Unconfined), maxConcurrentLoads = 1) {
+            refreshOperation(
+                fetch = { dir ->
+                    fetchedDirs += dir
+                    if (dir == "SubBad") GitResult("fetch", 1, "", "offline") else GitResult("fetch", 0, "", "")
+                },
+                listRemoteHeads = { url ->
+                    listedUrls += url
+                    if (url == "https://example.com/SubBad.git") error("remote unavailable") else listOf("remote-$url")
+                },
+                listAllBranches = { dir ->
+                    if (dir == "SubBad") error("local unavailable") else listOf("local-$dir")
+                },
+            )
+        }
+        val registrations = listOf(
+            SubmoduleRegistration("SubGood", "s1", "", "https://example.com/SubGood.git"),
+            SubmoduleRegistration("SubBad", "s2", "", "https://example.com/SubBad.git"),
+            SubmoduleRegistration("SubUninit", "s3", "", "https://example.com/SubUninit.git"),
+        )
+
+        coordinator.refreshRemoteSubmodules(
+            root.toFile(),
+            registrations,
+            RemoteBranchCache(),
+            createStringAppender {},
+        ) { result ->
+            outcome = result.getOrNull()
+            finished.countDown()
+        }
+
+        assertTrue("refresh should finish", finished.await(loadCompletionTimeoutSeconds, TimeUnit.SECONDS))
+        val o = requireNotNull(outcome)
+        assertEquals(setOf("SubGood", "SubUninit"), o.succeeded.keys)
+        assertEquals(listOf("SubBad"), o.failedPaths)
+        assertTrue("uninitialized submodule must skip fetch", "SubUninit" !in fetchedDirs)
+        assertTrue("uninitialized submodule must still ls-remote", "https://example.com/SubUninit.git" in listedUrls)
+        // SubUninit runs after the failing SubBad, so its ls-remote proves continue-on-failure.
+    }
+
     /** Proxy Git session routing `cancel` to a callback; other methods return defaults. */
     private fun branchOperation(
         onCancel: () -> Unit = {},
@@ -79,6 +136,32 @@ class BranchLoadCoordinatorTest {
         ) { _, method, _ ->
             when (method.name) {
                 "listAllBranches" -> load()
+                "cancel" -> onCancel()
+                "close" -> Unit
+                else -> when (method.returnType) {
+                    Boolean::class.javaPrimitiveType -> false
+                    Int::class.javaPrimitiveType -> 0
+                    List::class.java -> emptyList<String>()
+                    else -> null
+                }
+            }
+        } as GitOperationSession
+
+    /** Proxy Git session routing refresh queries (`fetch`/`listRemoteHeads`/`listAllBranches`) by dir/url. */
+    private fun refreshOperation(
+        onCancel: () -> Unit = {},
+        fetch: (String) -> GitResult = { GitResult("fetch", 0, "", "") },
+        listRemoteHeads: (String) -> List<String> = { emptyList() },
+        listAllBranches: (String) -> List<String> = { emptyList() },
+    ): GitOperationSession =
+        Proxy.newProxyInstance(
+            GitOperationSession::class.java.classLoader,
+            arrayOf(GitOperationSession::class.java),
+        ) { _, method, args ->
+            when (method.name) {
+                "fetch" -> fetch((args?.get(0) as File).name)
+                "listRemoteHeads" -> listRemoteHeads(args?.get(1) as String)
+                "listAllBranches" -> listAllBranches((args?.get(0) as File).name)
                 "cancel" -> onCancel()
                 "close" -> Unit
                 else -> when (method.returnType) {

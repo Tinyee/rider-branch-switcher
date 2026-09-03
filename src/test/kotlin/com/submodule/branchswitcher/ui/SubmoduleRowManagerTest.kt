@@ -11,6 +11,7 @@ import kotlinx.coroutines.Dispatchers
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.awt.Component
@@ -21,6 +22,7 @@ import java.nio.file.Paths
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
+import javax.swing.DefaultComboBoxModel
 import javax.swing.JLabel
 import javax.swing.JPanel
 
@@ -454,6 +456,61 @@ class SubmoduleRowManagerTest {
         val after = requireNotNull(manager.subRows["SubA"]).combo.getClientProperty(KEY_ALL_BRANCHES) as List<String>
         assertTrue("remote heads must appear after url self-heal", after.containsAll(listOf("develop", "jade/develop")))
         assertEquals("selection must be preserved across the self-heal", "develop", requireNotNull(manager.subRows["SubA"]).combo.selectedItem)
+    }
+
+    @Test
+    fun `fillRows preserves selection and skips unloaded rows`() {
+        val manager = SubmoduleRowManager(
+            gitRoot = Paths.get("."),
+            branchLoads = emptyBranchLoads(),
+            body = JPanel(),
+            log = createStringAppender {},
+            onDirty = {},
+        )
+        val loaded = manager.buildSubRow("Loaded", "dev")
+        val unloaded = manager.buildSubRow("Unloaded", "main")
+        loaded.loaded = true
+
+        val updated = manager.fillRows(
+            mapOf(
+                "Loaded" to listOf("main", "dev", "feature"),
+                "Unloaded" to listOf("other"),
+            ),
+        )
+
+        assertEquals("only the loaded row is updated", 1, updated)
+        assertEquals("selection is preserved", "dev", loaded.combo.selectedItem)
+        assertTrue("updated row is enabled", loaded.combo.isEnabled)
+        @Suppress("UNCHECKED_CAST")
+        val all = loaded.combo.getClientProperty(KEY_ALL_BRANCHES) as List<String>
+        assertTrue(all.containsAll(listOf("main", "dev", "feature")))
+        // The unloaded row is left completely untouched.
+        assertEquals("main", unloaded.combo.selectedItem)
+        assertNull(unloaded.combo.getClientProperty(KEY_ALL_BRANCHES))
+    }
+
+    @Test
+    fun `fillRows leaves a mid-load row alone`() {
+        val manager = SubmoduleRowManager(
+            gitRoot = Paths.get("."),
+            branchLoads = emptyBranchLoads(),
+            body = JPanel(),
+            log = createStringAppender {},
+            onDirty = {},
+        )
+        val row = manager.buildSubRow("SubA", "dev")
+        row.loaded = true
+        // Simulate a first-expand load still in flight: disabled combo on the placeholder.
+        row.combo.model = DefaultComboBoxModel(arrayOf(LOADING_BRANCH))
+        row.combo.selectedItem = LOADING_BRANCH
+        row.combo.isEnabled = false
+
+        val updated = manager.fillRows(mapOf("SubA" to listOf("dev", "main")))
+
+        assertEquals("a mid-load row must not be counted as updated", 0, updated)
+        assertFalse("a mid-load row must not be force-enabled", row.combo.isEnabled)
+        assertEquals("a mid-load row keeps its placeholder for its own load to finish", LOADING_BRANCH, row.combo.selectedItem)
+        assertEquals("a mid-load row keeps its loading model untouched", 1, row.combo.itemCount)
     }
 
     private fun descendants(root: Component): List<Component> =

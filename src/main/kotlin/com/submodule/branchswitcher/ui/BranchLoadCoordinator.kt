@@ -57,6 +57,14 @@ internal class BranchLoadCoordinator(
         launchInternal { operation -> block(operation) }
 
     /**
+     * Runs one write-capable discovery (e.g. a refresh that fetches) under the same
+     * concurrency limit and session lifecycle as [launch], exposing the full
+     * [GitWorkflowClient] so callers need no unchecked cast to reach [SwitchGitClient].
+     */
+    fun launchWorkflow(block: suspend (GitWorkflowClient) -> Unit): BranchLoadHandle =
+        launchInternal { operation -> block(operation) }
+
+    /**
      * Runs one read-only discovery query in the background and delivers its result
      * to [onResult]. Shares the same concurrency limit and close-cancellation as
      * branch loads, so a discovery started from an action handler never blocks the

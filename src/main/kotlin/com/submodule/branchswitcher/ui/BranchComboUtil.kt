@@ -261,9 +261,9 @@ internal fun refreshComboBranches(
 
     // Fetch only when checked out, then union local refs with fresh ls-remote heads (an
     // uninitialized submodule is remote-only).
-    val handle = branchLoads.launch { client ->
+    val handle = branchLoads.launchWorkflow { client ->
         val branches = try {
-            refreshSubmoduleBranches(client as GitWorkflowClient, dir, submodule, cache, log)
+            refreshSubmoduleBranches(client, dir, submodule, cache, log)
         } catch (e: CancellationException) {
             throw e
         } catch (e: OperationCancelledException) {
@@ -275,12 +275,12 @@ internal fun refreshComboBranches(
             log.logFailure("refresh branches failed for ${dir.name}", e)
             schedule { restorePrevious() }
             endLoad(succeeded = false)
-            return@launch
+            return@launchWorkflow
         } catch (e: Exception) {
             log.logFailure("refresh branches failed for ${dir.name}", e)
             schedule { restorePrevious() }
             endLoad(succeeded = false)
-            return@launch
+            return@launchWorkflow
         }
         if (branches != null) {
             schedule { applyList(branches, current) }
