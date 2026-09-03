@@ -50,8 +50,18 @@ internal class SubmoduleRowManager(
 
     /** Records each row path's registered submodule URL for `ls-remote` discovery. */
     fun setPathUrls(urls: Map<String, String?>) {
+        val previous = pathUrls.toMap()
         pathUrls.clear()
         pathUrls.putAll(urls)
+        // Self-heal: a row already loaded against a missing/stale URL re-runs discovery once
+        // its URL becomes available or changes, so a first expand that raced the `.gitmodules`
+        // resolution still ends up listing remote heads (selection is preserved).
+        for ((path, url) in urls) {
+            if (previous[path] == url) continue
+            val row = subRows[path] ?: continue
+            if (row.deleted || !row.loaded) continue
+            reloadRow(row)
+        }
     }
 
     /** Called by [PresetEditor] when first expand occurs. */
@@ -276,6 +286,20 @@ internal class SubmoduleRowManager(
     /** Builds the discovery inputs for a submodule row, carrying its registered URL (if any). */
     private fun submoduleSource(path: String): SubmoduleSource =
         SubmoduleSource(gitRoot.toFile(), path, pathUrls[path])
+
+    /** Re-runs discovery for an already-loaded row, preserving its current selection. */
+    private fun reloadRow(row: SubRow) {
+        val dir = gitRoot.resolve(row.path).toFile()
+        val current = (row.combo.selectedItem as? String).orEmpty()
+        row.loaded = true
+        loadComboBranches(
+            combo = row.combo,
+            dir = dir,
+            current = current,
+            row = row,
+            submodule = submoduleSource(row.path),
+        )
+    }
 
     /** True when any visible row is missing its loaded branch list (e.g. a failed load). */
     fun hasUnloadedRows(): Boolean = subRows.values.any { !it.deleted && !it.loaded }

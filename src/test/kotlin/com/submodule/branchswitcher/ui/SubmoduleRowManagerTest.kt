@@ -315,6 +315,56 @@ class SubmoduleRowManagerTest {
         assertTrue("remote heads must appear for an uninitialized row", all.containsAll(listOf("develop", "jade/develop")))
     }
 
+    @Test
+    fun `setPathUrls self-heals a row loaded before url resolution`() {
+        val root = Files.createTempDirectory("row-self-heal")
+        val body = JPanel().apply { add(JPanel()) }
+        val cache = RemoteBranchCache()
+        var loads = 0
+        val firstLoad = CountDownLatch(1)
+        val healLoad = CountDownLatch(1)
+        val manager = SubmoduleRowManager(
+            gitRoot = root,
+            branchLoads = BranchLoadCoordinator(CoroutineScope(Dispatchers.Unconfined)) {
+                gitOperation { methodName ->
+                    when (methodName) {
+                        "listRemoteHeads" -> listOf("develop", "jade/develop")
+                        else -> null
+                    }
+                }
+            },
+            body = body,
+            log = createStringAppender {},
+            onDirty = {},
+            scheduleUi = {
+                it()
+                loads++
+                if (loads == 1) firstLoad.countDown() else healLoad.countDown()
+            },
+            cache = cache,
+        )
+        Files.createDirectories(root.resolve("SubA")) // empty dir, no .git
+        val row = manager.buildSubRow("SubA", "")
+        body.add(row.panel)
+        body.addNotify()
+        manager.onFirstExpand()
+
+        // No URL yet: the uninitialized row lists only the preset branch (local-only).
+        manager.loadAllBranches(Preset("Work", "main", mapOf("SubA" to "develop")))
+        assertTrue("initial load should finish", firstLoad.await(loadCompletionTimeoutSeconds, TimeUnit.SECONDS))
+        @Suppress("UNCHECKED_CAST")
+        val before = requireNotNull(manager.subRows["SubA"]).combo.getClientProperty(KEY_ALL_BRANCHES) as List<String>
+        assertFalse("no remote heads before url resolution", before.contains("jade/develop"))
+
+        // URL arrives late: the already-loaded row re-discovers and gains the remote heads.
+        manager.setPathUrls(mapOf("SubA" to "https://example.com/repo.git"))
+        assertTrue("self-heal reload should finish", healLoad.await(loadCompletionTimeoutSeconds, TimeUnit.SECONDS))
+        @Suppress("UNCHECKED_CAST")
+        val after = requireNotNull(manager.subRows["SubA"]).combo.getClientProperty(KEY_ALL_BRANCHES) as List<String>
+        assertTrue("remote heads must appear after url self-heal", after.containsAll(listOf("develop", "jade/develop")))
+        assertEquals("selection must be preserved across the self-heal", "develop", requireNotNull(manager.subRows["SubA"]).combo.selectedItem)
+    }
+
     private fun descendants(root: Component): List<Component> =
         if (root is Container) {
             listOf(root) + root.components.flatMap(::descendants)

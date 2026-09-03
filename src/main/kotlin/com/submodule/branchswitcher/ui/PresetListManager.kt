@@ -53,6 +53,7 @@ internal class PresetListManager(
     /** path → registered submodule URL, resolved once from `.gitmodules` and cached. */
     private var submoduleUrls: Map<String, String?> = emptyMap()
     private var submoduleUrlsResolved = false
+    private var submoduleUrlsResolving = false
     private val actions = PresetCollectionActions(project, service, gitRoot, log, this)
     private val resultPresenter = SwitchResultPresenter(project, service)
     private val singleRepositorySwitcher = SingleRepositorySwitcher(
@@ -189,21 +190,28 @@ internal class PresetListManager(
 
     /**
      * Resolves the path→URL map once from `.gitmodules` and pushes it to every editor.
-     * Runs off the EDT; a discovery failure degrades to an empty map so rows fall back to
-     * local-only listing (offline-safe) and never blocks branch discovery.
+     * Runs off the EDT; [submoduleUrlsResolving] prevents duplicate in-flight queries while
+     * [submoduleUrlsResolved] is set only on success, so a transient failure leaves the
+     * session retryable rather than permanently local-only. A failure also falls back to an
+     * empty map, so rows list local-only (offline-safe) and never block branch discovery.
      */
     private fun resolveSubmoduleUrls() {
-        if (submoduleUrlsResolved) return
+        if (submoduleUrlsResolved || submoduleUrlsResolving) return
         val root = gitRoot() ?: return
-        submoduleUrlsResolved = true
+        submoduleUrlsResolving = true
         branchLoads.discover(
             { client -> client.registeredSubmodules(root.toFile()) },
         ) { result ->
             project.invokeLaterIfAlive {
-                submoduleUrls = result.getOrElse { error ->
-                    log.logFailure("cannot discover registered submodules", error)
-                    emptyList()
-                }.associate { it.path to it.url }
+                submoduleUrlsResolving = false
+                val registrations = result.getOrNull()
+                if (registrations == null) {
+                    // Leave submoduleUrlsResolved=false so a later editor creation retries.
+                    result.exceptionOrNull()?.let { log.logFailure("cannot discover registered submodules", it) }
+                } else {
+                    submoduleUrlsResolved = true
+                    submoduleUrls = registrations.associate { it.path to it.url }
+                }
                 mutableEditors.forEach { it.setSubmoduleUrls(submoduleUrls) }
             }
         }
