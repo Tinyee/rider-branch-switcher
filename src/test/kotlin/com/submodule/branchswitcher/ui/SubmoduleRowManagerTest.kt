@@ -237,6 +237,139 @@ class SubmoduleRowManagerTest {
     }
 
     @Test
+    fun `refreshSubmoduleRow on an uninitialized submodule lists via ls-remote`() {
+        val root = Files.createTempDirectory("row-refresh-uninit")
+        val body = JPanel().apply { add(JPanel()) }
+        var fetchCalls = 0
+        var lsCalls = 0
+        val done = CountDownLatch(1)
+        val manager = SubmoduleRowManager(
+            gitRoot = root,
+            branchLoads = BranchLoadCoordinator(CoroutineScope(Dispatchers.Unconfined)) {
+                gitOperation { methodName ->
+                    when (methodName) {
+                        "fetch" -> { fetchCalls++; GitResult("fetch", 0, "", "") }
+                        "listRemoteHeads" -> { lsCalls++; listOf("develop", "release") }
+                        "listAllBranches" -> emptyList<String>()
+                        else -> null
+                    }
+                }
+            },
+            body = body,
+            log = createStringAppender {},
+            onDirty = {},
+            scheduleUi = { it(); done.countDown() },
+            cache = RemoteBranchCache(),
+        )
+        manager.setPathUrls(mapOf("SubA" to "https://example.com/repo.git"))
+        val row = manager.buildSubRow("SubA", "")
+        body.add(row.panel); body.addNotify()
+        row.loaded = true
+        manager.onFirstExpand()
+
+        manager.refreshSubmoduleRow("SubA")
+
+        assertTrue("refresh should finish", done.await(loadCompletionTimeoutSeconds, TimeUnit.SECONDS))
+        assertEquals("uninitialized refresh must not fetch", 0, fetchCalls)
+        assertTrue("uninitialized refresh must ls-remote", lsCalls >= 1)
+        @Suppress("UNCHECKED_CAST")
+        val all = requireNotNull(manager.subRows["SubA"]).combo.getClientProperty(KEY_ALL_BRANCHES) as List<String>
+        assertTrue(all.containsAll(listOf("develop", "release")))
+    }
+
+    @Test
+    fun `refreshSubmoduleRow on a checked-out submodule fetches and lists remote heads`() {
+        val root = Files.createTempDirectory("row-refresh-checked")
+        Files.createDirectories(root.resolve("SubA").resolve(".git"))
+        val body = JPanel().apply { add(JPanel()) }
+        var fetchCalls = 0
+        var lsCalls = 0
+        val done = CountDownLatch(1)
+        val manager = SubmoduleRowManager(
+            gitRoot = root,
+            branchLoads = BranchLoadCoordinator(CoroutineScope(Dispatchers.Unconfined)) {
+                gitOperation { methodName ->
+                    when (methodName) {
+                        "fetch" -> { fetchCalls++; GitResult("fetch", 0, "", "") }
+                        "listRemoteHeads" -> { lsCalls++; listOf("develop", "release") }
+                        "listAllBranches" -> listOf("main", "feature/x")
+                        else -> null
+                    }
+                }
+            },
+            body = body,
+            log = createStringAppender {},
+            onDirty = {},
+            scheduleUi = { it(); done.countDown() },
+            cache = RemoteBranchCache(),
+        )
+        manager.setPathUrls(mapOf("SubA" to "https://example.com/repo.git"))
+        val row = manager.buildSubRow("SubA", "main")
+        body.add(row.panel)
+        body.addNotify()
+        row.loaded = true
+        manager.onFirstExpand()
+
+        manager.refreshSubmoduleRow("SubA")
+
+        assertTrue("refresh should finish", done.await(loadCompletionTimeoutSeconds, TimeUnit.SECONDS))
+        awaitZeroLoading(manager)
+        assertEquals("checked-out refresh must fetch", 1, fetchCalls)
+        assertTrue("checked-out refresh must ls-remote", lsCalls >= 1)
+        @Suppress("UNCHECKED_CAST")
+        val all = requireNotNull(manager.subRows["SubA"]).combo.getClientProperty(KEY_ALL_BRANCHES) as List<String>
+        assertTrue(
+            "combo must union local and remote branches",
+            all.containsAll(listOf("main", "feature/x", "develop", "release")),
+        )
+        assertEquals("main", requireNotNull(manager.subRows["SubA"]).combo.selectedItem)
+        assertTrue("refreshed row stays loaded", requireNotNull(manager.subRows["SubA"]).loaded)
+    }
+
+    @Test
+    fun `refreshSubmoduleRow keeps the previous list when fetch fails on a checked-out row`() {
+        val root = Files.createTempDirectory("row-refresh-fetchfail")
+        Files.createDirectories(root.resolve("SubA").resolve(".git"))
+        val body = JPanel().apply { add(JPanel()) }
+        var fetchCalls = 0
+        val done = CountDownLatch(1)
+        val manager = SubmoduleRowManager(
+            gitRoot = root,
+            branchLoads = BranchLoadCoordinator(CoroutineScope(Dispatchers.Unconfined)) {
+                gitOperation { methodName ->
+                    when (methodName) {
+                        "fetch" -> { fetchCalls++; GitResult("fetch", 1, "", "offline") }
+                        "listAllBranches" -> listOf("old-a", "old-b")
+                        else -> null
+                    }
+                }
+            },
+            body = body,
+            log = createStringAppender {},
+            onDirty = {},
+            scheduleUi = { it(); done.countDown() },
+            cache = RemoteBranchCache(),
+        )
+        manager.setPathUrls(mapOf("SubA" to "https://example.com/repo.git"))
+        val row = manager.buildSubRow("SubA", "old-a")
+        body.add(row.panel)
+        body.addNotify()
+        row.loaded = true
+        row.combo.putClientProperty(KEY_ALL_BRANCHES, listOf("old-a", "old-b"))
+        manager.onFirstExpand()
+
+        manager.refreshSubmoduleRow("SubA")
+
+        assertTrue("refresh should finish", done.await(loadCompletionTimeoutSeconds, TimeUnit.SECONDS))
+        awaitZeroLoading(manager)
+        assertEquals("fetch was attempted", 1, fetchCalls)
+        @Suppress("UNCHECKED_CAST")
+        val all = requireNotNull(manager.subRows["SubA"]).combo.getClientProperty(KEY_ALL_BRANCHES) as List<String>
+        assertEquals("a failed fetch must keep the previous list", listOf("old-a", "old-b"), all)
+        assertEquals("old-a", requireNotNull(manager.subRows["SubA"]).combo.selectedItem)
+    }
+
+    @Test
     fun `refreshRows relists only loaded matching rows without fetching`() {
         val root = Files.createTempDirectory("rows-relist")
         Files.createDirectories(root.resolve("SubA"))

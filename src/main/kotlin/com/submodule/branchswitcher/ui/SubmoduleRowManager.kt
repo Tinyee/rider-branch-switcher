@@ -337,19 +337,18 @@ internal class SubmoduleRowManager(
         popup.show(rowPanel, point.x, point.y)
     }
 
-    /** Fetches and relists the branch combo for one submodule row. */
+    /**
+     * Refreshes the branch combo for one submodule row: fetches when checked out, then
+     * relists local branches and unions fresh `ls-remote` heads. An uninitialized submodule
+     * (no local `.git`) lists its remote branches without fetching.
+     */
     fun refreshSubmoduleRow(path: String) {
         val row = subRows[path] ?: return
         if (row.deleted) return
-        val dir = gitRoot.resolve(path).toFile()
-        if (!dir.exists() || !dir.resolve(".git").exists()) {
-            log.warn("[refresh] $path: submodule is not checked out")
-            return
-        }
-        refreshRowBranches(row, (row.combo.selectedItem as? String).orEmpty())
+        refreshRowBranches(row, (row.combo.selectedItem as? String).orEmpty(), submoduleSource(path))
     }
 
-    private fun refreshRowBranches(row: SubRow, current: String) {
+    private fun refreshRowBranches(row: SubRow, current: String, submodule: SubmoduleSource) {
         cancelComboBranchLoad(row.combo)
         row.loaded = true
         refreshComboBranches(
@@ -365,6 +364,8 @@ internal class SubmoduleRowManager(
                 onDirty()
             },
             scheduleUi = scheduleUi,
+            submodule = submodule,
+            cache = cache,
         )
     }
 
