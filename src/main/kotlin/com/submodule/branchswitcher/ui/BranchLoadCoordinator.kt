@@ -1,18 +1,22 @@
 package com.submodule.branchswitcher.ui
 
 import com.submodule.branchswitcher.git.GitOperationSession
-import com.submodule.branchswitcher.git.impl.GIT_PROCESS_BACKGROUND_BUDGET
+import com.submodule.branchswitcher.git.GitResult
+import com.submodule.branchswitcher.git.GitWorkflowClient
 import com.submodule.branchswitcher.git.PresetDiscoveryGitClient
+import com.submodule.branchswitcher.git.impl.GIT_PROCESS_BACKGROUND_BUDGET
 import com.submodule.branchswitcher.operation.SessionCancelGuard
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
+import java.io.File
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -49,7 +53,7 @@ internal class BranchLoadCoordinator(
     private val closed = AtomicBoolean(false)
 
     fun launch(block: suspend (PresetDiscoveryGitClient) -> Unit): BranchLoadHandle =
-        launchInternal(block)
+        launchInternal { operation -> block(operation) }
 
     /**
      * Runs one read-only discovery query in the background and delivers its result
@@ -77,11 +81,58 @@ internal class BranchLoadCoordinator(
     }
 
     /**
+     * Fetches and relists one directory. [onResult] is invoked on the coordinator's
+     * background dispatcher; a non-ok fetch yields [BranchRefreshResult.succeeded] == false
+     * rather than throwing, so callers keep the previous list. Cancellation propagates.
+     */
+    @Suppress("TooGenericExceptionCaught") // a non-ok fetch is reported as a result, never thrown
+    fun refresh(dir: File, onResult: (Result<BranchRefreshResult>) -> Unit): BranchLoadHandle =
+        launchInternal { operation ->
+            val result = try {
+                val fetched = operation.fetch(dir)
+                if (fetched.ok) {
+                    Result.success(BranchRefreshResult(operation.listAllBranches(dir), succeeded = true))
+                } else {
+                    Result.success(BranchRefreshResult(emptyList(), succeeded = false))
+                }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                Result.failure(error)
+            }
+            if (!closed.get()) onResult(result)
+        }
+
+    /**
+     * Sequentially fetches each [dirs] entry in one operation. [onResult] is invoked on the
+     * coordinator's background dispatcher with the split outcome; failures carry the failing
+     * [GitResult] so callers can log `diagnostic()`.
+     */
+    @Suppress("TooGenericExceptionCaught") // per-directory fetch failures are collected, never thrown
+    fun refreshAll(dirs: List<File>, onResult: (Result<RefreshAllOutcome>) -> Unit): BranchLoadHandle =
+        launchInternal { operation ->
+            try {
+                val succeeded = mutableListOf<File>()
+                val failures = mutableListOf<Pair<File, GitResult>>()
+                for (dir in dirs) {
+                    currentCoroutineContext().ensureActive()
+                    val fetched = operation.fetch(dir)
+                    if (fetched.ok) succeeded += dir else failures += dir to fetched
+                }
+                if (!closed.get()) onResult(Result.success(RefreshAllOutcome(succeeded, failures)))
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                if (!closed.get()) onResult(Result.failure(error))
+            }
+        }
+
+    /**
      * Runs one discovery under the shared concurrency limit, attached to a fresh
      * Git operation session that is cancelled when the Tool Window closes. The block
      * executes on the IO dispatcher; a closed coordinator skips execution entirely.
      */
-    private fun launchInternal(block: suspend (PresetDiscoveryGitClient) -> Unit): BranchLoadHandle {
+    private fun launchInternal(block: suspend (GitWorkflowClient) -> Unit): BranchLoadHandle {
         val state = SessionCancelGuard()
         val job = scope.launch {
             permits.withPermit {
@@ -114,3 +165,15 @@ internal class BranchLoadCoordinator(
         activeLoads.clear()
     }
 }
+
+/** Outcome of one explicit `fetch --prune` + relist for a single repository directory. */
+internal data class BranchRefreshResult(
+    val branches: List<String>,
+    val succeeded: Boolean,
+)
+
+/** Outcome of a sequential fetch pass over several submodule directories. */
+internal data class RefreshAllOutcome(
+    val succeeded: List<File>,
+    val failures: List<Pair<File, GitResult>>,
+)

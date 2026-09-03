@@ -1,11 +1,14 @@
 package com.submodule.branchswitcher.ui
 
 import com.submodule.branchswitcher.git.GitOperationSession
+import com.submodule.branchswitcher.git.GitResult
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.File
 import java.lang.reflect.Proxy
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -89,4 +92,95 @@ class BranchLoadCoordinatorTest {
                 }
             }
         } as GitOperationSession
+
+    private fun fetchOkSession(): GitOperationSession =
+        Proxy.newProxyInstance(
+            GitOperationSession::class.java.classLoader,
+            arrayOf(GitOperationSession::class.java),
+        ) { _, method, _ ->
+            when (method.name) {
+                "fetch" -> GitResult("fetch", 0, "", "")
+                "listAllBranches" -> listOf("dev", "release")
+                "cancel" -> Unit
+                "close" -> Unit
+                else -> null
+            }
+        } as GitOperationSession
+
+    @Test
+    fun `refresh fetches then relists and reports success`() {
+        val done = CountDownLatch(1)
+        var outcome: Result<BranchRefreshResult>? = null
+        val coordinator = BranchLoadCoordinator(CoroutineScope(Dispatchers.Unconfined), maxConcurrentLoads = 1) {
+            fetchOkSession()
+        }
+        coordinator.refresh(File("sub")) {
+            outcome = it
+            done.countDown()
+        }
+        assertTrue("refresh should complete", done.await(loadCompletionTimeoutSeconds, TimeUnit.SECONDS))
+        val result = requireNotNull(outcome).getOrThrow()
+        assertTrue(result.succeeded)
+        assertEquals(listOf("dev", "release"), result.branches)
+    }
+
+    @Test
+    fun `refresh reports a non-ok fetch as succeeded=false without throwing`() {
+        val done = CountDownLatch(1)
+        var outcome: Result<BranchRefreshResult>? = null
+        val coordinator = BranchLoadCoordinator(CoroutineScope(Dispatchers.Unconfined), maxConcurrentLoads = 1) {
+            Proxy.newProxyInstance(
+                GitOperationSession::class.java.classLoader,
+                arrayOf(GitOperationSession::class.java),
+            ) { _, method, _ ->
+                when (method.name) {
+                    "fetch" -> GitResult("fetch", 1, "", "cannot fetch")
+                    "listAllBranches" -> emptyList<String>()
+                    "cancel" -> Unit
+                    "close" -> Unit
+                    else -> null
+                }
+            } as GitOperationSession
+        }
+        coordinator.refresh(File("sub")) {
+            outcome = it
+            done.countDown()
+        }
+        assertTrue("refresh should complete", done.await(loadCompletionTimeoutSeconds, TimeUnit.SECONDS))
+        assertFalse("fetch failure must surface as succeeded=false", requireNotNull(outcome).getOrThrow().succeeded)
+    }
+
+    @Test
+    fun `refreshAll fetches every dir sequentially and splits outcomes`() {
+        val fetched = mutableListOf<String>()
+        val done = CountDownLatch(1)
+        var outcome: Result<RefreshAllOutcome>? = null
+        val coordinator = BranchLoadCoordinator(CoroutineScope(Dispatchers.Unconfined), maxConcurrentLoads = 1) {
+            Proxy.newProxyInstance(
+                GitOperationSession::class.java.classLoader,
+                arrayOf(GitOperationSession::class.java),
+            ) { _, method, args ->
+                when (method.name) {
+                    "fetch" -> {
+                        val dir = (args?.firstOrNull() as File).name
+                        fetched += dir
+                        if (dir == "c") GitResult("fetch", 1, "", "boom")
+                        else GitResult("fetch", 0, "", "")
+                    }
+                    "cancel" -> Unit
+                    "close" -> Unit
+                    else -> null
+                }
+            } as GitOperationSession
+        }
+        coordinator.refreshAll(listOf(File("a"), File("b"), File("c"))) {
+            outcome = it
+            done.countDown()
+        }
+        assertTrue("refreshAll should complete", done.await(loadCompletionTimeoutSeconds, TimeUnit.SECONDS))
+        val result = requireNotNull(outcome).getOrThrow()
+        assertEquals(listOf("a", "b"), result.succeeded.map { it.name })
+        assertEquals(listOf("c"), result.failures.map { it.first.name })
+        assertEquals(listOf("a", "b", "c"), fetched)
+    }
 }
