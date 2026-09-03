@@ -52,6 +52,7 @@ internal class PresetEditor(
     private val nameValidator: (String) -> Boolean = { true },
     private val branchLoads: BranchLoadCoordinator,
     private val onSwitchOnly: (path: String, target: String) -> Unit = { _, _ -> },
+    private val remoteCache: RemoteBranchCache? = null,
 ) : JPanel() {
 
     private var savedPreset: Preset = initialPreset
@@ -103,10 +104,13 @@ internal class PresetEditor(
     private var actionsEnabled = true
 
     private val submoduleManager = SubmoduleRowManager(
-        gitRoot, branchLoads, body, log, ::renderControlState, onSwitchOnly,
+        gitRoot, branchLoads, body, log, ::renderControlState, onSwitchOnly, cache = remoteCache,
     )
     private val submoduleRows get() = submoduleManager.subRows
     val loadingCount get() = submoduleManager.loadingCount
+
+    /** Pushes the path→URL map resolved from `.gitmodules` to the submodule rows. */
+    fun setSubmoduleUrls(urls: Map<String, String?>) = submoduleManager.setPathUrls(urls)
 
     init {
         layout = BoxLayout(this, BoxLayout.Y_AXIS)

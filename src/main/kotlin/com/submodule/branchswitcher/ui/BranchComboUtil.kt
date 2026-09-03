@@ -24,6 +24,17 @@ private const val KEY_BRANCH_LOAD = "submodule.branchswitcher.branchLoad"
 private const val KEY_BRANCH_LOAD_TOKEN = "submodule.branchswitcher.branchLoadToken"
 
 /**
+ * A submodule row's discovery inputs: the superproject root ([gitRoot], where
+ * `git ls-remote` runs), the submodule [path], and its registered URL from `.gitmodules`
+ * (null when unregistered or when `.gitmodules` omits a URL).
+ */
+internal data class SubmoduleSource(
+    val gitRoot: File,
+    val path: String,
+    val url: String?,
+)
+
+/**
  * Creates an editable branch-name combo with real-time filtering.
  * The full branch list is stored as a client property ([KEY_ALL_BRANCHES]);
  * typing filters the popup case-insensitively while preserving caret position.
@@ -112,6 +123,8 @@ internal fun loadComboBranches(
     discoverCurrent: Boolean = false,
     loadChoices: Boolean = true,
     scheduleUi: ((() -> Unit) -> Unit) = edtSchedule,
+    submodule: SubmoduleSource? = null,
+    cache: RemoteBranchCache? = null,
 ): BranchLoadHandle {
     val previousLoad = combo.getClientProperty(KEY_BRANCH_LOAD) as? BranchLoadHandle
     val loadToken = Any()
@@ -160,7 +173,7 @@ internal fun loadComboBranches(
 
     val handle = branchLoads.launch { client ->
         val loadResult = try {
-            discoverBranchChoices(client, dir, current, discoverCurrent, loadChoices, log)
+            discoverBranchChoices(client, dir, current, discoverCurrent, loadChoices, log, submodule, cache)
         } catch (e: CancellationException) {
             // A cancelled discovery leaves no UI to apply; end the lifecycle without
             // touching the combo. A superseded token still balances the load counter.
@@ -281,20 +294,30 @@ private suspend fun discoverBranchChoices(
     discoverCurrent: Boolean,
     loadChoices: Boolean,
     log: AppLogger,
+    submodule: SubmoduleSource? = null,
+    cache: RemoteBranchCache? = null,
 ): BranchComboLoadResult {
     return try {
-        val selectedBranch = if (discoverCurrent && dir.exists()) {
+        // A submodule row is "git" only when it is checked out (a `.git` entry exists); an
+        // uninitialized submodule still has remote heads via its registered URL. The main-repo
+        // row keeps the original `dir.exists()` gate and never reaches the remote path.
+        val git = if (submodule == null) dir.exists() else File(dir, ".git").exists()
+        val selectedBranch = if (discoverCurrent && git) {
             client.currentBranch(dir).orEmpty()
         } else {
             current
         }
         currentCoroutineContext().ensureActive()
-        val branches = if (loadChoices && dir.exists()) {
+        val local = if (loadChoices && git) {
             client.listAllBranches(dir)
         } else {
             emptyList()
         }
         currentCoroutineContext().ensureActive()
+        val remote = discoverRemoteHeads(client, submodule, cache, log)
+        // The main-repo row keeps its raw (already sorted) local list unchanged; only a
+        // submodule row unions local refs with ls-remote heads and re-sorts the union.
+        val branches = if (submodule == null) local else dedupSortedUnion(local, remote)
         BranchComboLoadResult(selectedBranch, branches)
     } catch (e: CancellationException) {
         throw e
@@ -315,6 +338,42 @@ private suspend fun discoverBranchChoices(
         BranchComboLoadResult(current, emptyList(), succeeded = false)
     }
 }
+
+/**
+ * Resolves a submodule row's remote heads via its registered URL. A cached hit returns
+ * without running `git`; on a miss the result is cached. Any non-cancellation failure
+ * degrades to an empty list (local branches survive; the row never blanks) and logs a WARN,
+ * while cancellation propagates so the caller ends the lifecycle without applying UI.
+ */
+@Suppress("TooGenericExceptionCaught") // remote-heads failures degrade to local-only, never propagate
+private suspend fun discoverRemoteHeads(
+    client: PresetDiscoveryGitClient,
+    submodule: SubmoduleSource?,
+    cache: RemoteBranchCache?,
+    log: AppLogger,
+): List<String> {
+    if (submodule == null) return emptyList()
+    val url = submodule.url ?: return emptyList()
+    cache?.get(url)?.let { return it }
+    return try {
+        client.listRemoteHeads(submodule.gitRoot, url).also { cache?.put(url, it) }
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: OperationCancelledException) {
+        throw e
+    } catch (e: GitQueryException) {
+        if (e.result.failureKind == GitFailureKind.CANCELLED) throw e
+        log.warn("ls-remote failed for ${submodule.path}", e)
+        emptyList()
+    } catch (e: Exception) {
+        log.warn("ls-remote failed for ${submodule.path}", e)
+        emptyList()
+    }
+}
+
+/** Deduplicates and sorts the union of local and remote branch names. */
+private fun dedupSortedUnion(local: List<String>, remote: List<String>): List<String> =
+    (local + remote).distinct().sorted()
 
 /** Cancels the active branch discovery associated with [combo], if any. */
 internal fun cancelComboBranchLoad(combo: JComboBox<String>): Boolean {

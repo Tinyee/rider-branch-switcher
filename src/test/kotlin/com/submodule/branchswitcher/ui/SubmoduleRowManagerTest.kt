@@ -73,7 +73,7 @@ class SubmoduleRowManagerTest {
     @Test
     fun `failed current branch discovery always finishes row loading`() {
         val root = Files.createTempDirectory("submodule-row")
-        Files.createDirectories(root.resolve("SubA"))
+        Files.createDirectories(root.resolve("SubA").resolve(".git"))
         val body = JPanel().apply { add(JPanel()) }
         val finished = CountDownLatch(1)
         val manager = SubmoduleRowManager(
@@ -104,7 +104,7 @@ class SubmoduleRowManagerTest {
         // resets branchesLoaded on collapse when the manager reports unloaded rows, so
         // the next expand retries the failed row even though the main repo loaded.
         val root = Files.createTempDirectory("submodule-row-retry")
-        Files.createDirectories(root.resolve("SubA"))
+        Files.createDirectories(root.resolve("SubA").resolve(".git"))
         val body = JPanel().apply { add(JPanel()) }
         var listCalls = 0
         var uiCount = 0
@@ -150,7 +150,7 @@ class SubmoduleRowManagerTest {
     @Test
     fun `removing a loading submodule row cancels its git operation`() {
         val root = Files.createTempDirectory("submodule-row-cancel")
-        Files.createDirectories(root.resolve("SubA"))
+        Files.createDirectories(root.resolve("SubA").resolve(".git"))
         val body = JPanel()
         val started = CountDownLatch(1)
         val finished = CountDownLatch(1)
@@ -276,6 +276,43 @@ class SubmoduleRowManagerTest {
         @Suppress("UNCHECKED_CAST")
         val all = requireNotNull(manager.subRows["SubA"]).combo.getClientProperty(KEY_ALL_BRANCHES) as List<String>
         assertTrue("relisted list must include the remote branch", all.contains("new-1"))
+    }
+
+    @Test
+    fun `uninitialized submodule row lists remote heads via ls-remote`() {
+        val root = Files.createTempDirectory("row-lsremote")
+        val body = JPanel().apply { add(JPanel()) }
+        val cache = RemoteBranchCache()
+        val done = CountDownLatch(1)
+        val manager = SubmoduleRowManager(
+            gitRoot = root,
+            branchLoads = BranchLoadCoordinator(CoroutineScope(Dispatchers.Unconfined)) {
+                gitOperation { methodName ->
+                    when (methodName) {
+                        "listRemoteHeads" -> listOf("develop", "jade/develop")
+                        else -> null
+                    }
+                }
+            },
+            body = body,
+            log = createStringAppender {},
+            onDirty = {},
+            scheduleUi = { it(); done.countDown() },
+            cache = cache,
+        )
+        manager.setPathUrls(mapOf("SubA" to "https://example.com/repo.git"))
+        Files.createDirectories(root.resolve("SubA")) // empty dir, no .git
+        val row = manager.buildSubRow("SubA", "")
+        body.add(row.panel)
+        body.addNotify()
+        manager.onFirstExpand()
+
+        manager.loadAllBranches(Preset("Work", "main", mapOf("SubA" to "develop")))
+
+        assertTrue("discovery should finish", done.await(loadCompletionTimeoutSeconds, TimeUnit.SECONDS))
+        @Suppress("UNCHECKED_CAST")
+        val all = requireNotNull(manager.subRows["SubA"]).combo.getClientProperty(KEY_ALL_BRANCHES) as List<String>
+        assertTrue("remote heads must appear for an uninitialized row", all.containsAll(listOf("develop", "jade/develop")))
     }
 
     private fun descendants(root: Component): List<Component> =

@@ -32,6 +32,7 @@ internal class SubmoduleRowManager(
     private val onDirty: () -> Unit,
     private val onSwitchOnly: (path: String, target: String) -> Unit = { _, _ -> },
     private val scheduleUi: ((() -> Unit) -> Unit) = edtSchedule,
+    private val cache: RemoteBranchCache? = null,
 ) {
     /** One submodule row: path, branch combo, panel, and tracking state. */
     class SubRow(
@@ -45,6 +46,13 @@ internal class SubmoduleRowManager(
 
     val subRows = LinkedHashMap<String, SubRow>()
     private var loadedOnce = false
+    private val pathUrls = mutableMapOf<String, String?>()
+
+    /** Records each row path's registered submodule URL for `ls-remote` discovery. */
+    fun setPathUrls(urls: Map<String, String?>) {
+        pathUrls.clear()
+        pathUrls.putAll(urls)
+    }
 
     /** Called by [PresetEditor] when first expand occurs. */
     fun onFirstExpand() { loadedOnce = true }
@@ -150,7 +158,7 @@ internal class SubmoduleRowManager(
             if (loadedOnce && !existing.loaded) {
                 existing.loaded = true
                 loadComboBranches(existing.combo, gitRoot.resolve(path).toFile(),
-                    existing.combo.selectedItem as? String ?: "", row = existing)
+                    existing.combo.selectedItem as? String ?: "", row = existing, submodule = submoduleSource(path))
             }
             onDirty()
             body.revalidate()
@@ -169,6 +177,7 @@ internal class SubmoduleRowManager(
             discoverCurrent = dir.exists(),
             loadChoices = loadedOnce,
             row = row,
+            submodule = submoduleSource(path),
         )
         body.revalidate()
         body.repaint()
@@ -215,7 +224,7 @@ internal class SubmoduleRowManager(
             row.loaded = true
             val dir = gitRoot.resolve(row.path).toFile()
             val branch = preset.submodules[row.path] ?: ""
-            loadComboBranches(row.combo, dir, branch, row = row)
+            loadComboBranches(row.combo, dir, branch, row = row, submodule = submoduleSource(row.path))
         }
     }
 
@@ -247,6 +256,7 @@ internal class SubmoduleRowManager(
         discoverCurrent: Boolean = false,
         loadChoices: Boolean = true,
         row: SubRow? = null,
+        submodule: SubmoduleSource? = null,
     ) {
         loadComboBranches(combo, dir, current, branchLoads, log,
             onLoadStart = { loadingCount++ },
@@ -258,8 +268,14 @@ internal class SubmoduleRowManager(
             discoverCurrent = discoverCurrent,
             loadChoices = loadChoices,
             scheduleUi = scheduleUi,
+            submodule = submodule,
+            cache = cache,
         )
     }
+
+    /** Builds the discovery inputs for a submodule row, carrying its registered URL (if any). */
+    private fun submoduleSource(path: String): SubmoduleSource =
+        SubmoduleSource(gitRoot.toFile(), path, pathUrls[path])
 
     /** True when any visible row is missing its loaded branch list (e.g. a failed load). */
     fun hasUnloadedRows(): Boolean = subRows.values.any { !it.deleted && !it.loaded }

@@ -46,6 +46,13 @@ internal class PresetListManager(
     private val branchLoads = BranchLoadCoordinator(service.scope) {
         service.gitClient.openOperation()
     }
+
+    /** Session-scoped cache of `git ls-remote --heads` results shared by every editor. */
+    internal val remoteBranchesCache = RemoteBranchCache()
+
+    /** path → registered submodule URL, resolved once from `.gitmodules` and cached. */
+    private var submoduleUrls: Map<String, String?> = emptyMap()
+    private var submoduleUrlsResolved = false
     private val actions = PresetCollectionActions(project, service, gitRoot, log, this)
     private val resultPresenter = SwitchResultPresenter(project, service)
     private val singleRepositorySwitcher = SingleRepositorySwitcher(
@@ -166,8 +173,11 @@ internal class PresetListManager(
             },
             branchLoads = branchLoads,
             onSwitchOnly = { path, target -> switchSubmodule(root, path, target) },
+            remoteCache = remoteBranchesCache,
         )
+        editor.setSubmoduleUrls(submoduleUrls)
         mutableEditors.add(editor)
+        resolveSubmoduleUrls()
         val wrapper = CompactHeightPanel(BorderLayout()).apply {
             isOpaque = false
             alignmentX = JPanel.LEFT_ALIGNMENT
@@ -175,6 +185,28 @@ internal class PresetListManager(
             add(Box.createVerticalStrut(4), BorderLayout.SOUTH)
         }
         presetsInner.add(wrapper)
+    }
+
+    /**
+     * Resolves the path→URL map once from `.gitmodules` and pushes it to every editor.
+     * Runs off the EDT; a discovery failure degrades to an empty map so rows fall back to
+     * local-only listing (offline-safe) and never blocks branch discovery.
+     */
+    private fun resolveSubmoduleUrls() {
+        if (submoduleUrlsResolved) return
+        val root = gitRoot() ?: return
+        submoduleUrlsResolved = true
+        branchLoads.discover(
+            { client -> client.registeredSubmodules(root.toFile()) },
+        ) { result ->
+            project.invokeLaterIfAlive {
+                submoduleUrls = result.getOrElse { error ->
+                    log.logFailure("cannot discover registered submodules", error)
+                    emptyList()
+                }.associate { it.path to it.url }
+                mutableEditors.forEach { it.setSubmoduleUrls(submoduleUrls) }
+            }
+        }
     }
 
     override fun removeEditor(editor: PresetEditor) {
