@@ -183,9 +183,9 @@ internal fun loadComboBranches(
  * Refreshes one branch combo by fetching the repository's remote branches first, then
  * relisting. Unlike [loadComboBranches], a failed fetch never blanks the combo: the
  * previous list and selection are restored. Shares the [KEY_BRANCH_LOAD] slot so a
- * refresh and a normal discovery supersede each other. The job completion callback only
- * balances the load lifecycle — it never touches the UI — so a successful refresh cannot
- * be overwritten by a stale restore.
+ * refresh and a normal discovery supersede each other. All UI work and the load-lifecycle
+ * callback are routed through [scheduleUi] onto the EDT, so a successful refresh cannot
+ * be overwritten by a stale restore from the completion handler.
  */
 internal fun refreshComboBranches(
     combo: JComboBox<String>,
@@ -209,18 +209,18 @@ internal fun refreshComboBranches(
     combo.isEnabled = false
     val loadEnded = AtomicBoolean(false)
 
-    fun endLoad(succeeded: Boolean) {
-        if (loadEnded.compareAndSet(false, true)) {
-            val superseded = combo.getClientProperty(KEY_BRANCH_LOAD_TOKEN) !== loadToken
-            onLoadEnd(succeeded, superseded)
-        }
-    }
-
     fun schedule(ui: () -> Unit) {
         try {
             scheduleUi(ui)
         } catch (e: Exception) {
             log.logFailure("refresh branch UI update failed for ${dir.name}", e)
+        }
+    }
+
+    fun endLoad(succeeded: Boolean) {
+        if (loadEnded.compareAndSet(false, true)) {
+            val superseded = combo.getClientProperty(KEY_BRANCH_LOAD_TOKEN) !== loadToken
+            schedule { onLoadEnd(succeeded, superseded) }
         }
     }
 
@@ -245,7 +245,9 @@ internal fun refreshComboBranches(
             schedule { applyList(outcome.branches, current) }
             endLoad(succeeded = true)
         } else {
-            if (failure != null) {
+            if (outcome != null && !outcome.succeeded) {
+                log.warn("refresh branches failed for ${dir.name}: ${outcome.failure?.diagnostic()}")
+            } else if (failure != null) {
                 log.warn("refresh branches failed for ${dir.name}", failure)
             } else {
                 log.warn("refresh branches failed for ${dir.name}")

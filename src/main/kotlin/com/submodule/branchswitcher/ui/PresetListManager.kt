@@ -61,6 +61,9 @@ internal class PresetListManager(
     fun exportPresets() = actions.exportPresets()
     fun importPresets() = actions.importPresets()
 
+    // Intentionally not reset on dispose: the coordinator's close() cancels in-flight
+    // refreshes without delivering onResult, and this manager is discarded with the Tool
+    // Window content anyway; a reopened window constructs a fresh AtomicBoolean.
     private val submoduleRefreshInFlightRef = AtomicBoolean(false)
 
     /** True while a global submodule refresh runs; the panel hides the menu item meanwhile. */

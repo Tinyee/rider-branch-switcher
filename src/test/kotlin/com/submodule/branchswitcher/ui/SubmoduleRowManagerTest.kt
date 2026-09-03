@@ -198,7 +198,7 @@ class SubmoduleRowManagerTest {
     @Test
     fun `refreshSubmoduleRow fetches and relists that row, keeping selection`() {
         val root = Files.createTempDirectory("row-refresh")
-        Files.createDirectories(root.resolve("SubA"))
+        Files.createDirectories(root.resolve("SubA").resolve(".git"))
         val body = JPanel().apply { add(JPanel()) }
         var fetchCalls = 0
         val done = CountDownLatch(1)

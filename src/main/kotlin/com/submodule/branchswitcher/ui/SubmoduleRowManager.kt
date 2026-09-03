@@ -302,7 +302,7 @@ internal class SubmoduleRowManager(
         val row = subRows[path] ?: return
         if (row.deleted) return
         val dir = gitRoot.resolve(path).toFile()
-        if (!dir.exists()) {
+        if (!dir.exists() || !dir.resolve(".git").exists()) {
             log.warn("[refresh] $path: submodule is not checked out")
             return
         }

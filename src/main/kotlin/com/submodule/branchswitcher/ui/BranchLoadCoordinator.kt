@@ -93,7 +93,7 @@ internal class BranchLoadCoordinator(
                 if (fetched.ok) {
                     Result.success(BranchRefreshResult(operation.listAllBranches(dir), succeeded = true))
                 } else {
-                    Result.success(BranchRefreshResult(emptyList(), succeeded = false))
+                    Result.success(BranchRefreshResult(emptyList(), succeeded = false, failure = fetched))
                 }
             } catch (error: CancellationException) {
                 throw error
@@ -170,6 +170,7 @@ internal class BranchLoadCoordinator(
 internal data class BranchRefreshResult(
     val branches: List<String>,
     val succeeded: Boolean,
+    val failure: GitResult? = null,
 )
 
 /** Outcome of a sequential fetch pass over several submodule directories. */
