@@ -261,6 +261,10 @@ internal class SubmoduleRowManager(
 
     private fun showContextMenu(rowPanel: JPanel, e: MouseEvent, path: String) {
         val popup = javax.swing.JPopupMenu()
+        popup.add(javax.swing.JMenuItem(Bundle.msg("action.refresh.submodule")).apply {
+            addActionListener { refreshSubmoduleRow(path) }
+        })
+        popup.addSeparator()
         popup.add(javax.swing.JMenuItem(Bundle.msg("action.remove.submodule")).apply {
             addActionListener { removeRow(path) }
         })
@@ -274,6 +278,37 @@ internal class SubmoduleRowManager(
         }
         val point = SwingUtilities.convertPoint(e.component, e.point, rowPanel)
         popup.show(rowPanel, point.x, point.y)
+    }
+
+    /** Fetches and relists the branch combo for one submodule row. */
+    fun refreshSubmoduleRow(path: String) {
+        val row = subRows[path] ?: return
+        if (row.deleted) return
+        val dir = gitRoot.resolve(path).toFile()
+        if (!dir.exists()) {
+            log.warn("[refresh] $path: submodule is not checked out")
+            return
+        }
+        refreshRowBranches(row, (row.combo.selectedItem as? String).orEmpty())
+    }
+
+    private fun refreshRowBranches(row: SubRow, current: String) {
+        cancelComboBranchLoad(row.combo)
+        row.loaded = true
+        refreshComboBranches(
+            combo = row.combo,
+            dir = gitRoot.resolve(row.path).toFile(),
+            current = current,
+            branchLoads = branchLoads,
+            log = log,
+            onLoadStart = { loadingCount++ },
+            onLoadEnd = { succeeded, superseded ->
+                loadingCount--
+                if (!succeeded && !superseded) row.loaded = false
+                onDirty()
+            },
+            scheduleUi = scheduleUi,
+        )
     }
 
     internal fun requestSwitchOnly(path: String) {

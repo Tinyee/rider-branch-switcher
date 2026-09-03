@@ -1,6 +1,7 @@
 package com.submodule.branchswitcher.ui
 
 import com.submodule.branchswitcher.git.GitOperationSession
+import com.submodule.branchswitcher.git.GitResult
 import com.submodule.branchswitcher.git.PresetDiscoveryGitClient
 import com.submodule.branchswitcher.log.createStringAppender
 import com.submodule.branchswitcher.model.Preset
@@ -186,6 +187,53 @@ class SubmoduleRowManagerTest {
         assertTrue("removed row Git operation should be cancelled", cancelled.get())
         assertTrue("removed row should leave the manager", "SubA" !in manager.subRows)
         assertEquals(0, manager.loadingCount)
+    }
+
+    private fun awaitZeroLoading(manager: SubmoduleRowManager) {
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(loadCompletionTimeoutSeconds)
+        while (manager.loadingCount > 0 && System.nanoTime() < deadline) Thread.sleep(1)
+        assertEquals(0, manager.loadingCount)
+    }
+
+    @Test
+    fun `refreshSubmoduleRow fetches and relists that row, keeping selection`() {
+        val root = Files.createTempDirectory("row-refresh")
+        Files.createDirectories(root.resolve("SubA"))
+        val body = JPanel().apply { add(JPanel()) }
+        var fetchCalls = 0
+        val done = CountDownLatch(1)
+        val manager = SubmoduleRowManager(
+            gitRoot = root,
+            branchLoads = BranchLoadCoordinator(CoroutineScope(Dispatchers.Unconfined)) {
+                gitOperation { methodName ->
+                    when (methodName) {
+                        "fetch" -> { fetchCalls++; GitResult("fetch", 0, "", "") }
+                        "listAllBranches" -> listOf("new-1")
+                        else -> null
+                    }
+                }
+            },
+            body = body,
+            log = createStringAppender {},
+            onDirty = {},
+            scheduleUi = { it(); done.countDown() },
+        )
+        val row = manager.buildSubRow("SubA", "dev")
+        body.add(row.panel)
+        body.addNotify()
+        row.loaded = true
+        manager.onFirstExpand()
+
+        manager.refreshSubmoduleRow("SubA")
+
+        assertTrue("row refresh should finish", done.await(loadCompletionTimeoutSeconds, TimeUnit.SECONDS))
+        awaitZeroLoading(manager)
+        assertEquals(1, fetchCalls)
+        @Suppress("UNCHECKED_CAST")
+        val all = requireNotNull(manager.subRows["SubA"]).combo.getClientProperty(KEY_ALL_BRANCHES) as List<String>
+        assertTrue("refreshed list must include the remote branch", all.contains("new-1"))
+        assertEquals("dev", requireNotNull(manager.subRows["SubA"]).combo.selectedItem)
+        assertTrue("refreshed row stays loaded", requireNotNull(manager.subRows["SubA"]).loaded)
     }
 
     private fun descendants(root: Component): List<Component> =
