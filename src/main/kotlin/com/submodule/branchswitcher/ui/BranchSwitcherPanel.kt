@@ -174,9 +174,19 @@ class BranchSwitcherPanel(
     }
 
     private fun showMoreActions(anchor: JButton) {
+        val refreshGroup = if (presetManager.submoduleRefreshInFlight) {
+            emptyList()
+        } else {
+            listOf(
+                PopupAction(Bundle.msg("action.refresh.all.submodules"), AllIcons.Actions.Refresh) {
+                    presetManager.refreshAllSubmoduleBranches()
+                },
+            )
+        }
         showActionPopup(
             anchor,
             listOf(
+                refreshGroup,
                 listOf(
                     PopupAction(Bundle.msg("action.reload"), AllIcons.Actions.Refresh) {
                         presetManager.reload()

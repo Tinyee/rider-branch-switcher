@@ -7,6 +7,7 @@ import com.intellij.util.ui.JBUI
 import com.submodule.branchswitcher.Bundle
 import com.submodule.branchswitcher.Notifier
 import com.submodule.branchswitcher.log.AppLogger
+import com.submodule.branchswitcher.log.logFailure
 import com.submodule.branchswitcher.log.withContext
 import com.submodule.branchswitcher.model.Preset
 import com.submodule.branchswitcher.platform.GitBackgroundRunner
@@ -16,6 +17,7 @@ import com.submodule.branchswitcher.workflow.SingleRepositorySwitcher
 import java.awt.BorderLayout
 import java.awt.Font
 import java.nio.file.Path
+import java.util.concurrent.atomic.AtomicBoolean
 import javax.swing.Box
 import javax.swing.BoxLayout
 import javax.swing.JLabel
@@ -58,6 +60,71 @@ internal class PresetListManager(
     fun openConfig() = actions.openConfig()
     fun exportPresets() = actions.exportPresets()
     fun importPresets() = actions.importPresets()
+
+    private val submoduleRefreshInFlightRef = AtomicBoolean(false)
+
+    /** True while a global submodule refresh runs; the panel hides the menu item meanwhile. */
+    val submoduleRefreshInFlight: Boolean get() = submoduleRefreshInFlightRef.get()
+
+    /**
+     * Fetches remote branches for every checked-out registered submodule, then relists the
+     * loaded rows in open editors. Single-flight per Tool Window; individual failures are
+     * logged, and a Notifier fires only when every submodule failed.
+     */
+    fun refreshAllSubmoduleBranches() {
+        if (!submoduleRefreshInFlightRef.compareAndSet(false, true)) {
+            log.debug("refresh all submodules skipped: already in flight")
+            return
+        }
+        val root = gitRoot()
+        if (root == null) {
+            submoduleRefreshInFlightRef.set(false)
+            return
+        }
+        branchLoads.discover(
+            { client -> client.listSubmodulePaths(root.toFile()) },
+        ) { pathsResult ->
+            project.invokeLaterIfAlive {
+                val paths = pathsResult.getOrElse { error ->
+                    log.logFailure("cannot discover submodule paths for refresh", error)
+                    submoduleRefreshInFlightRef.set(false)
+                    return@invokeLaterIfAlive
+                }
+                val dirs = paths.map { root.resolve(it).toFile() }
+                    .filter { it.isDirectory && it.resolve(".git").exists() }
+                if (dirs.isEmpty()) {
+                    log.debug("no checked-out submodules to refresh")
+                    submoduleRefreshInFlightRef.set(false)
+                    return@invokeLaterIfAlive
+                }
+                log.debug("refreshing remote branches for ${dirs.size} submodule(s)...")
+                branchLoads.refreshAll(dirs) { outcomeResult ->
+                    project.invokeLaterIfAlive {
+                        val outcome = outcomeResult.getOrElse { error ->
+                            log.logFailure("refresh all submodules failed", error)
+                            submoduleRefreshInFlightRef.set(false)
+                            return@invokeLaterIfAlive
+                        }
+                        val fetchedKeys = outcome.succeeded.map { dir ->
+                            root.relativize(dir.toPath()).map(Path::toString).joinToString("/")
+                        }.toSet()
+                        mutableEditors.forEach { it.refreshSubmoduleRows(fetchedKeys) }
+                        outcome.failures.forEach { (dir, gitResult) ->
+                            log.warn("refresh warn: ${dir.name}: ${gitResult.diagnostic()}")
+                        }
+                        if (outcome.succeeded.isEmpty() && outcome.failures.isNotEmpty()) {
+                            Notifier.warn(
+                                project,
+                                Bundle.msg("notify.refresh.failed.title"),
+                                Bundle.msg("notify.refresh.failed.message"),
+                            )
+                        }
+                        submoduleRefreshInFlightRef.set(false)
+                    }
+                }
+            }
+        }
+    }
 
     override fun clearEditors() {
         mutableEditors.forEach(PresetEditor::dispose)
