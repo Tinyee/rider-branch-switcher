@@ -428,6 +428,12 @@ internal class PresetEditor(
 
     fun currentPreset(): Preset = savedPreset
 
+    /** Relists submodule row combos for [paths] after their refs were refreshed elsewhere. */
+    fun refreshSubmoduleRows(paths: Set<String>) {
+        submoduleManager.refreshRows(paths)
+        renderControlState()
+    }
+
     private fun updatePresetName(newName: String) {
         savedPreset = savedPreset.copy(name = newName)
         nameLabel.text = newName
