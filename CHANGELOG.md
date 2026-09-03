@@ -15,6 +15,9 @@
   HEAD, same-branch SHA drift, dirty reset protection, and real Git rollback.
 - Add a Chinese architecture and Kotlin code-reading guide for new
   contributors.
+- Refresh a submodule's remote branches on demand (row context menu or the
+  tool-window overflow menu), so branches that exist on the remote but are not
+  yet fetched locally appear in the preset editor's branch lists.
 
 ### Changed
 
