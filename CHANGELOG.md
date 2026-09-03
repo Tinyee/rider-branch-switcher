@@ -18,6 +18,10 @@
 - Refresh a submodule's remote branches on demand (row context menu or the
   tool-window overflow menu), so branches that exist on the remote but are not
   yet fetched locally appear in the preset editor's branch lists.
+- Submodule branch dropdowns also list branches that exist on the remote even
+  when the submodule is not yet checked out — a session-cached `git ls-remote`
+  unioned with the local branches — so presets can be authored right after a
+  fresh clone, before the submodules are initialized.
 
 ### Changed
 

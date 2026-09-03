@@ -179,3 +179,17 @@ part worth doing.
 - Replace `AppLoggerTest`'s ~20-method anonymous git fake with a shared fake.
 - Return a defensive copy from `PresetRepository.presets` (no mutable-alias
   evidence in the production call chains; see `review-history.md`).
+
+### P3-16: Native Searchable Branch Chooser For Branch Fields
+
+The editable branch combos' type-to-filter popup does not open on the Rider LAF
+in the field: typing never reaches the editor key listener, and programmatic
+`setPopupVisible` is unreliable (verified on both a pre-feature `origin/main`
+build and the current one, so this is an environment/LAF limitation, not a
+regression). Targets are still picked from the drop-down arrow (full list) or
+by typing the exact branch name.
+
+Revisit when the preset-switch chooser — which already ships a proven
+filterable chooser (search + list) — can be reused: replace the per-field
+editable-combo type-ahead with a native IntelliJ searchable chooser, opened
+from the main-repository and submodule branch fields.

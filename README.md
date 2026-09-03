@@ -33,6 +33,7 @@ Presets are project-local JSON. A personal collection defaults to `.idea/branch-
 - **Rollback support**: failed switches keep a checkpoint for one-click rollback.
 - **Submodule handling**: sync after main checkout, initialize missing or moved paths, and skip obsolete preset paths without deleting their local worktrees.
 - **On-demand remote branch refresh**: refresh a single submodule's remote branches from its row menu, or fetch remote branches for all submodules from the tool-window overflow menu, so preset targets can use branches that exist on the remote but haven't been fetched locally yet.
+- **Live remote branch lists**: submodule branch dropdowns also show branches that exist on the remote even when the submodule is not yet checked out — enumerated with a session-cached `git ls-remote` and unioned with the local branches — so presets can be authored right after a fresh clone, before the submodules are initialized.
 - **Feature branch derivation**: create the same new branch across the main repo and all submodules from a preset baseline.
 - **Preset tools**: create from current state, rename, reorder, import/export via clipboard, and return to the previous preset.
 - **IDE integration**: Tool Window, `Ctrl+Alt+B` quick switch action, notifications, Settings page, and English/Chinese i18n.
