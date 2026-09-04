@@ -278,17 +278,17 @@ internal class SubmoduleRowManager(
         row: SubRow? = null,
         submodule: SubmoduleSource? = null,
     ) {
-        loadComboBranches(combo, dir, current, branchLoads, log,
+        loadComboBranches(
+            combo,
+            ComboBranchTarget(dir, current, discoverCurrent, loadChoices, submodule),
+            branchLoads, log,
             onLoadStart = { loadingCount++ },
             onLoadEnd = { succeeded, superseded ->
                 loadingCount--
                 if (!succeeded && !superseded) row?.loaded = false
                 onDirty()
             },
-            discoverCurrent = discoverCurrent,
-            loadChoices = loadChoices,
             scheduleUi = scheduleUi,
-            submodule = submodule,
             cache = cache,
         )
     }

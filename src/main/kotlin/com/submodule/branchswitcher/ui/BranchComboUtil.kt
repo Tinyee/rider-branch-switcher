@@ -36,6 +36,21 @@ internal data class SubmoduleSource(
 )
 
 /**
+ * Immutable discovery inputs for one branch combo. [dir] is the repository whose local
+ * branches are listed (a submodule row's own directory, or the main repository's root),
+ * [current] seeds the selection, and [submodule] (null for the main-repo row) adds the
+ * submodule's remote heads via its registered URL. [discoverCurrent] and [loadChoices]
+ * tune the ordinary discovery pass only.
+ */
+internal data class ComboBranchTarget(
+    val dir: File,
+    val current: String,
+    val discoverCurrent: Boolean = false,
+    val loadChoices: Boolean = true,
+    val submodule: SubmoduleSource? = null,
+)
+
+/**
  * Creates an editable branch-name combo with real-time filtering.
  * The full branch list is stored as a client property ([KEY_ALL_BRANCHES]);
  * typing filters the popup case-insensitively while preserving caret position.
@@ -110,21 +125,18 @@ fun filterBranchPopup(combo: JComboBox<String>, editor: JTextField) {
 /**
  * Shared async branch loader used by both [PresetEditor] and [SubmoduleRowManager].
  * Sets the combo to its loading state, runs discovery through [branchLoads], then
- * restores the full list and current selection on the UI thread.
+ * restores the full list and current selection on the UI thread. The per-row discovery
+ * inputs (directory, seed branch, submodule) travel in [target].
  */
-@Suppress("TooGenericExceptionCaught", "LongParameterList") // async-boundary failures; ls-remote submodule/cache inputs widen an already-long loader signature
+@Suppress("TooGenericExceptionCaught") // async-boundary failures are recorded, never thrown
 internal fun loadComboBranches(
     combo: JComboBox<String>,
-    dir: File,
-    current: String,
+    target: ComboBranchTarget,
     branchLoads: BranchLoadCoordinator,
     log: AppLogger,
     onLoadStart: () -> Unit,
     onLoadEnd: (succeeded: Boolean, superseded: Boolean) -> Unit,
-    discoverCurrent: Boolean = false,
-    loadChoices: Boolean = true,
     scheduleUi: ((() -> Unit) -> Unit) = edtSchedule,
-    submodule: SubmoduleSource? = null,
     cache: RemoteBranchCache? = null,
 ): BranchLoadHandle {
     val previousLoad = combo.getClientProperty(KEY_BRANCH_LOAD) as? BranchLoadHandle
@@ -154,7 +166,7 @@ internal fun loadComboBranches(
             try {
                 if (combo.getClientProperty(KEY_BRANCH_LOAD_TOKEN) !== loadToken) return@updateUi
                 if (!combo.isDisplayable) return@updateUi
-                val result = loadResult ?: BranchComboLoadResult(current, emptyList())
+                val result = loadResult ?: BranchComboLoadResult(target.current, emptyList())
                 val list = mergeBranchChoices(result.selectedBranch, result.branches)
                 combo.model = DefaultComboBoxModel(list.toTypedArray())
                 combo.selectedItem = result.selectedBranch
@@ -168,13 +180,13 @@ internal fun loadComboBranches(
             scheduleUi(updateUi)
         } catch (e: Exception) {
             endLoad(false)
-            log.logFailure("loadBranches UI update failed for ${dir.name}", e)
+            log.logFailure("loadBranches UI update failed for ${target.dir.name}", e)
         }
     }
 
     val handle = branchLoads.launch { client ->
         val loadResult = try {
-            discoverBranchChoices(client, dir, current, discoverCurrent, loadChoices, log, submodule, cache)
+            discoverBranchChoices(client, target, log, cache)
         } catch (e: CancellationException) {
             // A cancelled discovery leaves no UI to apply; end the lifecycle without
             // touching the combo. A superseded token still balances the load counter.
@@ -185,7 +197,7 @@ internal fun loadComboBranches(
     }
     handle.invokeOnCompletion { failure ->
         if (failure != null && failure !is CancellationException) {
-            log.logFailure("loadBranches failed for ${dir.name}", failure)
+            log.logFailure("loadBranches failed for ${target.dir.name}", failure)
         }
         finish(null)
     }
@@ -263,7 +275,9 @@ internal fun refreshComboBranches(
     // uninitialized submodule is remote-only).
     val handle = branchLoads.launchWorkflow { client ->
         val branches = try {
-            refreshSubmoduleBranches(client, dir, submodule, cache, log)
+            // A fetch failure on the row must keep the previous list: relisting would risk
+            // blanking the row, and the user sees the failure directly on that row.
+            refreshSubmoduleUnion(client, dir, submodule, cache, log, continueOnFetchFailure = false)
         } catch (e: CancellationException) {
             throw e
         } catch (e: OperationCancelledException) {
@@ -302,69 +316,47 @@ internal fun refreshComboBranches(
 }
 
 /**
- * Refreshes one submodule row's branches without ever blanking on failure. A checked-out
- * submodule (`.git` present) is fetched first; a failed fetch returns null so the caller
- * restores the previous list. When [SubmoduleSource.url] is registered, the remote heads are
- * re-listed fresh via `ls-remote` (always invalidating the cached value first). Returns the
- * deduplicated union of relisted local branches and remote heads, or null when neither
- * listing succeeded; cancellation propagates as [CancellationException].
- */
-@Suppress("TooGenericExceptionCaught", "ThrowsCount") // ls-remote / listAllBranches failures degrade to empty, never blank
-private suspend fun refreshSubmoduleBranches(
-    client: GitWorkflowClient,
-    dir: File,
-    submodule: SubmoduleSource,
-    cache: RemoteBranchCache?,
-    log: AppLogger,
-): List<String>? {
-    val git = File(dir, ".git").exists()
-
-    if (git) {
-        val fetched = try {
-            client.fetch(dir)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: OperationCancelledException) {
-            throw e
-        } catch (e: Exception) {
-            log.warn("refresh branches failed for ${dir.name}", e)
-            return null
-        }
-        if (!fetched.ok) {
-            log.warn("refresh branches failed for ${dir.name}: ${fetched.diagnostic()}")
-            return null
-        }
-    }
-
-    return listSubmoduleUnion(client, dir, submodule, cache, log)
-}
-
-/**
- * Lists the fresh union of one submodule's local branches and `ls-remote` heads for the
- * global "refresh all" pass. A checked-out submodule (`.git` present) is fetched first; a
- * fetch failure is logged but does not abort, so a registered URL is still re-listed fresh
- * and local branches are still relisted. Returns the deduplicated, sorted union, or null when
+ * Fetches (when checked out) and re-lists one submodule's fresh branch union.
+ *
+ * A checked-out submodule (`.git` present) is fetched first. With [continueOnFetchFailure]
+ * false a failed fetch returns null so the caller restores the previous list (the single-row
+ * refresh never blanks a row); with it true the failure is logged as a warning and the relist
+ * continues (the global refresh-all pass wants one offline submodule not to abort the sweep).
+ * Either way a registered URL is re-listed fresh via `ls-remote` (cache invalidated first)
+ * and unioned with the relisted local branches. Returns the deduplicated union, or null when
  * neither listing produced branches; cancellation propagates as [CancellationException].
  */
-@Suppress("TooGenericExceptionCaught", "ThrowsCount") // a fetch failure degrades to WARN, never blanks the row
-internal suspend fun listSubmoduleRefreshUnion(
+@Suppress("TooGenericExceptionCaught", "ThrowsCount") // a fetch failure degrades to WARN (or an early null), never throws
+internal suspend fun refreshSubmoduleUnion(
     client: GitWorkflowClient,
     dir: File,
     submodule: SubmoduleSource,
     cache: RemoteBranchCache?,
     log: AppLogger,
+    continueOnFetchFailure: Boolean,
 ): List<String>? {
     val git = File(dir, ".git").exists()
     if (git) {
         try {
             val fetched = client.fetch(dir)
-            if (!fetched.ok) log.warn("refresh warn: ${dir.name}: ${fetched.diagnostic()}")
+            if (!fetched.ok) {
+                log.warn(
+                    if (continueOnFetchFailure) "refresh warn: ${dir.name}: ${fetched.diagnostic()}"
+                    else "refresh branches failed for ${dir.name}: ${fetched.diagnostic()}",
+                )
+                if (!continueOnFetchFailure) return null
+            }
         } catch (e: CancellationException) {
             throw e
         } catch (e: OperationCancelledException) {
             throw e
         } catch (e: Exception) {
-            log.warn("refresh warn: ${dir.name}", e)
+            log.warn(
+                if (continueOnFetchFailure) "refresh warn: ${dir.name}"
+                else "refresh branches failed for ${dir.name}",
+                e,
+            )
+            if (!continueOnFetchFailure) return null
         }
     }
     return listSubmoduleUnion(client, dir, submodule, cache, log)
@@ -436,35 +428,31 @@ private suspend fun listSubmoduleUnion(
 @Suppress("TooGenericExceptionCaught", "ThrowsCount") // Git query adapters vary; each cancellation type propagates via its own explicit catch
 private suspend fun discoverBranchChoices(
     client: PresetDiscoveryGitClient,
-    dir: File,
-    current: String,
-    discoverCurrent: Boolean,
-    loadChoices: Boolean,
+    target: ComboBranchTarget,
     log: AppLogger,
-    submodule: SubmoduleSource? = null,
     cache: RemoteBranchCache? = null,
 ): BranchComboLoadResult {
     return try {
         // A submodule row is "git" only when it is checked out (a `.git` entry exists); an
         // uninitialized submodule still has remote heads via its registered URL. The main-repo
         // row keeps the original `dir.exists()` gate and never reaches the remote path.
-        val git = if (submodule == null) dir.exists() else File(dir, ".git").exists()
-        val selectedBranch = if (discoverCurrent && git) {
-            client.currentBranch(dir).orEmpty()
+        val git = if (target.submodule == null) target.dir.exists() else File(target.dir, ".git").exists()
+        val selectedBranch = if (target.discoverCurrent && git) {
+            client.currentBranch(target.dir).orEmpty()
         } else {
-            current
+            target.current
         }
         currentCoroutineContext().ensureActive()
-        val local = if (loadChoices && git) {
-            client.listAllBranches(dir)
+        val local = if (target.loadChoices && git) {
+            client.listAllBranches(target.dir)
         } else {
             emptyList()
         }
         currentCoroutineContext().ensureActive()
-        val remote = discoverRemoteHeads(client, submodule, cache, log)
+        val remote = discoverRemoteHeads(client, target.submodule, cache, log)
         // The main-repo row keeps its raw (already sorted) local list unchanged; only a
         // submodule row unions local refs with ls-remote heads and re-sorts the union.
-        val branches = if (submodule == null) local else dedupSortedUnion(local, remote)
+        val branches = if (target.submodule == null) local else dedupSortedUnion(local, remote)
         BranchComboLoadResult(selectedBranch, branches)
     } catch (e: CancellationException) {
         throw e
@@ -478,11 +466,11 @@ private suspend fun discoverBranchChoices(
         if (e.result.failureKind == GitFailureKind.CANCELLED) {
             throw CancellationException("branch discovery cancelled").apply { initCause(e) }
         }
-        log.warn("loadBranches failed for ${dir.name}", e)
-        BranchComboLoadResult(current, emptyList(), succeeded = false)
+        log.warn("loadBranches failed for ${target.dir.name}", e)
+        BranchComboLoadResult(target.current, emptyList(), succeeded = false)
     } catch (e: Exception) {
-        log.logFailure("loadBranches failed for ${dir.name}", e)
-        BranchComboLoadResult(current, emptyList(), succeeded = false)
+        log.logFailure("loadBranches failed for ${target.dir.name}", e)
+        BranchComboLoadResult(target.current, emptyList(), succeeded = false)
     }
 }
 

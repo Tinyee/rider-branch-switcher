@@ -314,7 +314,10 @@ internal class PresetEditor(
 
     /** Asynchronously loads branch names into [combo] via [scope], preserving [current] as selected item. */
     private fun loadComboBranches(combo: JComboBox<String>, dir: File, current: String) {
-        loadComboBranches(combo, dir, current, branchLoads, log,
+        loadComboBranches(
+            combo,
+            ComboBranchTarget(dir = dir, current = current),
+            branchLoads, log,
             onLoadStart = { submoduleManager.loadingCount++ },
             onLoadEnd = { succeeded, superseded ->
                 submoduleManager.loadingCount--

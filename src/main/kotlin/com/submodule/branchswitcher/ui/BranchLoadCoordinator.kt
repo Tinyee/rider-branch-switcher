@@ -110,12 +110,14 @@ internal class BranchLoadCoordinator(
             for (registration in registrations) {
                 currentCoroutineContext().ensureActive()
                 val dir = File(root, registration.path)
-                val branches = listSubmoduleRefreshUnion(
+                val branches = refreshSubmoduleUnion(
                     operation,
                     dir,
                     SubmoduleSource(root, registration.path, registration.url),
                     cache,
                     log,
+                    // A single failure in the sweep must not abort the remaining submodules.
+                    continueOnFetchFailure = true,
                 )
                 if (branches == null) failedPaths += registration.path else succeeded[registration.path] = branches
             }

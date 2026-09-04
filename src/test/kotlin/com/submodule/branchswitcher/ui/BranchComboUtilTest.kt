@@ -86,7 +86,7 @@ class BranchComboUtilTest {
         val finished = CountDownLatch(1)
 
         loadComboBranches(
-            combo, File("."), "dev",
+            combo, ComboBranchTarget(File("."), "dev"),
             branchLoads { listOf("main", "dev") }, createStringAppender {},
             onLoadStart = { starts++ },
             onLoadEnd = { _, _ ->
@@ -112,7 +112,7 @@ class BranchComboUtilTest {
         val finished = CountDownLatch(1)
 
         loadComboBranches(
-            combo, File("."), "dev",
+            combo, ComboBranchTarget(File("."), "dev"),
             branchLoads { error("broken") }, createStringAppender { logs += it },
             onLoadStart = {},
             onLoadEnd = { succeeded, _ ->
@@ -138,7 +138,7 @@ class BranchComboUtilTest {
         val finished = CountDownLatch(1)
 
         loadComboBranches(
-            combo, File("."), "dev",
+            combo, ComboBranchTarget(File("."), "dev"),
             branchLoads { listOf("main") }, createStringAppender {},
             onLoadStart = {},
             onLoadEnd = { _, _ ->
@@ -180,7 +180,7 @@ class BranchComboUtilTest {
         }
 
         loadComboBranches(
-            combo, File("."), "old", coordinator, createStringAppender {},
+            combo, ComboBranchTarget(File("."), "old"), coordinator, createStringAppender {},
             onLoadStart = { startCount++ },
             onLoadEnd = { _, superseded -> supersededFlags += superseded; endCount++; finished.countDown() },
             scheduleUi = { it() },
@@ -188,7 +188,7 @@ class BranchComboUtilTest {
         assertTrue("first discovery should start", firstStarted.await(loadCompletionTimeoutSeconds, TimeUnit.SECONDS))
 
         loadComboBranches(
-            combo, File("."), "latest", coordinator, createStringAppender {},
+            combo, ComboBranchTarget(File("."), "latest"), coordinator, createStringAppender {},
             onLoadStart = { startCount++ },
             onLoadEnd = { _, superseded -> supersededFlags += superseded; endCount++; finished.countDown() },
             scheduleUi = { it() },
