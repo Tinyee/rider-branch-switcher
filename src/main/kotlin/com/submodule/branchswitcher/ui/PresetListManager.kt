@@ -47,13 +47,16 @@ internal class PresetListManager(
         service.gitClient.openOperation()
     }
 
-    /** Session-scoped cache of `git ls-remote --heads` results shared by every editor. */
-    internal val remoteBranchesCache = RemoteBranchCache()
-
-    /** path → registered submodule URL, resolved once from `.gitmodules` and cached. */
-    private var submoduleUrls: Map<String, String?> = emptyMap()
-    private var submoduleUrlsResolved = false
-    private var submoduleUrlsResolving = false
+    /** Owns the submodule path→URL source and the session's ls-remote cache ([SubmoduleRegistry]). */
+    private val submoduleRegistry = SubmoduleRegistry(
+        branchLoads = branchLoads,
+        log = log,
+        scheduleEdt = { run -> project.invokeLaterIfAlive { run() } },
+    ).apply {
+        // Broadcast each resolution to the currently-live editors; a removed editor is skipped
+        // because the closure iterates the live list rather than holding per-editor subscriptions.
+        onResolved = { map -> mutableEditors.forEach { it.setSubmoduleUrls(map) } }
+    }
     private val actions = PresetCollectionActions(project, service, gitRoot, log, this)
     private val resultPresenter = SwitchResultPresenter(project, service)
     private val singleRepositorySwitcher = SingleRepositorySwitcher(
@@ -112,7 +115,7 @@ internal class PresetListManager(
                 branchLoads.refreshRemoteSubmodules(
                     root.toFile(),
                     registrations,
-                    remoteBranchesCache,
+                    submoduleRegistry.cache,
                     log,
                 ) { outcomeResult ->
                     project.invokeLaterIfAlive {
@@ -176,11 +179,11 @@ internal class PresetListManager(
             },
             branchLoads = branchLoads,
             onSwitchOnly = { path, target -> switchSubmodule(root, path, target) },
-            remoteCache = remoteBranchesCache,
+            remoteCache = submoduleRegistry.cache,
         )
-        editor.setSubmoduleUrls(submoduleUrls)
+        editor.setSubmoduleUrls(submoduleRegistry.urls)
         mutableEditors.add(editor)
-        resolveSubmoduleUrls()
+        submoduleRegistry.resolve(root)
         val wrapper = CompactHeightPanel(BorderLayout()).apply {
             isOpaque = false
             alignmentX = JPanel.LEFT_ALIGNMENT
@@ -188,35 +191,6 @@ internal class PresetListManager(
             add(Box.createVerticalStrut(4), BorderLayout.SOUTH)
         }
         presetsInner.add(wrapper)
-    }
-
-    /**
-     * Resolves the path→URL map once from `.gitmodules` and pushes it to every editor.
-     * Runs off the EDT; [submoduleUrlsResolving] prevents duplicate in-flight queries while
-     * [submoduleUrlsResolved] is set only on success, so a transient failure leaves the
-     * session retryable rather than permanently local-only. A failure also falls back to an
-     * empty map, so rows list local-only (offline-safe) and never block branch discovery.
-     */
-    private fun resolveSubmoduleUrls() {
-        if (submoduleUrlsResolved || submoduleUrlsResolving) return
-        val root = gitRoot() ?: return
-        submoduleUrlsResolving = true
-        branchLoads.discover(
-            { client -> client.registeredSubmodules(root.toFile()) },
-        ) { result ->
-            project.invokeLaterIfAlive {
-                submoduleUrlsResolving = false
-                val registrations = result.getOrNull()
-                if (registrations == null) {
-                    // Leave submoduleUrlsResolved=false so a later editor creation retries.
-                    result.exceptionOrNull()?.let { log.logFailure("cannot discover registered submodules", it) }
-                } else {
-                    submoduleUrlsResolved = true
-                    submoduleUrls = registrations.associate { it.path to it.url }
-                }
-                mutableEditors.forEach { it.setSubmoduleUrls(submoduleUrls) }
-            }
-        }
     }
 
     override fun removeEditor(editor: PresetEditor) {
