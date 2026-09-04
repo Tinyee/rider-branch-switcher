@@ -11,6 +11,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.lang.reflect.Proxy
 import java.nio.file.Paths
+import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
@@ -27,7 +28,7 @@ class SubmoduleRegistryTest {
         val queries = AtomicInteger(0)
         val started = CountDownLatch(1)
         val release = CountDownLatch(1)
-        val broadcasts = mutableListOf<Map<String, String?>>()
+        val broadcasts = CopyOnWriteArrayList<Map<String, String?>>()
         val registry = SubmoduleRegistry(
             branchLoads = BranchLoadCoordinator(CoroutineScope(Dispatchers.Unconfined)) {
                 session {
