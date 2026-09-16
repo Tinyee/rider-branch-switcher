@@ -62,10 +62,48 @@ class SubmoduleRegistryTest {
             registry.urls,
         )
 
-        // A resolve after success is a no-op: no extra query, no extra broadcast.
+        // A resolve after success re-delivers the current map so an editor created after the
+        // first resolution converges (no extra query, but a fresh broadcast).
         registry.resolve(root)
         assertEquals(1, queries.get())
-        assertEquals(1, broadcasts.size)
+        awaitUntil { broadcasts.size == 2 }
+        assertEquals(
+            mapOf("SubA" to "https://example.com/a.git", "SubB" to null),
+            broadcasts[1],
+        )
+    }
+
+    @Test
+    fun `resolve after success re-delivers the map so a late editor converges`() {
+        // An editor created after the first resolution (e.g. a tool-window reload) must see
+        // the URL map. Before the fix, resolve() was a silent no-op once resolved, and the
+        // cold-start read in addEditor could race the broadcast and leave the new editor
+        // with an empty map forever.
+        val root = Paths.get(".")
+        val queries = AtomicInteger(0)
+        val broadcasts = CopyOnWriteArrayList<Map<String, String?>>()
+        val expected = mapOf("SubA" to "https://example.com/a.git")
+        val registry = SubmoduleRegistry(
+            branchLoads = BranchLoadCoordinator(CoroutineScope(Dispatchers.Unconfined)) {
+                session {
+                    queries.incrementAndGet()
+                    registrations(expected)
+                }
+            },
+            log = createStringAppender {},
+            scheduleEdt = { it() },
+        )
+        registry.onResolved = { broadcasts += it }
+
+        registry.resolve(root)
+        awaitUntil { broadcasts.size == 1 }
+
+        // The "new editor" calls resolve again: no re-query, but the current map is delivered.
+        registry.resolve(root)
+        awaitUntil { broadcasts.size == 2 }
+
+        assertEquals("no re-query after success", 1, queries.get())
+        assertEquals(expected, broadcasts.last())
     }
 
     @Test

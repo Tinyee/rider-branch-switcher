@@ -22,25 +22,44 @@ internal class SubmoduleRegistry(
     /** Session-scoped cache of `git ls-remote --heads` results shared by every editor. */
     val cache = RemoteBranchCache()
 
-    /** Invoked once per successful resolution, already on the EDT ([scheduleEdt] applied). */
+    /**
+     * Invoked on the EDT with the current path→URL map whenever the registry has a state
+     * worth delivering: after a successful resolve, and on every [resolve] call while already
+     * resolved (so an editor created after the first resolution still converges). A failed
+     * resolve leaves the previous state (empty or stale) in place and does not fire, so a
+     * transient failure is retryable rather than broadcasting a downgrade.
+     */
     var onResolved: ((Map<String, String?>) -> Unit)? = null
 
     /** Resolved path→URL map; empty until the first successful [resolve]. */
     val urls: Map<String, String?>
         get() = resolvedUrls
 
+    @Volatile
     private var resolvedUrls: Map<String, String?> = emptyMap()
+    @Volatile
     private var resolved = false
+    @Volatile
     private var resolving = false
 
     /**
-     * Starts resolving the `.gitmodules` path→URL map once. A no-op once [urls] has been
-     * resolved or while a resolution is already in flight. Runs the query through
-     * [branchLoads] (background, bounded, cancelled when the Tool Window closes) and delivers
-     * the outcome on the EDT; a failure is logged and leaves the registry retryable.
+     * Starts resolving the `.gitmodules` path→URL map once. A no-op while a resolution is
+     * already in flight; once resolved, a later [resolve] (e.g. for a newly created editor)
+     * re-delivers the current map on the EDT so late-joining editors converge, without
+     * re-querying. Runs the query through [branchLoads] (background, bounded, cancelled when
+     * the Tool Window closes) and delivers the outcome on the EDT; a failure is logged and
+     * leaves the registry retryable.
      */
     fun resolve(root: Path) {
-        if (resolved || resolving) return
+        if (resolved) {
+            // Already have a map: deliver it to whoever is listening now (a fresh editor's
+            // cold-start read may have raced the original broadcast). The editor list is
+            // rebuilt on reload while this registry is session-scoped, so every new editor
+            // must see the state it would have received at creation time.
+            scheduleEdt { onResolved?.invoke(resolvedUrls) }
+            return
+        }
+        if (resolving) return
         resolving = true
         branchLoads.discover(
             { client -> client.registeredSubmodules(root.toFile()) },
