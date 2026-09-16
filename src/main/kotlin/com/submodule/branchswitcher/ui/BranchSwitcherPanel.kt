@@ -109,13 +109,13 @@ class BranchSwitcherPanel(
     // ── Explicit command wiring ─────────────────────────────────
     private val switchController = SwitchController(
         project, service, ::gitRoot, logger,
-        onStateChanged = ::detectCurrentState,
+        onStateChanged = ::onInternalStateChanged,
     )
     private val presetManager = PresetListManager(
         project, service, ::gitRoot, logger, presetsInner,
         onSwitch = switchController::runSwitch,
         onDerive = switchController::derivePresetBranch,
-        onStateChanged = ::detectCurrentState,
+        onStateChanged = ::onInternalStateChanged,
         onBusyChange = switchController::setSwitchInProgress,
     )
     private var worktreeInfoLogged = false
@@ -240,7 +240,11 @@ class BranchSwitcherPanel(
         val connection = project.messageBus.connect(this)
         connection.subscribe(BranchSwitchListener.TOPIC, object : BranchSwitchListener {
             override fun onBranchSwitched() {
-                project.invokeLaterIfAlive(::detectCurrentState)
+                project.invokeLaterIfAlive {
+                    // The shortcut path is an in-plugin switch: align the reflog watcher so it
+                    // does not double-report this HEAD move, then refresh immediately.
+                    onInternalStateChanged()
+                }
             }
 
             override fun onLog(entry: LogEntry) {
@@ -322,7 +326,9 @@ class BranchSwitcherPanel(
         val currentEditors = presetManager.editors
         val repositoryPaths = LinkedHashSet<String>().apply { add(".") }
         currentEditors.forEach {
-            repositoryPaths.addAll(it.currentPreset().submodules.keys)
+            // Include draft rows (added but not yet saved) so their status dots stay live
+            // before the preset is persisted.
+            repositoryPaths.addAll(it.currentSubmodulePaths())
         }
         val pinnedEditors = currentEditors.toList()
         stateRefreshes.refresh(root, repositoryPaths) { snapshot ->
@@ -335,6 +341,16 @@ class BranchSwitcherPanel(
             presetsInner.repaint()
             logDetected(currentEditors.toList(), snapshot.branches, snapshot.dirtyRepositories)
         }
+    }
+
+    /**
+     * State refresh after a mutation this plugin started (switch, derive, single-repo switch,
+     * or the shortcut path). Aligns the reflog watcher to the new HEAD so it does not report
+     * the move we just caused as an external change 2s later, then refreshes immediately.
+     */
+    private fun onInternalStateChanged() {
+        reflogWatcher.alignToCurrentStamp()
+        detectCurrentState()
     }
 
     private fun logDetected(

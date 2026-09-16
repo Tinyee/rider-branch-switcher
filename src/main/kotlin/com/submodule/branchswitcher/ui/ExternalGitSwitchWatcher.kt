@@ -42,6 +42,23 @@ internal class ExternalGitSwitchWatcher(
         alarm.cancelAllRequests()
     }
 
+    /**
+     * Marks the current reflog stamp as seen, so the next poll does not report a HEAD move
+     * that this plugin caused. Called after an in-plugin switch: the switch already refreshed
+     * the panel directly, so the watcher must not fire a duplicate external-change refresh
+     * 2s later for the same stamp.
+     */
+    fun alignToCurrentStamp() {
+        val root = gitRoot()
+        val reflog = root?.let(::mainReflogPath) ?: return
+        val stamp = try {
+            reflog.lastModified()
+        } catch (_: Exception) {
+            return
+        }
+        if (stamp >= 0) lastReflogStamp = stamp
+    }
+
     private fun poll() {
         val root = gitRoot()
         when (val action = pollDecision(shouldWatch(), root?.let(::mainReflogPath), File::lastModified, lastReflogStamp)) {

@@ -435,6 +435,14 @@ internal class PresetEditor(
 
     fun currentPreset(): Preset = savedPreset
 
+    /**
+     * Every live submodule row's path, including rows added but not yet saved. The panel's
+     * state refresh must probe these too, or a draft row's status dot stays stale until the
+     * preset is persisted.
+     */
+    fun currentSubmodulePaths(): Set<String> =
+        submoduleManager.subRows.values.filterTo(LinkedHashSet()) { !it.deleted }.mapTo(LinkedHashSet()) { it.path }
+
     /** Applies freshly listed branch unions from the global refresh to the matching rows. */
     fun fillSubmoduleRows(branches: Map<String, List<String>>) {
         submoduleManager.fillRows(branches)

@@ -34,6 +34,7 @@ internal class SwitchController(
 ) {
 
     private val writeOperations = WriteOperationLauncher(service.scope, service::tryAcquireWrite)
+    private val resultPresenter = SwitchResultPresenter(project, service)
     private val coordinator = SwitchFlowCoordinator(
         project,
         service,
@@ -72,11 +73,7 @@ internal class SwitchController(
         val operationLog = log.withContext(newOperationContext("derive"))
         val job = writeOperations.launch(
             onBusy = {
-                operationLog.warn(
-                    "operation rejected: another repository write is already running" +
-                        service.currentWriteHolder?.let { " (held by $it)" }.orEmpty(),
-                )
-                Notifier.warn(project, Bundle.msg("notify.write.busy"), Bundle.msg("notify.write.busy.msg"))
+                resultPresenter.rejectBusyWrite(operationLog)
             },
             afterRelease = { runResult ->
                 val operationLog = log.withContext(runResult.operationId)

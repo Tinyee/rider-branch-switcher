@@ -17,7 +17,17 @@ internal class SwitchResultPresenter(
     private val project: Project,
     private val service: BranchSwitcherService,
 ) {
-    fun showWriteBusy() {
+    /**
+     * Shared busy-rejection report for every write-gate entry point: logs the rejection under
+     * the caller's operation context (naming the holder when one is recorded) and shows the
+     * standard busy notification. Consolidates the previously copy-pasted reject blocks in
+     * the derive, switch, and rollback paths.
+     */
+    fun rejectBusyWrite(log: AppLogger) {
+        log.warn(
+            "operation rejected: another repository write is already running" +
+                service.currentWriteHolder?.let { " (held by $it)" }.orEmpty(),
+        )
         Notifier.warn(project, Bundle.msg("notify.write.busy"), Bundle.msg("notify.write.busy.msg"))
     }
 
@@ -76,7 +86,7 @@ internal class SwitchResultPresenter(
         when {
             runResult.cancelled -> notifyCancellation(runResult, operationId)
             runResult.ok -> notifySuccessfulSwitch(preset, runResult.execution, onSuccess, operationId)
-            runResult.recovery != null -> notifyRecoveredFailure(preset, runResult, onRollback, operationId)
+            runResult.recovery != null -> notifyRecoveredFailure(preset, runResult, onSuccess, onRollback, operationId)
             else -> notifySwitchFailure(preset, runResult.execution, onRollback, operationId)
         }
     }
@@ -89,12 +99,17 @@ internal class SwitchResultPresenter(
     private fun notifyRecoveredFailure(
         preset: Preset,
         runResult: SwitchRunResult,
+        onSuccess: (() -> Unit)?,
         onRollback: (SwitchExecutionResult) -> Unit,
         operationId: String,
     ) {
         val recovery = runResult.recovery
         val execution = runResult.execution
         if (recovery?.ok == true) {
+            // The repositories are back at their pre-switch state; refresh the panel now,
+            // matching the success path, instead of waiting for FileStatusManager or the
+            // reflog watcher to notice.
+            onSuccess?.invoke()
             Notifier.info(
                 project,
                 Bundle.msg("switch.failed.recovered"),

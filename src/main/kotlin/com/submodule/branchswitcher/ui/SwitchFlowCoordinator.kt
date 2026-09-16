@@ -219,14 +219,10 @@ class SwitchFlowCoordinator(
         val completion = SwitchUiCompletion(::uiLater, onFinished)
         val job = writeOperations.launch(
             onBusy = {
-                log.withContext(operationContext).warn(
-                    "operation rejected: another repository write is already running" +
-                        service.currentWriteHolder?.let { " (held by $it)" }.orEmpty(),
-                )
                 // A rejected switch never owned the busy state: it must not run the
                 // completion's onFinished, or it would clear the in-progress indicator
                 // of the operation that actually holds the write lease.
-                uiLater { resultPresenter.showWriteBusy() }
+                resultPresenter.rejectBusyWrite(log.withContext(operationContext))
             },
             afterRelease = { runResult ->
                 val operationLog = log.withContext(operationContext.inPhase("refresh"))
@@ -278,11 +274,7 @@ class SwitchFlowCoordinator(
         val recoveryLog = log.withContext(operationContext.inPhase("recovery"))
         val job = writeOperations.launch(
             onBusy = {
-                log.withContext(operationContext).warn(
-                    "operation rejected: another repository write is already running" +
-                        service.currentWriteHolder?.let { " (held by $it)" }.orEmpty(),
-                )
-                uiLater { resultPresenter.showWriteBusy() }
+                resultPresenter.rejectBusyWrite(log.withContext(operationContext))
             },
             afterRelease = { recoveryOutcome ->
                 val checkpointPaths = execution.checkpoint.orEmpty().keys.filterTo(mutableSetOf()) { it != "." }
