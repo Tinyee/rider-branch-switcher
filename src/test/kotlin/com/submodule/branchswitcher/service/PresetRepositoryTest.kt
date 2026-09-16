@@ -369,6 +369,82 @@ class PresetRepositoryTest {
         assertFalse(Files.exists(file.resolveSibling("branch-presets.json.bak")))
     }
 
+    @Test
+    fun `saveWithBaseline refuses when the file moved off the baseline even after a newer load`() = runBlocking {
+        // The MAJOR-1 regression: the tool window builds its editor list at digest D1, then
+        // the preset shortcut loads the shared repository (recording D2) without the window
+        // reloading. A window save must still be validated against the D1 baseline the list
+        // was built from — otherwise the stale list silently overwrites the D2 bytes.
+        val root = Files.createTempDirectory("preset-repository")
+        val file = root.resolve(".idea/branch-presets.json")
+        val original = Preset("main", "main")
+        val d1 = byteArrayOf(1)
+        val d2 = byteArrayOf(2)
+        var onDisk = d1
+        var saveAttempts = 0
+        val repository = PresetRepository(
+            basePath = { root },
+            loader = {
+                // Simulate the disk now holding D2 (external edit or a reload that saw it).
+                Result.success(PresetLoadResult(file, PresetFile(listOf(Preset("external", "dev"))), onDisk))
+            },
+            saver = { _, _ -> saveAttempts++; byteArrayOf() },
+            digester = { onDisk },
+        )
+        // The window loaded when the disk was D1...
+        repository.load().getOrThrow()
+        val windowBaseline = d1
+        // ...then an external edit (or the shortcut reload) moved the disk to D2 and the
+        // shared repository recorded D2.
+        onDisk = d2
+        repository.load().getOrThrow()
+
+        // The window saves its stale D1-based list: must be refused, not silently written.
+        val exception = runCatching {
+            repository.saveWithBaseline(listOf(original), windowBaseline)
+        }.exceptionOrNull()
+        assertTrue("stale-baseline save must be refused", exception is PresetFileChangedException)
+        assertEquals(0, saveAttempts)
+    }
+
+    @Test
+    fun `saveWithBaseline proceeds when the file still matches the baseline`() = runBlocking {
+        val root = Files.createTempDirectory("preset-repository")
+        val file = root.resolve(".idea/branch-presets.json")
+        val original = Preset("main", "main")
+        val d1 = byteArrayOf(1)
+        var saveAttempts = 0
+        val repository = PresetRepository(
+            basePath = { root },
+            loader = { Result.success(PresetLoadResult(file, PresetFile(listOf(original)), d1)) },
+            saver = { _, _ -> saveAttempts++; byteArrayOf() },
+            digester = { d1 },
+        )
+        repository.load().getOrThrow()
+
+        repository.saveWithBaseline(listOf(Preset("dev", "dev")), d1)
+
+        assertEquals(1, saveAttempts)
+        // The write advanced the recorded digest, so a follow-up plain save still sees a
+        // consistent on-disk state. Preset carries a random id, so compare by name.
+        assertEquals(listOf("dev"), repository.presets.map { it.name })
+    }
+
+    @Test
+    fun `saveWithBaseline still requires a successful load`() = runBlocking {
+        val root = Files.createTempDirectory("preset-repository")
+        val repository = PresetRepository(
+            basePath = { root },
+            loader = { Result.failure(IOException("unreadable")) },
+            saver = { _, _ -> byteArrayOf() },
+        )
+
+        assertTrue(
+            runCatching { repository.saveWithBaseline(listOf(Preset("dev", "dev")), byteArrayOf(1)) }
+                .exceptionOrNull() is IllegalStateException,
+        )
+    }
+
     private fun sha256(bytes: ByteArray): ByteArray =
         java.security.MessageDigest.getInstance("SHA-256").digest(bytes)
 

@@ -41,6 +41,16 @@ internal class PresetCollectionActions(
 ) {
     private val collectionOperationInProgress = AtomicBoolean(false)
 
+    /**
+     * The digest of the preset-file bytes the current editor list was built from. Updated on
+     * every successful [reload]; saves pass it to [BranchSwitcherService.savePresetsWithBaseline]
+     * so an external edit (or a shortcut load that reloaded the shared repository without
+     * this window) is detected against *this* list's baseline instead of the repository's
+     * last load, and a stale window refuses to overwrite it.
+     */
+    @Volatile
+    private var editorListDigest: ByteArray? = null
+
     private val transferActions = PresetTransferActions(
         project = project,
         gitRoot = gitRoot,
@@ -78,6 +88,9 @@ internal class PresetCollectionActions(
                     } else {
                         outcome.presets.presets.forEach { host.addEditor(root, it) }
                     }
+                    // The editor list below is built from these exact bytes; any later save
+                    // must be validated against this baseline, not the repository's last load.
+                    editorListDigest = outcome.digest
                     log.debug("loaded ${outcome.presets.presets.size} preset(s) from ${outcome.file}")
                     host.refreshList()
                     host.notifyStateChanged()
@@ -201,9 +214,13 @@ internal class PresetCollectionActions(
             return
         }
         val snapshot = presets.toList()
+        // Save against the digest this window's list was built from. If an external edit or a
+        // shortcut load has moved the file since then, the save is refused and the user is
+        // offered a reload — instead of silently overwriting the newer bytes with this stale list.
+        val baseline = editorListDigest
         service.scope.launch {
             val failure = try {
-                service.savePresets(snapshot)
+                if (baseline == null) service.savePresets(snapshot) else service.savePresetsWithBaseline(snapshot, baseline)
                 null
             } catch (e: Exception) {
                 e

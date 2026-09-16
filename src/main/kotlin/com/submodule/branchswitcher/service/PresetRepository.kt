@@ -68,7 +68,7 @@ class PresetRepository internal constructor(
                 )
             }
             synchronizedWithDisk = true
-        }.map { PresetLoadOutcome(it.file, it.presetFile, it.droppedNames) }
+        }.map { PresetLoadOutcome(it.file, it.presetFile, it.digest, it.droppedNames) }
     }
 
     suspend fun save(newPresets: List<Preset>) = access.withLock {
@@ -80,6 +80,38 @@ class PresetRepository internal constructor(
         }
         val currentDigest = withContext(Dispatchers.IO) { digester(file) }
         if (digestChanged(currentDigest, recordedDigest)) throw PresetFileChangedException(file)
+        saveLocked(newPresets, file)
+    }
+
+    /**
+     * Saves [newPresets] only when the on-disk file still matches [baselineDigest].
+     *
+     * This is the tool-window path. The window's editor list is built from one
+     * specific load (whose digest is [baselineDigest]); a save must be refused
+     * whenever the file has moved off that baseline since the list was built — even
+     * if the shared repository has since loaded a newer digest (e.g. the preset
+     * shortcut called [load] without the window reloading). Without this, the window
+     * could silently overwrite external edits with its stale list. [recordedDigest]
+     * is still advanced so the in-memory cache matches the bytes this write produces.
+     */
+    suspend fun saveWithBaseline(newPresets: List<Preset>, baselineDigest: ByteArray?) = access.withLock {
+        check(synchronizedWithDisk) {
+            "preset collection has not been loaded successfully; reload before saving"
+        }
+        val file = checkNotNull(savedFilePath) {
+            "preset file path is unavailable after a successful load"
+        }
+        val currentDigest = withContext(Dispatchers.IO) { digester(file) }
+        if (digestChanged(currentDigest, baselineDigest)) throw PresetFileChangedException(file)
+        saveLocked(newPresets, file)
+    }
+
+    /**
+     * Shared write tail: verifies the load dropped nothing (backing up the original if it did),
+     * writes [newPresets], and advances [recordedDigest] to the digest of the exact bytes written.
+     * Must be called with the access lock held and the conflict check already done.
+     */
+    private suspend fun saveLocked(newPresets: List<Preset>, file: Path) {
         // The load dropped invalid entries; the write below permanently removes them
         // from the file, so preserve the original bytes once as a recovery copy. If the
         // copy fails, refuse the overwrite: the backup is the only durable copy of the
@@ -130,9 +162,11 @@ class PresetRepository internal constructor(
     }
 }
 
-/** Successful preset load: the parsed collection plus any entries dropped as invalid. */
+/** Successful preset load: the parsed collection, the digest of the exact bytes parsed, and any entries dropped as invalid. */
 data class PresetLoadOutcome(
     val file: Path,
     val presets: PresetFile,
-    val droppedNames: List<String>,
+    /** SHA-256 of the exact bytes this list was built from; the baseline for save-time conflict checks. */
+    val digest: ByteArray?,
+    val droppedNames: List<String> = emptyList(),
 )

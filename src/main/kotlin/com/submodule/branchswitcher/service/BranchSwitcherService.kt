@@ -185,6 +185,13 @@ class BranchSwitcherService(
 
     suspend fun savePresets(presets: List<Preset>) = presetRepo.save(presets)
 
+    /**
+     * Saves [presets] only when the file still matches [baselineDigest] (the digest of the
+     * exact bytes the caller's editor list was built from). See [PresetRepository.saveWithBaseline].
+     */
+    suspend fun savePresetsWithBaseline(presets: List<Preset>, baselineDigest: ByteArray?) =
+        presetRepo.saveWithBaseline(presets, baselineDigest)
+
     // -- Switch history for returning to a previous preset (max 5 entries, persisted across restarts) --
 
     private val maxHistory = 5
