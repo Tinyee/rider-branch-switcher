@@ -257,6 +257,19 @@
 
 ### Fixed
 
+- The preset shortcut no longer turns a guarded save refusal into silent data
+  loss: the tool window saves against the digest its editor list was built from,
+  so an external edit (or a shortcut reload) that moved the file is detected and
+  the save is refused with a reload action instead of overwriting the newer bytes.
+- Submodule URL resolution re-delivers the resolved map on the EDT once complete,
+  so an editor created after the first resolution (e.g. a tool-window reload) no
+  longer stays local-only when its cold-start read races the original broadcast.
+- A failed switch that auto-recovered refreshes the panel immediately, and an
+  in-plugin switch aligns the reflog watcher so its HEAD move is not re-reported
+  as an external change seconds later (removing one of the overlapping refreshes).
+- Write-gate busy rejection is consolidated into one shared report, so the derive,
+  switch, and rollback paths log and notify the same way instead of duplicating
+  the copy-pasted reject block.
 - Approved untracked-collision discards are isolated into a path-scoped stash
   just before the target's own checkout instead of being deleted up-front for
   every repository, so a downstream skip (a failed main checkout or a topology
