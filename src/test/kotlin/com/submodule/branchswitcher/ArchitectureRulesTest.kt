@@ -1,5 +1,6 @@
 package com.submodule.branchswitcher
 
+import com.tngtech.archunit.core.domain.JavaClass
 import com.tngtech.archunit.core.domain.JavaClass.Predicates.resideInAPackage
 import com.tngtech.archunit.core.domain.JavaClasses
 import com.tngtech.archunit.core.importer.ClassFileImporter
@@ -7,6 +8,7 @@ import com.tngtech.archunit.core.importer.Location
 import com.tngtech.archunit.lang.ArchRule
 import com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.nio.file.Path
 
@@ -194,5 +196,62 @@ class ArchitectureRulesTest {
         assertPackagePresent("..service..")
         assertPackagePresent("..switch..")
         assertPackagePresent("..git..")
+    }
+
+    /**
+     * Every Git interface must eventually be implemented by a concrete class, so a
+     * capability interface cannot silently become dead abstraction. A parent interface
+     * (e.g. `GitWorkflowClient` extending several capability interfaces) is a consumer
+     * only through its chain — the check requires a non-interface subclass somewhere
+     * beneath it, i.e. `GitCommandClient`/`GitOps` for the real chain. Without this,
+     * deleting the last implementor of an interface would pass every dependency rule
+     * vacuously (no class to match) while leaving a pointless contract behind.
+     */
+    @Test
+    fun `every git interface has a concrete implementing class`() {
+        // Check against MAIN_CLASSES (both modules): the concrete implementors
+        // GitCommandClient/GitOps live in the plugin module, so a core-only view would
+        // report every capability interface as unimplemented. A capability interface is
+        // "implemented" when some non-interface class is assignable to it — directly or
+        // through the GitWorkflowClient chain.
+        val interfacesWithoutImplementor = MAIN_CLASSES
+            .that(resideInAPackage("com.submodule.branchswitcher.git"))
+            .asSequence()
+            .filter(JavaClass::isInterface)
+            .filter { iface -> MAIN_CLASSES.asSequence().none { c -> !c.isInterface && c.isAssignableTo(iface.name) } }
+            .map { it.simpleName }
+            .toList()
+
+        assertTrue(
+            "git interfaces with no concrete implementor (dead abstraction): $interfacesWithoutImplementor",
+            interfacesWithoutImplementor.isEmpty(),
+        )
+    }
+
+    /**
+     * Guards the cross-layer failure-contract constants: every `GIT_STDERR_*` sentinel
+     * defined in core must be referenced by the plugin-layer emitter
+     * (`GitProcessRunner`), so a sentinel cannot be added and forgotten, or renamed on
+     * one side only. The classification side is already pinned by `GitResultTest`.
+     */
+    @Test
+    fun `every git failure sentinel constant is referenced by the process runner`() {
+        val sentinels = listOf(
+            "GIT_STDERR_CANCELLED",
+            "GIT_STDERR_INTERRUPTED",
+            "GIT_STDERR_TIMEOUT_PREFIX",
+            "GIT_STDERR_CAPACITY_PREFIX",
+            "GIT_STDERR_START_FAILED_PREFIX",
+            "GIT_STDERR_OUTPUT_LIMIT_PREFIX",
+            "GIT_STDERR_OUTPUT_CAPTURE_PREFIX",
+        )
+        val emitterSource = java.nio.file.Files.readString(
+            java.nio.file.Path.of("src/main/kotlin/com/submodule/branchswitcher/git/impl/GitProcessRunner.kt"),
+        )
+        val missing = sentinels.filter { name -> !emitterSource.contains(name) }
+        assertTrue(
+            "GIT_STDERR sentinels not referenced by the plugin-layer emitter: $missing",
+            missing.isEmpty(),
+        )
     }
 }
