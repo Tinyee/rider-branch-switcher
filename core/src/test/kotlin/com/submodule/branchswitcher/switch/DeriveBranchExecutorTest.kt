@@ -22,7 +22,7 @@ class DeriveBranchExecutorTest {
      * on branch "dev" at SHA "abc123" that would succeed end to end; individual tests
      * override just the probes they need to block.
      */
-    private inner open class FakeDeriveGit : DeriveGitClient {
+    private open inner class FakeDeriveGit : DeriveGitClient {
         var onMain: String? = "dev"
         var headSha: String? = "abc123"
         var repoExists: Boolean = true
@@ -437,7 +437,6 @@ class DeriveBranchExecutorTest {
     }
 
     private fun rollbackFixture(
-        git: FakeDeriveGit,
         checkpointId: String? = null,
     ): DeriveResult = DeriveResult(
         outcomes = listOf(DeriveRepositoryOutcome(".", DeriveRepositoryStatus.SUCCEEDED, null)),
@@ -449,7 +448,7 @@ class DeriveBranchExecutorTest {
         val git = FakeDeriveGit()
         val executor = executor(git)
 
-        val rollback = executor.rollbackSucceeded(rollbackFixture(git), "feature-x")
+        val rollback = executor.rollbackSucceeded(rollbackFixture(), "feature-x")
 
         assertTrue("a clean rollback leaves nothing pending", rollback.pendingPaths.isEmpty())
         assertEquals(1, git.checkoutExistingCalls)
@@ -476,7 +475,7 @@ class DeriveBranchExecutorTest {
         val git = FakeDeriveGit().apply { lock = "/repo/.git/index.lock" }
         val executor = executor(git)
 
-        val rollback = executor.rollbackSucceeded(rollbackFixture(git), "feature-x")
+        val rollback = executor.rollbackSucceeded(rollbackFixture(), "feature-x")
 
         assertEquals(listOf("."), rollback.pendingPaths)
         assertEquals(0, git.checkoutExistingCalls)
@@ -490,7 +489,7 @@ class DeriveBranchExecutorTest {
         }
         val executor = executor(git)
 
-        val rollback = executor.rollbackSucceeded(rollbackFixture(git), "feature-x")
+        val rollback = executor.rollbackSucceeded(rollbackFixture(), "feature-x")
 
         assertEquals(listOf("."), rollback.pendingPaths)
         assertEquals(1, git.checkoutExistingCalls)
@@ -504,7 +503,7 @@ class DeriveBranchExecutorTest {
         }
         val executor = executor(git)
         // The checkpoint recorded a different repository id than the current one.
-        val fixture = rollbackFixture(git, checkpointId = "/original/.git")
+        val fixture = rollbackFixture(checkpointId = "/original/.git")
 
         val rollback = executor.rollbackSucceeded(fixture, "feature-x")
 
@@ -520,7 +519,7 @@ class DeriveBranchExecutorTest {
         }
         val executor = executor(git)
 
-        val rollback = executor.rollbackSucceeded(rollbackFixture(git), "feature-x")
+        val rollback = executor.rollbackSucceeded(rollbackFixture(), "feature-x")
 
         assertEquals(listOf("."), rollback.pendingPaths)
         assertEquals(1, git.checkoutExistingCalls)
@@ -555,7 +554,7 @@ class DeriveBranchExecutorTest {
         val git = FakeDeriveGit()
         val executor = executor(git, isCancelled = { true })
 
-        val rollback = executor.rollbackSucceeded(rollbackFixture(git), "feature-x")
+        val rollback = executor.rollbackSucceeded(rollbackFixture(), "feature-x")
 
         // Cancelled before the first path; all succeeded paths are deferred.
         assertEquals(listOf("."), rollback.pendingPaths)
