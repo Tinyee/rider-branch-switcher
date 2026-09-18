@@ -2,6 +2,7 @@ plugins {
     id("org.jetbrains.kotlin.jvm") version "2.3.0"
     id("io.gitlab.arturbosch.detekt") version "1.23.7"
     id("info.solidsoft.pitest") version "1.19.0"
+    id("jacoco")
 }
 
 val useChinaMirrors = providers.gradleProperty("useChinaMirrors")
@@ -41,6 +42,44 @@ kotlin {
 tasks.test {
     useJUnitPlatform()
     maxParallelForks = 1
+    // Let JaCoCo attach its agent to this module's tests; the report task below
+    // turns the collected data into HTML/XML coverage output.
+    extensions.configure<JacocoTaskExtension>("jacoco") {
+        isEnabled = true
+    }
+}
+
+tasks.jacocoTestReport {
+    dependsOn(tasks.test)
+    reports {
+        html.required.set(true)
+        xml.required.set(true)
+    }
+}
+
+// Coverage as a real quality gate, not just a report: fail the build when core's line or
+// branch coverage drops below the measured baseline (line 84.5%, branch 79.6% at the time
+// of writing), leaving headroom so routine additions do not trip it. Kept on core only —
+// the plugin module's tests run in an instrumented IDE process where coverage is not
+// meaningful.
+tasks.jacocoTestCoverageVerification {
+    dependsOn(tasks.test)
+    violationRules {
+        rule {
+            limit {
+                counter = "LINE"
+                value = "COVEREDRATIO"
+                minimum = "0.80".toBigDecimal()
+            }
+        }
+        rule {
+            limit {
+                counter = "BRANCH"
+                value = "COVEREDRATIO"
+                minimum = "0.70".toBigDecimal()
+            }
+        }
+    }
 }
 
 detekt {
