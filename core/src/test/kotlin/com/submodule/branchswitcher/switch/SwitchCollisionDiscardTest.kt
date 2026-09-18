@@ -476,4 +476,65 @@ class SwitchCollisionDiscardTest : SwitchExecutorTestBase() {
             result.issues.any { it.code == OperationIssueCode.UNTRACKED_DISCARD_FAILED },
         )
     }
+
+    @Test
+    fun `isolation with no stash entry created but paths still colliding fails closed`() {
+        // The approved stash push reported ok but created no entry (stashOidByMessage is
+        // null because nothing was actually isolated). The approved paths are still untracked
+        // collisions on disk, so the derive must fail closed rather than proceed and let a
+        // later checkout silently delete them. This is the revalidateUncreatedStash block.
+        val stillCollidingGit = object : GitClient by fakeGit {
+            override fun untrackedFiles(workDir: File): List<String> = listOf("Assets/Foo.meta")
+            override fun targetBranchMatches(workDir: File, branch: String, paths: List<String>): List<String> =
+                paths.filter { it in setOf("Assets/Foo.meta") }
+            override fun headStructuralCollisions(workDir: File, paths: List<String>): List<String> =
+                paths.filter { it in setOf("Assets/Foo.meta") }
+            // The push "succeeds" but no entry is created and the file survives on disk.
+            override fun stashPaths(workDir: File, message: String, paths: Collection<String>): GitResult =
+                GitResult("stash paths", 0, "", "")
+            override fun stashOidByMessage(workDir: File, messagePrefix: String): String? = null
+        }
+        val collisionFile = writeUntrackedFile("Assets/Foo.meta")
+
+        val result = SwitchExecutor(
+            projectRoot,
+            createStringAppender { log += it },
+            stillCollidingGit,
+            collisionDiscards = mapOf("." to setOf("Assets/Foo.meta")),
+        ).executeResultTest(preset, SwitchOptions())
+
+        assertTrue(
+            "the switch must fail rather than proceed toward an unprotected checkout",
+            result.issues.any { it.code == OperationIssueCode.STASH_FAILED },
+        )
+        assertTrue("the still-colliding approved file must not be deleted", collisionFile.exists())
+    }
+
+    @Test
+    fun `isolation with no stash entry and no remaining collision proceeds harmlessly`() {
+        // The approved stash push reported ok but created no entry, and the approved path is
+        // gone from disk by the time of revalidation (something else removed it). Nothing is
+        // at risk, so the switch proceeds without an issue. This is the revalidateUncreatedStash
+        // no-op branch.
+        val noLongerCollidingGit = object : GitClient by fakeGit {
+            override fun untrackedFiles(workDir: File): List<String> = listOf("Assets/Foo.meta")
+            override fun targetBranchMatches(workDir: File, branch: String, paths: List<String>): List<String> =
+                paths.filter { it in setOf("Assets/Foo.meta") }
+            override fun headStructuralCollisions(workDir: File, paths: List<String>): List<String> =
+                paths.filter { it in setOf("Assets/Foo.meta") }
+            override fun stashPaths(workDir: File, message: String, paths: Collection<String>): GitResult =
+                GitResult("stash paths", 0, "", "")
+            override fun stashOidByMessage(workDir: File, messagePrefix: String): String? = null
+        }
+        // The approved path is never written to disk: nothing to protect, nothing collides.
+        val result = SwitchExecutor(
+            projectRoot,
+            createStringAppender { log += it },
+            noLongerCollidingGit,
+            collisionDiscards = mapOf("." to setOf("Assets/Foo.meta")),
+        ).executeResultTest(preset, SwitchOptions())
+
+        assertTrue("no collision remains, so the switch proceeds", result.ok)
+        assertTrue("no stash-related failure is reported", result.issues.none { it.code == OperationIssueCode.STASH_FAILED })
+    }
 }
