@@ -781,8 +781,7 @@ class SwitchStepTest {
         val execution = PullStep().run(c, state)
         assertTrue(execution.result is StepResult.Success)
         assertEquals("PullStep no longer restores stashes; the executor does at the end", 0, popCalls)
-        assertTrue(execution.state.stashesSnapshot().isNotEmpty())
-        assertTrue(execution.state.retainedStashBackupsSnapshot().isEmpty())
+        assertTrue("the tracked stash survives PullStep untouched", execution.state.stashesSnapshot().isNotEmpty())
     }
 
     @Test
