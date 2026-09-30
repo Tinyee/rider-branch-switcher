@@ -183,8 +183,6 @@ class BranchSwitcherService(
 
     suspend fun loadPresets(): Result<PresetLoadOutcome> = presetRepo.load()
 
-    suspend fun savePresets(presets: List<Preset>) = presetRepo.save(presets)
-
     /**
      * Saves [presets] only when the file still matches [baselineDigest] (the digest of the
      * exact bytes the caller's editor list was built from). See [PresetRepository.saveWithBaseline].

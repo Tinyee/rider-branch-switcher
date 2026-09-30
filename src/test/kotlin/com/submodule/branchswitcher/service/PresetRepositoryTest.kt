@@ -18,6 +18,14 @@ import java.nio.file.Path
 
 class PresetRepositoryTest {
 
+    /**
+     * Test-only equivalent of the removed `save()`: persists against the repository's
+     * last-recorded digest. Lets existing scenarios exercise [saveWithBaseline] without
+     * each having to thread the baseline through.
+     */
+    private suspend fun PresetRepository.save(newPresets: List<Preset>): ByteArray? =
+        saveWithBaseline(newPresets, recordedDigestForTest)
+
     @Test
     fun `failed save keeps the last persisted snapshot in memory`() = runBlocking {
         val root = Files.createTempDirectory("preset-repository")
@@ -428,6 +436,61 @@ class PresetRepositoryTest {
         // The write advanced the recorded digest, so a follow-up plain save still sees a
         // consistent on-disk state. Preset carries a random id, so compare by name.
         assertEquals(listOf("dev"), repository.presets.map { it.name })
+    }
+
+    @Test
+    fun `a second save succeeds when it adopts the written digest as its new baseline`() = runBlocking {
+        // Regression for the consecutive-save false conflict: the window saves against D1,
+        // the write advances the disk to D2, and the window must re-baseline to D2 (the
+        // returned digest) rather than keep validating against D1.
+        val root = Files.createTempDirectory("preset-repository")
+        val file = root.resolve(".idea/branch-presets.json")
+        val d1 = byteArrayOf(1)
+        val d2 = byteArrayOf(2)
+        var onDisk = d1
+        val repository = PresetRepository(
+            basePath = { root },
+            loader = { Result.success(PresetLoadResult(file, PresetFile(listOf(Preset("main", "main"))), onDisk)) },
+            saver = { _, _ -> d2.also { onDisk = it } },
+            digester = { onDisk },
+        )
+        repository.load().getOrThrow()
+
+        val written = repository.saveWithBaseline(listOf(Preset("a", "a")), d1)
+        // The second save must use the digest this window's own write produced.
+        repository.saveWithBaseline(listOf(Preset("b", "b")), written)
+
+        assertEquals(listOf("b"), repository.presets.map { it.name })
+    }
+
+    @Test
+    fun `saveWithBaseline with a null baseline refuses once the file exists`() = runBlocking {
+        // Window A's list was built from a load that saw no preset file (null baseline).
+        // Window B (its own repository over the same file) then creates the file; window A's
+        // save must be refused rather than silently overwrite it — the null baseline only
+        // matches a still-absent file.
+        val root = Files.createTempDirectory("preset-repository")
+        val file = root.resolve(".idea/branch-presets.json")
+        var onDisk: ByteArray? = null
+        fun repository() = PresetRepository(
+            basePath = { root },
+            loader = { Result.success(PresetLoadResult(file, PresetFile(), onDisk)) },
+            saver = { _, _ -> byteArrayOf(9).also { onDisk = it } },
+            digester = { onDisk },
+        )
+        val windowA = repository()
+        val windowB = repository()
+        windowA.load().getOrThrow() // window A builds its list while the file is absent
+        windowB.load().getOrThrow()
+
+        // Window B saves first, creating the file and advancing the on-disk digest.
+        windowB.saveWithBaseline(listOf(Preset("b", "b")), null)
+
+        val exception = runCatching {
+            windowA.saveWithBaseline(listOf(Preset("stale", "stale")), null)
+        }.exceptionOrNull()
+
+        assertTrue("a null baseline must refuse once the file exists", exception is PresetFileChangedException)
     }
 
     @Test

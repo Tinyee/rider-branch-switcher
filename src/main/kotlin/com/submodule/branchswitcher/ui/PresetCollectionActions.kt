@@ -11,6 +11,7 @@ import com.submodule.branchswitcher.model.Preset
 import com.submodule.branchswitcher.model.isValidBranchName
 import com.submodule.branchswitcher.log.AppLogger
 import com.submodule.branchswitcher.log.logFailure
+import com.submodule.branchswitcher.log.withContext
 import com.submodule.branchswitcher.service.BranchSwitcherService
 import com.submodule.branchswitcher.service.PresetFileChangedException
 import kotlinx.coroutines.Dispatchers
@@ -40,6 +41,7 @@ internal class PresetCollectionActions(
     private val host: PresetCollectionHost,
 ) {
     private val collectionOperationInProgress = AtomicBoolean(false)
+    private val resultPresenter = SwitchResultPresenter(project, service)
 
     /**
      * The digest of the preset-file bytes the current editor list was built from. Updated on
@@ -214,24 +216,27 @@ internal class PresetCollectionActions(
             return
         }
         val snapshot = presets.toList()
-        // Save against the digest this window's list was built from. If an external edit or a
-        // shortcut load has moved the file since then, the save is refused and the user is
-        // offered a reload — instead of silently overwriting the newer bytes with this stale list.
+        // Save against the digest this window's list was built from (null when the load saw
+        // no preset file — the save is then valid only while the file still does not exist).
+        // If an external edit or a shortcut load has moved the file since then, the save is
+        // refused and the user is offered a reload — instead of silently overwriting the
+        // newer bytes with this stale list.
         val baseline = editorListDigest
         service.scope.launch {
-            val failure = try {
-                if (baseline == null) service.savePresets(snapshot) else service.savePresetsWithBaseline(snapshot, baseline)
-                null
-            } catch (e: Exception) {
-                e
-            }
+            val outcome = runCatching { service.savePresetsWithBaseline(snapshot, baseline) }
             project.invokeLaterIfAlive {
                 collectionOperationInProgress.set(false)
-                if (failure == null) {
+                outcome.onSuccess { writtenDigest ->
+                    // The list now reflects these exact bytes: adopt the written digest as
+                    // the new baseline so a follow-up save is validated against what this
+                    // window itself wrote, not against the pre-save bytes.
+                    editorListDigest = writtenDigest
                     log.debug("[saved]")
                     onComplete(true)
-                } else {
-                    reportSaveFailure(failure)
+                }.onFailure { failure ->
+                    // savePresetsWithBaseline only fails with Exception subtypes; anything
+                    // else is a defect, so surface it as an unexpected error.
+                    reportSaveFailure(failure as? Exception ?: IllegalStateException(failure))
                     onComplete(false)
                 }
             }
@@ -240,12 +245,7 @@ internal class PresetCollectionActions(
 
     private fun beginCollectionOperation(): Boolean {
         if (collectionOperationInProgress.compareAndSet(false, true)) return true
-        log.warn("preset collection operation ignored while another operation is running")
-        Notifier.warn(
-            project,
-            Bundle.msg("notify.write.busy"),
-            Bundle.msg("notify.write.busy.msg"),
-        )
+        resultPresenter.rejectBusyWrite(log.withContext("preset-collection"))
         return false
     }
 
