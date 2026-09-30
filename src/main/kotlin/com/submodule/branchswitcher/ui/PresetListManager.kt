@@ -241,11 +241,7 @@ internal class PresetListManager(
             }
         }
         if (job == null) {
-            Notifier.warn(
-                project,
-                Bundle.msg("notify.write.busy"),
-                Bundle.msg("notify.write.busy.msg"),
-            )
+            resultPresenter.rejectBusyWrite(log.withContext("switch-submodule"))
             return
         }
         // Claim the tool-window busy state only once this switch owns the write lease,

@@ -326,8 +326,8 @@ class BranchSwitcherPanel(
         val currentEditors = presetManager.editors
         val repositoryPaths = LinkedHashSet<String>().apply { add(".") }
         currentEditors.forEach {
-            // Include draft rows (added but not yet saved) so their status dots stay live
-            // before the preset is persisted.
+            // Probe only persisted submodule paths: applyCurrentState updates dots from
+            // savedPreset.submodules, so a draft (unsaved) path's probe would go unused.
             repositoryPaths.addAll(it.currentSubmodulePaths())
         }
         val pinnedEditors = currentEditors.toList()

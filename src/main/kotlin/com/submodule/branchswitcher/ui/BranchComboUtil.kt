@@ -337,13 +337,20 @@ internal suspend fun refreshSubmoduleUnion(
 ): List<String>? {
     val git = File(dir, ".git").exists()
     if (git) {
+        // A fetch failure is reported one way regardless of whether it surfaced as a non-ok
+        // result or a thrown exception: a WARN ("refresh warn") when the sweep continues past
+        // it, a failure line otherwise; the single-row refresh then abandons (returns null).
+        fun reportFetchFailure(details: () -> String) {
+            if (continueOnFetchFailure) {
+                log.warn("refresh warn: ${dir.name}: ${details()}")
+            } else {
+                log.warn("refresh branches failed for ${dir.name}: ${details()}")
+            }
+        }
         try {
             val fetched = client.fetch(dir)
             if (!fetched.ok) {
-                log.warn(
-                    if (continueOnFetchFailure) "refresh warn: ${dir.name}: ${fetched.diagnostic()}"
-                    else "refresh branches failed for ${dir.name}: ${fetched.diagnostic()}",
-                )
+                reportFetchFailure { fetched.diagnostic() }
                 if (!continueOnFetchFailure) return null
             }
         } catch (e: CancellationException) {
@@ -351,11 +358,7 @@ internal suspend fun refreshSubmoduleUnion(
         } catch (e: OperationCancelledException) {
             throw e
         } catch (e: Exception) {
-            log.warn(
-                if (continueOnFetchFailure) "refresh warn: ${dir.name}"
-                else "refresh branches failed for ${dir.name}",
-                e,
-            )
+            reportFetchFailure { e.message ?: e.javaClass.simpleName }
             if (!continueOnFetchFailure) return null
         }
     }
