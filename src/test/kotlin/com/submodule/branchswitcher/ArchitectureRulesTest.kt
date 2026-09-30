@@ -232,23 +232,26 @@ class ArchitectureRulesTest {
      * Guards the cross-layer failure-contract constants: every `GIT_STDERR_*` sentinel
      * defined in core must be referenced by the plugin-layer emitter
      * (`GitProcessRunner`), so a sentinel cannot be added and forgotten, or renamed on
-     * one side only. The classification side is already pinned by `GitResultTest`.
+     * one side only. The list is derived from `GitTypes.kt` itself (not hardcoded here),
+     * so a newly added sentinel is automatically required on the emitter side. The
+     * classification side is already pinned by `GitResultTest`.
      */
     @Test
     fun `every git failure sentinel constant is referenced by the process runner`() {
-        val sentinels = listOf(
-            "GIT_STDERR_CANCELLED",
-            "GIT_STDERR_INTERRUPTED",
-            "GIT_STDERR_TIMEOUT_PREFIX",
-            "GIT_STDERR_CAPACITY_PREFIX",
-            "GIT_STDERR_START_FAILED_PREFIX",
-            "GIT_STDERR_OUTPUT_LIMIT_PREFIX",
-            "GIT_STDERR_OUTPUT_CAPTURE_PREFIX",
+        val gitTypesSource = java.nio.file.Files.readString(
+            java.nio.file.Path.of("core/src/main/kotlin/com/submodule/branchswitcher/git/GitTypes.kt"),
         )
+        val sentinels = Regex("""const val (GIT_STDERR_\w+)""")
+            .findAll(gitTypesSource)
+            .map { it.groupValues[1] }
+            .toList()
+        assertTrue("GitTypes.kt must define at least one GIT_STDERR_ sentinel", sentinels.isNotEmpty())
+
         val emitterSource = java.nio.file.Files.readString(
             java.nio.file.Path.of("src/main/kotlin/com/submodule/branchswitcher/git/impl/GitProcessRunner.kt"),
         )
-        val missing = sentinels.filter { name -> !emitterSource.contains(name) }
+        // Match as an identifier (word-bounded), not a bare substring.
+        val missing = sentinels.filter { name -> !Regex("""\b$name\b""").containsMatchIn(emitterSource) }
         assertTrue(
             "GIT_STDERR sentinels not referenced by the plugin-layer emitter: $missing",
             missing.isEmpty(),

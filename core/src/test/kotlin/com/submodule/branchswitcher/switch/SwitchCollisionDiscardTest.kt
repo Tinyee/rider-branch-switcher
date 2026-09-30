@@ -516,17 +516,24 @@ class SwitchCollisionDiscardTest : SwitchExecutorTestBase() {
         // gone from disk by the time of revalidation (something else removed it). Nothing is
         // at risk, so the switch proceeds without an issue. This is the revalidateUncreatedStash
         // no-op branch.
+        val collisionFile = writeUntrackedFile("Assets/Foo.meta")
         val noLongerCollidingGit = object : GitClient by fakeGit {
             override fun untrackedFiles(workDir: File): List<String> = listOf("Assets/Foo.meta")
             override fun targetBranchMatches(workDir: File, branch: String, paths: List<String>): List<String> =
                 paths.filter { it in setOf("Assets/Foo.meta") }
             override fun headStructuralCollisions(workDir: File, paths: List<String>): List<String> =
                 paths.filter { it in setOf("Assets/Foo.meta") }
-            override fun stashPaths(workDir: File, message: String, paths: Collection<String>): GitResult =
-                GitResult("stash paths", 0, "", "")
+            override fun stashPaths(workDir: File, message: String, paths: Collection<String>): GitResult {
+                // The push finds nothing to isolate: by the time it runs the path is already
+                // gone, so it reports ok but creates no stash entry. Deleting the file here
+                // makes the post-push revalidation observe it as no longer colliding, which is
+                // what steers the flow into the no-op branch (rather than the first
+                // approvedCollisionPaths check, which must still see the file as a collision).
+                collisionFile.delete()
+                return GitResult("stash paths", 0, "", "")
+            }
             override fun stashOidByMessage(workDir: File, messagePrefix: String): String? = null
         }
-        // The approved path is never written to disk: nothing to protect, nothing collides.
         val result = SwitchExecutor(
             projectRoot,
             createStringAppender { log += it },
@@ -536,5 +543,6 @@ class SwitchCollisionDiscardTest : SwitchExecutorTestBase() {
 
         assertTrue("no collision remains, so the switch proceeds", result.ok)
         assertTrue("no stash-related failure is reported", result.issues.none { it.code == OperationIssueCode.STASH_FAILED })
+        assertFalse("the vanished approved file stays gone", collisionFile.exists())
     }
 }
