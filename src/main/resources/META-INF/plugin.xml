@@ -46,10 +46,15 @@
     <depends>Git4Idea</depends>
 
     <actions>
+        <!--
+          No `text` or `description` attribute: those are literal strings, so a bundle key
+          written there is displayed verbatim — the Tools menu showed `action.switch.preset.action`
+          rather than "Switch to Preset...". The platform resolves `action.<id>.text` and
+          `action.<id>.description` from the resource bundle when the attributes are absent, so
+          the keys in BranchSwitcherBundle.properties are named after this action's id.
+        -->
         <action id="SubmoduleBranchSwitcher.SwitchPreset"
-                class="com.submodule.branchswitcher.action.SwitchPresetAction"
-                text="action.switch.preset.action"
-                description="action.switch.preset.action.desc">
+                class="com.submodule.branchswitcher.action.SwitchPresetAction">
             <add-to-group group-id="ToolsMenu" anchor="last"/>
             <keyboard-shortcut keymap="$default" first-keystroke="ctrl alt B"/>
         </action>
