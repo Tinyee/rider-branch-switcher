@@ -12,7 +12,12 @@ class BranchNameRulesTest {
 
     @Test
     fun `branch name validation accepts valid git branch shorthands`() {
-        listOf("a", "feature/test", "release-1.2", "user_name/topic", "feature.locked", "@").forEach {
+        val names = listOf(
+            "a", "feature/test", "release-1.2", "user_name/topic", "feature.locked", "@",
+            // Git only forbids a trailing dot at the end of the whole ref, not of every component.
+            "release./x", "a./b", "v1.0./hotfix", "feature./test", "x.-y",
+        )
+        names.forEach {
             assertTrue("Expected valid branch name: $it", isValidBranchName(it))
         }
     }
@@ -24,6 +29,7 @@ class BranchNameRulesTest {
             "feature/.hidden", "feature.", "feature.lock/test", "feature/test.lock",
             "feature.lock", "feature..test", "feature@{test", "feature test",
             "feature\u0001test", "feature\u007ftest", "HEAD",
+            "a/b.", "feature./", "feature./.hidden",
         ).forEach {
             assertFalse("Expected invalid branch name: $it", isValidBranchName(it))
         }
@@ -58,6 +64,7 @@ class BranchNameRulesTest {
             "feature/.hidden", "feature.", "feature.lock/test", "feature/test.lock",
             "feature.lock", "feature..test", "feature@{test", "feature test",
             "feature\u0001test", "feature\u007ftest", "HEAD",
+            "release./x", "a./b", "v1.0./hotfix", "feature./test", "x.-y", "a/b.",
         )
         val mismatches = corpus.filter { name ->
             isValidBranchName(name) != gitAcceptsAsBranchShorthand(name)

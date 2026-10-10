@@ -23,6 +23,30 @@ import javax.swing.event.DocumentListener
 const val KEY_ALL_BRANCHES = "submodule.branchswitcher.allBranches"
 private const val KEY_BRANCH_LOAD = "submodule.branchswitcher.branchLoad"
 private const val KEY_BRANCH_LOAD_TOKEN = "submodule.branchswitcher.branchLoadToken"
+private const val KEY_BRANCH_LOAD_SEED = "submodule.branchswitcher.branchLoadSeed"
+
+/**
+ * The branch a combo currently stands for. A combo being loaded shows the literal
+ * [LOADING_BRANCH] placeholder instead of its selection, so the value the load displaced is
+ * remembered in [KEY_BRANCH_LOAD_SEED] and read back here. Without this, a draft read while a
+ * load is in flight (a collapse cancels every load, leaving the placeholder behind) would
+ * capture the placeholder as a branch name or, worse, let a re-expand write it into the preset.
+ */
+internal fun comboBranchSelection(combo: JComboBox<String>): String? {
+    val selected = combo.selectedItem as? String
+    if (selected != null && selected != LOADING_BRANCH) return selected
+    return combo.getClientProperty(KEY_BRANCH_LOAD_SEED) as? String
+}
+
+/** Records the selection [displaced] by a load starting on [combo]. */
+private fun JComboBox<String>.seedLoadSelection(displaced: String) {
+    putClientProperty(KEY_BRANCH_LOAD_SEED, displaced)
+}
+
+/** Drops the load seed once the combo carries a real selection again. */
+internal fun JComboBox<String>.clearLoadSelectionSeed() {
+    putClientProperty(KEY_BRANCH_LOAD_SEED, null)
+}
 
 /**
  * A submodule row's discovery inputs: the superproject root ([gitRoot], where
@@ -144,6 +168,10 @@ internal fun loadComboBranches(
     combo.putClientProperty(KEY_BRANCH_LOAD_TOKEN, loadToken)
     previousLoad?.cancel()
     onLoadStart()
+    // Remember what this load displaces before blanking the combo: a cancellation (collapse,
+    // dispose, supersede) leaves the placeholder behind, and every draft read after that must
+    // still see the branch the user had rather than "Loading...".
+    combo.seedLoadSelection(comboBranchSelection(combo).orEmpty())
     combo.model = DefaultComboBoxModel(arrayOf(LOADING_BRANCH))
     combo.selectedItem = LOADING_BRANCH
     combo.isEnabled = false
@@ -171,6 +199,7 @@ internal fun loadComboBranches(
                 combo.model = DefaultComboBoxModel(list.toTypedArray())
                 combo.selectedItem = result.selectedBranch
                 combo.putClientProperty(KEY_ALL_BRANCHES, list)
+                combo.clearLoadSelectionSeed()
                 combo.isEnabled = true
             } finally {
                 endLoad(loadResult?.succeeded ?: false)
@@ -237,6 +266,7 @@ internal fun refreshComboBranches(
     val loadToken = Any()
     combo.putClientProperty(KEY_BRANCH_LOAD_TOKEN, loadToken)
     onLoadStart()
+    combo.seedLoadSelection(comboBranchSelection(combo) ?: previousSelected)
     combo.model = DefaultComboBoxModel(arrayOf(LOADING_BRANCH))
     combo.selectedItem = LOADING_BRANCH
     combo.isEnabled = false
@@ -264,6 +294,7 @@ internal fun refreshComboBranches(
         combo.model = DefaultComboBoxModel(list.toTypedArray())
         combo.selectedItem = selected
         combo.putClientProperty(KEY_ALL_BRANCHES, list)
+        combo.clearLoadSelectionSeed()
         combo.isEnabled = true
     }
 

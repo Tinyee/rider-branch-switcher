@@ -2,6 +2,7 @@ package com.submodule.branchswitcher.presentation
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -13,12 +14,14 @@ class PresetEditorControlStateTest {
         loadingCount: Int = 0,
         persistence: Boolean = false,
         mutation: Boolean = true,
+        draftError: String? = null,
     ) = presetEditorControlState(
         hasDraftChanges = draft,
         initializing = initializing,
         loadingCount = loadingCount,
         persistenceInProgress = persistence,
         mutationActionsEnabled = mutation,
+        draftError = draftError,
     )
 
     @Test
@@ -100,5 +103,39 @@ class PresetEditorControlStateTest {
             ),
             state(draft = false, mutation = true),
         )
+    }
+
+    @Test
+    fun `an invalid draft disables switch and derive but still allows saving the fix`() {
+        // Switching an invalid preset fails in preflight and deriving one throws on
+        // Preset.targets() before its progress task starts, so neither may be clickable.
+        // Save must stay enabled: the draft is the only place the fix can be entered.
+        val s = state(draft = true, draftError = "invalid branch for 'SubA': ''")
+
+        assertTrue("save must stay enabled so the draft can be repaired", s.saveEnabled)
+        assertTrue("revert must stay enabled", s.revertEnabled)
+        assertFalse("switch must be refused on an invalid draft", s.switchEnabled)
+        assertFalse("derive must be refused on an invalid draft", s.deriveEnabled)
+        assertEquals("the failure must reach the editor", "invalid branch for 'SubA': ''", s.draftError)
+    }
+
+    @Test
+    fun `a valid draft keeps switch and derive enabled`() {
+        val s = state(draft = true, draftError = null)
+
+        assertTrue(s.switchEnabled)
+        assertTrue(s.deriveEnabled)
+        assertNull(s.draftError)
+    }
+
+    @Test
+    fun `the draft error survives being reported alongside local busy`() {
+        // The message is presentation state, not part of the gate: a busy editor must
+        // still be able to show why switch/derive would be refused once it settles.
+        val s = state(draft = true, loadingCount = 1, draftError = "invalid main branch: ''")
+
+        assertFalse(s.switchEnabled)
+        assertFalse(s.deriveEnabled)
+        assertEquals("invalid main branch: ''", s.draftError)
     }
 }

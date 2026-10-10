@@ -1,5 +1,6 @@
 package com.submodule.branchswitcher.ui
 
+import com.submodule.branchswitcher.Bundle
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
@@ -28,5 +29,26 @@ class SwitchResultPresenterTest {
     @Test
     fun `notification detail is omitted when empty`() {
         assertEquals("base", appendNotificationDetail("base", ""))
+    }
+
+    @Test
+    fun `a partial failure keeps the lock guidance off the previous sentence`() {
+        val headline = Bundle.msg("notify.switch.partial.msg", "Work")
+        val retained = " 2 stash backups retained"
+        val lock = "Main Repo is blocked by a stale git index.lock"
+
+        assertEquals(
+            "the lock line must be separated, not glued to the retained notice",
+            "$headline$retained $lock",
+            partialFailureMessage("Work", retained, lock),
+        )
+    }
+
+    @Test
+    fun `a partial failure without retained state or a lock is just the headline`() {
+        assertEquals(
+            Bundle.msg("notify.switch.partial.msg", "Work"),
+            partialFailureMessage("Work", "", ""),
+        )
     }
 }

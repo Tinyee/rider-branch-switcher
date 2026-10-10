@@ -8,7 +8,9 @@ import com.submodule.branchswitcher.log.AppLogger
 import com.submodule.branchswitcher.log.logFailure
 import com.submodule.branchswitcher.model.Preset
 import com.submodule.branchswitcher.model.isValidBranchName
+import com.submodule.branchswitcher.model.presetValidationError
 import com.submodule.branchswitcher.presentation.PresetDraftSelection
+import com.submodule.branchswitcher.presentation.PresetEditorControlState
 import com.submodule.branchswitcher.presentation.PresetRenameDecision
 import com.submodule.branchswitcher.presentation.SubmoduleDraftSelection
 import com.submodule.branchswitcher.presentation.applyTo
@@ -84,13 +86,20 @@ internal class PresetEditor(
         border = JBUI.Borders.empty(1, 0, 0, 0)
     }
     private val switchBtn = jButton(Bundle.msg("action.switch"), AllIcons.Actions.Execute)
+    private val deriveTooltip = Bundle.msg("action.derive.tip")
     private val deriveBtn = jButton(Bundle.msg("action.derive"), AllIcons.Vcs.Branch) {
-        toolTipText = Bundle.msg("action.derive.tip")
+        toolTipText = deriveTooltip
         addActionListener { deriveBranch() }
     }
     private val moreButton = moreIconButton { showPresetMoreMenu(it) }
     private val headerActions = createHeaderActions()
     private var isCurrentPreset = false
+
+    private val draftErrorLabel = ShrinkableLabel().apply {
+        font = font.deriveFont(Font.PLAIN, 11f)
+        foreground = WARN_AMBER
+        isVisible = false
+    }
 
     private val body = CompactHeightPanel().apply {
         layout = BoxLayout(this, BoxLayout.Y_AXIS)
@@ -124,6 +133,7 @@ internal class PresetEditor(
         }
         body.add(createEditorActions())
         add(header)
+        add(createDraftErrorRow())
         add(body)
 
         restoreSavedPresetToUi()
@@ -149,6 +159,16 @@ internal class PresetEditor(
                 override fun mouseClicked(e: MouseEvent) { toggle() }
             })
         }
+    }
+
+    private fun createDraftErrorRow(): JPanel = ResponsiveRowPanel(
+        leading = draftErrorLabel,
+        trailing = JPanel().apply { isOpaque = false; preferredSize = Dimension(0, 0) },
+        horizontalGap = JBUI.scale(8),
+        verticalGap = JBUI.scale(2),
+        arrangement = ResponsiveRowArrangement.PACKED,
+    ).apply {
+        border = JBUI.Borders.empty(0, 8, 0, 4)
     }
 
     private fun createPresetIdentity(): JPanel {
@@ -308,8 +328,13 @@ internal class PresetEditor(
 
     /** Lazy-loads branch lists for all combos on first expand. Must be guarded by [branchesLoaded]. */
     private fun loadBranches() {
-        loadComboBranches(mainCombo, gitRoot.toFile(), savedPreset.main)
-        submoduleManager.loadAllBranches(savedPreset)
+        // Seed from the live draft rather than [savedPreset]: every completion restores its
+        // seed as the combo's selection, and a re-expand reloads rows whose earlier load failed
+        // or was cancelled by the collapse. Seeding from the saved preset there would silently
+        // revert the user's unsaved branch edits.
+        val draft = buildEditedPreset()
+        loadComboBranches(mainCombo, gitRoot.toFile(), draft.main)
+        submoduleManager.loadAllBranches(draft)
     }
 
     /** Asynchronously loads branch names into [combo] via [scope], preserving [current] as selected item. */
@@ -354,11 +379,27 @@ internal class PresetEditor(
             loadingCount = loadingCount,
             persistenceInProgress = persistenceInProgress,
             mutationActionsEnabled = actionsEnabled,
+            draftError = presetValidationError(buildEditedPreset()),
         )
         saveBtn.isEnabled = state.saveEnabled
         revertBtn.isEnabled = state.revertEnabled
         switchBtn.isEnabled = state.switchEnabled
         deriveBtn.isEnabled = state.deriveEnabled
+        renderDraftError(state)
+    }
+
+    /**
+     * Surfaces an invalid draft on every control it blocks. A disabled button with no reason is
+     * indistinguishable from a busy editor, and the two deepest failure paths are otherwise
+     * silent: switch only reports the raw validation text in preflight, and derive reports
+     * nothing at all beyond a line in the tool-window log.
+     */
+    private fun renderDraftError(state: PresetEditorControlState) {
+        val reason = state.draftError?.let { Bundle.msg("editor.draft.invalid", it) }
+        draftErrorLabel.text = reason
+        draftErrorLabel.isVisible = reason != null
+        switchBtn.toolTipText = reason
+        deriveBtn.toolTipText = reason ?: deriveTooltip
     }
 
     /**
@@ -417,11 +458,11 @@ internal class PresetEditor(
 
     private fun draftSelection(): PresetDraftSelection =
         PresetDraftSelection(
-            mainBranch = mainCombo.selectedItem as? String,
+            mainBranch = comboBranchSelection(mainCombo),
             submodules = submoduleRows.values.map { row ->
                 SubmoduleDraftSelection(
                     path = row.path,
-                    branch = row.combo.selectedItem as? String,
+                    branch = comboBranchSelection(row.combo),
                     included = !row.deleted,
                 )
             },

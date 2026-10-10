@@ -11,11 +11,12 @@ fun isValidBranchName(name: String): Boolean {
     if (name.contains("//")) return false
     if (name.contains("..") || name.contains("@{")) return false
     if (name.any { it.code <= 32 || it.code == 127 || it in "~^:?*[\\\\" }) return false
+    // Git rejects a trailing dot on the whole ref, not on every path component:
+    // `release./x` and `v1.0./hotfix` are valid, `feature.` and `a/b.` are not.
+    if (name.endsWith(".")) return false
 
     return name.split('/').none { component ->
-        component.startsWith(".") ||
-            component.endsWith(".") ||
-            component.endsWith(".lock")
+        component.startsWith(".") || component.endsWith(".lock")
     }
 }
 

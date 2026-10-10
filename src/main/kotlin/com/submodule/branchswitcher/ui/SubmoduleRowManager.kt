@@ -169,7 +169,7 @@ internal class SubmoduleRowManager(
             if (loadedOnce && !existing.loaded) {
                 existing.loaded = true
                 loadComboBranches(existing.combo, gitRoot.resolve(path).toFile(),
-                    existing.combo.selectedItem as? String ?: "", row = existing, submodule = submoduleSource(path))
+                    comboBranchSelection(existing.combo).orEmpty(), row = existing, submodule = submoduleSource(path))
             }
             onDirty()
             body.revalidate()
@@ -201,7 +201,9 @@ internal class SubmoduleRowManager(
             if (preset.submodules.containsKey(row.path)) {
                 row.deleted = false
                 row.panel.isVisible = true
+                // Restoring the saved branch also retires any seed a cancelled load left behind.
                 row.combo.selectedItem = preset.submodules[row.path]
+                row.combo.clearLoadSelectionSeed()
             } else {
                 removedPaths += row.path
             }
@@ -234,6 +236,9 @@ internal class SubmoduleRowManager(
             if (row.deleted || row.loaded) return@forEach
             row.loaded = true
             val dir = gitRoot.resolve(row.path).toFile()
+            // [preset] is the caller's live draft ([PresetEditor.loadBranches] passes
+            // buildEditedPreset()), so its branches already carry unsaved edits — reading the
+            // combo here instead would let an empty combo shadow a real branch value.
             val branch = preset.submodules[row.path] ?: ""
             loadComboBranches(row.combo, dir, branch, row = row, submodule = submoduleSource(row.path))
         }
@@ -300,7 +305,7 @@ internal class SubmoduleRowManager(
     /** Re-runs discovery for an already-loaded row, preserving its current selection. */
     private fun reloadRow(row: SubRow) {
         val dir = gitRoot.resolve(row.path).toFile()
-        val current = (row.combo.selectedItem as? String).orEmpty()
+        val current = comboBranchSelection(row.combo).orEmpty()
         row.loaded = true
         loadComboBranches(
             combo = row.combo,
@@ -355,7 +360,7 @@ internal class SubmoduleRowManager(
     fun refreshSubmoduleRow(path: String) {
         val row = subRows[path] ?: return
         if (row.deleted) return
-        refreshRowBranches(row, (row.combo.selectedItem as? String).orEmpty(), submoduleSource(path))
+        refreshRowBranches(row, comboBranchSelection(row.combo).orEmpty(), submoduleSource(path))
     }
 
     private fun refreshRowBranches(row: SubRow, current: String, submodule: SubmoduleSource) {
@@ -381,7 +386,7 @@ internal class SubmoduleRowManager(
 
     internal fun requestSwitchOnly(path: String) {
         val row = subRows[path] ?: return
-        val target = (row.combo.selectedItem as? String)?.trim().orEmpty()
+        val target = comboBranchSelection(row.combo)?.trim().orEmpty()
         if (target.isEmpty()) {
             log.warn("[switch] $path: target branch is empty")
             return

@@ -62,6 +62,12 @@ data class PresetEditorControlState(
     val revertEnabled: Boolean,
     val switchEnabled: Boolean,
     val deriveEnabled: Boolean,
+    /**
+     * The validation failure blocking this draft, or null when it is usable. Carried here so
+     * the editor can show why switch/derive are refused instead of leaving the user with
+     * silently disabled buttons.
+     */
+    val draftError: String? = null,
 )
 
 /**
@@ -78,14 +84,21 @@ fun presetEditorControlState(
     loadingCount: Int,
     persistenceInProgress: Boolean,
     mutationActionsEnabled: Boolean,
+    draftError: String? = null,
 ): PresetEditorControlState {
     val localBusy = initializing || loadingCount > 0 || persistenceInProgress
+    val draftUsable = draftError == null
     val saveRevertEnabled = hasDraftChanges && !localBusy
-    val switchDeriveEnabled = mutationActionsEnabled && !localBusy
+    // An invalid draft can never be acted on: save fails inside PresetLoader.save's
+    // requireValidPreset, switch fails in preflight, and derive throws on Preset.targets()
+    // before its progress task even starts. Derive is the worst of the three because its
+    // failure reaches only the tool-window log, so the editor must refuse up front instead.
+    val switchDeriveEnabled = mutationActionsEnabled && !localBusy && draftUsable
     return PresetEditorControlState(
         saveEnabled = saveRevertEnabled,
         revertEnabled = saveRevertEnabled,
         switchEnabled = switchDeriveEnabled,
         deriveEnabled = switchDeriveEnabled,
+        draftError = draftError,
     )
 }

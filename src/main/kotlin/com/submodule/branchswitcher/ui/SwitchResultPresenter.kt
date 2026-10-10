@@ -118,7 +118,14 @@ internal class SwitchResultPresenter(
             )
             return
         }
-        val message = Bundle.msg("notify.switch.partial.msg", preset.name) + retainedStateNotice(execution)
+        // The retained notices carry their own leading space; the lock detail does not, so this
+        // goes through the shared joiner (which also drops an empty detail) rather than a bare
+        // concatenation that would glue the lock line onto the sentence above it.
+        val message = partialFailureMessage(
+            preset.name,
+            retainedStateNotice(execution),
+            lockBlockedDetail(execution, recovery?.issues.orEmpty()),
+        )
         presentRollbackOrError(execution, message, onRollback, operationId)
     }
 
@@ -201,10 +208,16 @@ internal class SwitchResultPresenter(
                 operationId,
             )
         } else {
+            // A recovery blocked by a stale index.lock needs the same actionable line here as
+            // every other failed-recovery path: the cancellation is why the rollback stopped,
+            // but the lock is what the user has to clear before the retry can work.
             Notifier.error(
                 project,
                 Bundle.msg("switch.cancelled"),
-                Bundle.msg("notify.switch.cancelled.partial") + retainedNotice,
+                appendNotificationDetail(
+                    Bundle.msg("notify.switch.cancelled.partial") + retainedNotice,
+                    lockBlockedDetail(runResult.execution, recovery.issues),
+                ),
                 operationId,
             )
         }
@@ -251,11 +264,6 @@ internal class SwitchResultPresenter(
         )
     }
 
-    /** Localized, actionable lines for every stale-index.lock issue in [issues]. */
-    private fun lockBlockedLines(issues: List<OperationIssue>): List<String> =
-        lockBlockedPresentations(issues, Bundle.msg("label.main.repo"))
-            .map { Bundle.msg("index.lock.blocking", it.repositoryLabel, it.lockPath) }
-
     private fun retainedInitializationNotice(execution: SwitchExecutionResult?): String {
         val paths = execution?.state?.initializedSubmodulesSnapshot().orEmpty()
         if (paths.isEmpty()) return ""
@@ -274,6 +282,38 @@ internal class SwitchResultPresenter(
 
 internal fun joinNotificationDetails(vararg details: String): String =
     details.filter(String::isNotEmpty).joinToString("\n")
+
+/**
+ * The body of a partially-failed switch notification: the headline, the retained-state notices
+ * (each of which carries its own leading space) and the stale-lock guidance. The lock detail
+ * carries no leading space, so the three must be joined rather than concatenated — a bare `+`
+ * would glue the lock line onto the end of the sentence before it.
+ */
+internal fun partialFailureMessage(
+    presetName: String,
+    retainedNotice: String,
+    lockDetail: String,
+): String = appendNotificationDetail(
+    Bundle.msg("notify.switch.partial.msg", presetName) + retainedNotice,
+    lockDetail,
+)
+
+/**
+ * The stale-index.lock guidance for a failed switch, drawn from the execution issues and the
+ * recovery issues. A [SwitchExecutionResult] alone does not carry the locks the automatic
+ * rollback hit — [SwitchRecoveryResult.issues] does — so a caller that omits them silently
+ * withholds the one instruction that lets the user unblock themselves, and the retry button
+ * the same notification offers fails on the very same lock.
+ */
+internal fun lockBlockedDetail(
+    execution: SwitchExecutionResult?,
+    recoveryIssues: List<OperationIssue> = emptyList(),
+): String = lockBlockedLines(execution?.issues.orEmpty() + recoveryIssues).joinToString("\n")
+
+/** Localized, actionable lines for every stale-index.lock issue in [issues]. */
+internal fun lockBlockedLines(issues: List<OperationIssue>): List<String> =
+    lockBlockedPresentations(issues, Bundle.msg("label.main.repo"))
+        .map { Bundle.msg("index.lock.blocking", it.repositoryLabel, it.lockPath) }
 
 /**
  * Appends an optional detail block to a localized base message. The base texts
