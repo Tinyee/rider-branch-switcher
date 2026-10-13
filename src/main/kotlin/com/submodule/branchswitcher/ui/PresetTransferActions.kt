@@ -13,12 +13,11 @@ import java.awt.datatransfer.Clipboard
 import java.awt.datatransfer.DataFlavor
 import java.awt.datatransfer.StringSelection
 import java.awt.datatransfer.UnsupportedFlavorException
-import java.nio.file.Path
 
 /** Clipboard import and export commands for a preset collection. */
 internal class PresetTransferActions(
     private val project: Project,
-    private val gitRoot: () -> Path?,
+    private val mainRepository: MainRepository,
     private val log: AppLogger,
     private val host: PresetCollectionHost,
     private val persist: (List<Preset>, (Boolean) -> Unit) -> Unit,
@@ -81,11 +80,7 @@ internal class PresetTransferActions(
                         result.conflictingNames.joinToString(", "),
                 )
             }
-            val root = gitRoot() ?: run {
-                log.error("git root not found")
-                Notifier.error(project, Bundle.msg("plugin.title"), Bundle.msg("git.root.not.found"))
-                return
-            }
+            val root = mainRepository.resolveOrReport() ?: return
             val combined = host.editors.map { it.currentPreset() } + result.presets
             persist(combined) persisted@{ saved ->
                 if (!saved) return@persisted

@@ -28,7 +28,7 @@ import java.nio.file.Path
 internal class SwitchController(
     private val project: Project,
     private val service: BranchSwitcherService,
-    private val gitRoot: () -> Path?,
+    private val mainRepository: MainRepository,
     private val log: AppLogger,
     private val onStateChanged: () -> Unit,
 ) {
@@ -47,11 +47,7 @@ internal class SwitchController(
     private var switchInProgress = false
 
     fun runSwitch(preset: Preset) {
-        val root = gitRoot() ?: run {
-            log.error("git root not found")
-            Notifier.error(project, Bundle.msg("plugin.title"), Bundle.msg("git.root.not.found"))
-            return
-        }
+        val root = mainRepository.resolveOrReport() ?: return
         coordinator.runSwitchFlow(
             root,
             preset,

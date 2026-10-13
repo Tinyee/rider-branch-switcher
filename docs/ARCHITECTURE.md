@@ -68,7 +68,7 @@ require a different preset, checkpoint, and recovery model.
 | `workflow` | Reusable use cases and cancellable read coordination independent of IntelliJ APIs | `SwitchRunner.kt`, `RepositoryStateRefreshCoordinator.kt` |
 | `platform` | IntelliJ progress/cancellation/background adapters | `GitBackgroundRunner.kt`, `SwitchAdapters.kt` |
 | `git` | CLI command construction, inspection, and process lifecycle | `GitOps.kt`, `GitCommandClient.kt`, `GitProcessRunner.kt`, `GitOutputDrainer.kt` |
-| `ui` | Tool Window, editors, dialogs, notifications, and screen commands | `BranchSwitcherPanel.kt`, `PresetEditor.kt`, `SwitchFlowCoordinator.kt` |
+| `ui` | Tool Window, editors, dialogs, notifications, and screen commands | `BranchSwitcherPanel.kt`, `MainRepository.kt`, `PresetEditor.kt`, `SwitchFlowCoordinator.kt` |
 | `action` | IDE actions such as `Ctrl+Alt+B` | `SwitchPresetAction.kt` |
 | `settings` | IntelliJ settings form and service binding | `BranchSwitcherConfigurable.kt` |
 

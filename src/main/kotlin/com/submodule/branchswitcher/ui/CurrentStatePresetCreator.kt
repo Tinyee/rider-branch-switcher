@@ -20,18 +20,14 @@ import java.nio.file.Path
 internal class CurrentStatePresetCreator(
     private val project: Project,
     private val service: BranchSwitcherService,
-    private val gitRoot: () -> Path?,
+    private val mainRepository: MainRepository,
     private val log: AppLogger,
     private val host: PresetCollectionHost,
     private val persist: (List<Preset>, (Boolean) -> Unit) -> Unit,
     private val nameValidator: () -> InputValidator,
 ) {
     fun create() {
-        val root = gitRoot() ?: run {
-            log.error("git root not found")
-            Notifier.error(project, Bundle.msg("plugin.title"), Bundle.msg("git.root.not.found"))
-            return
-        }
+        val root = mainRepository.resolveOrReport() ?: return
         service.scope.launch(Dispatchers.Default) {
             val currentState = probeCurrentState(root) ?: return@launch
             project.invokeLaterIfAlive {

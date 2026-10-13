@@ -30,7 +30,7 @@ import javax.swing.JPanel
 internal class PresetListManager(
     private val project: Project,
     private val service: BranchSwitcherService,
-    private val gitRoot: () -> Path?,
+    private val mainRepository: MainRepository,
     private val log: AppLogger,
     private val presetsInner: JPanel,
     private val onSwitch: (Preset) -> Unit,
@@ -57,7 +57,7 @@ internal class PresetListManager(
         // because the closure iterates the live list rather than holding per-editor subscriptions.
         onResolved = { map -> mutableEditors.forEach { it.setSubmoduleUrls(map) } }
     }
-    private val actions = PresetCollectionActions(project, service, gitRoot, log, this)
+    private val actions = PresetCollectionActions(project, service, mainRepository, log, this)
     private val resultPresenter = SwitchResultPresenter(project, service)
     private val singleRepositorySwitcher = SingleRepositorySwitcher(
         operations = GitBackgroundRunner(project, service.gitClient),
@@ -92,7 +92,7 @@ internal class PresetListManager(
             log.debug("refresh all submodules skipped: already in flight")
             return
         }
-        val root = gitRoot()
+        val root = mainRepository.resolve()
         if (root == null) {
             submoduleRefreshInFlightRef.set(false)
             return

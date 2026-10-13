@@ -17,7 +17,6 @@ import com.submodule.branchswitcher.git.impl.GIT_PROCESS_BACKGROUND_BUDGET
 import com.submodule.branchswitcher.log.AppLogger
 import com.submodule.branchswitcher.log.LogEntry
 import com.submodule.branchswitcher.log.ToolWindowLogger
-import com.submodule.branchswitcher.platform.gitRootPath
 import com.submodule.branchswitcher.service.BranchSwitcherService
 import com.submodule.branchswitcher.workflow.RepositoryStateDetector
 import com.submodule.branchswitcher.workflow.RepositoryStateRefreshCoordinator
@@ -25,7 +24,6 @@ import com.submodule.branchswitcher.settings.BranchSwitcherConfigurable
 import java.awt.BorderLayout
 import java.awt.Dimension
 import java.awt.Font
-import java.io.File
 import java.nio.file.Path
 import javax.swing.BorderFactory
 import javax.swing.Box
@@ -87,10 +85,17 @@ class BranchSwitcherPanel(
     // ── Logger ──────────────────────────────────────────────────
     // Declared before the watcher: the watcher needs it at construction.
     private val logger: AppLogger = ToolWindowLogger(logPanel::append)
+
+    /**
+     * Owns the main repository for every screen command. Constructed before its consumers
+     * so one instance answers all of them, and the missing-root failure is stated once
+     * rather than restated at each entry point.
+     */
+    private val mainRepository = MainRepository.forProject(project, logger)
     private val reflogWatcher = ExternalGitSwitchWatcher(
         alarm = reflogWatchAlarm,
         log = logger,
-        gitRoot = ::gitRoot,
+        gitRoot = mainRepository::resolve,
         shouldWatch = { shouldRunReflogWatch(isShowing, project.isDisposed) },
         onExternalChange = ::scheduleStateRefresh,
     )
@@ -108,17 +113,16 @@ class BranchSwitcherPanel(
 
     // ── Explicit command wiring ─────────────────────────────────
     private val switchController = SwitchController(
-        project, service, ::gitRoot, logger,
+        project, service, mainRepository, logger,
         onStateChanged = ::onInternalStateChanged,
     )
     private val presetManager = PresetListManager(
-        project, service, ::gitRoot, logger, presetsInner,
+        project, service, mainRepository, logger, presetsInner,
         onSwitch = switchController::runSwitch,
         onDerive = switchController::derivePresetBranch,
         onStateChanged = ::onInternalStateChanged,
         onBusyChange = switchController::setSwitchInProgress,
     )
-    private var worktreeInfoLogged = false
 
     init {
         // Disable every editor's switch/derive buttons while a mutation is in flight,
@@ -303,22 +307,7 @@ class BranchSwitcherPanel(
         presetManager.dispose()
     }
 
-    private fun gitRoot(): Path? {
-        val root = project.gitRootPath()
-        if (root == null) {
-            // Only the project directory name reaches the copyable log panel, not the
-            // user's absolute filesystem layout.
-            val baseName = project.basePath?.let { File(it).name }
-            logger.debug("git root not resolved: basePath=$baseName")
-            return null
-        }
-        val dotGit = root.resolve(".git")
-        if (!java.nio.file.Files.isDirectory(dotGit) && !worktreeInfoLogged) {
-            worktreeInfoLogged = true
-            logger.debug("[info] detected git worktree — .git is a file, not a directory")
-        }
-        return root
-    }
+    private fun gitRoot(): Path? = mainRepository.resolve()
 
     /** Probes all editor paths in the background, then applies the latest snapshot. */
     private fun detectCurrentState() {
