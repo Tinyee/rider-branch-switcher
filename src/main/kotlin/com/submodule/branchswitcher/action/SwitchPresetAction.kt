@@ -70,7 +70,7 @@ class SwitchPresetAction : AnAction() {
                     actionLogger(project).logFailure("preset load failed", error)
                 }
                 Notifier.error(project, Bundle.msg("preset.load.failed"),
-                    error?.message ?: Bundle.msg("dialog.import.failed"))
+                    error?.message ?: Bundle.msg("error.unknown"))
                 return
             }
             ShortcutPresetLoadDecision.NoPresets -> {
