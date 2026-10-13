@@ -193,3 +193,66 @@ Revisit when the preset-switch chooser — which already ships a proven
 filterable chooser (search + list) — can be reused: replace the per-field
 editable-combo type-ahead with a native IntelliJ searchable chooser, opened
 from the main-repository and submodule branch fields.
+
+### P3-17: Shallow-Module Candidates Reviewed And Retained ✅ Keep 2026-10-13
+
+A deepening review of the branch-combo cluster and its neighbours proposed
+turning shallow modules into deep ones. Three candidates were examined and every
+one was either implemented or rejected on evidence; the seven modules below were
+checked against the deletion test and **retained**. Recorded so a later review
+does not re-propose the split.
+
+**Retained — deleting each would concentrate complexity, not remove it:**
+
+- `WriteOperationLauncher` — three sites construct their own, but `tryAcquireWrite`
+  is one shared gate (`BranchSwitcherService.writeGate`), so separate instances
+  still exclude each other. It also owns when the lease is released and that
+  `afterRelease` runs only on success.
+- `BranchLoadHandle` — three members look like pure delegation, but `cancel()` is
+  narrower than `Job.cancel()` in a load-bearing way: it is the only thing that
+  guarantees the Git session is cancelled with the coroutine. A caller holding a
+  raw `Job` would cancel the coroutine and leak the process.
+- `BranchLoadCoordinator` — removing it spreads session lifecycle, resource
+  release, and the concurrency bound across five call sites.
+- `RemoteBranchCache` — removing it spreads a map, its TTL, and the expiry
+  arithmetic across four call sites, three of them non-trivial.
+- `core/git` interface hierarchy — many narrow test doubles depend on it, and
+  `core` cannot import the concrete client. Consistent with P3-14.
+- `core/switch`'s seven steps — they share one `SwitchStep` interface; each is
+  thin but does real work, so none is a pass-through. Part of the frozen pipeline
+  ADR-0001 describes.
+- `PresetCollectionHost` — already a separated view seam, not a leak.
+
+**Candidates not taken, and why:**
+
+- Merging the four branch-load client properties into one `BranchComboState` was
+  rejected: ADR-0001's bar was not met (no second consumer), and the cited
+  "17 `as?` casts" was really 17 accesses of which five are casts. The test-seam
+  half of it was implemented instead.
+- A shared composer for the preset-load fallback text was rejected — see below.
+
+**Open findings from the same review, none urgent:**
+
+- The `onLoadStart` / `onLoadEnd` protocol is hand-written three times
+  (`PresetEditor`, `SubmoduleRowManager` twice), differing only by `row?.` and
+  `row.`.
+- `loadComboBranches` and `refreshComboBranches` are two operations sharing about
+  40% of one protocol; `ComboBranchTarget` is used by the first and bypassed by
+  the second, which is an unfinished refactor rather than a design.
+- `BranchLoadCoordinator.launch` and `launchWorkflow` have identical bodies; the
+  split exists only to avoid a cast, by their own KDoc.
+- `cache: RemoteBranchCache?` is threaded through seven signatures and is nullable
+  only for tests — production always passes a real one.
+- "Is this row loaded?" is re-derived by callers from `cancelComboBranchLoad`'s
+  `Boolean` at three sites.
+- Eleven test files each copy a `Proxy` fake over the ~40-method
+  `GitOperationSession`; the interface is wide enough that the proxy is the only
+  way in.
+- `RemoteBranchCache`'s expiry is tested through negative-TTL arithmetic rather
+  than an `isExpired(storedAt, now)` seam.
+- The preset-load fallback text was inconsistent between the two entry points —
+  the shortcut called a failed load "Import failed". Fixed 2026-10-13: both now
+  fall back to `error.unknown`. No shared composer was added; they differ by one
+  character, so an abstraction would remove an already-consistent line at the cost
+  of a new core function and its test class. Revisit only if a third instance of
+  the shape appears.
