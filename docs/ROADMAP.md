@@ -244,16 +244,78 @@ does not re-propose the split.
 - `cache: RemoteBranchCache?` is threaded through seven signatures and is nullable
   only for tests — production always passes a real one.
 - "Is this row loaded?" is re-derived by callers from `cancelComboBranchLoad`'s
-  `Boolean` at three sites.
-- Eleven test files each copy a `Proxy` fake over the ~40-method
-  `GitOperationSession`; the interface is wide enough that the proxy is the only
-  way in.
-- `RemoteBranchCache`'s expiry is tested through negative-TTL arithmetic rather
-  than an `isExpired(storedAt, now)` seam.
-- `BranchComboUtil.kt` publishes 20 top-level declarations across four unrelated
-  concepts — widget construction, selection semantics, load lifecycle, and Git
-  discovery — with no seam between them. Measured at review time; a caller
-  touching any one has to learn all four.
+  `Boolean` — corrected 2026-10-13 from "at three sites" to **two**, and both are
+  inside `SubmoduleRowManager` (`:117 removeRow`, `:329 cancelBranchLoads`), so
+  neither is a second consumer under ADR-0001. Re-reading all four call sites
+  shows the other two discard the result. What the `Boolean` actually schedules is
+  the `loaded` flag clear, which is the same dual-meaning flag as the finding
+  below — so this is a facet of that one, not a separate item.
+- `SubRow.loaded` carries two meanings at once — "a load has been *started*" and
+  "the list is *ready*" — across ten writes and five reads, all in
+  `SubmoduleRowManager`. Every start-of-load path (`:170`, `:183`, `:237`, `:312`,
+  `:371`) sets it true before the Git request goes out, so both gates that read it
+  as *ready* — `loadAllBranches` (`:236`), `fillRows` (`:255`) — can in principle
+  pass on a row that has not answered yet. **Traced 2026-10-13: this is latent,
+  not an active bug.** `loadAllBranches` is reached only from
+  `PresetEditor.loadBranches:378`, which is guarded by `!branchesLoaded:358`, and
+  every path that resets `branchesLoaded` also clears the flag on the affected
+  rows — the collapse path via `cancelBranchLoads:330`, the failure path via
+  `:296`/`:381`. So at every reachable call the rows with `loaded == true` have
+  completed. The gate is correct by that chain of three clear-paths, not because
+  `loaded` means *ready* — which is exactly the fragility worth naming.
+- The Swing read at `:260` (`!row.combo.isEnabled || row.combo.selectedItem ==
+  LOADING_BRANCH`) is the reason the `isEnabled`/`LOADING_BRANCH` pair exists in
+  `SubmoduleRowManager` at all: `fillRows` cannot tell a mid-load row from a
+  failed one using `loaded`, so it asks Swing instead. Exactly one test reaches it
+  — `fillRows leaves a mid-load row alone` — by hand-forging the three combo
+  fields (`SubmoduleRowManagerTest:495-497`) that `loadComboBranches` itself
+  writes. Mutation-checked 2026-10-13: deleting `:260` fails that test, so the
+  guard's *own* logic is covered; deleting the two `combo.isEnabled = false`
+  writes in `BranchComboUtil` (`:211`, `:313`) is caught by a different file
+  entirely (`BranchComboUtilTest :: disposed combo is not modified but completes
+  loading`). No test spans both, so the invariant `:260` relies on — *disabled
+  combo implies a load is in flight* — is asserted only by a fixture, never
+  exercised across the seam. That is the contract a `loaded` split would have to
+  make explicit rather than assume. `hasUnloadedRows` (`:323`) is unaffected: its
+  `any { !deleted && !loaded }` keeps the same meaning under either reading, since
+  the entry is cleared on start and on failure.
+- Verified 2026-10-13 against ADR-0001: the effective consumer count for the
+  branch-load lifecycle is **one**, not two. `:260` is the only place outside the
+  `BranchComboUtil.kt` lifecycle owner that reads load state, and it is inside
+  `SubmoduleRowManager`. The bar is not met; do not reopen on this ground.
+  `ui/BranchComboUtilTest.kt:151-155` reads `itemCount` and `getItemAt` while a
+  load is pending, but only as the precondition for the ended state it asserts on
+  — a test double's plumbing, not a second module learning the state machine.
+
+**Three counts in the list above were wrong; the rest was re-verified against the
+tree on 2026-10-13 and holds** — the three hand-written `onLoadStart`/`onLoadEnd`
+sites; `launch`/`launchWorkflow` with byte-identical bodies
+(`BranchLoadCoordinator.kt:56-65`); and `cache: RemoteBranchCache?` nullable at
+seven signatures against a non-null `refreshRemoteSubmodules` (`:103`), with only
+`SubmoduleRowManager:36` defaulting to null so a test can omit it.
+
+- The `BranchComboUtil.kt` declaration count is **22**, not 20 — a `grep` that
+  missed the four `suspend fun`s and undercounted. The four-concept split the
+  finding describes is real: widget construction (`makeBranchCombo`,
+  `filterBranchPopup`), selection semantics (`comboOfferedBranches`,
+  `setComboOfferedBranches`, `comboBranchSelection`, the seed pair), load
+  lifecycle (`loadComboBranches`, `refreshComboBranches`,
+  `cancelComboBranchLoad`, the four keys), and Git discovery
+  (`refreshSubmoduleUnion`, `listSubmoduleUnion`, `discoverBranchChoices`,
+  `discoverRemoteHeads`, `dedupSortedUnion`).
+- `GitOperationSession` (`GitWorkflowClient.kt:17`) resolves to **25** methods via
+  its four leaf interfaces (`SwitchGitClient` 14, `DeriveGitClient` 3,
+  `PresetDiscoveryGitClient` 3, `SwitchPreflightGitClient` 5), not ~40. The
+  consequence the finding draws stands at 25: **12** test files build a
+  `GitOperationSession` fake through `java.lang.reflect.Proxy`, each taking a
+  `(String) -> Any?` responder rather than a typed double. (Two further files use
+  `Proxy` against `Project` and `ProcessHandle`, which are not this finding.)
+- `RemoteBranchCache`'s expiry seam is real but narrower than "negative-TTL
+  arithmetic" suggests: `ttlMillis` is injected, so the test does not manipulate
+  the clock — it sets `ttlMillis = -1` and every stored entry is expired at once.
+  That cannot express "not yet expired" against a real elapsed time, which is the
+  part an `isExpired(storedAt, now)` seam would fix. The test's own comment
+  (`RemoteBranchCacheTest:17`) misdescribes the mechanism as `ttlMillis = 0`.
 - The preset-load fallback text was inconsistent between the two entry points —
   the shortcut called a failed load "Import failed". Fixed 2026-10-13: both now
   fall back to `error.unknown`. No shared composer was added; they differ by one
