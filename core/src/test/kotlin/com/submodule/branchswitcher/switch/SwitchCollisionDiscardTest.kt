@@ -8,6 +8,7 @@ import com.submodule.branchswitcher.git.inspectRepositoryStateFallback
 import com.submodule.branchswitcher.log.createStringAppender
 import com.submodule.branchswitcher.model.DirtyAction
 import com.submodule.branchswitcher.model.Preset
+import com.submodule.branchswitcher.model.RepoTarget
 import com.submodule.branchswitcher.model.SwitchOptions
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -544,5 +545,70 @@ class SwitchCollisionDiscardTest : SwitchExecutorTestBase() {
         assertTrue("no collision remains, so the switch proceeds", result.ok)
         assertTrue("no stash-related failure is reported", result.issues.none { it.code == OperationIssueCode.STASH_FAILED })
         assertFalse("the vanished approved file stays gone", collisionFile.exists())
+    }
+
+    /**
+     * The containment guard's rejecting branch.
+     *
+     * `safeRepoRelativePath` is what stops an approved discard from deleting outside the
+     * worktree. Every other test in this class approves a path like "Assets/Foo.meta", so
+     * the branch that rejects an escaping path had never run. A `../` path that is tracked
+     * on the target branch and untracked locally satisfies both other gates, so containment
+     * is the only thing standing between it and a delete.
+     */
+    @Test
+    fun `an approved path that escapes the repository is never treated as a collision`() {
+        val escaping = "../outside-the-worktree.txt"
+        // The file must EXIST: `File(directory, path).isFile` is the last gate in the same
+        // filter, so a non-existent path is rejected by that gate and the containment check
+        // is never the deciding one. The first draft of this test omitted this line and
+        // passed with the guard removed -- it was asserting the wrong condition.
+        projectRoot.resolve(escaping).toFile().writeText("outside the worktree")
+
+        val git = object : GitClient by fakeGit {
+            override fun targetBranchMatches(workDir: File, branch: String, paths: List<String>): List<String> = paths
+            override fun untrackedFiles(workDir: File): List<String> = listOf(escaping)
+        }
+
+        val context = SwitchContext(
+            projectRoot = projectRoot,
+            preset = preset,
+            options = SwitchOptions(),
+            git = git,
+            log = createStringAppender { log += it },
+            approvedCollisionDiscards = mapOf("." to setOf(escaping)),
+            operationId = "escape-test",
+        )
+
+        val approved = approvedCollisionPaths(context, RepoTarget(".", "main"), projectRoot.toFile())
+
+        assertTrue(
+            "a path resolving outside the worktree must not survive the containment check, got: $approved",
+            approved.isEmpty(),
+        )
+    }
+
+    /** A path resolving to the repository root itself is not a file inside it. */
+    @Test
+    fun `the repository root is never an approved collision path`() {
+        val git = object : GitClient by fakeGit {
+            override fun targetBranchMatches(workDir: File, branch: String, paths: List<String>): List<String> = paths
+            override fun untrackedFiles(workDir: File): List<String> = listOf(".")
+        }
+
+        val context = SwitchContext(
+            projectRoot = projectRoot,
+            preset = preset,
+            options = SwitchOptions(),
+            git = git,
+            log = createStringAppender { log += it },
+            approvedCollisionDiscards = mapOf("." to setOf(".")),
+            operationId = "root-test",
+        )
+
+        assertTrue(
+            "the root is not a discardable collision",
+            approvedCollisionPaths(context, RepoTarget(".", "main"), projectRoot.toFile()).isEmpty(),
+        )
     }
 }
