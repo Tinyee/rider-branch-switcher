@@ -91,7 +91,7 @@ class BranchSwitcherPanel(
      * so one instance answers all of them, and the missing-root failure is stated once
      * rather than restated at each entry point.
      */
-    private val mainRepository = MainRepository.forProject(project, logger)
+    private val mainRepository = MainRepository(project, logger)
     private val reflogWatcher = ExternalGitSwitchWatcher(
         alarm = reflogWatchAlarm,
         log = logger,

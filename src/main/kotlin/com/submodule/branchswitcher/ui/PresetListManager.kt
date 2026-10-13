@@ -92,7 +92,11 @@ internal class PresetListManager(
             log.debug("refresh all submodules skipped: already in flight")
             return
         }
-        val root = mainRepository.resolve()
+        // resolveOrReport, not resolve: this is a command the user picked from the overflow menu
+        // and is waiting on, so an absent repository must answer rather than no-op in silence.
+        // The silent form belongs to the background reads this class also runs (state probes),
+        // not to a menu item the user just clicked.
+        val root = mainRepository.resolveOrReport()
         if (root == null) {
             submoduleRefreshInFlightRef.set(false)
             return

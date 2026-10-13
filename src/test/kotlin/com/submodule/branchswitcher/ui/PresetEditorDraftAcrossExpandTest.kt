@@ -96,13 +96,21 @@ class PresetEditorDraftAcrossExpandTest {
 
     private fun toggle(editor: PresetEditor, expectVisible: Boolean) {
         editor.toggle()
-        assertEquals("body visibility after toggle", expectVisible, editor.isBodyVisible())
+        assertEquals(
+            "body visibility after toggle",
+            expectVisible,
+            editor.control(PresetEditorControl.DETAIL_PANEL)!!.isVisible,
+        )
     }
 
-    private fun mainCombo(editor: PresetEditor): JComboBox<String> = editor.mainBranchCombo()
+    private fun mainCombo(editor: PresetEditor): JComboBox<String> = branchCombo(editor, null)!!
 
     private fun submoduleCombo(editor: PresetEditor, path: String): JComboBox<String> =
-        requireNotNull(editor.submoduleBranchCombo(path)) { "no submodule row for $path" }
+        requireNotNull(branchCombo(editor, path)) { "no submodule row for $path" }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun branchCombo(editor: PresetEditor, path: String?): JComboBox<String>? =
+        editor.control(PresetEditorControl.BRANCHES, path) as JComboBox<String>?
 
     /**
      * A session that never resumes its suspension point, so every discovery stays in flight —

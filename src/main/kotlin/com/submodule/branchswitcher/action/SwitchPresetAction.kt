@@ -104,7 +104,7 @@ class SwitchPresetAction : AnAction() {
         // Constructed here rather than shared with the Tool Window: this action has no handle
         // to the panel. Its de-duplication flag is therefore per shortcut invocation, so the
         // worktree note can repeat across invocations — the panel's instance says it once.
-        val mainRepository = MainRepository.forProject(project, collector)
+        val mainRepository = MainRepository(project, collector)
         val root = mainRepository.resolveOrReport() ?: return
         SwitchFlowCoordinator(
             project,

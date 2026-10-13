@@ -28,6 +28,7 @@ import javax.swing.BorderFactory
 import javax.swing.BoxLayout
 import javax.swing.JButton
 import javax.swing.JComboBox
+import javax.swing.JComponent
 import javax.swing.JLabel
 import javax.swing.JPanel
 import javax.swing.border.Border
@@ -43,6 +44,23 @@ import javax.swing.border.Border
  *   the save/revert and switch/derive buttons disabled while any load is pending
  * - [isInitializing]: true during constructor; prevents false dirty flags during setup
  */
+/**
+ * The controls [PresetEditor.control] addresses by role. A role names what the control is for,
+ * which is what a caller cares about; the field names behind it are the editor's business.
+ */
+internal enum class PresetEditorControl {
+    SWITCH,
+    DERIVE,
+    SAVE,
+    DISCARD,
+    /** The label carrying the reason an invalid draft is refused. */
+    DRAFT_ERROR,
+    /** A branch dropdown: the main repository, or a submodule row when a path is given. */
+    BRANCHES,
+    /** The collapsible preset detail panel. */
+    DETAIL_PANEL,
+}
+
 internal class PresetEditor(
     private val gitRoot: Path,
     initialPreset: Preset,
@@ -119,19 +137,25 @@ internal class PresetEditor(
     val loadingCount get() = submoduleManager.loadingCount
 
     /**
-     * The branch control for one submodule row, or null when no row carries [path].
+     * The controls a caller drives or inspects, addressed by role rather than by field name.
      *
-     * Exposed so a caller can drive or inspect a row without reaching into the editor's
-     * fields. Editing a branch is a user action, not an internal detail, so the control that
-     * performs it is legitimately part of what this editor offers.
+     * These are the editor's user-facing controls: what a user clicks to switch, save, or
+     * discard, and what they read to learn why an action is refused. Naming them by role is
+     * what makes them a seam — the fields behind it can be renamed or restructured, and the
+     * label can move, without a caller noticing.
+     *
+     * [branches] is the branch dropdown for a repository: the main repository when [path] is
+     * null, otherwise the submodule row registered at that path.
      */
-    internal fun submoduleBranchCombo(path: String): JComboBox<String>? = submoduleRows[path]?.combo
-
-    /** The main repository's branch control. See [submoduleBranchCombo]. */
-    internal fun mainBranchCombo(): JComboBox<String> = mainCombo
-
-    /** Whether the preset detail panel is expanded, as [toggle] last left it. */
-    internal fun isBodyVisible(): Boolean = body.isVisible
+    internal fun control(role: PresetEditorControl, path: String? = null): JComponent? = when (role) {
+        PresetEditorControl.SWITCH -> switchBtn
+        PresetEditorControl.DERIVE -> deriveBtn
+        PresetEditorControl.SAVE -> saveBtn
+        PresetEditorControl.DISCARD -> revertBtn
+        PresetEditorControl.DRAFT_ERROR -> draftErrorLabel
+        PresetEditorControl.BRANCHES -> if (path == null) mainCombo else submoduleRows[path]?.combo
+        PresetEditorControl.DETAIL_PANEL -> body
+    }
 
     /** Pushes the path→URL map resolved from `.gitmodules` to the submodule rows. */
     fun setSubmoduleUrls(urls: Map<String, String?>) = submoduleManager.setPathUrls(urls)

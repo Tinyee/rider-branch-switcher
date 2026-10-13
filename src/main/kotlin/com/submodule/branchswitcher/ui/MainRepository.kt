@@ -72,14 +72,17 @@ internal class MainRepository(
     companion object {
         /** Log text kept as one constant so every entry point reports the same thing. */
         const val MISSING_ROOT_LOG = "git root not found"
-
-        /** Binds the module to a project and the platform's real notification. */
-        fun forProject(project: Project, log: AppLogger): MainRepository = MainRepository(
-            basePath = { project.basePath },
-            log = log,
-            reportMissingRoot = {
-                Notifier.error(project, Bundle.msg("plugin.title"), Bundle.msg("git.root.not.found"))
-            },
-        )
     }
+
+    /**
+     * Binds the module to [project] and the platform's real notification, so no caller has to
+     * spell out the title and message keys. Mirrors `PresetRepository(project)`.
+     */
+    constructor(project: Project, log: AppLogger) : this(
+        basePath = { project.basePath },
+        log = log,
+        reportMissingRoot = {
+            Notifier.error(project, Bundle.msg("plugin.title"), Bundle.msg("git.root.not.found"))
+        },
+    )
 }

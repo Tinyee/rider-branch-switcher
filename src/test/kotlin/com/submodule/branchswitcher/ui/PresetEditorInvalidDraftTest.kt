@@ -12,7 +12,9 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.lang.reflect.Proxy
 import java.nio.file.Paths
+import javax.swing.JButton
 import javax.swing.JComboBox
+import javax.swing.JLabel
 import javax.swing.JTextField
 
 /**
@@ -125,6 +127,52 @@ class PresetEditorInvalidDraftTest {
         assertNull("repairing the draft drops the reason", editor.controlState().draftError)
     }
 
+    /**
+     * The other tests here read [PresetEditor.controlState] — the decision. This one reads the
+     * buttons and the label, because the decision is worthless to the user until it is rendered
+     * onto them. Without this, deleting the whole of `renderControlState`'s body would leave every
+     * other test green while the user saw four operable-looking buttons and no reason text.
+     */
+    @Test
+    fun `the decision reaches the controls the user actually sees`() {
+        val editor = newEditor(Preset("Work", "main", mapOf("SubA" to "dev")))
+        val state = editor.controlState()
+        assertTrue("precondition: a valid draft enables switch", state.switchEnabled)
+
+        submoduleComboFor(editor, "SubA").selectedItem = ""
+
+        val blocked = editor.controlState()
+        assertFalse("precondition: the draft is now refused", blocked.switchEnabled)
+        assertEquals("switch must be drawn from the decision", blocked.switchEnabled, switchButton(editor).isEnabled)
+        assertEquals("derive must be drawn from the decision", blocked.deriveEnabled, deriveButton(editor).isEnabled)
+        assertEquals("save must be drawn from the decision", blocked.saveEnabled, saveButton(editor).isEnabled)
+        assertEquals("discard must be drawn from the decision", blocked.revertEnabled, revertButton(editor).isEnabled)
+        assertTrue("the reason must be visible, not merely carried", draftErrorLabel(editor).isVisible)
+        assertTrue(
+            "the visible reason must be the one the decision carried, got: ${draftErrorLabel(editor).text}",
+            !draftErrorLabel(editor).text.isNullOrEmpty() && draftErrorLabel(editor).text.contains("SubA"),
+        )
+        assertTrue("switch must explain itself on hover", !switchButton(editor).toolTipText.isNullOrEmpty())
+    }
+
+    @Test
+    fun `repairing the draft clears the rendered reason and restores the buttons`() {
+        val editor = newEditor(Preset("Work", "main", mapOf("SubA" to "dev")))
+        submoduleComboFor(editor, "SubA").selectedItem = ""
+
+        submoduleComboFor(editor, "SubA").selectedItem = "develop"
+
+        val state = editor.controlState()
+        assertTrue("precondition: a valid draft enables switch", state.switchEnabled)
+        assertTrue("switch must be drawn enabled again", switchButton(editor).isEnabled)
+        assertTrue("derive must be drawn enabled again", deriveButton(editor).isEnabled)
+        assertFalse("the reason must be hidden again", draftErrorLabel(editor).isVisible)
+        assertTrue(
+            "derive must get its own tooltip back once nothing blocks it, got: ${deriveButton(editor).toolTipText}",
+            deriveButton(editor).toolTipText?.contains("branch") == true,
+        )
+    }
+
     private fun newEditor(preset: Preset): PresetEditor = PresetEditor(
         gitRoot = Paths.get("."),
         initialPreset = preset,
@@ -139,9 +187,28 @@ class PresetEditorInvalidDraftTest {
     )
 
     private fun submoduleComboFor(editor: PresetEditor, path: String): JComboBox<String> =
-        requireNotNull(editor.submoduleBranchCombo(path)) { "no row for $path" }
+        requireNotNull(branchCombo(editor, path)) { "no row for $path" }
 
-    private fun mainCombo(editor: PresetEditor): JComboBox<String> = editor.mainBranchCombo()
+    private fun mainCombo(editor: PresetEditor): JComboBox<String> = branchCombo(editor, null)!!
+
+    @Suppress("UNCHECKED_CAST")
+    private fun branchCombo(editor: PresetEditor, path: String?): JComboBox<String>? =
+        editor.control(PresetEditorControl.BRANCHES, path) as JComboBox<String>?
+
+    private fun switchButton(editor: PresetEditor): JButton =
+        editor.control(PresetEditorControl.SWITCH) as JButton
+
+    private fun deriveButton(editor: PresetEditor): JButton =
+        editor.control(PresetEditorControl.DERIVE) as JButton
+
+    private fun saveButton(editor: PresetEditor): JButton =
+        editor.control(PresetEditorControl.SAVE) as JButton
+
+    private fun revertButton(editor: PresetEditor): JButton =
+        editor.control(PresetEditorControl.DISCARD) as JButton
+
+    private fun draftErrorLabel(editor: PresetEditor): JLabel =
+        editor.control(PresetEditorControl.DRAFT_ERROR) as JLabel
 
     private fun editorField(combo: JComboBox<String>): JTextField =
         combo.editor.editorComponent as JTextField
