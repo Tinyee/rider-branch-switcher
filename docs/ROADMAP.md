@@ -355,11 +355,11 @@ source restored:
 | launcher: completion safety-net close removed | **undetected** before | `WriteOperationLauncherTest` (added) |
 | shortcut action body reduced to an immediate `return` | **undetected** | — |
 | `SwitchFlowCoordinator` switch-failure logging removed | **undetected** | — |
-| shortcut resolves the main repository silently (`resolve()` not `resolveOrReport()`) | **undetected** | — |
+| shortcut resolves the main repository silently (`resolve()` not `resolveOrReport()`) | **undetected** before | `ArchitectureRulesTest` (added) |
 | busy indicator never claimed (switch) | **undetected** | — |
 | busy indicator never claimed (rollback) | **undetected** | — |
 | busy indicator never claimed (derive) | **undetected** | — |
-| busy claim moved **above** the `job == null` early return (switch) | **undetected** | — |
+| busy claim moved **above** the `job == null` early return (switch) | **undetected** before | `ArchitectureRulesTest` (added) |
 
 Two mutants were discarded as invalid rather than counted: one was an
 equivalent mutant (Kotlin's language semantics, not a guard, delivered the
@@ -384,8 +384,20 @@ confirmed to fail against the mutation it exists to catch; the M11 mutant in
 particular still escaped after the first draft, because no draft test let a job
 finish before entering its body — the only path where that safety net fires.
 
+**Done 2026-10-13, second step:** `ArchitectureRulesTest` gained an enumerated
+rule pinning which call sites may use the silent `resolve()`. This closed two
+rows above at once — the shortcut's silent resolution, and the reorder hazard —
+because both are the same defect shape: a call placed so it takes effect where it
+should not. The rule is bytecode-level, so it sees method references, and it
+caught a site the survey had missed: `BranchSwitcherPanel`'s reflog watcher
+passes `mainRepository::resolve` on a timer, which is correct (a missing root is
+silence, not a notification per tick) but invisible to a name-based search. Both
+directions are pinned by mutation: flipping any of the seven command sites fails
+the rule, and removing a declared silent site fails the stale-entry half.
+
 **Open:** the three busy-indicator claims (switch, rollback, derive) and the
-shortcut's main-repository resolution. Both need a platform fixture.
+shortcut's failure logging. All four want a platform fixture, and they are the
+only items left in this entry.
 
 The obvious route — lift the busy *decision* out of the `Project`-taking class
 the way `presetEditorControlState` was lifted into `core` — **was checked against
