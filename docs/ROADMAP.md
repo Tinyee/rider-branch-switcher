@@ -358,7 +358,7 @@ source restored:
 | shortcut resolves the main repository silently (`resolve()` not `resolveOrReport()`) | **undetected** before | `ArchitectureRulesTest` (added) |
 | busy indicator never claimed (switch) | **undetected** | — |
 | busy indicator never claimed (rollback) | **undetected** | — |
-| busy indicator never claimed (derive) | **undetected** | — |
+| busy indicator never claimed (derive) | **undetected** before | `SwitchControllerBusyTest` (added) |
 | busy claim moved **above** the `job == null` early return (switch) | **undetected** before | `ArchitectureRulesTest` (added) |
 
 Two mutants were discarded as invalid rather than counted: one was an
@@ -395,9 +395,21 @@ silence, not a notification per tick) but invisible to a name-based search. Both
 directions are pinned by mutation: flipping any of the seven command sites fails
 the rule, and removing a declared silent site fails the stale-entry half.
 
-**Open:** the three busy-indicator claims (switch, rollback, derive) and the
-shortcut's failure logging. All four want a platform fixture, and they are the
-only items left in this entry.
+**Done 2026-10-13, third step:** the module now declares
+`TestFrameworkType.Platform`, so a test can build a real `Project`. Cost measured,
+not assumed: ~4.3 MB of test-only artifacts, suite wall-clock unchanged at 41s,
+and the fixture is absent from `runtimeClasspath` (checked, so nothing reaches the
+shipped plugin). `SwitchControllerBusyTest` closes the derive claim by mutation —
+moving it above the rejection check fails with `[true]` where `[]` is required.
+
+**Open:** the switch and rollback busy claims, and the shortcut's failure logging.
+The first attempt at the switch claim showed why these are not merely a fixture
+problem: `runSwitchFlow` constructs its `SwitchPreviewDialog` inline and calls a
+modal `showAndGet()` before the lease is acquired, so nothing after the call can
+observe a rejection. Reaching them needs a seam for the confirmation dialog —
+or a test that drives the dialog — and that is a design decision, not a missing
+dependency. The rollback claim has the same shape and is reachable only from
+inside the switch flow's result handling.
 
 The obvious route — lift the busy *decision* out of the `Project`-taking class
 the way `presetEditorControlState` was lifted into `core` — **was checked against
