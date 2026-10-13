@@ -10,6 +10,10 @@ import com.intellij.util.ui.NamedColorUtil
 import com.submodule.branchswitcher.Bundle
 import com.submodule.branchswitcher.model.PreflightRow
 import com.submodule.branchswitcher.model.ResolvedSwitchRequest
+import com.submodule.branchswitcher.presentation.switchOkButtonKey
+import com.submodule.branchswitcher.presentation.SwitchPreviewSummaryPart
+import com.submodule.branchswitcher.presentation.switchPreviewCounts
+import com.submodule.branchswitcher.presentation.switchPreviewSummaryParts
 import com.submodule.branchswitcher.presentation.shouldShowForceWarning
 import java.awt.BorderLayout
 import java.awt.Component
@@ -95,9 +99,7 @@ class SwitchPreviewDialog(
 
     init {
         title = Bundle.msg("dialog.switch.preset.title", request.preset.name)
-        setOKButtonText(
-            if (needsDiscardConfirm) Bundle.msg("dialog.collision.discard.ok") else Bundle.msg("dialog.switch.title"),
-        )
+        setOKButtonText(Bundle.msg(switchOkButtonKey(needsDiscardConfirm)))
         setCancelButtonText(Bundle.msg("dialog.cancel"))
         init()
     }
@@ -415,13 +417,7 @@ class SwitchPreviewDialog(
         fun applyChange() {
             val decision = collisionDecision(collisions, onlyMetaCheck.isSelected, autoMetaCheck.isSelected)
             summaryLabel.text = decision.summary
-            setOKButtonText(
-                if (decision.needsConfirm) {
-                    Bundle.msg("dialog.collision.discard.ok")
-                } else {
-                    Bundle.msg("dialog.switch.title")
-                },
-            )
+            setOKButtonText(Bundle.msg(switchOkButtonKey(decision.needsConfirm)))
             onDecisionChange(decision)
         }
         onlyMetaCheck.addActionListener {
@@ -459,31 +455,29 @@ class SwitchPreviewDialog(
         }
     }
 
+    /**
+     * Renders one summary part. Exhaustive on purpose: a new part fails to compile here
+     * rather than dropping out of the summary line unnoticed.
+     */
+    private fun renderSummaryPart(part: SwitchPreviewSummaryPart): String = when (part) {
+        is SwitchPreviewSummaryPart.Repos -> Bundle.msg("summary.repos", part.count)
+        is SwitchPreviewSummaryPart.ToSwitch -> Bundle.msg("summary.to.switch", part.count)
+        is SwitchPreviewSummaryPart.NoChange -> Bundle.msg("summary.already", part.count)
+        is SwitchPreviewSummaryPart.Dirty -> Bundle.msg("summary.dirty", part.count)
+        is SwitchPreviewSummaryPart.MissingBranch -> Bundle.msg("summary.missing.branch", part.count)
+        is SwitchPreviewSummaryPart.MissingDir -> Bundle.msg("summary.missing.dir", part.count)
+    }
+
     // ── Summary line ────────────────────────────────────────
     private fun createSummary(): JPanel {
-        val total = rows.size
-        // Probe errors are unknown state: neither a repo we know needs switching nor a
-        // missing branch. Exclude them from both counts so the summary stays truthful.
-        val toSwitch = rows.count { it.exists && it.needsSwitch && !it.branchMissing && it.probeError == null }
-        val noChange = rows.count { it.exists && !it.needsSwitch }
-        val missingBranch = rows.count { it.branchMissing }
-        val missingDir = rows.count { !it.exists }
-        val dirty = rows.count { it.dirtyCount > 0 }
-
-        val parts = mutableListOf<String>()
-        parts += Bundle.msg("summary.repos", total)
-        parts += Bundle.msg("summary.to.switch", toSwitch)
-        if (noChange > 0) parts += Bundle.msg("summary.already", noChange)
-        if (dirty > 0) parts += Bundle.msg("summary.dirty", dirty)
-        if (missingBranch > 0) parts += Bundle.msg("summary.missing.branch", missingBranch)
-        if (missingDir > 0) parts += Bundle.msg("summary.missing.dir", missingDir)
-
-        val summaryText = parts.joinToString("  ·  ")
+        val counts = switchPreviewCounts(rows)
+        val summaryText = switchPreviewSummaryParts(counts)
+            .joinToString("  ·  ", transform = ::renderSummaryPart)
         val summaryLabel = ShrinkableLabel(summaryText).apply {
             alignmentX = Component.LEFT_ALIGNMENT
             toolTipText = summaryText
             border = JBUI.Borders.empty(2, 4, 6, 4)
-            if (missingBranch > 0 || missingDir > 0) foreground = warnColor
+            if (counts.missingBranch > 0 || counts.missingDir > 0) foreground = warnColor
         }
 
         return JPanel().apply {
