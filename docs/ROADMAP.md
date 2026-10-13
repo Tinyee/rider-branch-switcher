@@ -421,10 +421,23 @@ understated all three.
   worker thread and then joined it *from the EDT*, so the worker's `invokeAndWait`
   never got the queue and its lambda never ran. Two thread dumps showing the EDT
   joining the worker while the worker waited on the EDT were read as "Messages is
-  stuck". What actually remains is narrower: `DialogWrapper.isModal()` reads its
-  peer, and `showAndGet()` throws `IllegalStateException: ... for modal dialogs
-  only` under the headless fixture, so the dialog needs a peer-side seam or a
-  non-modal path — not a seam for `Messages`.
+  stuck".
+
+  What remains is `showAndGet()`'s own precondition, and the mechanism is now
+  traced rather than guessed. `DialogWrapper.isModal()` delegates to its peer,
+  which delegates to an `AbstractDialog`; under a headless application
+  `DialogWrapperPeerImpl.createDialog` constructs a **`HeadlessDialog`** instead
+  of the Swing `MyDialog`, and `HeadlessDialog.isModal()` is a hard-coded
+  `return false`. `myPeer` is not null — probed: a real `DialogWrapperPeerImpl`
+  wrapping a `HeadlessDialog`. So modality is not merely unset but unsettable,
+  which is why `setModal(true)` leaves `isModal()` false (also probed). Any
+  `showAndGet()` in a headless fixture therefore throws
+
+      IllegalStateException: The showAndGet() method is for modal dialogs only
+
+  before it can show anything. This is a genuine block, confirmed three ways —
+  called directly, after `setModal(true)`, and through a full `runSwitchFlow`
+  (which reached `SwitchPreviewDialog.showSelection` and threw there).
   `SwitchPreflightUi.probe` itself is clean — no `Messages` or dialog calls.
 - **Rollback claim — structurally deeper, not a seam problem.**
   `rollbackSwitch` is `private`, and its only caller is the `afterRelease`
@@ -446,13 +459,20 @@ and the fixture arms it. What is left is the switch flow's completion path
 takes the dialog question: `SwitchPreviewDialog` is 623 lines with no test
 references either, so a seam there pays twice.
 
-**A method note, recorded because it cost two probes.** A probe that measures the
-wrong thing returns a confident wrong answer, and it reads as evidence. Both
-probes here hung for reasons inside the probe — joining a worker from the EDT —
-while the thread dumps that would have shown it were in hand and misread. Check
-the probe against a control before trusting its verdict: the corrected version
-called `Messages` directly on the EDT, made no thread of its own, and settled the
-question in 1.5 seconds.
+**A method note, recorded because it cost four probes.** A probe that measures the
+wrong thing returns a confident wrong answer, and it reads as evidence.
+
+- Two probes hung for reasons inside the probe — starting a worker and joining it
+  *from the EDT* — while the thread dumps that showed exactly that were in hand
+  and misread as "Messages is stuck".
+- A third read `isModal() == false` correctly but explained it as a null peer,
+  which a fourth probe disproved: the peer is a real `DialogWrapperPeerImpl`
+  wrapping a `HeadlessDialog` whose `isModal()` is a hard-coded false.
+
+The check that would have caught all four: name what the probe is measuring,
+and before trusting a surprising verdict, find the control that rules out the
+probe itself. The probe that finally settled it made no thread of its own and
+finished in 1.5 seconds — as did the one that disproved the previous explanation.
 
 The obvious route — lift the busy *decision* out of the `Project`-taking class
 the way `presetEditorControlState` was lifted into `core` — **was checked against
