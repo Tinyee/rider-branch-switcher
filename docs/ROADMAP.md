@@ -495,3 +495,69 @@ return is a real bug, and the moved form compiles with every test still green
 plugin tests passed). So the comments describe a genuine hazard that no test
 covers, which is the *sharpest* form of this finding rather than a stale comment:
 a documented, one-line-reorder bug with nothing standing in its way.
+
+### P3-19: Result-Presentation Seams Surveyed By Measurement
+
+A second deepening pass, this one scoped by measurement rather than by reading.
+The first pass (P3-17) read code and missed the largest gap in the repository:
+four classes orchestrating every repository mutation had no test references at
+all, found later only by mutation testing.
+
+**What measurement found.** `SwitchResultPresenter` was the clearest case of a
+shape repeated three times here: a pure function gets extracted for testability,
+the extraction stops at the rule, and the decision that composes the rules stays
+behind — untested. The class's 12 methods had **zero** test references (checked
+per method name, with a control confirming each name exists in the class), while
+`SwitchResultPresenterTest` and `SwitchResultPresenterLockDetailTest` exercise
+only the file-level string helpers at the bottom of the file.
+
+**Closed 2026-10-13.** `SwitchResultSink` narrows the presenter to what it
+actually reaches for — `Project` was only the first argument to 14 `Notifier`
+calls, `service` only two sites — so all 12 methods are now driven by a plain
+JUnit test with no `Project` and no fixture. Two deliberate rules gained their
+first assertions, each mutation-verified: a lock-blocked switch must not offer a
+rollback (nothing was mutated, so a retry cannot work), and an auto-recovered
+failure refreshes the panel rather than offering a manual retry.
+
+**Still open, ranked by evidence:**
+
+- `ui/SwitchPreviewDialog.kt` (623 lines) — the same shape, one level up.
+  `createSummary()` materialises six counts inline with no test naming them, and
+  the condition on `probeError == null` is load-bearing (a probe-error row has
+  `current = null`, so without it those rows count as "needs switch"). The OK
+  label rule has two homes, `needsDiscardConfirm` and the `applyChange()`
+  closure; all three `collisionDecision` call sites were traced and they agree
+  today, so it is a locality defect rather than a live bug. Its construction path
+  is **already proven reachable** under the headless fixture (P3-18's probe
+  reached `showSelection` and threw only there), so lifting the decision surface
+  does not touch the `showAndGet()` block.
+- `ui/CurrentStatePresetCreator.kt` (143 lines) — `CurrentStatePresetCreatorTest`
+  holds **one** test, and it asserts `currentStatePresetBlockReason`, a two-line
+  pure function in `UiRules.kt` that `UiRulesTest` asserts again. Deleting the
+  function would delete the test class outright; the module the class is named
+  after is never constructed.
+- `core/switch/ApprovedStashHandler.kt:32` — `safeRepoRelativePath` is a
+  deletion-safety guard with zero test references, and no test feeds an escaping
+  path (grepped the collision tests for `../`: every approved set is
+  `"Assets/*.meta"` or `"Submodule/*.meta"`). Its `false` branch has never run.
+  Not a deepening candidate — a concrete, cheap test gap.
+
+**Reviewed and retained** (zero test references is correct for these; recorded
+so a later pass does not re-propose them): `ui/PopupAction.kt` (deleting it
+pushes a menu subclass, button, separator and border into two callers),
+`settings/BranchSwitcherConfigurable.kt` (its logic already lives in
+`SettingsRules` with tests; every abstraction over the remaining field-wise
+repetition is longer than the repetition), `git/impl/GitOutputDrainer.kt`
+(indirectly well covered through `GitProcessRunner` with a controllable-process
+double — though its injected `executor` seam has no second adapter and is
+hypothetical), and `ui/SwitchPreflightUi.kt` (its one extractable rule lives in
+`SwitchFlowCoordinator`, not there).
+
+**Method note.** The untested-file list that scoped this pass came from a script
+that was wrong three times before it was right, each time the same way: a
+pattern that silently excluded a category of declaration (first top-level
+`fun`s, then — after a "fix" — still indented declarations inside function
+bodies, reporting a 3-declaration file as 90). Only a control run against a file
+whose contents were already known exposed it. The surviving script prints how
+many files it scanned so an empty scan cannot read as "everything is tested".
+It answers "does any test mention this name", which is **not** coverage.
