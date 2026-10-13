@@ -9,6 +9,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.awt.EventQueue
 import java.io.File
 import java.lang.reflect.Proxy
 import java.util.concurrent.CountDownLatch
@@ -205,6 +206,39 @@ class BranchComboUtilTest {
         assertTrue("superseded Git session should be cancelled", firstCancelled.get())
         assertEquals(listOf("main", "latest"), (0 until combo.itemCount).map(combo::getItemAt))
         assertEquals("latest", combo.selectedItem)
+    }
+
+    /**
+     * The application shutdown window: `invokeLater` throws, so the schedule that would
+     * have run `updateUi` never lands and its `finally` never balances the caller's
+     * in-flight count. Dropping the signal leaves that editor disabled for good, so it
+     * must be delivered anyway -- and on the EDT, because the callback touches Swing.
+     */
+    @Test
+    fun `a failed UI schedule still ends the load exactly once on the EDT`() {
+        val combo = displayableCombo()
+        val ends = AtomicInteger()
+        val onEdt = AtomicBoolean(true)
+        val finished = CountDownLatch(1)
+
+        loadComboBranches(
+            combo, ComboBranchTarget(File("."), "dev"),
+            branchLoads { listOf("main", "dev") }, createStringAppender {},
+            onLoadStart = {},
+            onLoadEnd = { _, _ ->
+                if (!EventQueue.isDispatchThread()) onEdt.set(false)
+                ends.incrementAndGet()
+                finished.countDown()
+            },
+            scheduleUi = { throw IllegalStateException("application is being disposed") },
+        )
+
+        assertTrue(
+            "the end signal must survive a schedule that refused it",
+            finished.await(loadCompletionTimeoutSeconds, TimeUnit.SECONDS),
+        )
+        assertEquals("the caller's counter must be balanced exactly once", 1, ends.get())
+        assertTrue("the callback touches Swing, so it must not run on the loading thread", onEdt.get())
     }
 
     private fun displayableCombo(displayable: Boolean = true): JComboBox<String> =

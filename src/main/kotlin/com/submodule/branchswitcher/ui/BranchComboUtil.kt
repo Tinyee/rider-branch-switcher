@@ -193,6 +193,8 @@ internal fun loadComboBranches(
             // Always signal the lifecycle end (balances onLoadStart for the caller's
             // in-flight counter). The caller separately decides whether a superseded
             // load (a newer load replaced this combo's token) may touch retry state.
+            // Inline is safe here: every caller but finish()'s catch is already inside
+            // updateUi, which scheduleUi ran on the EDT.
             val superseded = combo.getClientProperty(KEY_BRANCH_LOAD_TOKEN) !== loadToken
             onLoadEnd(succeeded, superseded)
         }
@@ -218,7 +220,10 @@ internal fun loadComboBranches(
         try {
             scheduleUi(updateUi)
         } catch (e: Exception) {
-            endLoad(false)
+            // The schedule itself failed (the application is shutting down), so updateUi
+            // never ran and its finally never signalled the end. Signal it here instead --
+            // off the EDT, so it must not run on this thread.
+            deliverOnEdt(scheduleUi) { endLoad(false) }
             log.logFailure("loadBranches UI update failed for ${target.dir.name}", e)
         }
     }
@@ -296,7 +301,11 @@ internal fun refreshComboBranches(
     fun endLoad(succeeded: Boolean) {
         if (loadEnded.compareAndSet(false, true)) {
             val superseded = combo.getClientProperty(KEY_BRANCH_LOAD_TOKEN) !== loadToken
-            schedule { onLoadEnd(succeeded, superseded) }
+            // Posted, unlike loadComboBranches' inline call: this one also runs from the
+            // job's completion handler, which is off the EDT. deliverOnEdt rather than
+            // schedule(), which only logs when the UI queue is gone -- a dropped end signal
+            // leaves the caller's in-flight count permanently raised.
+            deliverOnEdt(scheduleUi) { onLoadEnd(succeeded, superseded) }
         }
     }
 

@@ -8,6 +8,7 @@ import com.intellij.openapi.project.Project
 import com.intellij.ui.JBColor
 import com.intellij.util.ui.JBUI
 import java.awt.Dimension
+import java.awt.EventQueue
 import java.awt.KeyboardFocusManager
 import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
@@ -23,6 +24,33 @@ internal val WARN_AMBER: JBColor = JBColor(0xE07B00, 0xFFA726)
 /** Default [scheduleUi] implementation: posts [action] to the EDT. */
 internal val edtSchedule: ((() -> Unit) -> Unit) = { action ->
     ApplicationManager.getApplication().invokeLater(action)
+}
+
+/**
+ * Posts [action] to the EDT through [scheduleUi], falling back to Swing's own queue
+ * rather than dropping it.
+ *
+ * [scheduleUi] stops accepting events once the application begins shutting down, and
+ * that is exactly when a load-end signal still has to arrive: it balances the caller's
+ * in-flight count, so a dropped one leaves that editor disabled for the rest of the
+ * session. Swing's queue outlives the application, so it is the fallback.
+ *
+ * Always posts, never runs inline, so a caller relying on [scheduleUi] for ordering
+ * (a UI update queued before this callback) keeps that order.
+ *
+ * Use this only for a callback whose loss would strand caller state. Work that merely
+ * repaints the UI may keep using [scheduleUi] directly, since a shutting-down UI has
+ * nothing left to repaint.
+ */
+@Suppress("TooGenericExceptionCaught") // a shutting-down UI queue may throw anything
+internal fun deliverOnEdt(scheduleUi: (() -> Unit) -> Unit, action: () -> Unit) {
+    try {
+        scheduleUi(action)
+    } catch (e: Exception) {
+        // The application is shutting down and the UI queue refused the event; that is
+        // the exact case this helper exists for, so any throw here means "use the fallback".
+        EventQueue.invokeLater(action)
+    }
 }
 
 /**
