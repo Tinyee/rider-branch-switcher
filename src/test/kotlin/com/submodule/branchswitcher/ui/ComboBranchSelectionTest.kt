@@ -41,7 +41,7 @@ class ComboBranchSelectionTest {
         val combo = displayableCombo()
         combo.model = javax.swing.DefaultComboBoxModel(arrayOf("draft-branch", "main"))
         combo.selectedItem = "draft-branch"
-        combo.putClientProperty(KEY_ALL_BRANCHES, listOf("draft-branch", "main"))
+        setComboOfferedBranches(combo, listOf("draft-branch", "main"))
         // A load that never completes (cancelled by a collapse) leaves this state behind.
         startLoad(combo)
         assertEquals(

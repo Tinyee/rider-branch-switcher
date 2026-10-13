@@ -11,7 +11,6 @@ import kotlinx.coroutines.Dispatchers
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.awt.Component
@@ -231,8 +230,7 @@ class SubmoduleRowManagerTest {
         assertTrue("row refresh should finish", done.await(loadCompletionTimeoutSeconds, TimeUnit.SECONDS))
         awaitZeroLoading(manager)
         assertEquals(1, fetchCalls)
-        @Suppress("UNCHECKED_CAST")
-        val all = requireNotNull(manager.subRows["SubA"]).combo.getClientProperty(KEY_ALL_BRANCHES) as List<String>
+        val all = comboOfferedBranches(requireNotNull(manager.subRows["SubA"]).combo)
         assertTrue("refreshed list must include the remote branch", all.contains("new-1"))
         assertEquals("dev", requireNotNull(manager.subRows["SubA"]).combo.selectedItem)
         assertTrue("refreshed row stays loaded", requireNotNull(manager.subRows["SubA"]).loaded)
@@ -274,8 +272,7 @@ class SubmoduleRowManagerTest {
         assertTrue("refresh should finish", done.await(loadCompletionTimeoutSeconds, TimeUnit.SECONDS))
         assertEquals("uninitialized refresh must not fetch", 0, fetchCalls)
         assertTrue("uninitialized refresh must ls-remote", lsCalls >= 1)
-        @Suppress("UNCHECKED_CAST")
-        val all = requireNotNull(manager.subRows["SubA"]).combo.getClientProperty(KEY_ALL_BRANCHES) as List<String>
+        val all = comboOfferedBranches(requireNotNull(manager.subRows["SubA"]).combo)
         assertTrue(all.containsAll(listOf("develop", "release")))
     }
 
@@ -318,8 +315,7 @@ class SubmoduleRowManagerTest {
         awaitZeroLoading(manager)
         assertEquals("checked-out refresh must fetch", 1, fetchCalls)
         assertTrue("checked-out refresh must ls-remote", lsCalls >= 1)
-        @Suppress("UNCHECKED_CAST")
-        val all = requireNotNull(manager.subRows["SubA"]).combo.getClientProperty(KEY_ALL_BRANCHES) as List<String>
+        val all = comboOfferedBranches(requireNotNull(manager.subRows["SubA"]).combo)
         assertTrue(
             "combo must union local and remote branches",
             all.containsAll(listOf("main", "feature/x", "develop", "release")),
@@ -357,7 +353,7 @@ class SubmoduleRowManagerTest {
         body.add(row.panel)
         body.addNotify()
         row.loaded = true
-        row.combo.putClientProperty(KEY_ALL_BRANCHES, listOf("old-a", "old-b"))
+        setComboOfferedBranches(row.combo, listOf("old-a", "old-b"))
         manager.onFirstExpand()
 
         manager.refreshSubmoduleRow("SubA")
@@ -365,8 +361,7 @@ class SubmoduleRowManagerTest {
         assertTrue("refresh should finish", done.await(loadCompletionTimeoutSeconds, TimeUnit.SECONDS))
         awaitZeroLoading(manager)
         assertEquals("fetch was attempted", 1, fetchCalls)
-        @Suppress("UNCHECKED_CAST")
-        val all = requireNotNull(manager.subRows["SubA"]).combo.getClientProperty(KEY_ALL_BRANCHES) as List<String>
+        val all = comboOfferedBranches(requireNotNull(manager.subRows["SubA"]).combo)
         assertEquals("a failed fetch must keep the previous list", listOf("old-a", "old-b"), all)
         assertEquals("old-a", requireNotNull(manager.subRows["SubA"]).combo.selectedItem)
     }
@@ -403,8 +398,7 @@ class SubmoduleRowManagerTest {
         manager.loadAllBranches(Preset("Work", "main", mapOf("SubA" to "develop")))
 
         assertTrue("discovery should finish", done.await(loadCompletionTimeoutSeconds, TimeUnit.SECONDS))
-        @Suppress("UNCHECKED_CAST")
-        val all = requireNotNull(manager.subRows["SubA"]).combo.getClientProperty(KEY_ALL_BRANCHES) as List<String>
+        val all = comboOfferedBranches(requireNotNull(manager.subRows["SubA"]).combo)
         assertTrue("remote heads must appear for an uninitialized row", all.containsAll(listOf("develop", "jade/develop")))
     }
 
@@ -445,15 +439,13 @@ class SubmoduleRowManagerTest {
         // No URL yet: the uninitialized row lists only the preset branch (local-only).
         manager.loadAllBranches(Preset("Work", "main", mapOf("SubA" to "develop")))
         assertTrue("initial load should finish", firstLoad.await(loadCompletionTimeoutSeconds, TimeUnit.SECONDS))
-        @Suppress("UNCHECKED_CAST")
-        val before = requireNotNull(manager.subRows["SubA"]).combo.getClientProperty(KEY_ALL_BRANCHES) as List<String>
+        val before = comboOfferedBranches(requireNotNull(manager.subRows["SubA"]).combo)
         assertFalse("no remote heads before url resolution", before.contains("jade/develop"))
 
         // URL arrives late: the already-loaded row re-discovers and gains the remote heads.
         manager.setPathUrls(mapOf("SubA" to "https://example.com/repo.git"))
         assertTrue("self-heal reload should finish", healLoad.await(loadCompletionTimeoutSeconds, TimeUnit.SECONDS))
-        @Suppress("UNCHECKED_CAST")
-        val after = requireNotNull(manager.subRows["SubA"]).combo.getClientProperty(KEY_ALL_BRANCHES) as List<String>
+        val after = comboOfferedBranches(requireNotNull(manager.subRows["SubA"]).combo)
         assertTrue("remote heads must appear after url self-heal", after.containsAll(listOf("develop", "jade/develop")))
         assertEquals("selection must be preserved across the self-heal", "develop", requireNotNull(manager.subRows["SubA"]).combo.selectedItem)
     }
@@ -481,12 +473,11 @@ class SubmoduleRowManagerTest {
         assertEquals("only the loaded row is updated", 1, updated)
         assertEquals("selection is preserved", "dev", loaded.combo.selectedItem)
         assertTrue("updated row is enabled", loaded.combo.isEnabled)
-        @Suppress("UNCHECKED_CAST")
-        val all = loaded.combo.getClientProperty(KEY_ALL_BRANCHES) as List<String>
+        val all = comboOfferedBranches(loaded.combo)
         assertTrue(all.containsAll(listOf("main", "dev", "feature")))
         // The unloaded row is left completely untouched.
         assertEquals("main", unloaded.combo.selectedItem)
-        assertNull(unloaded.combo.getClientProperty(KEY_ALL_BRANCHES))
+        assertTrue("an untouched row must still offer nothing", comboOfferedBranches(unloaded.combo).isEmpty())
     }
 
     @Test

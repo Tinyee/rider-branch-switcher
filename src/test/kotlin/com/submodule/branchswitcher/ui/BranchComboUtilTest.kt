@@ -30,7 +30,7 @@ class BranchComboUtilTest {
     fun `branch popup filter is case insensitive and preserves typed text`() {
         val combo = JComboBox(arrayOf("main", "feature/login", "Feature/Search"))
         combo.isEditable = true
-        combo.putClientProperty(KEY_ALL_BRANCHES, listOf("main", "feature/login", "Feature/Search"))
+        setComboOfferedBranches(combo, listOf("main", "feature/login", "Feature/Search"))
         val editor = combo.editor.editorComponent as JTextField
         editor.text = "FEATURE"
         editor.caretPosition = editor.text.length
@@ -48,7 +48,7 @@ class BranchComboUtilTest {
     fun `branch popup filter restores full list for blank text`() {
         val combo = JComboBox(arrayOf("feature/login"))
         combo.isEditable = true
-        combo.putClientProperty(KEY_ALL_BRANCHES, listOf("main", "dev", "feature/login"))
+        setComboOfferedBranches(combo, listOf("main", "dev", "feature/login"))
         val editor = combo.editor.editorComponent as JTextField
         editor.text = ""
 
