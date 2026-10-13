@@ -112,3 +112,31 @@ fun switchPreviewTableWidth(
 /** The scroll pane height for [rowCount] rows, bounded so a long preset does not stretch it. */
 fun switchPreviewTableHeight(rowCount: Int, rowHeight: Int, verticalChrome: Int): Int =
     (rowCount.coerceAtMost(SwitchPreviewMetrics.MAX_VISIBLE_ROWS) * rowHeight) + verticalChrome
+
+/**
+ * Grows [packedWidths] to sum to exactly [targetWidth], spreading the slack in proportion
+ * to each column's packed width.
+ *
+ * The last column takes the remainder rather than its proportional share, so the result
+ * sums to [targetWidth] exactly. Without that, integer division would leave the table a
+ * few pixels short of the dialog and leave a visible gap on the right.
+ *
+ * [packedWidths] must be non-empty and sum to a positive value; the caller packs every
+ * column to at least a minimum width first.
+ */
+fun expandColumnsProportionally(packedWidths: List<Int>, targetWidth: Int): List<Int> {
+    require(packedWidths.isNotEmpty()) { "no columns to expand" }
+    val packedWidth = packedWidths.sum()
+    require(packedWidth > 0) { "packed widths must be positive, was $packedWidth" }
+    val slack = targetWidth - packedWidth
+    var distributed = 0
+    return packedWidths.mapIndexed { index, width ->
+        val share = if (index == packedWidths.lastIndex) {
+            slack - distributed
+        } else {
+            slack * width / packedWidth
+        }
+        distributed += share
+        width + share
+    }
+}

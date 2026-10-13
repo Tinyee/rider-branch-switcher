@@ -12,6 +12,7 @@ import com.submodule.branchswitcher.model.PreflightRow
 import com.submodule.branchswitcher.model.ResolvedSwitchRequest
 import com.submodule.branchswitcher.presentation.switchOkButtonKey
 import com.submodule.branchswitcher.presentation.SwitchPreviewMetrics
+import com.submodule.branchswitcher.presentation.expandColumnsProportionally
 import com.submodule.branchswitcher.presentation.SwitchPreviewSummaryPart
 import com.submodule.branchswitcher.presentation.switchPreviewTableHeight
 import com.submodule.branchswitcher.presentation.switchPreviewTableWidth
@@ -132,7 +133,7 @@ class SwitchPreviewDialog(
         // PreflightRow.toString() (including the full collision set) and blow up the width.
         val packedWidth = packColumns(table)
         if (packedWidth < tableFillWidth) {
-            expandColumnsProportionally(table, packedWidth, tableFillWidth)
+            expandColumnsProportionally(table, tableFillWidth)
         }
 
         val scroll = JBScrollPane(table).apply {
@@ -208,23 +209,15 @@ class SwitchPreviewDialog(
     }
 
     /**
-     * Distributes the [packedWidth]-to-[targetWidth] slack across the columns in proportion
-     * to their packed widths, so a sparse table still fills the dialog row. The last column
-     * absorbs rounding so the new total is exactly [targetWidth].
+     * Widens the columns so the table fills [targetWidth]. The packing and the distribution
+     * both live in core ([switchPreviewTableWidth] and [expandColumnsProportionally]); this
+     * only applies the result to the live column model.
      */
-    private fun expandColumnsProportionally(table: JBTable, packedWidth: Int, targetWidth: Int) {
-        val slack = targetWidth - packedWidth
+    private fun expandColumnsProportionally(table: JBTable, targetWidth: Int) {
         val model = table.columnModel
         val widths = (0 until model.columnCount).map { model.getColumn(it).preferredWidth }
-        var distributed = 0
-        for (index in widths.indices) {
-            val share = if (index == widths.lastIndex) {
-                slack - distributed
-            } else {
-                slack * widths[index] / packedWidth
-            }
-            model.getColumn(index).preferredWidth = widths[index] + share
-            distributed += share
+        expandColumnsProportionally(widths, targetWidth).forEachIndexed { index, widened ->
+            model.getColumn(index).preferredWidth = widened
         }
     }
 

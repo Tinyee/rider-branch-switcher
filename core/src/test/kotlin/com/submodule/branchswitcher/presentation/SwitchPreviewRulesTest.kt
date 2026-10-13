@@ -191,4 +191,49 @@ class SwitchPreviewRulesTest {
             switchPreviewTableHeight(rowCount = 8, rowHeight = 24, verticalChrome = 56),
         )
     }
+
+    // ── column expansion ──────────────────────────────────────────────────────
+
+    @Test
+    fun `the widened columns sum to the target exactly`() {
+        // The invariant the last-column remainder exists for. With plain proportional
+        // shares, integer division leaves the table short and a gap on the right.
+        val packed = listOf(333, 333, 334)
+        val widened = expandColumnsProportionally(packed, targetWidth = 1000)
+
+        assertEquals("the table reaches the dialog width exactly", 1000, widened.sum())
+    }
+
+    @Test
+    fun `the remainder lands on the last column and nowhere else`() {
+        // 1000 / 3 splits evenly, so a proportional third column would also be 333 --
+        // pick a target whose division does not come out evenly.
+        val packed = listOf(100, 100, 100)
+        val widened = expandColumnsProportionally(packed, targetWidth = 1001)
+
+        val shares = widened.zip(packed).map { (new, old) -> new - old }
+        assertEquals("sum still exact", 1001, widened.sum())
+        assertEquals("nothing is lost or invented", 701, shares.sum())
+        assertEquals("the first two take their floor share", listOf(233, 233), shares.take(2))
+        assertEquals("the last absorbs the rounding remainder", 235, shares[2])
+    }
+
+    @Test
+    fun `slack is proportional to packed width`() {
+        // A column twice as wide takes twice the slack -- this is what stops a wide
+        // repository column from ending up narrower than a narrow target column.
+        val widened = expandColumnsProportionally(listOf(100, 200), targetWidth = 600)
+
+        assertEquals(listOf(200, 400), widened)
+    }
+
+    @Test
+    fun `an already-exact table is left alone`() {
+        assertEquals(listOf(300, 700), expandColumnsProportionally(listOf(300, 700), targetWidth = 1000))
+    }
+
+    @Test
+    fun `a single column takes the whole slack`() {
+        assertEquals(listOf(1000), expandColumnsProportionally(listOf(400), targetWidth = 1000))
+    }
 }
