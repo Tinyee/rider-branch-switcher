@@ -54,13 +54,38 @@ accumulated structural debt.
 
 Two things would legitimately reopen this. The ARCH-02 trigger — a fourth write
 workflow, or lifecycle churn repeating across two paths — is a genuine signal,
-because it is evidence of duplication rather than a guess at it. And a new
-consumer of the combo state would re-raise the shallow-module question: that
-state currently lives in four untyped `JComboBox` client properties
+because it is evidence of duplication rather than a guess at it. And a second
+module that has to know about the branch-load lifecycle would re-raise the
+shallow-module question. That state lives in four `JComboBox` client properties
 (`KEY_BRANCH_LOAD`, `KEY_BRANCH_LOAD_TOKEN`, `KEY_BRANCH_LOAD_SEED`,
-`KEY_ALL_BRANCHES`), read and written through `as?` casts at 17 sites inside
-`BranchComboUtil.kt`. One file is not yet a problem; a second reader outside it
-would be the evidence the refactor lacked.
+`KEY_ALL_BRANCHES`), read and written at 17 sites, five of them `as?` casts.
 
 The bar for both is the same one Phase 3 failed: name the duplication, or the
 second consumer, before proposing the split.
+
+### What counts as the second consumer
+
+Stated as a mechanism, this bar goes stale. It first read "a second reader
+outside `BranchComboUtil.kt`" — and the fix that exposed `comboOfferedBranches`
+made all four keys `private`, which in Kotlin means file-scope. No reader outside
+that file can exist now, so a bar phrased as "who may name the key" can never be
+met. A bar has to name a *phenomenon*, not the storage that happens to carry it.
+
+The phenomenon is: **a module that has to understand the branch-load lifecycle
+in order to do its own job.** It does not matter how it asks. Holding the key,
+reading `combo.isEnabled`, or comparing `combo.selectedItem` against the
+`LOADING_BRANCH` placeholder are all the same thing — that module has been made
+to learn this module's state machine.
+
+One such consumer already exists and is not yet caused by duplication:
+
+```kotlin
+// SubmoduleRowManager.fillRows
+if (!row.combo.isEnabled || row.combo.selectedItem == LOADING_BRANCH) return@forEach
+```
+
+It reads the load state through Swing, and depends on an invariant nothing
+states or enforces: a combo that is enabled has no pending seed. That is a real
+signal, but a single one. As with the ARCH-02 trigger, one is not enough to act
+on — the work is worth doing when a second appears, or when this one has to grow
+because a third state joins the two it already distinguishes.
