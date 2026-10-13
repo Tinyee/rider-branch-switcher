@@ -10,6 +10,7 @@ work into another file.
 | --- | --- |
 | [`../README.md`](../README.md) | User-facing features, installation, quick start, settings, and screenshots |
 | [`../README.zh-CN.md`](../README.zh-CN.md) | Chinese translation of the user README |
+| [`../CONTEXT.md`](../CONTEXT.md) | Domain glossary: the canonical name for each project concept and the words to avoid |
 | [`ARCHITECTURE.md`](ARCHITECTURE.md) | Module boundaries, package ownership, switch lifecycle, and change placement |
 | [`ARCHITECTURE.zh-CN.md`](ARCHITECTURE.zh-CN.md) | Chinese architecture overview, reading order, and Kotlin syntax guide |
 | [`SETUP.md`](SETUP.md) | JDK, platform SDK, local sandbox, and compatibility configuration |
@@ -18,6 +19,8 @@ work into another file.
 | [`../CHANGELOG.md`](../CHANGELOG.md) | Versioned delivered changes |
 | [`encoding-and-line-endings.md`](encoding-and-line-endings.md) | Repository text-format policy |
 | [`design/branch-switcher-ui-v1.html`](design/branch-switcher-ui-v1.html) | Interactive Tool Window design reference at wide, compact, and narrow widths |
+| [`agents/`](agents/) | Agent-skill configuration: issue tracker, triage label vocabulary, and domain-doc layout |
+| [`adr/`](adr/) | Architecture decision records: decisions already made, so a later review does not re-open them |
 
 The English and Chinese READMEs intentionally mirror each other. The Chinese
 architecture guide is an onboarding companion rather than a second normative

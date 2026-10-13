@@ -19,11 +19,32 @@ import javax.swing.JTextField
 import javax.swing.event.DocumentEvent
 import javax.swing.event.DocumentListener
 
-/** JComboBox client-property key storing the unfiltered branch list for popup filtering. */
-const val KEY_ALL_BRANCHES = "submodule.branchswitcher.allBranches"
+/**
+ * JComboBox client-property key storing the unfiltered branch list behind the filtered popup.
+ * Private because [comboOfferedBranches] and [setComboOfferedBranches] are the interface: a
+ * caller asking what a combo offers should not have to know where the answer is kept, and the
+ * key being a `String` meant every reader cast the value back itself.
+ */
+private const val KEY_ALL_BRANCHES = "submodule.branchswitcher.allBranches"
 private const val KEY_BRANCH_LOAD = "submodule.branchswitcher.branchLoad"
 private const val KEY_BRANCH_LOAD_TOKEN = "submodule.branchswitcher.branchLoadToken"
 private const val KEY_BRANCH_LOAD_SEED = "submodule.branchswitcher.branchLoadSeed"
+
+/**
+ * The branches this combo offers, in the order the popup presents them — the full list the
+ * load or refresh installed, before the popup's type-to-filter narrows what is shown.
+ *
+ * Empty when nothing has been loaded, which is the honest answer: a combo that has never
+ * loaded offers nothing, and [LOADING_BRANCH] is a placeholder rather than a branch.
+ */
+internal fun comboOfferedBranches(combo: JComboBox<String>): List<String> =
+    @Suppress("UNCHECKED_CAST")
+    (combo.getClientProperty(KEY_ALL_BRANCHES) as? List<String>) ?: emptyList()
+
+/** Installs [branches] as what [combo] offers. The one place the storage is written. */
+internal fun setComboOfferedBranches(combo: JComboBox<String>, branches: List<String>) {
+    combo.putClientProperty(KEY_ALL_BRANCHES, branches)
+}
 
 /**
  * The branch a combo currently stands for. A combo being loaded shows the literal
@@ -132,8 +153,11 @@ fun makeBranchCombo(onDirty: () -> Unit): JComboBox<String> {
  * Restores caret position after model swap.
  */
 fun filterBranchPopup(combo: JComboBox<String>, editor: JTextField) {
-    @Suppress("UNCHECKED_CAST")
-    val all = combo.getClientProperty(KEY_ALL_BRANCHES) as? List<String> ?: return
+    // Nothing loaded and an empty offer are different states: the first means "this combo has
+    // no list yet", the second means "the list is genuinely empty". Both leave the popup alone,
+    // so this reads as one guard.
+    val all = comboOfferedBranches(combo)
+    if (all.isEmpty()) return
     val text = editor.text ?: ""
     val caret = editor.caretPosition
     val filtered = if (text.isBlank()) all
@@ -193,6 +217,8 @@ internal fun loadComboBranches(
             // Always signal the lifecycle end (balances onLoadStart for the caller's
             // in-flight counter). The caller separately decides whether a superseded
             // load (a newer load replaced this combo's token) may touch retry state.
+            // Inline is safe here: every caller but finish()'s catch is already inside
+            // updateUi, which scheduleUi ran on the EDT.
             val superseded = combo.getClientProperty(KEY_BRANCH_LOAD_TOKEN) !== loadToken
             onLoadEnd(succeeded, superseded)
         }
@@ -208,7 +234,7 @@ internal fun loadComboBranches(
                 val list = mergeBranchChoices(result.selectedBranch, result.branches)
                 combo.model = DefaultComboBoxModel(list.toTypedArray())
                 combo.selectedItem = result.selectedBranch
-                combo.putClientProperty(KEY_ALL_BRANCHES, list)
+                setComboOfferedBranches(combo, list)
                 combo.clearLoadSelectionSeed()
                 combo.isEnabled = true
             } finally {
@@ -218,7 +244,10 @@ internal fun loadComboBranches(
         try {
             scheduleUi(updateUi)
         } catch (e: Exception) {
-            endLoad(false)
+            // The schedule itself failed (the application is shutting down), so updateUi
+            // never ran and its finally never signalled the end. Signal it here instead --
+            // off the EDT, so it must not run on this thread.
+            deliverOnEdt(scheduleUi) { endLoad(false) }
             log.logFailure("loadBranches UI update failed for ${target.dir.name}", e)
         }
     }
@@ -269,8 +298,7 @@ internal fun refreshComboBranches(
     submodule: SubmoduleSource,
     cache: RemoteBranchCache? = null,
 ): BranchLoadHandle {
-    @Suppress("UNCHECKED_CAST")
-    val previousList = (combo.getClientProperty(KEY_ALL_BRANCHES) as? List<String>) ?: emptyList()
+    val previousList = comboOfferedBranches(combo)
     // Via the accessor, not `selectedItem`: if another load is already in flight the raw read
     // yields "Loading...", and a failed refresh would then restore that placeholder as the
     // branch. The accessor also keeps a branch the user typed but has not committed.
@@ -296,7 +324,11 @@ internal fun refreshComboBranches(
     fun endLoad(succeeded: Boolean) {
         if (loadEnded.compareAndSet(false, true)) {
             val superseded = combo.getClientProperty(KEY_BRANCH_LOAD_TOKEN) !== loadToken
-            schedule { onLoadEnd(succeeded, superseded) }
+            // Posted, unlike loadComboBranches' inline call: this one also runs from the
+            // job's completion handler, which is off the EDT. deliverOnEdt rather than
+            // schedule(), which only logs when the UI queue is gone -- a dropped end signal
+            // leaves the caller's in-flight count permanently raised.
+            deliverOnEdt(scheduleUi) { onLoadEnd(succeeded, superseded) }
         }
     }
 
@@ -306,7 +338,7 @@ internal fun refreshComboBranches(
         val list = mergeBranchChoices(selected, branches)
         combo.model = DefaultComboBoxModel(list.toTypedArray())
         combo.selectedItem = selected
-        combo.putClientProperty(KEY_ALL_BRANCHES, list)
+        setComboOfferedBranches(combo, list)
         combo.clearLoadSelectionSeed()
         combo.isEnabled = true
     }

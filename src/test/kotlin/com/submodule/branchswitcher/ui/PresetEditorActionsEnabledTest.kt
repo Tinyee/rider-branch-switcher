@@ -9,22 +9,22 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.lang.reflect.Proxy
 import java.nio.file.Paths
-import javax.swing.JButton
 
 /**
  * Pins the cold-start button state: a freshly constructed editor must expose clickable
- * switch/derive buttons. Regression for the construction-order bug where the button state
+ * switch/derive actions. Regression for the construction-order bug where the action state
  * was recomposed while [PresetEditor.isInitializing] was still true and never recomposed
- * afterwards, leaving both actions disabled until the first expand or write.
+ * afterwards, leaving both actions unavailable until the first expand or write.
  */
 class PresetEditorActionsEnabledTest {
 
     @Test
-    fun `switch and derive buttons are clickable right after construction`() {
+    fun `switch and derive are available right after construction`() {
         val editor = newEditor()
 
-        assertTrue("switch button must be enabled on a cold-started editor", switchButton(editor).isEnabled)
-        assertTrue("derive button must be enabled on a cold-started editor", deriveButton(editor).isEnabled)
+        val state = editor.controlState()
+        assertTrue("switch must be available on a cold-started editor", state.switchEnabled)
+        assertTrue("derive must be available on a cold-started editor", state.deriveEnabled)
     }
 
     private fun newEditor(): PresetEditor = PresetEditor(
@@ -39,16 +39,6 @@ class PresetEditorActionsEnabledTest {
         branchLoads = BranchLoadCoordinator(CoroutineScope(Dispatchers.Unconfined)) { gitOperation() },
         onSwitchOnly = { _, _ -> },
     )
-
-    private fun switchButton(editor: PresetEditor): JButton = buttonField(editor, "switchBtn")
-
-    private fun deriveButton(editor: PresetEditor): JButton = buttonField(editor, "deriveBtn")
-
-    private fun buttonField(editor: PresetEditor, name: String): JButton {
-        val field = PresetEditor::class.java.getDeclaredField(name)
-        field.isAccessible = true
-        return field.get(editor) as JButton
-    }
 
     private fun gitOperation(): GitOperationSession =
         Proxy.newProxyInstance(

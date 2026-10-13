@@ -9,6 +9,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.awt.EventQueue
 import java.io.File
 import java.lang.reflect.Proxy
 import java.util.concurrent.CountDownLatch
@@ -29,7 +30,7 @@ class BranchComboUtilTest {
     fun `branch popup filter is case insensitive and preserves typed text`() {
         val combo = JComboBox(arrayOf("main", "feature/login", "Feature/Search"))
         combo.isEditable = true
-        combo.putClientProperty(KEY_ALL_BRANCHES, listOf("main", "feature/login", "Feature/Search"))
+        setComboOfferedBranches(combo, listOf("main", "feature/login", "Feature/Search"))
         val editor = combo.editor.editorComponent as JTextField
         editor.text = "FEATURE"
         editor.caretPosition = editor.text.length
@@ -47,7 +48,7 @@ class BranchComboUtilTest {
     fun `branch popup filter restores full list for blank text`() {
         val combo = JComboBox(arrayOf("feature/login"))
         combo.isEditable = true
-        combo.putClientProperty(KEY_ALL_BRANCHES, listOf("main", "dev", "feature/login"))
+        setComboOfferedBranches(combo, listOf("main", "dev", "feature/login"))
         val editor = combo.editor.editorComponent as JTextField
         editor.text = ""
 
@@ -207,6 +208,77 @@ class BranchComboUtilTest {
         assertEquals("latest", combo.selectedItem)
     }
 
+    /**
+     * The application shutdown window: `invokeLater` throws, so the schedule that would
+     * have run `updateUi` never lands and its `finally` never balances the caller's
+     * in-flight count. Dropping the signal leaves that editor disabled for good, so it
+     * must be delivered anyway -- and on the EDT, because the callback touches Swing.
+     */
+    @Test
+    fun `a failed UI schedule still ends the load exactly once on the EDT`() {
+        val combo = displayableCombo()
+        val ends = AtomicInteger()
+        val onEdt = AtomicBoolean(true)
+        val finished = CountDownLatch(1)
+
+        loadComboBranches(
+            combo, ComboBranchTarget(File("."), "dev"),
+            branchLoads { listOf("main", "dev") }, createStringAppender {},
+            onLoadStart = {},
+            onLoadEnd = { _, _ ->
+                if (!EventQueue.isDispatchThread()) onEdt.set(false)
+                ends.incrementAndGet()
+                finished.countDown()
+            },
+            scheduleUi = { throw IllegalStateException("application is being disposed") },
+        )
+
+        assertTrue(
+            "the end signal must survive a schedule that refused it",
+            finished.await(loadCompletionTimeoutSeconds, TimeUnit.SECONDS),
+        )
+        assertEquals("the caller's counter must be balanced exactly once", 1, ends.get())
+        assertTrue("the callback touches Swing, so it must not run on the loading thread", onEdt.get())
+    }
+
+    /**
+     * The refresh half of the same shutdown window. `refreshComboBranches` is the path the
+     * original defect was worst on: it posted the end signal through a helper that only logged
+     * when the UI queue refused, so the callback was dropped outright — and because `loadEnded`
+     * had already flipped, it never fired again, leaving the caller's in-flight count raised for
+     * the rest of the session.
+     */
+    @Test
+    fun `a failed UI schedule still ends a refresh exactly once on the EDT`() {
+        val combo = displayableCombo(displayable = true)
+        val ends = AtomicInteger()
+        val onEdt = AtomicBoolean(true)
+        val finished = CountDownLatch(1)
+
+        refreshComboBranches(
+            combo,
+            File("."),
+            "dev",
+            refreshLoads(),
+            createStringAppender {},
+            onLoadStart = {},
+            onLoadEnd = { _, _ ->
+                if (!EventQueue.isDispatchThread()) onEdt.set(false)
+                ends.incrementAndGet()
+                finished.countDown()
+            },
+            scheduleUi = { throw IllegalStateException("application is being disposed") },
+            submodule = SubmoduleSource(File("."), "SubA", "https://example.com/repo.git"),
+        )
+
+        assertTrue(
+            "the end signal must survive a schedule that refused it",
+            finished.await(loadCompletionTimeoutSeconds, TimeUnit.SECONDS),
+        )
+        assertEquals("the caller's counter must be balanced exactly once", 1, ends.get())
+        assertTrue("the callback touches Swing, so it must not run on the loading thread", onEdt.get())
+    }
+
     private fun displayableCombo(displayable: Boolean = true): JComboBox<String> =
         object : JComboBox<String>() {
             override fun isDisplayable(): Boolean = displayable
@@ -215,6 +287,12 @@ class BranchComboUtilTest {
     private fun branchLoads(load: () -> List<String>): BranchLoadCoordinator =
         BranchLoadCoordinator(CoroutineScope(Dispatchers.Unconfined)) {
             branchOperation(load = load)
+        }
+
+    /** A load coordinator whose workflow session lists one branch, for the refresh path. */
+    private fun refreshLoads(): BranchLoadCoordinator =
+        BranchLoadCoordinator(CoroutineScope(Dispatchers.Unconfined)) {
+            branchOperation(load = { listOf("main", "dev") })
         }
 
     private fun branchOperation(

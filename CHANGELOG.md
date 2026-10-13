@@ -405,6 +405,25 @@
 - Automatic recovery after a failed or cancelled switch runs in its own visible,
   cancellable background task, so a slow rollback shows progress and can be
   cancelled between repositories (symmetric with the manual rollback path).
+- An invalid preset draft now refuses Switch, Derive, and Save up front and names
+  the offending field, instead of failing later in preflight, throwing before the
+  derive progress task starts, or raising the same error dialog on save. Discard
+  stays available as the way out of a draft that cannot be repaired by hand.
+- Branch names ending in a dot on a path component, such as `release./x` and
+  `v1.0./hotfix`, are accepted again: `git check-ref-format --branch` forbids a
+  trailing dot only on the whole ref, not on each component, so the stricter rule
+  was refusing valid names.
+- Collapsing and re-expanding a preset no longer discards an unsaved branch edit.
+  A collapse cancels the in-flight branch load and leaves the combo on its
+  loading placeholder, which the re-expand then read back as the branch.
+- A branch cleared in a dropdown is now seen as cleared before the edit is
+  committed, so Save is refused with a reason instead of failing with
+  "invalid branch for ..." after the click.
+- A rollback or recovery blocked by a stale `index.lock` reports that lock again,
+  so the notification keeps the delete-and-retry instruction that unblocks it.
+- The preset shortcut no longer reports a failed preset load as "Import failed".
+- Submodule branch dropdowns no longer stay disabled after the tool window's
+  branch load is interrupted while the IDE is shutting down.
 
 ### Removed
 

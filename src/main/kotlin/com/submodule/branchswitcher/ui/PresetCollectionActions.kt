@@ -36,7 +36,7 @@ internal interface PresetCollectionHost {
 internal class PresetCollectionActions(
     private val project: Project,
     private val service: BranchSwitcherService,
-    private val gitRoot: () -> Path?,
+    private val mainRepository: MainRepository,
     private val log: AppLogger,
     private val host: PresetCollectionHost,
 ) {
@@ -55,7 +55,7 @@ internal class PresetCollectionActions(
 
     private val transferActions = PresetTransferActions(
         project = project,
-        gitRoot = gitRoot,
+        mainRepository = mainRepository,
         log = log,
         host = host,
         persist = ::persistOrReport,
@@ -63,7 +63,7 @@ internal class PresetCollectionActions(
     private val currentStatePresetCreator = CurrentStatePresetCreator(
         project = project,
         service = service,
-        gitRoot = gitRoot,
+        mainRepository = mainRepository,
         log = log,
         host = host,
         persist = ::persistOrReport,
@@ -78,12 +78,7 @@ internal class PresetCollectionActions(
             project.invokeLaterIfAlive {
                 collectionOperationInProgress.set(false)
                 result.onSuccess { outcome ->
-                    val root = gitRoot()
-                    if (root == null) {
-                        log.error("git root not found")
-                        Notifier.error(project, Bundle.msg("plugin.title"), Bundle.msg("git.root.not.found"))
-                        return@onSuccess
-                    }
+                    val root = mainRepository.resolveOrReport() ?: return@onSuccess
                     host.clearEditors()
                     if (outcome.presets.presets.isEmpty()) {
                         host.showEmptyState()
@@ -152,11 +147,7 @@ internal class PresetCollectionActions(
             main = name,
             submodules = template?.submodules ?: emptyMap(),
         )
-        val root = gitRoot() ?: run {
-            log.error("git root not found")
-            Notifier.error(project, Bundle.msg("plugin.title"), Bundle.msg("git.root.not.found"))
-            return
-        }
+        val root = mainRepository.resolveOrReport() ?: return
         persistOrReport(host.editors.map { it.currentPreset() } + newPreset) { saved ->
             if (!saved) return@persistOrReport
             host.addEditor(root, newPreset)

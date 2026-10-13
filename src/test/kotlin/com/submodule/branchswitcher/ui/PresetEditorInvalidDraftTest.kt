@@ -7,6 +7,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.lang.reflect.Proxy
@@ -20,9 +21,12 @@ import javax.swing.JTextField
  * Pins the invalid-draft gate: a preset whose draft cannot be validated must refuse every action
  * that would fail on it. Switch fails in preflight, derive throws on [Preset.targets] before its
  * progress task starts, and save throws inside `PresetLoader.save`'s `requireValidPreset` — so
- * none of the three may be clickable, and each must say why, because the derive failure otherwise
- * reaches only the tool-window log. Revert is the exception: it restores the saved preset, so it
- * stays available as the way out.
+ * none of the three may be clickable, and the reason must be carried, because the derive failure
+ * otherwise reaches only the tool-window log. Revert is the exception: it restores the saved
+ * preset, so it stays available as the way out.
+ *
+ * Assertions read [PresetEditor.controlState] — the editor's own decision — rather than the
+ * buttons that render it. What is pinned here is what the editor decided, not how Swing drew it.
  */
 class PresetEditorInvalidDraftTest {
 
@@ -32,32 +36,30 @@ class PresetEditorInvalidDraftTest {
 
         // Adding a submodule row without picking a branch leaves it on an empty branch name,
         // which is exactly what `+ Add submodule` produces for a fresh row.
-        val row = submoduleRowFor(editor, "SubA")
-        row.combo.selectedItem = ""
+        val combo = submoduleComboFor(editor, "SubA")
+        combo.selectedItem = ""
 
-        assertFalse("switch must be refused on an invalid draft", switchButton(editor).isEnabled)
-        assertFalse("derive must be refused on an invalid draft", deriveButton(editor).isEnabled)
-        assertTrue("the reason must be shown, not just the disabled state", draftErrorLabel(editor).isVisible)
-        assertTrue(
-            "the reason must name the offending field, got: ${draftErrorLabel(editor).text}",
-            draftErrorLabel(editor).text.contains("SubA"),
-        )
-        assertTrue("switch must explain itself on hover", switchButton(editor).toolTipText.isNullOrEmpty().not())
+        val state = editor.controlState()
+        assertFalse("switch must be refused on an invalid draft", state.switchEnabled)
+        assertFalse("derive must be refused on an invalid draft", state.deriveEnabled)
+        val reason = requireNotNull(state.draftError) { "the reason must be carried, not just the refusal" }
+        assertTrue("the reason must name the offending field, got: $reason", reason.contains("SubA"))
     }
 
     /**
      * Saving an invalid draft only ever ends in the "invalid branch for ..." error dialog, so the
-     * button must be refused up front — while Revert stays available as the way out of a draft
+     * action must be refused up front — while Revert stays available as the way out of a draft
      * that cannot be repaired by hand.
      */
     @Test
     fun `an invalid draft disables save but keeps revert as the way out`() {
         val editor = newEditor(Preset("Work", "main", mapOf("SubA" to "dev")))
 
-        submoduleRowFor(editor, "SubA").combo.selectedItem = ""
+        submoduleComboFor(editor, "SubA").selectedItem = ""
 
-        assertFalse("save would only raise the invalid-branch error", saveButton(editor).isEnabled)
-        assertTrue("revert must stay enabled as the way out", revertButton(editor).isEnabled)
+        val state = editor.controlState()
+        assertFalse("save would only raise the invalid-branch error", state.saveEnabled)
+        assertTrue("revert must stay enabled as the way out", state.revertEnabled)
     }
 
     /**
@@ -69,7 +71,7 @@ class PresetEditorInvalidDraftTest {
     @Test
     fun `clearing the field without pressing enter is seen by the gate`() {
         val editor = newEditor(Preset("Work", "main", mapOf("SubA" to "dev")))
-        val combo = submoduleRowFor(editor, "SubA").combo
+        val combo = submoduleComboFor(editor, "SubA")
         assertEquals("precondition: the gate starts on the saved branch", "dev", combo.selectedItem)
 
         editorField(combo).text = ""
@@ -79,10 +81,11 @@ class PresetEditorInvalidDraftTest {
             "dev",
             combo.selectedItem,
         )
-        assertFalse("switch must be refused on the now-empty branch", switchButton(editor).isEnabled)
-        assertFalse("derive must be refused on the now-empty branch", deriveButton(editor).isEnabled)
-        assertFalse("save must be refused on the now-empty branch", saveButton(editor).isEnabled)
-        assertTrue("the reason must be shown", draftErrorLabel(editor).isVisible)
+        val state = editor.controlState()
+        assertFalse("switch must be refused on the now-empty branch", state.switchEnabled)
+        assertFalse("derive must be refused on the now-empty branch", state.deriveEnabled)
+        assertFalse("save must be refused on the now-empty branch", state.saveEnabled)
+        assertTrue("the reason must be carried", state.draftError != null)
     }
 
     @Test
@@ -91,38 +94,83 @@ class PresetEditorInvalidDraftTest {
 
         mainCombo(editor).selectedItem = "feature..broken"
 
-        assertFalse(switchButton(editor).isEnabled)
-        assertFalse(deriveButton(editor).isEnabled)
-        assertTrue(draftErrorLabel(editor).isVisible)
+        val state = editor.controlState()
+        assertFalse(state.switchEnabled)
+        assertFalse(state.deriveEnabled)
+        assertTrue(state.draftError != null)
     }
 
     @Test
     fun `repairing the draft re-enables switch and derive and clears the message`() {
         val editor = newEditor(Preset("Work", "main", mapOf("SubA" to "dev")))
-        submoduleRowFor(editor, "SubA").combo.selectedItem = ""
+        submoduleComboFor(editor, "SubA").selectedItem = ""
 
-        submoduleRowFor(editor, "SubA").combo.selectedItem = "develop"
+        submoduleComboFor(editor, "SubA").selectedItem = "develop"
 
-        assertTrue("a valid draft must restore switch", switchButton(editor).isEnabled)
-        assertTrue("a valid draft must restore derive", deriveButton(editor).isEnabled)
-        assertFalse("the message must clear with the failure", draftErrorLabel(editor).isVisible)
-        assertTrue(
-            "derive must get its own tooltip back, got: ${deriveButton(editor).toolTipText}",
-            deriveButton(editor).toolTipText?.contains("branch") == true,
-        )
+        val state = editor.controlState()
+        assertTrue("a valid draft must restore switch", state.switchEnabled)
+        assertTrue("a valid draft must restore derive", state.deriveEnabled)
+        assertNull("the failure must clear with the repair", state.draftError)
     }
 
     @Test
-    fun `a useful tooltip on switch is the reason, not a stale one`() {
+    fun `the refusal reason tracks the draft rather than going stale`() {
         val editor = newEditor(Preset("Work", "main", mapOf("SubA" to "dev")))
-        val clean = switchButton(editor).toolTipText
+        val clean = editor.controlState().draftError
 
         mainCombo(editor).selectedItem = "-force"
-        val blocked = switchButton(editor).toolTipText
+        val blocked = editor.controlState().draftError
 
-        assertTrue("pressing switch is blocked by the invalid draft", blocked != clean)
+        assertTrue("an invalid draft must supply a reason", blocked != null)
+        assertTrue("the reason must be the failure, not a carried-over one", blocked != clean)
         mainCombo(editor).selectedItem = "main"
-        assertFalse("clearing the draft error drops the reason tooltip", switchButton(editor).toolTipText == blocked)
+        assertNull("repairing the draft drops the reason", editor.controlState().draftError)
+    }
+
+    /**
+     * The other tests here read [PresetEditor.controlState] — the decision. This one reads the
+     * buttons and the label, because the decision is worthless to the user until it is rendered
+     * onto them. Without this, deleting the whole of `renderControlState`'s body would leave every
+     * other test green while the user saw four operable-looking buttons and no reason text.
+     */
+    @Test
+    fun `the decision reaches the controls the user actually sees`() {
+        val editor = newEditor(Preset("Work", "main", mapOf("SubA" to "dev")))
+        val state = editor.controlState()
+        assertTrue("precondition: a valid draft enables switch", state.switchEnabled)
+
+        submoduleComboFor(editor, "SubA").selectedItem = ""
+
+        val blocked = editor.controlState()
+        assertFalse("precondition: the draft is now refused", blocked.switchEnabled)
+        assertEquals("switch must be drawn from the decision", blocked.switchEnabled, switchButton(editor).isEnabled)
+        assertEquals("derive must be drawn from the decision", blocked.deriveEnabled, deriveButton(editor).isEnabled)
+        assertEquals("save must be drawn from the decision", blocked.saveEnabled, saveButton(editor).isEnabled)
+        assertEquals("discard must be drawn from the decision", blocked.revertEnabled, revertButton(editor).isEnabled)
+        assertTrue("the reason must be visible, not merely carried", draftErrorLabel(editor).isVisible)
+        assertTrue(
+            "the visible reason must be the one the decision carried, got: ${draftErrorLabel(editor).text}",
+            !draftErrorLabel(editor).text.isNullOrEmpty() && draftErrorLabel(editor).text.contains("SubA"),
+        )
+        assertTrue("switch must explain itself on hover", !switchButton(editor).toolTipText.isNullOrEmpty())
+    }
+
+    @Test
+    fun `repairing the draft clears the rendered reason and restores the buttons`() {
+        val editor = newEditor(Preset("Work", "main", mapOf("SubA" to "dev")))
+        submoduleComboFor(editor, "SubA").selectedItem = ""
+
+        submoduleComboFor(editor, "SubA").selectedItem = "develop"
+
+        val state = editor.controlState()
+        assertTrue("precondition: a valid draft enables switch", state.switchEnabled)
+        assertTrue("switch must be drawn enabled again", switchButton(editor).isEnabled)
+        assertTrue("derive must be drawn enabled again", deriveButton(editor).isEnabled)
+        assertFalse("the reason must be hidden again", draftErrorLabel(editor).isVisible)
+        assertTrue(
+            "derive must get its own tooltip back once nothing blocks it, got: ${deriveButton(editor).toolTipText}",
+            deriveButton(editor).toolTipText?.contains("branch") == true,
+        )
     }
 
     private fun newEditor(preset: Preset): PresetEditor = PresetEditor(
@@ -138,33 +186,32 @@ class PresetEditorInvalidDraftTest {
         onSwitchOnly = { _, _ -> },
     )
 
-    private fun submoduleRowFor(editor: PresetEditor, path: String): SubmoduleRowManager.SubRow {
-        val manager = field(editor, "submoduleManager") as SubmoduleRowManager
-        return requireNotNull(manager.subRows[path]) { "no row for $path" }
-    }
+    private fun submoduleComboFor(editor: PresetEditor, path: String): JComboBox<String> =
+        requireNotNull(branchCombo(editor, path)) { "no row for $path" }
+
+    private fun mainCombo(editor: PresetEditor): JComboBox<String> = branchCombo(editor, null)!!
 
     @Suppress("UNCHECKED_CAST")
-    private fun mainCombo(editor: PresetEditor): JComboBox<String> =
-        field(editor, "mainCombo") as JComboBox<String>
+    private fun branchCombo(editor: PresetEditor, path: String?): JComboBox<String>? =
+        editor.control(PresetEditorControl.BRANCHES, path) as JComboBox<String>?
 
-    private fun switchButton(editor: PresetEditor): JButton = field(editor, "switchBtn") as JButton
+    private fun switchButton(editor: PresetEditor): JButton =
+        editor.control(PresetEditorControl.SWITCH) as JButton
 
-    private fun deriveButton(editor: PresetEditor): JButton = field(editor, "deriveBtn") as JButton
+    private fun deriveButton(editor: PresetEditor): JButton =
+        editor.control(PresetEditorControl.DERIVE) as JButton
 
-    private fun saveButton(editor: PresetEditor): JButton = field(editor, "saveBtn") as JButton
+    private fun saveButton(editor: PresetEditor): JButton =
+        editor.control(PresetEditorControl.SAVE) as JButton
 
-    private fun revertButton(editor: PresetEditor): JButton = field(editor, "revertBtn") as JButton
+    private fun revertButton(editor: PresetEditor): JButton =
+        editor.control(PresetEditorControl.DISCARD) as JButton
+
+    private fun draftErrorLabel(editor: PresetEditor): JLabel =
+        editor.control(PresetEditorControl.DRAFT_ERROR) as JLabel
 
     private fun editorField(combo: JComboBox<String>): JTextField =
         combo.editor.editorComponent as JTextField
-
-    private fun draftErrorLabel(editor: PresetEditor): JLabel = field(editor, "draftErrorLabel") as JLabel
-
-    private fun field(editor: PresetEditor, name: String): Any {
-        val field = PresetEditor::class.java.getDeclaredField(name)
-        field.isAccessible = true
-        return requireNotNull(field.get(editor))
-    }
 
     private fun gitOperation(): GitOperationSession =
         Proxy.newProxyInstance(

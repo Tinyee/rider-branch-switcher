@@ -21,10 +21,10 @@ import com.submodule.branchswitcher.log.logFailure
 import com.submodule.branchswitcher.log.newOperationContext
 import com.submodule.branchswitcher.log.ToolWindowLogger
 import com.submodule.branchswitcher.model.Preset
-import com.submodule.branchswitcher.platform.gitRootPath
 import com.submodule.branchswitcher.presentation.ShortcutPresetLoadDecision
 import com.submodule.branchswitcher.presentation.shortcutPresetLoadDecision
 import com.submodule.branchswitcher.service.BranchSwitcherService
+import com.submodule.branchswitcher.ui.MainRepository
 import com.submodule.branchswitcher.ui.SwitchFlowCoordinator
 import com.submodule.branchswitcher.ui.invokeLaterIfAlive
 import com.submodule.branchswitcher.workflow.WriteOperationLauncher
@@ -70,7 +70,7 @@ class SwitchPresetAction : AnAction() {
                     actionLogger(project).logFailure("preset load failed", error)
                 }
                 Notifier.error(project, Bundle.msg("preset.load.failed"),
-                    error?.message ?: Bundle.msg("dialog.import.failed"))
+                    error?.message ?: Bundle.msg("error.unknown"))
                 return
             }
             ShortcutPresetLoadDecision.NoPresets -> {
@@ -101,11 +101,11 @@ class SwitchPresetAction : AnAction() {
 
     private fun executeSwitch(project: Project, service: BranchSwitcherService, preset: Preset) {
         val collector = actionLogger(project)
-        val root = project.gitRootPath() ?: run {
-            collector.error("git root not found")
-            Notifier.error(project, Bundle.msg("plugin.title"), Bundle.msg("git.root.not.found"))
-            return
-        }
+        // Constructed here rather than shared with the Tool Window: this action has no handle
+        // to the panel. Its de-duplication flag is therefore per shortcut invocation, so the
+        // worktree note can repeat across invocations — the panel's instance says it once.
+        val mainRepository = MainRepository(project, collector)
+        val root = mainRepository.resolveOrReport() ?: return
         SwitchFlowCoordinator(
             project,
             service,

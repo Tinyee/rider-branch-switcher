@@ -1,10 +1,15 @@
 package com.submodule.branchswitcher.platform
 
-import com.intellij.openapi.project.Project
 import java.nio.file.Files
 import java.nio.file.Path
-import java.nio.file.Paths
 
+/**
+ * The repository root at or above [start], or null when the walk reaches the filesystem root
+ * without finding a `.git` entry.
+ *
+ * A worktree's `.git` is a file rather than a directory; [Files.exists] accepts either, so this
+ * resolves a worktree to itself.
+ */
 fun resolveGitRoot(start: Path): Path? {
     var current: Path? = start.toAbsolutePath().normalize()
     while (current != null) {
@@ -13,5 +18,3 @@ fun resolveGitRoot(start: Path): Path? {
     }
     return null
 }
-
-fun Project.gitRootPath(): Path? = basePath?.let(Paths::get)?.let(::resolveGitRoot)

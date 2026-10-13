@@ -265,7 +265,7 @@ internal class SubmoduleRowManager(
             val merged = mergeBranchChoices(current, list)
             row.combo.model = DefaultComboBoxModel(merged.toTypedArray())
             row.combo.selectedItem = current
-            row.combo.putClientProperty(KEY_ALL_BRANCHES, merged)
+            setComboOfferedBranches(row.combo, merged)
             row.combo.isEnabled = true
             row.loaded = true
             updated++
