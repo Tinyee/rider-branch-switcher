@@ -118,6 +118,21 @@ internal class PresetEditor(
     private val submoduleRows get() = submoduleManager.subRows
     val loadingCount get() = submoduleManager.loadingCount
 
+    /**
+     * The branch control for one submodule row, or null when no row carries [path].
+     *
+     * Exposed so a caller can drive or inspect a row without reaching into the editor's
+     * fields. Editing a branch is a user action, not an internal detail, so the control that
+     * performs it is legitimately part of what this editor offers.
+     */
+    internal fun submoduleBranchCombo(path: String): JComboBox<String>? = submoduleRows[path]?.combo
+
+    /** The main repository's branch control. See [submoduleBranchCombo]. */
+    internal fun mainBranchCombo(): JComboBox<String> = mainCombo
+
+    /** Whether the preset detail panel is expanded, as [toggle] last left it. */
+    internal fun isBodyVisible(): Boolean = body.isVisible
+
     /** Pushes the path→URL map resolved from `.gitmodules` to the submodule rows. */
     fun setSubmoduleUrls(urls: Map<String, String?>) = submoduleManager.setPathUrls(urls)
 
@@ -306,8 +321,14 @@ internal class PresetEditor(
         renderControlState()
     }
 
-    /** Expands/collapses the preset detail panel. Loads branch lists lazily on first expand. */
-    private fun toggle() {
+    /**
+     * Expands/collapses the preset detail panel. Loads branch lists lazily on first expand.
+     *
+     * Internal rather than private because it is the editor's own user-facing behaviour — the
+     * header's click handler calls it — so a test exercising a collapse/re-expand cycle drives
+     * the editor the way a user does instead of invoking it reflectively.
+     */
+    internal fun toggle() {
         body.isVisible = !body.isVisible
         arrow.icon = if (body.isVisible) AllIcons.General.ArrowDown else AllIcons.General.ArrowRight
         if (body.isVisible && !branchesLoaded) {
@@ -365,6 +386,24 @@ internal class PresetEditor(
     }
 
     /**
+     * What every action on this editor is currently allowed to do, derived from one snapshot
+     * of its inputs.
+     *
+     * This is the editor's readable interface: a caller — or a test — asks what the editor
+     * decided instead of reaching for the buttons that display it. The buttons are how the
+     * decision is *rendered*; they are not the decision. Recomputing on each read rather than
+     * caching keeps that from becoming a second source of truth.
+     */
+    internal fun controlState(): PresetEditorControlState = presetEditorControlState(
+        hasDraftChanges = hasPresetDraftChanges(savedPreset, draftSelection()),
+        initializing = isInitializing,
+        loadingCount = loadingCount,
+        persistenceInProgress = persistenceInProgress,
+        mutationActionsEnabled = actionsEnabled,
+        draftError = presetValidationError(buildEditedPreset()),
+    )
+
+    /**
      * Recomputes all four button states from one snapshot of the editor's inputs (see
      * [presetEditorControlState]). Recomposed after every input change — branch selection,
      * submodule rows, init, a branch load start/end, persistence start/end, and the global
@@ -373,14 +412,7 @@ internal class PresetEditor(
      * "Loading..." placeholder.
      */
     private fun renderControlState() {
-        val state = presetEditorControlState(
-            hasDraftChanges = hasPresetDraftChanges(savedPreset, draftSelection()),
-            initializing = isInitializing,
-            loadingCount = loadingCount,
-            persistenceInProgress = persistenceInProgress,
-            mutationActionsEnabled = actionsEnabled,
-            draftError = presetValidationError(buildEditedPreset()),
-        )
+        val state = controlState()
         saveBtn.isEnabled = state.saveEnabled
         revertBtn.isEnabled = state.revertEnabled
         switchBtn.isEnabled = state.switchEnabled
@@ -468,7 +500,12 @@ internal class PresetEditor(
             },
         )
 
-    private fun buildEditedPreset(): Preset = draftSelection().applyTo(savedPreset)
+    /**
+     * The preset this editor would save right now — the draft as the user sees it, which is
+     * what the save, switch, and derive paths all act on. A caller asking "what is this editor
+     * currently describing" should not have to reconstruct it from the controls.
+     */
+    internal fun buildEditedPreset(): Preset = draftSelection().applyTo(savedPreset)
 
     private fun revert() {
         restoreSavedPresetToUi()

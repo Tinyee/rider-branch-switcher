@@ -8,12 +8,10 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
-import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.lang.reflect.Proxy
 import java.nio.file.Files
 import javax.swing.JComboBox
-import javax.swing.JPanel
 
 /**
  * Pins the collapse/re-expand draft rule. A collapse cancels every in-flight branch load; the
@@ -37,7 +35,7 @@ class PresetEditorDraftAcrossExpandTest {
         assertEquals(
             "the unsaved main branch edit must survive the reload",
             "feature/draft",
-            draftOf(editor).main,
+            editor.buildEditedPreset().main,
         )
     }
 
@@ -54,7 +52,7 @@ class PresetEditorDraftAcrossExpandTest {
         assertEquals(
             "the unsaved submodule branch edit must survive the reload",
             "develop",
-            draftOf(editor).submodules["SubA"],
+            editor.buildEditedPreset().submodules["SubA"],
         )
     }
 
@@ -72,7 +70,7 @@ class PresetEditorDraftAcrossExpandTest {
         collapse(editor)
         expand(editor)
 
-        val draft = draftOf(editor)
+        val draft = editor.buildEditedPreset()
         assertNull(
             "the reload must not manufacture a validation failure for ${draft.main}",
             presetValidationError(draft),
@@ -97,37 +95,14 @@ class PresetEditorDraftAcrossExpandTest {
     private fun collapse(editor: PresetEditor) = toggle(editor, expectVisible = false)
 
     private fun toggle(editor: PresetEditor, expectVisible: Boolean) {
-        val method = PresetEditor::class.java.getDeclaredMethod("toggle")
-        method.isAccessible = true
-        method.invoke(editor)
-        val body = field(editor, "body") as JPanel
-        assertEquals("body visibility after toggle", expectVisible, body.isVisible)
+        editor.toggle()
+        assertEquals("body visibility after toggle", expectVisible, editor.isBodyVisible())
     }
 
-    /** The preset the editor would save right now — the draft as the user sees it. */
-    private fun draftOf(editor: PresetEditor): Preset {
-        val method = PresetEditor::class.java.getDeclaredMethod("buildEditedPreset")
-        method.isAccessible = true
-        return method.invoke(editor) as Preset
-    }
+    private fun mainCombo(editor: PresetEditor): JComboBox<String> = editor.mainBranchCombo()
 
-    @Suppress("UNCHECKED_CAST")
-    private fun mainCombo(editor: PresetEditor): JComboBox<String> =
-        field(editor, "mainCombo") as JComboBox<String>
-
-    @Suppress("UNCHECKED_CAST")
-    private fun submoduleCombo(editor: PresetEditor, path: String): JComboBox<String> {
-        val manager = field(editor, "submoduleManager") as SubmoduleRowManager
-        val row = requireNotNull(manager.subRows[path]) { "no submodule row for $path" }
-        assertTrue("the row must be present for the draft read to see it", row.path == path)
-        return row.combo
-    }
-
-    private fun field(editor: PresetEditor, name: String): Any {
-        val declared = PresetEditor::class.java.getDeclaredField(name)
-        declared.isAccessible = true
-        return requireNotNull(declared.get(editor)) { "field $name was null" }
-    }
+    private fun submoduleCombo(editor: PresetEditor, path: String): JComboBox<String> =
+        requireNotNull(editor.submoduleBranchCombo(path)) { "no submodule row for $path" }
 
     /**
      * A session that never resumes its suspension point, so every discovery stays in flight —
