@@ -49,6 +49,10 @@ dependencies {
             create(platformType, platformVersion)
         }
         bundledPlugin("Git4Idea")
+        // Platform test fixtures. The plugin-module test suite had no way to build a
+        // Project, which is why the classes that orchestrate every repository mutation
+        // had no tests at all (ROADMAP P3-18). Adds ~4.3 MB of test-only artifacts.
+        testFramework(org.jetbrains.intellij.platform.gradle.TestFrameworkType.Platform)
     }
     implementation(project(":core"))
     // IntelliJ Platform provides Gson at runtime; compile only to avoid bundling a duplicate Gson jar.
