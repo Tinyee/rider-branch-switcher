@@ -12,11 +12,65 @@ import com.submodule.branchswitcher.log.AppLogger
 import com.submodule.branchswitcher.workflow.SingleRepositorySwitchResult
 import com.submodule.branchswitcher.workflow.SwitchRunResult
 
-/** Maps structured switch and rollback outcomes to history and IDE notifications. */
-internal class SwitchResultPresenter(
+/**
+ * Where a switch outcome is delivered: the balloon surface, and the switch history the
+ * options panel shows.
+ *
+ * Narrowed to exactly what [SwitchResultPresenter] reaches for. The presenter's work is
+ * the decision table behind its 12 methods — which outcome gets which title, whether the
+ * rollback action is offered, when a lock line is appended — and that table needs no
+ * notification manager to be exercised. This is the seam between the two.
+ */
+internal interface SwitchResultSink {
+    /** The operation id currently holding the write gate, for busy-rejection copy. */
+    val currentWriteHolder: String?
+
+    fun info(title: String, content: String, operationId: String)
+    fun warn(title: String, content: String, operationId: String)
+    fun error(title: String, content: String, operationId: String)
+
+    /** ERROR notification carrying a clickable rollback action. */
+    fun rollbackAction(title: String, content: String, onRollback: () -> Unit, operationId: String)
+
+    /** Records a completed switch so the options panel's history stays current. */
+    fun recordHistory(presetName: String, presetId: String)
+}
+
+/** The real sink: IDE notifications and the service's persisted history. */
+internal class NotifierSink(
     private val project: Project,
     private val service: BranchSwitcherService,
+) : SwitchResultSink {
+    override val currentWriteHolder: String? get() = service.currentWriteHolder
+
+    override fun info(title: String, content: String, operationId: String) =
+        Notifier.info(project, title, content, operationId)
+
+    override fun warn(title: String, content: String, operationId: String) =
+        Notifier.warn(project, title, content, operationId)
+
+    override fun error(title: String, content: String, operationId: String) =
+        Notifier.error(project, title, content, operationId)
+
+    override fun rollbackAction(title: String, content: String, onRollback: () -> Unit, operationId: String) =
+        Notifier.rollbackAction(project, title, content, onRollback = onRollback, operationId = operationId)
+
+    override fun recordHistory(presetName: String, presetId: String) =
+        service.addHistory(presetName, presetId)
+}
+
+/** Maps structured switch and rollback outcomes to history and IDE notifications. */
+internal class SwitchResultPresenter(
+    private val sink: SwitchResultSink,
 ) {
+    /** Binds the presenter to the platform's real notification and history surface. */
+    constructor(project: Project, service: BranchSwitcherService) : this(NotifierSink(project, service))
+
+    private companion object {
+        /** A busy rejection happens before any operation exists, so it carries no id. */
+        const val NO_OPERATION_ID = ""
+    }
+
     /**
      * Shared busy-rejection report for every write-gate entry point: logs the rejection under
      * the caller's operation context (naming the holder when one is recorded) and shows the
@@ -26,9 +80,9 @@ internal class SwitchResultPresenter(
     fun rejectBusyWrite(log: AppLogger) {
         log.warn(
             "operation rejected: another repository write is already running" +
-                service.currentWriteHolder?.let { " (held by $it)" }.orEmpty(),
+                sink.currentWriteHolder?.let { " (held by $it)" }.orEmpty(),
         )
-        Notifier.warn(project, Bundle.msg("notify.write.busy"), Bundle.msg("notify.write.busy.msg"))
+        sink.warn(Bundle.msg("notify.write.busy"), Bundle.msg("notify.write.busy.msg"), NO_OPERATION_ID)
     }
 
     /**
@@ -45,23 +99,20 @@ internal class SwitchResultPresenter(
     ) {
         when (result) {
             is SingleRepositorySwitchResult.Success ->
-                Notifier.info(
-                    project,
+                sink.info(
                     Bundle.msg("switch.complete"),
                     Bundle.msg("notify.switch.only.complete", path, target),
                     operationId,
                 )
             is SingleRepositorySwitchResult.GitFailure ->
-                Notifier.warn(
-                    project,
+                sink.warn(
                     Bundle.msg("switch.failed"),
                     Bundle.msg("notify.switch.only.failed", path, target),
                     operationId,
                 )
             is SingleRepositorySwitchResult.LockBlocked -> {
                 val label = if (path == ".") Bundle.msg("label.main.repo") else path
-                Notifier.warn(
-                    project,
+                sink.warn(
                     Bundle.msg("switch.failed"),
                     Bundle.msg("index.lock.blocking", label, result.lockPath),
                     operationId,
@@ -110,8 +161,7 @@ internal class SwitchResultPresenter(
             // matching the success path, instead of waiting for FileStatusManager or the
             // reflog watcher to notice.
             onSuccess?.invoke()
-            Notifier.info(
-                project,
+            sink.info(
                 Bundle.msg("switch.failed.recovered"),
                 Bundle.msg("notify.switch.failed.recovered") + retainedStateNotice(execution),
                 operationId,
@@ -139,15 +189,13 @@ internal class SwitchResultPresenter(
         val lockLines = lockBlockedLines(execution.issues + recoveryIssues)
         val detail = joinNotificationDetails(lockLines.joinToString("\n"), retainedNotice)
         if (succeeded) {
-            Notifier.info(
-                project,
+            sink.info(
                 Bundle.msg("rollback.complete"),
                 appendNotificationDetail(Bundle.msg("notify.rollback.complete.msg"), detail),
                 operationId,
             )
         } else {
-            Notifier.error(
-                project,
+            sink.error(
                 Bundle.msg("rollback.failed"),
                 appendNotificationDetail(Bundle.msg("notify.rollback.partial.msg"), detail),
                 operationId,
@@ -161,7 +209,7 @@ internal class SwitchResultPresenter(
         onSuccess: (() -> Unit)?,
         operationId: String,
     ) {
-        service.addHistory(preset.name, preset.id)
+        sink.recordHistory(preset.name, preset.id)
         onSuccess?.invoke()
         val issues = execution?.issues.orEmpty()
         if (issues.isNotEmpty()) {
@@ -174,8 +222,7 @@ internal class SwitchResultPresenter(
             } else {
                 issues.mapNotNull(OperationIssue::diagnostic)
             }
-            Notifier.warn(
-                project,
+            sink.warn(
                 Bundle.msg("switch.complete"),
                 appendNotificationDetail(
                     Bundle.msg("notify.switch.complete.msg", preset.name),
@@ -188,8 +235,7 @@ internal class SwitchResultPresenter(
                 operationId,
             )
         } else {
-            Notifier.info(
-                project,
+            sink.info(
                 Bundle.msg("switch.complete"),
                 Bundle.msg("notify.switch.complete.msg", preset.name) + retainedStashBackupNotice(execution),
                 operationId,
@@ -201,8 +247,7 @@ internal class SwitchResultPresenter(
         val recovery = runResult.recovery ?: return
         val retainedNotice = retainedStateNotice(runResult.execution)
         if (recovery.ok) {
-            Notifier.info(
-                project,
+            sink.info(
                 Bundle.msg("switch.cancelled"),
                 Bundle.msg("notify.switch.cancelled.recovered") + retainedNotice,
                 operationId,
@@ -211,8 +256,7 @@ internal class SwitchResultPresenter(
             // A recovery blocked by a stale index.lock needs the same actionable line here as
             // every other failed-recovery path: the cancellation is why the rollback stopped,
             // but the lock is what the user has to clear before the retry can work.
-            Notifier.error(
-                project,
+            sink.error(
                 Bundle.msg("switch.cancelled"),
                 appendNotificationDetail(
                     Bundle.msg("notify.switch.cancelled.partial") + retainedNotice,
@@ -233,7 +277,7 @@ internal class SwitchResultPresenter(
         if (lockLines.isNotEmpty()) {
             // A stale index.lock blocked the switch before any mutation, so there is
             // nothing to roll back — surface the actionable message instead.
-            Notifier.error(project, Bundle.msg("switch.failed"), lockLines.joinToString("\n"), operationId)
+            sink.error(Bundle.msg("switch.failed"), lockLines.joinToString("\n"), operationId)
             return
         }
         val message = Bundle.msg("notify.switch.partial.msg", preset.name) +
@@ -252,11 +296,10 @@ internal class SwitchResultPresenter(
         operationId: String,
     ) {
         if (execution?.checkpoint == null) {
-            Notifier.error(project, Bundle.msg("switch.failed"), message, operationId)
+            sink.error(Bundle.msg("switch.failed"), message, operationId)
             return
         }
-        Notifier.rollbackAction(
-            project,
+        sink.rollbackAction(
             Bundle.msg("switch.failed"),
             message + Bundle.msg("notify.switch.rollback.hint"),
             onRollback = { onRollback(execution) },
