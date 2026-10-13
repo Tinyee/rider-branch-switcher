@@ -322,3 +322,89 @@ seven signatures against a non-null `refreshRemoteSubmodules` (`:103`), with onl
   character, so an abstraction would remove an already-consistent line at the cost
   of a new core function and its test class. Revisit only if a third instance of
   the shape appears.
+
+### P3-18: Write-Path Orchestration Has No Test Seam
+
+Verified 2026-10-13 by mutation testing, not by reading. The classes that
+orchestrate every repository mutation had **zero** test references:
+
+| class | lines | test references before |
+| --- | --- | --- |
+| `ui/SwitchFlowCoordinator` | 329 | none |
+| `ui/SwitchController` | — | none |
+| `action/SwitchPresetAction` | — | none |
+| `workflow/WriteOperationLauncher` | 63 | none (no test class ever) |
+
+Checked `git log --all` for `SwitchFlowCoordinatorTest`, `SwitchControllerTest`,
+`SwitchPresetActionTest`, `WriteOperationLauncherTest`: **none of the four has
+ever existed** in this repository's history. This is accumulated absence, not a
+regression from any one change.
+
+**Why the mutation sweep, and not coverage.** The plugin module runs 343 tests
+(600 with `core`), and every one of them passed with the write path gutted. Each
+mutation below was applied to `src/main`, the full module suite re-run, and the
+source restored:
+
+| mutation | verdict | caught by |
+| --- | --- | --- |
+| `SwitchUiCompletion` loses its once-only guard | detected | `SwitchUiCompletionTest` |
+| launcher: lease release removed | detected | `SingleRepositorySwitcherTest` |
+| launcher: `afterRelease` also runs on the failure path | detected | `WriteOperationLauncherTest` (added) |
+| launcher: `CloseOnce` guard removed | detected | `WriteOperationLauncherTest` (added) |
+| launcher: `onBusy()` call removed | **undetected** before | `WriteOperationLauncherTest` (added) |
+| launcher: completion safety-net close removed | **undetected** before | `WriteOperationLauncherTest` (added) |
+| shortcut action body reduced to an immediate `return` | **undetected** | — |
+| `SwitchFlowCoordinator` switch-failure logging removed | **undetected** | — |
+| shortcut resolves the main repository silently (`resolve()` not `resolveOrReport()`) | **undetected** | — |
+| busy indicator never claimed (switch) | **undetected** | — |
+| busy indicator never claimed (rollback) | **undetected** | — |
+| busy indicator never claimed (derive) | **undetected** | — |
+| busy claim moved **above** the `job == null` early return (switch) | **undetected** | — |
+
+Two mutants were discarded as invalid rather than counted: one was an
+equivalent mutant (Kotlin's language semantics, not a guard, delivered the
+behaviour), and one was written as byte-identical text. Both were re-run in
+corrected form; the table records only the corrected results.
+
+**The dividing line is a dependency, not a size.** The two classes the suite does
+cover — `SingleRepositorySwitcher` and `SwitchUiCompletion` — are exactly the two
+that take no `Project`. Every uncovered class takes one.
+
+Why no platform fixture was ever available, checked rather than assumed: the
+plugin module's test dependencies are `gson`, `junit`, `kotlin-test`, and
+`archunit` — `intellijPlatform` is configured with no `testFramework(...)`
+entry. A `BasePlatformTestCase` subclass fails to compile against that classpath
+(verified by adding one and reading the unresolved-reference errors). Adding a
+fixture means a new test dependency and probably an IDE runtime in CI, which is
+a decision in its own right, not a step.
+
+**Done 2026-10-13, first step:** `WriteOperationLauncherTest` (7 tests, no
+`Project`) closes the launcher's three holes. Each of its assertions was
+confirmed to fail against the mutation it exists to catch; the M11 mutant in
+particular still escaped after the first draft, because no draft test let a job
+finish before entering its body — the only path where that safety net fires.
+
+**Open:** the three busy-indicator claims (switch, rollback, derive) and the
+shortcut's main-repository resolution. Both need a platform fixture.
+
+The obvious route — lift the busy *decision* out of the `Project`-taking class
+the way `presetEditorControlState` was lifted into `core` — **was checked against
+the code and does not apply.** That precedent worked because it is a pure
+function of its inputs (`localBusy` and `draftUsable` decide four booleans). The
+three busy claims are not decisions but effects, and each is a different effect:
+the switch claim is a callback with no paired release site, the rollback claim
+pairs with an immediate `job.invokeOnCompletion`, and the derive claim calls
+`setSwitchInProgress`, which mutates a field, notifies a listener, and reaches
+`ToolWindowManager` for the tool-window icon — that one cannot be lifted at all.
+A shared helper would have to carry three different release semantics as
+parameters, which is demotion, not extraction. `ARCHITECTURE.md` already forbids
+introducing an abstraction only to reduce line count.
+
+**Also found, and it misled the first pass:** two of the three claim sites carry
+a KDoc sentence explaining that claiming late keeps the busy-rejection path from
+touching state. Neither comment is redundant — moving the claim *above* the early
+return is a real bug, and the moved form compiles with every test still green
+(checked: the claim was relocated above `if (job == null) return` and all 343
+plugin tests passed). So the comments describe a genuine hazard that no test
+covers, which is the *sharpest* form of this finding rather than a stale comment:
+a documented, one-line-reorder bug with nothing standing in its way.

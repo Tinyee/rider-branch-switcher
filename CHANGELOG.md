@@ -23,6 +23,13 @@
   unioned with the local branches — so presets can be authored right after a
   fresh clone, before the submodules are initialized.
 
+### Added
+
+- `WriteOperationLauncherTest` covers the write-lease launcher directly: the
+  busy-rejection path, the success-only delivery of the result, and the
+  completion-handler safety net that releases a lease whose coroutine was
+  cancelled before it could start.
+
 ### Changed
 
 - The tool-window switch now refreshes repository state immediately on success,
