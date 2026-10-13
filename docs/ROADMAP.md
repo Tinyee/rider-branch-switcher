@@ -250,6 +250,10 @@ does not re-propose the split.
   way in.
 - `RemoteBranchCache`'s expiry is tested through negative-TTL arithmetic rather
   than an `isExpired(storedAt, now)` seam.
+- `BranchComboUtil.kt` publishes 20 top-level declarations across four unrelated
+  concepts — widget construction, selection semantics, load lifecycle, and Git
+  discovery — with no seam between them. Measured at review time; a caller
+  touching any one has to learn all four.
 - The preset-load fallback text was inconsistent between the two entry points —
   the shortcut called a failed load "Import failed". Fixed 2026-10-13: both now
   fall back to `error.unknown`. No shared composer was added; they differ by one
