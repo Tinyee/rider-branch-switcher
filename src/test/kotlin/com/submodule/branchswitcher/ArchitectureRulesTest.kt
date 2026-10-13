@@ -257,4 +257,44 @@ class ArchitectureRulesTest {
             missing.isEmpty(),
         )
     }
+
+    /**
+     * Every call to `MainRepository.resolve()` must be a declared silent site.
+     *
+     * `resolve()` and `resolveOrReport()` are the same resolution with opposite
+     * consequences for the user, and the wrong one compiles. A background probe that
+     * stays silent is correct; a command the user invoked and is waiting on must
+     * answer, or the click does nothing and nothing says why. That choice is not
+     * visible in a type, so it is pinned here by enumeration: adding a silent site
+     * means editing the allowlist, which is the point.
+     */
+    @Test
+    fun `only declared sites resolve the main repository silently`() {
+        val declared = mapOf(
+            "com.submodule.branchswitcher.ui.MainRepository" to
+                "resolveOrReport delegates to resolve after deciding to report",
+            "com.submodule.branchswitcher.ui.BranchSwitcherPanel" to
+                "gitRoot() feeds background probes, where an absent root is nothing to do",
+            "com.submodule.branchswitcher.ui.BranchSwitcherPanel\$reflogWatcher\$1" to
+                "the reflog watcher asks 'is there a root to watch' on a timer; a missing " +
+                    "root is silence, not a notification every tick",
+        )
+
+        val actual = MAIN_CLASSES
+            .asSequence()
+            .flatMap { owner -> owner.methodCallsFromSelf.asSequence().map { owner to it } }
+            .filter { (_, call) -> call.target.owner.name == "com.submodule.branchswitcher.ui.MainRepository" }
+            .filter { (_, call) -> call.target.name == "resolve" }
+            .map { (owner, call) -> "${owner.name}#${call.sourceCodeLocation.lineNumber}" }
+            .toList()
+
+        val undeclared = actual.filter { !declared.keys.any { key -> it.startsWith("$key#") } }
+        assertTrue(
+            "MainRepository.resolve() called from undeclared sites (use resolveOrReport for a user command): $undeclared",
+            undeclared.isEmpty(),
+        )
+
+        val stale = declared.keys.filter { key -> actual.none { it.startsWith("$key#") } }
+        assertTrue("allowlist entries that no longer call resolve(): $stale", stale.isEmpty())
+    }
 }
