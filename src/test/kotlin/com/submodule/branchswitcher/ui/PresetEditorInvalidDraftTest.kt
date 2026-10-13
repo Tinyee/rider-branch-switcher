@@ -5,6 +5,7 @@ import com.submodule.branchswitcher.log.createStringAppender
 import com.submodule.branchswitcher.model.Preset
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -13,12 +14,15 @@ import java.nio.file.Paths
 import javax.swing.JButton
 import javax.swing.JComboBox
 import javax.swing.JLabel
+import javax.swing.JTextField
 
 /**
- * Pins the invalid-draft gate: a preset whose draft cannot be validated must refuse the two
- * actions that would fail on it. Switch fails in preflight and derive throws on
- * [Preset.targets] before its progress task starts, so neither may be clickable — and both
- * must say why, because the derive failure otherwise reaches only the tool-window log.
+ * Pins the invalid-draft gate: a preset whose draft cannot be validated must refuse every action
+ * that would fail on it. Switch fails in preflight, derive throws on [Preset.targets] before its
+ * progress task starts, and save throws inside `PresetLoader.save`'s `requireValidPreset` — so
+ * none of the three may be clickable, and each must say why, because the derive failure otherwise
+ * reaches only the tool-window log. Revert is the exception: it restores the saved preset, so it
+ * stays available as the way out.
  */
 class PresetEditorInvalidDraftTest {
 
@@ -39,6 +43,46 @@ class PresetEditorInvalidDraftTest {
             draftErrorLabel(editor).text.contains("SubA"),
         )
         assertTrue("switch must explain itself on hover", switchButton(editor).toolTipText.isNullOrEmpty().not())
+    }
+
+    /**
+     * Saving an invalid draft only ever ends in the "invalid branch for ..." error dialog, so the
+     * button must be refused up front — while Revert stays available as the way out of a draft
+     * that cannot be repaired by hand.
+     */
+    @Test
+    fun `an invalid draft disables save but keeps revert as the way out`() {
+        val editor = newEditor(Preset("Work", "main", mapOf("SubA" to "dev")))
+
+        submoduleRowFor(editor, "SubA").combo.selectedItem = ""
+
+        assertFalse("save would only raise the invalid-branch error", saveButton(editor).isEnabled)
+        assertTrue("revert must stay enabled as the way out", revertButton(editor).isEnabled)
+    }
+
+    /**
+     * The user clears the branch and clicks Save/collapses without pressing Enter. A JComboBox
+     * does not commit the field to `selectedItem` until Enter or focus loss, so a gate that read
+     * only `selectedItem` saw the stale branch and enabled Save on a draft that was already
+     * empty — the click then failed with "invalid branch for '<path>': ''".
+     */
+    @Test
+    fun `clearing the field without pressing enter is seen by the gate`() {
+        val editor = newEditor(Preset("Work", "main", mapOf("SubA" to "dev")))
+        val combo = submoduleRowFor(editor, "SubA").combo
+        assertEquals("precondition: the gate starts on the saved branch", "dev", combo.selectedItem)
+
+        editorField(combo).text = ""
+
+        assertEquals(
+            "the combo itself is unchanged until the edit is committed",
+            "dev",
+            combo.selectedItem,
+        )
+        assertFalse("switch must be refused on the now-empty branch", switchButton(editor).isEnabled)
+        assertFalse("derive must be refused on the now-empty branch", deriveButton(editor).isEnabled)
+        assertFalse("save must be refused on the now-empty branch", saveButton(editor).isEnabled)
+        assertTrue("the reason must be shown", draftErrorLabel(editor).isVisible)
     }
 
     @Test
@@ -106,6 +150,13 @@ class PresetEditorInvalidDraftTest {
     private fun switchButton(editor: PresetEditor): JButton = field(editor, "switchBtn") as JButton
 
     private fun deriveButton(editor: PresetEditor): JButton = field(editor, "deriveBtn") as JButton
+
+    private fun saveButton(editor: PresetEditor): JButton = field(editor, "saveBtn") as JButton
+
+    private fun revertButton(editor: PresetEditor): JButton = field(editor, "revertBtn") as JButton
+
+    private fun editorField(combo: JComboBox<String>): JTextField =
+        combo.editor.editorComponent as JTextField
 
     private fun draftErrorLabel(editor: PresetEditor): JLabel = field(editor, "draftErrorLabel") as JLabel
 

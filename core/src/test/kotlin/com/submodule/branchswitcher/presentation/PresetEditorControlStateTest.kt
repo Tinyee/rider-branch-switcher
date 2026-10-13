@@ -106,14 +106,17 @@ class PresetEditorControlStateTest {
     }
 
     @Test
-    fun `an invalid draft disables switch and derive but still allows saving the fix`() {
-        // Switching an invalid preset fails in preflight and deriving one throws on
-        // Preset.targets() before its progress task starts, so neither may be clickable.
-        // Save must stay enabled: the draft is the only place the fix can be entered.
+    fun `an invalid draft disables save switch and derive but still allows reverting`() {
+        // Switching an invalid preset fails in preflight, deriving one throws on
+        // Preset.targets() before its progress task starts, and saving one throws inside
+        // PresetLoader.save's requireValidPreset — so none of the three may be clickable.
+        // Revert must stay enabled: it restores the saved preset, which is the only way out
+        // of a draft the user cannot repair by hand. Repairing does not need Save at all —
+        // editing the field is what makes the draft valid again.
         val s = state(draft = true, draftError = "invalid branch for 'SubA': ''")
 
-        assertTrue("save must stay enabled so the draft can be repaired", s.saveEnabled)
-        assertTrue("revert must stay enabled", s.revertEnabled)
+        assertFalse("save would only raise the invalid-branch error", s.saveEnabled)
+        assertTrue("revert must stay enabled as the way out", s.revertEnabled)
         assertFalse("switch must be refused on an invalid draft", s.switchEnabled)
         assertFalse("derive must be refused on an invalid draft", s.deriveEnabled)
         assertEquals("the failure must reach the editor", "invalid branch for 'SubA': ''", s.draftError)

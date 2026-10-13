@@ -258,7 +258,10 @@ internal class SubmoduleRowManager(
             // on the loading placeholder; leave such a row to its own completion instead of
             // force-enabling it with the placeholder as the selection.
             if (!row.combo.isEnabled || row.combo.selectedItem == LOADING_BRANCH) return@forEach
-            val current = (row.combo.selectedItem as? String).orEmpty()
+            // Read through the placeholder-safe accessor so a branch the user typed but has not
+            // committed yet is carried into the rebuilt model instead of being dropped for the
+            // last committed value.
+            val current = comboBranchSelection(row.combo).orEmpty()
             val merged = mergeBranchChoices(current, list)
             row.combo.model = DefaultComboBoxModel(merged.toTypedArray())
             row.combo.selectedItem = current

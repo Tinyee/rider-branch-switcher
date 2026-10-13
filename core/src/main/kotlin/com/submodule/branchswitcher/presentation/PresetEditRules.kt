@@ -71,12 +71,12 @@ data class PresetEditorControlState(
 )
 
 /**
- * Derives all four button states from one snapshot of the editor's inputs, so the save/revert
- * pair and the switch/derive pair can never escape from under the same busy rule. They answer
- * different gates: save/revert depend on there being an unsaved draft, switch/derive depend on
- * the global mutation gate — but both are disabled by editor-local busy (init, branch load, or
- * persistence), and releasing one source of busy must not re-enable an action another still
- * blocks (e.g. a mutation ending must not re-enable a still-loading editor).
+ * Derives all four button states from one snapshot of the editor's inputs, so no action can
+ * escape the busy rule that governs it. They answer different gates: every one of them depends
+ * on there being an unsaved draft (revert), or on the global mutation gate (switch/derive), or
+ * on the draft being valid (save/switch/derive) — but all four are disabled by editor-local busy
+ * (init, branch load, or persistence), and releasing one source of busy must not re-enable an
+ * action another still blocks (e.g. a mutation ending must not re-enable a still-loading editor).
  */
 fun presetEditorControlState(
     hasDraftChanges: Boolean,
@@ -88,15 +88,23 @@ fun presetEditorControlState(
 ): PresetEditorControlState {
     val localBusy = initializing || loadingCount > 0 || persistenceInProgress
     val draftUsable = draftError == null
-    val saveRevertEnabled = hasDraftChanges && !localBusy
     // An invalid draft can never be acted on: save fails inside PresetLoader.save's
-    // requireValidPreset, switch fails in preflight, and derive throws on Preset.targets()
-    // before its progress task even starts. Derive is the worst of the three because its
-    // failure reaches only the tool-window log, so the editor must refuse up front instead.
+    // requireValidPreset (which validates *every* preset in the file, so this editor's invalid
+    // draft blocks the write), switch fails in preflight, and derive throws on Preset.targets()
+    // before its progress task even starts. Derive is the worst of the three because its failure
+    // reaches only the tool-window log, so the editor must refuse up front instead.
+    //
+    // Save is gated on validity for the same reason: it would otherwise be a button whose every
+    // click ends in the "invalid branch for ..." error dialog. Repairing a draft never needs a
+    // save — editing the field is what makes it valid again, and the moment it is, Save lights
+    // back up. Revert deliberately keeps its own, validity-independent rule: it restores the
+    // saved preset, which is the only way out of a draft the user cannot repair by hand.
+    val saveEnabled = hasDraftChanges && !localBusy && draftUsable
+    val revertEnabled = hasDraftChanges && !localBusy
     val switchDeriveEnabled = mutationActionsEnabled && !localBusy && draftUsable
     return PresetEditorControlState(
-        saveEnabled = saveRevertEnabled,
-        revertEnabled = saveRevertEnabled,
+        saveEnabled = saveEnabled,
+        revertEnabled = revertEnabled,
         switchEnabled = switchDeriveEnabled,
         deriveEnabled = switchDeriveEnabled,
         draftError = draftError,

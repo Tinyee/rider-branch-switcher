@@ -31,11 +31,21 @@ private const val KEY_BRANCH_LOAD_SEED = "submodule.branchswitcher.branchLoadSee
  * remembered in [KEY_BRANCH_LOAD_SEED] and read back here. Without this, a draft read while a
  * load is in flight (a collapse cancels every load, leaving the placeholder behind) would
  * capture the placeholder as a branch name or, worse, let a re-expand write it into the preset.
+ *
+ * An editable combo's [JComboBox.getSelectedItem] only catches up with the field when the edit
+ * is committed (Enter, or focus moving away), so a cleared branch would read as unchanged until
+ * the user happened to click elsewhere — the editor would call a draft valid while the field
+ * showed it empty, and enable switch on it. The editor's live text is therefore the answer
+ * whenever the combo is editable and not mid-load; the placeholder state above is excluded
+ * because there the editor holds "Loading...", not a branch.
  */
 internal fun comboBranchSelection(combo: JComboBox<String>): String? {
     val selected = combo.selectedItem as? String
-    if (selected != null && selected != LOADING_BRANCH) return selected
-    return combo.getClientProperty(KEY_BRANCH_LOAD_SEED) as? String
+    if (selected == null || selected == LOADING_BRANCH) {
+        return combo.getClientProperty(KEY_BRANCH_LOAD_SEED) as? String
+    }
+    val editor = if (combo.isEditable) combo.editor?.editorComponent as? JTextField else null
+    return editor?.text ?: selected
 }
 
 /** Records the selection [displaced] by a load starting on [combo]. */
@@ -261,7 +271,10 @@ internal fun refreshComboBranches(
 ): BranchLoadHandle {
     @Suppress("UNCHECKED_CAST")
     val previousList = (combo.getClientProperty(KEY_ALL_BRANCHES) as? List<String>) ?: emptyList()
-    val previousSelected = combo.selectedItem?.toString() ?: current
+    // Via the accessor, not `selectedItem`: if another load is already in flight the raw read
+    // yields "Loading...", and a failed refresh would then restore that placeholder as the
+    // branch. The accessor also keeps a branch the user typed but has not committed.
+    val previousSelected = comboBranchSelection(combo) ?: current
     cancelComboBranchLoad(combo)
     val loadToken = Any()
     combo.putClientProperty(KEY_BRANCH_LOAD_TOKEN, loadToken)

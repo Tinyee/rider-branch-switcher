@@ -16,11 +16,13 @@ import java.util.concurrent.atomic.AtomicBoolean
 import javax.swing.JComboBox
 
 /**
- * Pins the load-seed rule: a combo whose load is cancelled keeps showing the literal
- * [LOADING_BRANCH] placeholder, so every read of "what branch does this combo stand for"
- * must go through [comboBranchSelection] and recover the value the load displaced. Reading
- * `selectedItem` directly yields the placeholder — which would commit "Loading..." as a
- * branch name, or let a collapse/re-expand cycle revert an unsaved edit.
+ * Pins what a branch combo currently stands for, which is not simply its `selectedItem`. Two
+ * cases diverge from the raw selection: a combo whose load is cancelled keeps showing the literal
+ * [LOADING_BRANCH] placeholder (the displaced value is recovered from the load seed), and an
+ * editable combo holds a field edit that Swing only commits to `selectedItem` on Enter or focus
+ * loss (the live field text is the answer). Reading `selectedItem` directly yields the placeholder
+ * as a branch name, or reports a branch the user already cleared as still current — which let the
+ * editor enable Save on an empty draft.
  */
 class ComboBranchSelectionTest {
 
@@ -84,6 +86,54 @@ class ComboBranchSelectionTest {
         assertEquals("an unset combo has no branch, not a loading one", "", comboBranchSelection(combo).orEmpty())
         assertNotEquals(LOADING_BRANCH, comboBranchSelection(combo))
     }
+
+    /**
+     * A JComboBox commits the field to [JComboBox.getSelectedItem] only on Enter or focus loss,
+     * so a user who clears the branch and clicks straight on Save (or collapses the preset) has
+     * an empty field but an unchanged selection. Reading only `selectedItem` reported the stale
+     * branch: the editor kept calling the draft valid and lit Save, which then failed with
+     * "invalid branch for '<path>': ''".
+     */
+    @Test
+    fun `a branch cleared in the field reads as cleared before the edit is committed`() {
+        val combo = JComboBox(arrayOf("dev", "main"))
+        combo.isEditable = true
+        combo.selectedItem = "dev"
+        assertEquals("precondition: the selection is the committed branch", "dev", comboBranchSelection(combo))
+
+        editorFieldOf(combo).text = ""
+        assertEquals("the cleared field is the branch now", "", comboBranchSelection(combo))
+        assertEquals("and the combo itself still holds the old value", "dev", combo.selectedItem)
+    }
+
+    @Test
+    fun `a branch typed into the field reads as typed before the edit is committed`() {
+        val combo = JComboBox(arrayOf("dev", "main"))
+        combo.isEditable = true
+        combo.selectedItem = "dev"
+
+        editorFieldOf(combo).text = "feature/new"
+
+        assertEquals("feature/new", comboBranchSelection(combo))
+    }
+
+    @Test
+    fun `a field holding the placeholder does not shadow the seeded branch`() {
+        val combo = displayableCombo()
+        combo.model = javax.swing.DefaultComboBoxModel(arrayOf("draft-branch", "main"))
+        combo.selectedItem = "draft-branch"
+
+        startLoad(combo)
+
+        assertEquals(
+            "mid-load the field shows Loading..., so the seed is the answer, not the field",
+            "draft-branch",
+            comboBranchSelection(combo),
+        )
+    }
+
+    private fun editorFieldOf(combo: JComboBox<String>): javax.swing.JTextField =
+        combo.editor.editorComponent as javax.swing.JTextField
 
     /** Starts a load whose discovery never completes, leaving the combo on the placeholder. */
     private fun startLoad(combo: JComboBox<String>) {
