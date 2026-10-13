@@ -3,6 +3,7 @@ package com.submodule.branchswitcher.ui
 import com.submodule.branchswitcher.Bundle
 import com.submodule.branchswitcher.model.DirtyAction
 import com.submodule.branchswitcher.model.PreflightRow
+import java.io.File
 
 enum class RepoStatusTone {
     NOT_INITIALIZED,
@@ -116,6 +117,18 @@ fun collisionDecision(
 
 /** Placeholder shown in a branch combo while the real branch list is loading. */
 internal val LOADING_BRANCH: String = Bundle.msg("status.loading")
+
+/**
+ * Whether a submodule directory holds an initialized repository.
+ *
+ * A worktree's `.git` is a FILE pointing at the real git directory; a normal
+ * checkout's is a DIRECTORY. Either counts as initialized, so the check is
+ * "`.git` exists as a directory OR as a file" — a plain `exists()` is true for
+ * both, which is why the distinction is worth stating once here.
+ */
+internal fun isInitializedSubmodule(repositoryDirectory: File): Boolean =
+    repositoryDirectory.exists() &&
+        (repositoryDirectory.resolve(".git").exists() || File(repositoryDirectory, ".git").isFile)
 
 /**
  * Normalizes the branch choices for one combo: deduplicates and drops blank or

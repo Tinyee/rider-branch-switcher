@@ -7,13 +7,20 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Rule
 import org.junit.Test
+import org.junit.rules.TemporaryFolder
+import java.io.File
 import java.awt.datatransfer.Clipboard
 import java.awt.datatransfer.DataFlavor
 import java.awt.datatransfer.StringSelection
 import java.awt.datatransfer.Transferable
 
 class UiRulesTest {
+
+    @get:Rule
+    val tempDir = TemporaryFolder()
+
     @Test
     fun `reflog watch only runs while the panel is visible and project is alive`() {
         assertTrue(shouldRunReflogWatch(isShowing = true, projectDisposed = false))
@@ -228,5 +235,40 @@ class UiRulesTest {
         override fun isDataFlavorSupported(flavor: DataFlavor): Boolean = flavor == DataFlavor.imageFlavor
 
         override fun getTransferData(flavor: DataFlavor): Any = error("not needed")
+    }
+
+    // ── submodule initialization ──────────────────────────────────────────────
+
+    @Test
+    fun `a checkout directory counts as an initialized submodule`() {
+        val dir = tempDir.newFolder("checked-out")
+        File(dir, ".git").mkdirs()
+
+        assertTrue("a normal checkout has a .git directory", isInitializedSubmodule(dir))
+    }
+
+    @Test
+    fun `a worktree counts as an initialized submodule`() {
+        // A worktree's .git is a FILE pointing at the real git directory. This is the case
+        // the check exists for: treating only the directory form as initialized would skip
+        // every submodule checked out as a worktree.
+        val dir = tempDir.newFolder("worktree")
+        File(dir, ".git").writeText("gitdir: /somewhere/else")
+
+        assertTrue("a worktree's .git is a file, not a directory", isInitializedSubmodule(dir))
+    }
+
+    @Test
+    fun `a directory with no git entry is not initialized`() {
+        val dir = tempDir.newFolder("uninitialized")
+
+        assertFalse(isInitializedSubmodule(dir))
+    }
+
+    @Test
+    fun `a missing directory is not initialized`() {
+        val missing = File(tempDir.root, "never-created")
+
+        assertFalse("a path that does not exist cannot hold a repository", isInitializedSubmodule(missing))
     }
 }

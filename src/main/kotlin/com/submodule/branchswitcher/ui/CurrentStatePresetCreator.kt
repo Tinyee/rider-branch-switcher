@@ -104,10 +104,7 @@ internal class CurrentStatePresetCreator(
                 service.gitClient.listSubmodulePaths(rootFile).forEach { path ->
                     indicator.text = path
                     val repositoryDirectory = root.resolve(path).toFile()
-                    if (!repositoryDirectory.exists() ||
-                        (!repositoryDirectory.resolve(".git").exists() &&
-                            !File(repositoryDirectory, ".git").isFile)
-                    ) {
+                    if (!isInitializedSubmodule(repositoryDirectory)) {
                         skipped += "$path (${Bundle.msg("status.tooltip.not.init")})"
                         return@forEach
                     }
