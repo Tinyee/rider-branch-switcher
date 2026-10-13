@@ -140,4 +140,55 @@ class SwitchPreviewRulesTest {
         assertEquals("dialog.collision.discard.ok", switchOkButtonKey(needsDiscardConfirm = true))
         assertEquals("dialog.switch.title", switchOkButtonKey(needsDiscardConfirm = false))
     }
+
+    // ── table sizing ──────────────────────────────────────────────────────────
+
+    @Test
+    fun `a sparse table fills the dialog rather than leaving a blank tail`() {
+        val width = switchPreviewTableWidth(
+            packedWidth = 400,
+            scaledDialogWidth = 720,
+            scaledMaxTableWidth = 1080,
+            padding = 8,
+        )
+        assertEquals("narrow content widens to the dialog width", 720, width)
+    }
+
+    @Test
+    fun `wide content is capped instead of stretching the window`() {
+        val width = switchPreviewTableWidth(
+            packedWidth = 2000,
+            scaledDialogWidth = 720,
+            scaledMaxTableWidth = 1080,
+            padding = 8,
+        )
+        assertEquals("the cap wins over the packed width", 1080, width)
+    }
+
+    @Test
+    fun `packed content between the dialog and the cap is used as-is`() {
+        // The boundary the fill rule exists for: past the dialog width but under the cap,
+        // the table must be exactly what its columns need, not the dialog width.
+        val width = switchPreviewTableWidth(
+            packedWidth = 900,
+            scaledDialogWidth = 720,
+            scaledMaxTableWidth = 1080,
+            padding = 8,
+        )
+        assertEquals("packed width plus padding, uncapped", 908, width)
+    }
+
+    @Test
+    fun `a long preset scrolls instead of growing the dialog`() {
+        val short = switchPreviewTableHeight(rowCount = 3, rowHeight = 24, verticalChrome = 56)
+        val long = switchPreviewTableHeight(rowCount = 50, rowHeight = 24, verticalChrome = 56)
+
+        assertEquals("the rows plus chrome", 128, short)
+        assertEquals("capped at the visible-row bound", 248, long)
+        assertEquals(
+            "and 8 rows is exactly where the cap starts",
+            long,
+            switchPreviewTableHeight(rowCount = 8, rowHeight = 24, verticalChrome = 56),
+        )
+    }
 }

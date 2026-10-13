@@ -78,3 +78,37 @@ fun switchPreviewSummaryParts(counts: SwitchPreviewCounts): List<SwitchPreviewSu
  */
 fun switchOkButtonKey(needsDiscardConfirm: Boolean): String =
     if (needsDiscardConfirm) "dialog.collision.discard.ok" else "dialog.switch.title"
+
+/**
+ * The dialog's three width constants, in raw pixels. The UI scales them by the IDE's
+ * font-derived scale factor; keeping the arithmetic here means the rules below are
+ * testable without a UI toolkit.
+ */
+object SwitchPreviewMetrics {
+    const val DIALOG_WIDTH = 720
+    const val MAX_TABLE_WIDTH = 1080
+
+    /** A few px under [DIALOG_WIDTH] so the exact-fit case never shows a horizontal scrollbar. */
+    const val TABLE_FILL_INSET = 4
+
+    /** Breathing room added to the packed width when sizing the scroll pane. */
+    const val SCROLL_PANE_PADDING = 8
+
+    /** Rows past this count scroll instead of growing the dialog. */
+    const val MAX_VISIBLE_ROWS = 8
+
+    /** Chrome above and below the visible rows (header plus horizontal scrollbar). */
+    const val VERTICAL_CHROME = 56
+}
+
+/** The table width the dialog asks for: fill the dialog, but never past the cap. */
+fun switchPreviewTableWidth(
+    packedWidth: Int,
+    scaledDialogWidth: Int,
+    scaledMaxTableWidth: Int,
+    padding: Int,
+): Int = maxOf(scaledDialogWidth, minOf(packedWidth + padding, scaledMaxTableWidth))
+
+/** The scroll pane height for [rowCount] rows, bounded so a long preset does not stretch it. */
+fun switchPreviewTableHeight(rowCount: Int, rowHeight: Int, verticalChrome: Int): Int =
+    (rowCount.coerceAtMost(SwitchPreviewMetrics.MAX_VISIBLE_ROWS) * rowHeight) + verticalChrome

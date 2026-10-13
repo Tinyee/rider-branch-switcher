@@ -11,7 +11,10 @@ import com.submodule.branchswitcher.Bundle
 import com.submodule.branchswitcher.model.PreflightRow
 import com.submodule.branchswitcher.model.ResolvedSwitchRequest
 import com.submodule.branchswitcher.presentation.switchOkButtonKey
+import com.submodule.branchswitcher.presentation.SwitchPreviewMetrics
 import com.submodule.branchswitcher.presentation.SwitchPreviewSummaryPart
+import com.submodule.branchswitcher.presentation.switchPreviewTableHeight
+import com.submodule.branchswitcher.presentation.switchPreviewTableWidth
 import com.submodule.branchswitcher.presentation.switchPreviewCounts
 import com.submodule.branchswitcher.presentation.switchPreviewSummaryParts
 import com.submodule.branchswitcher.presentation.shouldShowForceWarning
@@ -72,14 +75,14 @@ class SwitchPreviewDialog(
     private var autoMetaDiscard: Boolean = request.options.autoDiscardMeta
 
     /** The dialog's preferred width; see [tableFillWidth]. */
-    private val dialogWidth get() = JBUI.scale(720)
+    private val dialogWidth get() = JBUI.scale(SwitchPreviewMetrics.DIALOG_WIDTH)
 
     /**
      * Cap on the preview table's total width: columns fit their content, and the dialog
      * widens to show them, but never past this bound — wider content scrolls horizontally
      * instead of stretching the window across the screen.
      */
-    private val maxTableWidth get() = JBUI.scale(1080)
+    private val maxTableWidth get() = JBUI.scale(SwitchPreviewMetrics.MAX_TABLE_WIDTH)
 
     /**
      * Total width the table is asked to fill when its packed columns are narrower than the
@@ -87,7 +90,7 @@ class SwitchPreviewDialog(
      * the dialog instead of leaving a blank tail. A few px under [dialogWidth] so the
      * exact-fit case never shows a horizontal scrollbar.
      */
-    private val tableFillWidth get() = dialogWidth - JBUI.scale(4)
+    private val tableFillWidth get() = dialogWidth - JBUI.scale(SwitchPreviewMetrics.TABLE_FILL_INSET)
 
     /** True when a collision that is not auto-approved exists, so OK must confirm a discard. */
     private val needsDiscardConfirm: Boolean
@@ -134,8 +137,13 @@ class SwitchPreviewDialog(
 
         val scroll = JBScrollPane(table).apply {
             preferredSize = Dimension(
-                maxOf(dialogWidth, minOf(packedWidth + JBUI.scale(8), maxTableWidth)),
-                (rows.size.coerceAtMost(8) * table.rowHeight) + JBUI.scale(56),
+                switchPreviewTableWidth(
+                    packedWidth = packedWidth,
+                    scaledDialogWidth = dialogWidth,
+                    scaledMaxTableWidth = maxTableWidth,
+                    padding = JBUI.scale(SwitchPreviewMetrics.SCROLL_PANE_PADDING),
+                ),
+                switchPreviewTableHeight(rows.size, table.rowHeight, JBUI.scale(SwitchPreviewMetrics.VERTICAL_CHROME)),
             )
         }
 
