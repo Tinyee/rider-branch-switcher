@@ -356,8 +356,8 @@ source restored:
 | shortcut action body reduced to an immediate `return` | **undetected** | — |
 | `SwitchFlowCoordinator` switch-failure logging removed | **undetected** | — |
 | shortcut resolves the main repository silently (`resolve()` not `resolveOrReport()`) | **undetected** before | `ArchitectureRulesTest` (added) |
-| busy indicator never claimed (switch) | **undetected** | — |
-| busy indicator never claimed (rollback) | **undetected** | — |
+| busy indicator never claimed (switch) | **undetected** | — (traced: two barriers, below) |
+| busy indicator never claimed (rollback) | **undetected** | — (traced: private, deep) |
 | busy indicator never claimed (derive) | **undetected** before | `SwitchControllerBusyTest` (added) |
 | busy claim moved **above** the `job == null` early return (switch) | **undetected** before | `ArchitectureRulesTest` (added) |
 
@@ -403,13 +403,36 @@ shipped plugin). `SwitchControllerBusyTest` closes the derive claim by mutation 
 moving it above the rejection check fails with `[true]` where `[]` is required.
 
 **Open:** the switch and rollback busy claims, and the shortcut's failure logging.
-The first attempt at the switch claim showed why these are not merely a fixture
-problem: `runSwitchFlow` constructs its `SwitchPreviewDialog` inline and calls a
-modal `showAndGet()` before the lease is acquired, so nothing after the call can
-observe a rejection. Reaching them needs a seam for the confirmation dialog —
-or a test that drives the dialog — and that is a design decision, not a missing
-dependency. The rollback claim has the same shape and is reachable only from
-inside the switch flow's result handling.
+Each was traced to its assertion point on 2026-10-13 rather than assumed
+reachable; the earlier note here ("needs a seam for the confirmation dialog")
+understated all three.
+
+- **Switch claim — two barriers, and the second is the real one.** The first is
+  `SwitchPreviewDialog.showSelection()`, which calls the modal `showAndGet()`; a
+  `DialogWrapper` might be driven without showing it. The second is not a design
+  choice at all: `SwitchPreflightUi.confirm` wraps its dialog in
+  `ApplicationManager.getApplication().invokeAndWait`, and a platform test body
+  already *is* the EDT, so that call deadlocks the test rather than blocking on a
+  user. Clearing it means getting `confirmSubmoduleInitializations` to answer
+  without a dialog, and it is called inline with no injection point.
+  `SwitchPreflightUi.probe` itself is clean — no `Messages` or dialog calls.
+- **Rollback claim — structurally deeper, not a seam problem.**
+  `rollbackSwitch` is `private`, and its only caller is the `afterRelease`
+  callback inside the also-private `executeAndNotify`, reached only from
+  `runSwitchFlow`'s `uiLater` block. The claim therefore fires only after a switch
+  has run to completion *and* produced a failure carrying a `SwitchExecutionResult`,
+  which needs a real repository and a real runner behind it.
+- **Shortcut failure logging — the same two barriers as the switch claim, plus
+  more.** `SwitchPresetAction.executeSwitch` builds its coordinator inline and
+  enters the same `runSwitchFlow`, and driving the action additionally needs an
+  `AnActionEvent` with a `DataContext`.
+
+**What this changes about the item.** The remaining work is not "add a fixture and
+write tests". Two of the three need a seam decided on its own terms — for the
+confirmation dialog and for the switch flow's completion path — and the third
+needs a full switch execution to fail in a controlled way. Worth noting for that
+decision: `SwitchPreviewDialog` is 623 lines with no test references either, so a
+seam there pays twice.
 
 The obvious route — lift the busy *decision* out of the `Project`-taking class
 the way `presetEditorControlState` was lifted into `core` — **was checked against
