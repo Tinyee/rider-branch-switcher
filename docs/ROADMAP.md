@@ -407,14 +407,24 @@ Each was traced to its assertion point on 2026-10-13 rather than assumed
 reachable; the earlier note here ("needs a seam for the confirmation dialog")
 understated all three.
 
-- **Switch claim — two barriers, and the second is the real one.** The first is
-  `SwitchPreviewDialog.showSelection()`, which calls the modal `showAndGet()`; a
-  `DialogWrapper` might be driven without showing it. The second is not a design
-  choice at all: `SwitchPreflightUi.confirm` wraps its dialog in
-  `ApplicationManager.getApplication().invokeAndWait`, and a platform test body
-  already *is* the EDT, so that call deadlocks the test rather than blocking on a
-  user. Clearing it means getting `confirmSubmoduleInitializations` to answer
-  without a dialog, and it is called inline with no injection point.
+- **Switch claim — the two barriers first recorded here did not survive being
+  tested.** An earlier version of this entry claimed `invokeAndWait` deadlocks a
+  test body and that the platform's `TestDialogManager` hook is inert. **Both are
+  wrong, and both were probed rather than argued.** `invokeAndWait` returns
+  normally from a test body; `MessagesServiceImpl` dispatches to
+  `TestDialogManager.getTestImplementation()` whenever
+  `isApplicationInUnitTestOrHeadless()`, so a dialog never opens under test — the
+  fixture installs a default `TestDialog` that throws the dialog's title, which is
+  how a test surfaces an unexpected prompt rather than hanging on it. Installing
+  `TestDialog.YES` makes `Messages.showYesNoDialog` return normally.
+  The recorded "hangs" were artifacts of the probes themselves: both started a
+  worker thread and then joined it *from the EDT*, so the worker's `invokeAndWait`
+  never got the queue and its lambda never ran. Two thread dumps showing the EDT
+  joining the worker while the worker waited on the EDT were read as "Messages is
+  stuck". What actually remains is narrower: `DialogWrapper.isModal()` reads its
+  peer, and `showAndGet()` throws `IllegalStateException: ... for modal dialogs
+  only` under the headless fixture, so the dialog needs a peer-side seam or a
+  non-modal path — not a seam for `Messages`.
   `SwitchPreflightUi.probe` itself is clean — no `Messages` or dialog calls.
 - **Rollback claim — structurally deeper, not a seam problem.**
   `rollbackSwitch` is `private`, and its only caller is the `afterRelease`
@@ -428,11 +438,21 @@ understated all three.
   `AnActionEvent` with a `DataContext`.
 
 **What this changes about the item.** The remaining work is not "add a fixture and
-write tests". Two of the three need a seam decided on its own terms — for the
-confirmation dialog and for the switch flow's completion path — and the third
-needs a full switch execution to fail in a controlled way. Worth noting for that
-decision: `SwitchPreviewDialog` is 623 lines with no test references either, so a
-seam there pays twice.
+write tests", but it is also less than the first version of this entry implied.
+`Messages` is not an obstacle at all — the platform already provides a test hook
+and the fixture arms it. What is left is the switch flow's completion path
+(private `rollbackSwitch`, reachable only after a real switch fails) and
+`DialogWrapper`'s modal-peer assumption under headless. Worth noting for whoever
+takes the dialog question: `SwitchPreviewDialog` is 623 lines with no test
+references either, so a seam there pays twice.
+
+**A method note, recorded because it cost two probes.** A probe that measures the
+wrong thing returns a confident wrong answer, and it reads as evidence. Both
+probes here hung for reasons inside the probe — joining a worker from the EDT —
+while the thread dumps that would have shown it were in hand and misread. Check
+the probe against a control before trusting its verdict: the corrected version
+called `Messages` directly on the EDT, made no thread of its own, and settled the
+question in 1.5 seconds.
 
 The obvious route — lift the busy *decision* out of the `Project`-taking class
 the way `presetEditorControlState` was lifted into `core` — **was checked against
